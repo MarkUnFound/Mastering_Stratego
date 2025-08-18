@@ -1,5 +1,5 @@
 # GPU-Optimized Enhanced Stratego with Periodic Results and Game Timelapse
-# Fixed and completed version
+# Fixed and completed version with piece tracking and revelation system
 
 import torch
 import torch.nn as nn
@@ -71,6 +71,9 @@ class GameState:
     winner: Optional[int]
     move_history: List[Tuple]
     uncertainty_mask: torch.Tensor
+    # New: Track revealed pieces for each player
+    revealed_pieces_p1: Dict[Tuple[int, int], int]
+    revealed_pieces_p2: Dict[Tuple[int, int], int]
 
 class MCTSNode:
     """Simplified MCTS node optimized for GPU batch processing."""
@@ -124,14 +127,23 @@ class GameRecorder:
         self.frames = []
         self.actions = []
         self.players = []
+        # New: Track revealed pieces for visualization
+        self.revealed_pieces_history = []
         os.makedirs(self.output_dir, exist_ok=True)
 
-    def record_state(self, board: torch.Tensor, current_player: int, action: Optional[Tuple] = None):
+    def record_state(self, board: torch.Tensor, current_player: int, action: Optional[Tuple] = None, 
+                     revealed_pieces_p1: Optional[Dict] = None, revealed_pieces_p2: Optional[Dict] = None):
         """Records a single frame of the game."""
         # Detach from GPU and copy to CPU for storage
         self.frames.append(board.cpu().numpy().copy())
         self.players.append(current_player)
         self.actions.append(action)
+        # Store revealed pieces for this turn
+        revealed_copy = {
+            'p1': revealed_pieces_p1.copy() if revealed_pieces_p1 else {},
+            'p2': revealed_pieces_p2.copy() if revealed_pieces_p2 else {}
+        }
+        self.revealed_pieces_history.append(revealed_copy)
 
     def create_timelapse(self, fps=2, winner=None):
         """Creates a timelapse GIF from the recorded frames."""
@@ -141,8 +153,8 @@ class GameRecorder:
 
         print(f"Creating timelapse for episode {self.episode_num} with {len(self.frames)} frames...")
         image_files = []
-        for i, (board, player, action) in enumerate(zip(self.frames, self.players, self.actions)):
-            frame_img = self._create_board_image(board, player, action, i, winner)
+        for i, (board, player, action, revealed) in enumerate(zip(self.frames, self.players, self.actions, self.revealed_pieces_history)):
+            frame_img = self._create_board_image(board, player, action, i, winner, revealed)
             frame_path = os.path.join(self.output_dir, f"frame_{i:04d}.png")
             frame_img.save(frame_path)
             image_files.append(frame_path)
@@ -161,7 +173,7 @@ class GameRecorder:
         
         print(f"✅ Timelapse saved: {gif_path}")
 
-    def _create_board_image(self, board, current_player, action, turn_num, winner):
+    def _create_board_image(self, board, current_player, action, turn_num, winner, revealed_pieces):
         """Creates a visual representation of the board state as a PIL Image."""
         cell_size = 60
         board_dim = BOARD_SIZE * cell_size
@@ -189,18 +201,36 @@ class GameRecorder:
                 piece_val = int(board[r, c])
                 piece_rank = abs(piece_val)
                 
+                # Check if this piece has been revealed
+                pos = (r, c)
+                is_revealed = (pos in revealed_pieces['p1'] or pos in revealed_pieces['p2'])
+                
                 color = PIECE_COLORS.get(piece_rank, '#CCCCCC')
                 if piece_val < 0 and piece_rank not in [LAKE_SQUARE, EMPTY_SQUARE]:
-                     # Player 2 (Red team) gets a red background tint
-                     rgb_color = tuple(int(color[i:i+2], 16) for i in (1, 3, 5))
-                     blended_color = tuple(int(c1*0.4 + c2*0.6) for c1, c2 in zip(rgb_color, (200, 50, 50)))
-                     color = f"#{blended_color[0]:02x}{blended_color[1]:02x}{blended_color[2]:02x}"
+                    # Player 2 (Red team) gets a red background tint
+                    rgb_color = tuple(int(color[i:i+2], 16) for i in (1, 3, 5))
+                    blended_color = tuple(int(c1*0.4 + c2*0.6) for c1, c2 in zip(rgb_color, (200, 50, 50)))
+                    color = f"#{blended_color[0]:02x}{blended_color[1]:02x}{blended_color[2]:02x}"
 
                 draw.rectangle([x1, y1, x2, y2], fill=color, outline='black')
 
                 if piece_rank in PIECE_NAMES:
                     symbol = PIECE_NAMES.get(piece_rank, '?')
                     text_color = 'white' if piece_val < 0 else 'black'
+                    
+                    # If piece is hidden and not revealed, show '?'
+                    if piece_val != EMPTY_SQUARE and piece_val != LAKE_SQUARE and piece_val != 0:
+                        if piece_rank == HIDDEN_PIECE or (abs(piece_val) > 0 and not is_revealed and abs(piece_val) not in [LAKE_SQUARE, EMPTY_SQUARE]):
+                            symbol = '?'
+                        elif is_revealed or abs(piece_val) in [LAKE_SQUARE, EMPTY_SQUARE]:
+                            # Show actual piece if revealed or if it's a special piece
+                            if pos in revealed_pieces['p1']:
+                                symbol = PIECE_NAMES.get(abs(revealed_pieces['p1'][pos]), '?')
+                            elif pos in revealed_pieces['p2']:
+                                symbol = PIECE_NAMES.get(abs(revealed_pieces['p2'][pos]), '?')
+                            else:
+                                symbol = PIECE_NAMES.get(piece_rank, '?')
+                    
                     bbox = draw.textbbox((0, 0), symbol, font=font)
                     text_w, text_h = bbox[2] - bbox[0], bbox[3] - bbox[1]
                     draw.text((x1 + (cell_size - text_w) / 2, y1 + (cell_size - text_h) / 2),
@@ -366,7 +396,7 @@ def generate_all_possible_moves(board_size):
 # --- GPU-Optimized Stratego Environment ---
 
 class GPUOptimizedStrategoEnv:
-    """GPU-optimized Stratego environment with recording capability."""
+    """GPU-Optimized Stratego environment with recording capability."""
     def __init__(self, device, record_game=False, episode_num=None):
         self.device = device
         self.board_size = BOARD_SIZE
@@ -376,39 +406,68 @@ class GPUOptimizedStrategoEnv:
         self.lakes = torch.tensor([(4, 2), (4, 3), (5, 2), (5, 3), (4, 6), (4, 7), (5, 6), (5, 7)], device=device)
         self.directions = torch.tensor([(0, 1), (0, -1), (1, 0), (-1, 0)], device=device)
         
+        # Initialize move history tracking for repeated move penalty
+        self.recent_moves = torch.zeros((10, 2, 2), dtype=torch.int8, device=device)  # 10 moves, each with (from, to) positions
+        self.move_history_ptr = 0
+        self.move_history_count = 0
+        self.current_player = 1
+        
+        # New: Track revealed pieces for both players
+        self.revealed_pieces_p1 = {}  # {(row, col): piece_value}
+        self.revealed_pieces_p2 = {}  # {(row, col): piece_value}
+        
+        # New: Track actual piece positions (hidden from opponents)
+        self.actual_board = torch.zeros((self.board_size, self.board_size), dtype=torch.int8, device=device)
+        
+        # New: Hidden board that shows what each player can see
+        self.visible_board_p1 = torch.zeros((self.board_size, self.board_size), dtype=torch.int8, device=device)
+        self.visible_board_p2 = torch.zeros((self.board_size, self.board_size), dtype=torch.int8, device=device)
+        
         self.board = torch.zeros((self.board_size, self.board_size), dtype=torch.int8, device=device)
         self.reset()
 
-    def _precompute_positions(self):
-        """Pre-compute all valid positions for faster move generation."""
-        positions = []
-        for r in range(self.board_size):
-            for c in range(self.board_size):
-                # Skip lakes
-                if not any((r == lake[0] and c == lake[1]) for lake in self.lakes):
-                    positions.append((r, c))
-        return torch.tensor(positions, device=self.device)
-
     def reset(self):
         """Resets the environment to a new game."""
+        # Reset all boards
+        self.actual_board.fill_(EMPTY_SQUARE)
+        self.visible_board_p1.fill_(EMPTY_SQUARE)
+        self.visible_board_p2.fill_(EMPTY_SQUARE)
         self.board.fill_(EMPTY_SQUARE)
+        
+        # Place lakes
         for r, c in self.lakes:
+            self.actual_board[r, c] = LAKE_SQUARE
+            self.visible_board_p1[r, c] = LAKE_SQUARE
+            self.visible_board_p2[r, c] = LAKE_SQUARE
             self.board[r, c] = LAKE_SQUARE
+            
+        # Setup pieces
         self._setup_board_gpu()
+        
+        # Initialize revealed pieces tracking
+        self.revealed_pieces_p1 = {}
+        self.revealed_pieces_p2 = {}
         
         self.current_player = 1
         self.game_over = False
         self.winner = None
         self.turn_count = 0
         self.move_history = []
+        
+        # Reset move history tracking
+        self.recent_moves.zero_()
+        self.move_history_ptr = 0
+        self.move_history_count = 0
 
         if self.recorder:
-            self.recorder.record_state(self.board, self.current_player)
+            self.recorder.record_state(self.board, self.current_player, 
+                                     revealed_pieces_p1=self.revealed_pieces_p1,
+                                     revealed_pieces_p2=self.revealed_pieces_p2)
             
         return self._get_state_tensor()
 
     def _setup_board_gpu(self):
-        """GPU-optimized board setup with random piece placement."""
+        """GPU-optimized board setup with random piece placement and hidden information."""
         pieces = [FLAG, SPY] + [BOMB]*6 + [MARSHAL] + [GENERAL] + [COLONEL]*2 + \
                  [MAJOR]*3 + [CAPTAIN]*4 + [LIEUTENANT]*4 + [SERGEANT]*4 + \
                  [MINER]*5 + [SCOUT]*8
@@ -416,26 +475,40 @@ class GPUOptimizedStrategoEnv:
         p1_pos = [(r, c) for r in range(6, 10) for c in range(10)]
         p2_pos = [(r, c) for r in range(0, 4) for c in range(10)]
         
+        # Remove lake positions from valid positions
+        lake_positions = set((r.item(), c.item()) for r, c in self.lakes)
+        p1_pos = [pos for pos in p1_pos if pos not in lake_positions]
+        p2_pos = [pos for pos in p2_pos if pos not in lake_positions]
+        
         random.shuffle(p1_pos)
         random.shuffle(pieces)
         for i, piece in enumerate(pieces):
             r, c = p1_pos[i]
-            self.board[r, c] = piece
-        
+            self.actual_board[r, c] = piece  # Actual piece value
+            self.visible_board_p1[r, c] = piece  # Player 1 can see their own pieces
+            self.visible_board_p2[r, c] = HIDDEN_PIECE  # Player 2 sees hidden piece
+            
         random.shuffle(p2_pos)
         random.shuffle(pieces)
         for i, piece in enumerate(pieces):
             r, c = p2_pos[i]
-            self.board[r, c] = -piece
+            self.actual_board[r, c] = -piece  # Negative for Player 2
+            self.visible_board_p2[r, c] = -piece  # Player 2 can see their own pieces
+            self.visible_board_p1[r, c] = HIDDEN_PIECE  # Player 1 sees hidden piece
+            
+        # Set the current visible board based on current player
+        self.board = self.visible_board_p1 if self.current_player == 1 else self.visible_board_p2
 
     def get_valid_moves_gpu(self):
         """Generates all valid moves for the current player."""
         moves = []
-        player_pieces = torch.nonzero(self.board * self.current_player > 0)
+        # Use visible board to determine valid moves (current player's view)
+        current_visible_board = self.visible_board_p1 if self.current_player == 1 else self.visible_board_p2
+        player_pieces = torch.nonzero((current_visible_board * self.current_player > 0) & (current_visible_board != LAKE_SQUARE))
         
         for r_from, c_from in player_pieces:
             r, c = r_from.item(), c_from.item()
-            piece_rank = abs(self.board[r, c].item())
+            piece_rank = abs(current_visible_board[r, c].item())
 
             if piece_rank in [BOMB, FLAG]: continue
 
@@ -445,7 +518,7 @@ class GPUOptimizedStrategoEnv:
                         r_to, c_to = r + i * dr.item(), c + i * dc.item()
                         if not self._is_valid_target(r_to, c_to): break
                         moves.append(((r, c), (r_to, c_to)))
-                        if self.board[r_to, c_to].item() != EMPTY_SQUARE: break
+                        if current_visible_board[r_to, c_to].item() != EMPTY_SQUARE: break
             else:
                 for dr, dc in self.directions:
                     r_to, c_to = r + dr.item(), c + dc.item()
@@ -456,8 +529,41 @@ class GPUOptimizedStrategoEnv:
     def _is_valid_target(self, r, c):
         """Checks if a target square is valid for a move."""
         if not (0 <= r < self.board_size and 0 <= c < self.board_size): return False
-        target_val = self.board[r, c].item()
+        # Use current player's visible board
+        current_visible_board = self.visible_board_p1 if self.current_player == 1 else self.visible_board_p2
+        target_val = current_visible_board[r, c].item()
+        # Target cannot be a lake or a friendly piece
         return target_val != LAKE_SQUARE and (target_val * self.current_player) <= 0
+
+    def _is_repeated_move(self, action):
+        """Check if the move is repeated in the last 10 moves (GPU-optimized)."""
+        if self.move_history_count == 0:
+            return False
+            
+        # Convert action to tensor for comparison
+        action_tensor = torch.tensor([[action[0][0], action[0][1]], [action[1][0], action[1][1]]], 
+                                   dtype=torch.int8, device=self.device)
+        
+        # Check against recent moves
+        num_to_check = min(self.move_history_count, 10)
+        for i in range(num_to_check):
+            # Calculate the actual index in the circular buffer
+            idx = (self.move_history_ptr - i - 1) % 10 if i < self.move_history_count else -1
+            if idx >= 0 and torch.equal(self.recent_moves[idx], action_tensor):
+                return True
+        return False
+
+    def _add_to_move_history(self, action):
+        """Add move to recent moves history (GPU-optimized)."""
+        # Store the move in the circular buffer
+        self.recent_moves[self.move_history_ptr] = torch.tensor(
+            [[action[0][0], action[0][1]], [action[1][0], action[1][1]]], 
+            dtype=torch.int8, device=self.device
+        )
+        
+        # Update pointers
+        self.move_history_ptr = (self.move_history_ptr + 1) % 10
+        self.move_history_count = min(self.move_history_count + 1, 10)
 
     def step_gpu(self, action):
         """Executes a move and returns the new state, reward, and done flag."""
@@ -465,41 +571,115 @@ class GPUOptimizedStrategoEnv:
             return self._get_state_tensor(), 0.0, True, {"winner": self.winner}
         
         (r_from, c_from), (r_to, c_to) = action
-        moving_piece = self.board[r_from, c_from].item()
-        target_piece = self.board[r_to, c_to].item()
+        moving_piece = self.actual_board[r_from, c_from].item()  # Use actual board for resolution
+        target_piece = self.actual_board[r_to, c_to].item()  # Use actual board for resolution
         
         reward = -0.01 # Small penalty for each move to encourage finishing
         
+        # Check for repeated move penalty
+        if self._is_repeated_move(action):
+            reward -= 0.05  # Penalty for repeated moves
+        
         # Resolve battle or move
-        if target_piece != EMPTY_SQUARE:
+        if target_piece != EMPTY_SQUARE and target_piece != LAKE_SQUARE:
             winner_piece = self._resolve_battle(moving_piece, target_piece)
+            
+            # Reveal pieces involved in battle to both players
+            if self.current_player == 1:
+                self.revealed_pieces_p1[(r_from, c_from)] = abs(moving_piece)
+                self.revealed_pieces_p2[(r_from, c_from)] = abs(moving_piece)
+                self.revealed_pieces_p1[(r_to, c_to)] = abs(target_piece)
+                self.revealed_pieces_p2[(r_to, c_to)] = abs(target_piece)
+            else:
+                self.revealed_pieces_p1[(r_from, c_from)] = abs(moving_piece)
+                self.revealed_pieces_p2[(r_from, c_from)] = abs(moving_piece)
+                self.revealed_pieces_p1[(r_to, c_to)] = abs(target_piece)
+                self.revealed_pieces_p2[(r_to, c_to)] = abs(target_piece)
+            
             if winner_piece == moving_piece:
-                self.board[r_to, c_to] = moving_piece
-                self.board[r_from, c_from] = EMPTY_SQUARE
+                self.actual_board[r_to, c_to] = moving_piece
+                self.actual_board[r_from, c_from] = EMPTY_SQUARE
                 reward += 0.1 * abs(target_piece) # Reward for capture
                 if abs(target_piece) == FLAG:
                     self.game_over = True
                     self.winner = self.current_player
                     reward += 1.0
+                    
+                # Update visible boards
+                if self.current_player == 1:
+                    self.visible_board_p1[r_to, c_to] = moving_piece
+                    self.visible_board_p1[r_from, c_from] = EMPTY_SQUARE
+                    self.visible_board_p2[r_to, c_to] = HIDDEN_PIECE  # P2 doesn't know what captured
+                    self.visible_board_p2[r_from, c_from] = EMPTY_SQUARE
+                else:
+                    self.visible_board_p2[r_to, c_to] = moving_piece
+                    self.visible_board_p2[r_from, c_from] = EMPTY_SQUARE
+                    self.visible_board_p1[r_to, c_to] = HIDDEN_PIECE  # P1 doesn't know what captured
+                    self.visible_board_p1[r_from, c_from] = EMPTY_SQUARE
+                    
             elif winner_piece == target_piece:
-                self.board[r_from, c_from] = EMPTY_SQUARE
+                self.actual_board[r_from, c_from] = EMPTY_SQUARE
                 reward -= 0.1 * abs(moving_piece) # Penalty for losing a piece
+                
+                # Update visible boards
+                if self.current_player == 1:
+                    self.visible_board_p1[r_from, c_from] = EMPTY_SQUARE
+                    # Target piece remains visible to P1 since they lost to it
+                    self.visible_board_p1[r_to, c_to] = target_piece
+                    self.visible_board_p2[r_from, c_from] = EMPTY_SQUARE
+                else:
+                    self.visible_board_p2[r_from, c_from] = EMPTY_SQUARE
+                    # Target piece remains visible to P2 since they lost to it
+                    self.visible_board_p2[r_to, c_to] = target_piece
             else: # Draw
-                self.board[r_from, c_from] = EMPTY_SQUARE
-                self.board[r_to, c_to] = EMPTY_SQUARE
+                self.actual_board[r_from, c_from] = EMPTY_SQUARE
+                self.actual_board[r_to, c_to] = EMPTY_SQUARE
+                
+                # Update visible boards
+                if self.current_player == 1:
+                    self.visible_board_p1[r_from, c_from] = EMPTY_SQUARE
+                    self.visible_board_p1[r_to, c_to] = EMPTY_SQUARE
+                    self.visible_board_p2[r_from, c_from] = EMPTY_SQUARE
+                    self.visible_board_p2[r_to, c_to] = EMPTY_SQUARE
+                else:
+                    self.visible_board_p2[r_from, c_from] = EMPTY_SQUARE
+                    self.visible_board_p2[r_to, c_to] = EMPTY_SQUARE
+                    self.visible_board_p1[r_from, c_from] = EMPTY_SQUARE
+                    self.visible_board_p1[r_to, c_to] = EMPTY_SQUARE
         else: # Move to empty square
-            self.board[r_to, c_to] = moving_piece
-            self.board[r_from, c_from] = EMPTY_SQUARE
+            self.actual_board[r_to, c_to] = moving_piece
+            self.actual_board[r_from, c_from] = EMPTY_SQUARE
+            
+            # Update visible boards
+            if self.current_player == 1:
+                self.visible_board_p1[r_to, c_to] = moving_piece
+                self.visible_board_p1[r_from, c_from] = EMPTY_SQUARE
+                self.visible_board_p2[r_to, c_to] = HIDDEN_PIECE  # P2 sees it as hidden
+                self.visible_board_p2[r_from, c_from] = EMPTY_SQUARE
+            else:
+                self.visible_board_p2[r_to, c_to] = moving_piece
+                self.visible_board_p2[r_from, c_from] = EMPTY_SQUARE
+                self.visible_board_p1[r_to, c_to] = HIDDEN_PIECE  # P1 sees it as hidden
+                self.visible_board_p1[r_from, c_from] = EMPTY_SQUARE
 
         self.turn_count += 1
         self.move_history.append(action)
+        
+        # Add move to history for repeated move tracking
+        self._add_to_move_history(action)
+        
         self.current_player *= -1
+
+        # Update the current visible board
+        self.board = self.visible_board_p1 if self.current_player == 1 else self.visible_board_p2
 
         if not self.game_over:
             self._check_game_end()
 
         if self.recorder:
-            self.recorder.record_state(self.board, self.current_player, action)
+            self.recorder.record_state(self.board, self.current_player, action,
+                                     revealed_pieces_p1=self.revealed_pieces_p1,
+                                     revealed_pieces_p2=self.revealed_pieces_p2)
             
         info = {"winner": self.winner}
         return self._get_state_tensor(), reward, self.game_over, info
@@ -514,41 +694,82 @@ class GPUOptimizedStrategoEnv:
         if def_rank > atk_rank: return defender
         return None # Both removed
 
+    # ... (previous code inside GPUOptimizedStrategoEnv class)
+
     def _check_game_end(self):
         """Checks for game-ending conditions."""
-        if not any(abs(p.item()) == FLAG for p in self.board.flatten()):
-             self.game_over = True # Should be caught by capture logic, but as a failsafe
-             self.winner = -self.current_player
-
+        # Check if any flag exists on the board
+        flags_exist = any(abs(p.item()) == FLAG for p in self.actual_board.flatten())
+        if not flags_exist:
+             self.game_over = True
+             self.winner = -self.current_player  # Winner is the player who captured the flag
+        # Check if current player has any valid moves
         if not self.get_valid_moves_gpu():
             self.game_over = True
             self.winner = -self.current_player # Player who cannot move loses
-            
-        if self.turn_count > 250: # Draw condition
+        # Smart draw detection
+        if self.turn_count > 300:  # Start checking after 300 moves
+            # Check for repetitive positions (same piece arrangement)
+            if self._is_position_repetitive():
+                self.game_over = True
+                self.winner = 0
+                return
+            # Check for minimal piece movement (stalemate)
+            if self._is_stalemate():
+                self.game_over = True
+                self.winner = 0
+                return
+        # Ultimate limit
+        if self.turn_count > 1000:
             self.game_over = True
             self.winner = 0
 
+    def _is_position_repetitive(self):
+        """Check if the same position has occurred multiple times"""
+        if len(self.move_history) < 10:
+            return False
+        # Simple check: last 10 moves are mostly back-and-forth
+        recent_moves = self.move_history[-10:]
+        # Count how many moves are reversals of previous moves
+        reversal_count = 0
+        for i in range(1, len(recent_moves)):
+            current_move = recent_moves[i]
+            previous_move = recent_moves[i-1]
+            if (current_move[0] == previous_move[1] and 
+                current_move[1] == previous_move[0]):
+                reversal_count += 1
+        return reversal_count >= 3  # 3 or more reversals indicate stalemate
+
+    def _is_stalemate(self):
+        """Check if very few pieces are moving"""
+        if len(self.move_history) < 50:
+            return False
+        # Check if moves are only involving a few pieces
+        recent_moves = self.move_history[-50:]
+        moved_pieces = set()
+        for move in recent_moves:
+            moved_pieces.add(move[0])  # Add starting positions
+        # If only 2-3 pieces are doing all the moving, likely stalemate
+        return len(moved_pieces) <= 3
+
+    # --- Fix indentation for _get_state_tensor and finalize_recording ---
     def _get_state_tensor(self):
         """Gets the state as a 4-channel tensor for the neural network."""
         state = torch.zeros(4, self.board_size, self.board_size, device=self.device)
-        
         # Player and opponent piece planes
         player_board = self.board if self.current_player == 1 else -self.board
         state[0] = (player_board > 0) * player_board / 11.0 # Current player's pieces
         state[1] = (player_board < 0) * -player_board / 11.0 # Opponent's pieces (ranks are positive)
-        
         # Turn and lake planes
         state[2].fill_(self.current_player)
         state[3] = (self.board == LAKE_SQUARE).float()
-        
         return state.unsqueeze(0) # Add batch dimension
 
     def finalize_recording(self):
         """Finalizes and saves the timelapse video."""
         if self.recorder:
             self.recorder.create_timelapse(winner=self.winner)
-
-# --- Neural Network ---
+# --- Enhanced Neural Network with GRU Memory ---
 
 class ResidualBlock(nn.Module):
     """A residual block for the CNN."""
@@ -567,9 +788,12 @@ class ResidualBlock(nn.Module):
         return F.relu(out)
 
 class StrategoNet(nn.Module):
-    """The neural network for the Stratego agent."""
-    def __init__(self, num_res_blocks, num_channels, num_actions):
+    """Enhanced neural network for the Stratego agent with GRU memory."""
+    def __init__(self, num_res_blocks, num_channels, num_actions, gru_hidden_size=128):
         super().__init__()
+        self.num_channels = num_channels
+        self.gru_hidden_size = gru_hidden_size
+        
         self.conv_in = nn.Conv2d(4, num_channels, kernel_size=3, padding=1)
         self.bn_in = nn.BatchNorm2d(num_channels)
         self.res_blocks = nn.ModuleList([ResidualBlock(num_channels) for _ in range(num_res_blocks)])
@@ -584,34 +808,81 @@ class StrategoNet(nn.Module):
         self.value_bn = nn.BatchNorm2d(1)
         self.value_fc1 = nn.Linear(1 * BOARD_SIZE * BOARD_SIZE, 256)
         self.value_fc2 = nn.Linear(256, 1)
+        
+        # GRU for memory of piece movements and revelations
+        self.gru = nn.GRU(
+            input_size=num_channels * BOARD_SIZE * BOARD_SIZE,
+            hidden_size=gru_hidden_size,
+            num_layers=2,
+            batch_first=True,
+            dropout=0.1
+        )
+        
+        # Attention mechanism for focusing on important board positions
+        self.attention = nn.MultiheadAttention(
+            embed_dim=num_channels,
+            num_heads=8,
+            dropout=0.1,
+            batch_first=True
+        )
+        
+        # Combine CNN features with GRU memory
+        self.memory_combine = nn.Linear(gru_hidden_size + num_channels * BOARD_SIZE * BOARD_SIZE, 
+                                      num_channels * BOARD_SIZE * BOARD_SIZE)
 
-    def forward(self, x):
-        x = F.relu(self.bn_in(self.conv_in(x)))
+    def forward(self, x, hidden_state=None):
+        batch_size = x.size(0)
+        
+        # Standard CNN processing
+        x_cnn = F.relu(self.bn_in(self.conv_in(x)))
         for block in self.res_blocks:
-            x = block(x)
+            x_cnn = block(x_cnn)
+        
+        # Apply attention to focus on important positions
+        # Reshape for attention: (batch, sequence_length, features)
+        x_flat = x_cnn.view(batch_size, self.num_channels, -1).permute(0, 2, 1)  # (B, H*W, C)
+        x_attn, _ = self.attention(x_flat, x_flat, x_flat)
+        x_attn = x_attn.permute(0, 2, 1).view(batch_size, self.num_channels, BOARD_SIZE, BOARD_SIZE)
+        
+        # Combine attention output with original
+        x_combined = x_cnn + x_attn
+        
+        # GRU memory processing
+        x_gru_input = x_combined.view(batch_size, 1, -1)  # (B, 1, features)
+        if hidden_state is not None:
+            gru_out, hidden_state = self.gru(x_gru_input, hidden_state)
+        else:
+            gru_out, hidden_state = self.gru(x_gru_input)
+        
+        # Combine CNN features with GRU memory
+        x_flat_combined = x_combined.view(batch_size, -1)
+        gru_features = gru_out.squeeze(1)  # (B, gru_hidden_size)
+        combined_features = torch.cat([x_flat_combined, gru_features], dim=1)
+        x_final = self.memory_combine(combined_features)
+        x_final = x_final.view(batch_size, self.num_channels, BOARD_SIZE, BOARD_SIZE)
         
         # Policy head
-        policy = F.relu(self.policy_bn(self.policy_conv(x)))
+        policy = F.relu(self.policy_bn(self.policy_conv(x_final)))
         policy = policy.view(policy.size(0), -1)
         policy = F.log_softmax(self.policy_fc(policy), dim=1)
         
         # Value head
-        value = F.relu(self.value_bn(self.value_conv(x)))
+        value = F.relu(self.value_bn(self.value_conv(x_final)))
         value = value.view(value.size(0), -1)
         value = F.relu(self.value_fc1(value))
         value = torch.tanh(self.value_fc2(value))
         
-        return policy, value
+        return policy, value, hidden_state
 
 # --- GPU-Accelerated MCTS ---
 
 class GPUAcceleratedMCTS:
     """GPU-accelerated Monte Carlo Tree Search."""
-    def __init__(self, model, device, num_simulations=50):
+    def __init__(self, model, device, num_simulations=50, uct_c=1.4):
         self.model = model
         self.device = device
         self.num_simulations = num_simulations
-        self.c_puct = 1.4
+        self.uct_c = uct_c
 
     def search(self, env):
         """Performs MCTS to find the best action."""
@@ -622,8 +893,7 @@ class GPUAcceleratedMCTS:
             sim_env = deepcopy(env) # Create a copy for simulation
             
             # 1. Selection
-            while node.is_expanded:
-                if not node.children: break
+            while node.is_expanded and node.children:
                 node = node.select_child()
                 sim_env.step_gpu(node.action)
 
@@ -631,7 +901,7 @@ class GPUAcceleratedMCTS:
             if not sim_env.game_over:
                 with torch.no_grad():
                     state_tensor = sim_env._get_state_tensor()
-                    policy, value = self.model(state_tensor)
+                    policy, value, _ = self.model(state_tensor)
                 
                 value = value.item()
                 valid_moves = sim_env.get_valid_moves_gpu()
@@ -695,6 +965,7 @@ class StrategoAgent:
         self.optimizer = optim.Adam(model.parameters(), lr=lr)
         self.replay_buffer = ReplayBuffer(replay_buffer_size)
         self.mcts = GPUAcceleratedMCTS(model, device, num_simulations=50)
+        self.hidden_state = None  # For GRU memory
 
     def choose_action(self, env):
         """Chooses an action using MCTS."""
@@ -712,7 +983,7 @@ class StrategoAgent:
         values = torch.tensor(values, dtype=torch.float32).unsqueeze(1).to(self.device)
 
         self.optimizer.zero_grad()
-        pred_policies, pred_values = self.model(states)
+        pred_policies, pred_values, _ = self.model(states)
         
         policy_loss = F.kl_div(pred_policies, policies, reduction='batchmean')
         value_loss = F.mse_loss(pred_values, values)

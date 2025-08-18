@@ -21,7 +21,6 @@ import json
 from datetime import datetime
 import imageio
 from PIL import Image, ImageDraw, ImageFont
-import cv2
 
 # --- Configuration ---
 BOARD_SIZE = 10
@@ -115,195 +114,227 @@ class MCTSNode:
             value = -value
             node = node.parent
 
-# --- DQN Performance Recorder ---
+# --- Game Recorder for Timelapse ---
 
-class DQNPerformanceRecorder:
-    """Records DQN performance metrics for creating improvement videos and graphs."""
-    def __init__(self, output_dir="dqn_performance"):
+class GameRecorder:
+    """Records game states for creating timelapse videos."""
+    def __init__(self, episode_num, output_dir="game_timelapses"):
+        self.episode_num = episode_num
+        self.output_dir = os.path.join(output_dir, f"episode_{episode_num}")
+        self.frames = []
+        self.actions = []
+        self.players = []
+        os.makedirs(self.output_dir, exist_ok=True)
+
+    def record_state(self, board: torch.Tensor, current_player: int, action: Optional[Tuple] = None):
+        """Records a single frame of the game."""
+        # Detach from GPU and copy to CPU for storage
+        self.frames.append(board.cpu().numpy().copy())
+        self.players.append(current_player)
+        self.actions.append(action)
+
+    def create_timelapse(self, fps=2, winner=None):
+        """Creates a timelapse GIF from the recorded frames."""
+        if not self.frames:
+            print("No states recorded for timelapse.")
+            return
+
+        print(f"Creating timelapse for episode {self.episode_num} with {len(self.frames)} frames...")
+        image_files = []
+        for i, (board, player, action) in enumerate(zip(self.frames, self.players, self.actions)):
+            frame_img = self._create_board_image(board, player, action, i, winner)
+            frame_path = os.path.join(self.output_dir, f"frame_{i:04d}.png")
+            frame_img.save(frame_path)
+            image_files.append(frame_path)
+
+        # Create GIF from saved frames
+        gif_path = os.path.join(os.path.dirname(self.output_dir), f"game_timelapse_episode_{self.episode_num}.gif")
+        with imageio.get_writer(gif_path, mode='I', fps=fps, loop=0) as writer:
+            for filename in image_files:
+                image = imageio.imread(filename)
+                writer.append_data(image)
+        
+        # Clean up individual frame files
+        for filename in image_files:
+            os.remove(filename)
+        os.rmdir(self.output_dir)
+        
+        print(f"✅ Timelapse saved: {gif_path}")
+
+    def _create_board_image(self, board, current_player, action, turn_num, winner):
+        """Creates a visual representation of the board state as a PIL Image."""
+        cell_size = 60
+        board_dim = BOARD_SIZE * cell_size
+        margin = 50
+        info_height = 100
+        img_width = board_dim + 2 * margin
+        img_height = board_dim + 2 * margin + info_height
+
+        img = Image.new('RGB', (img_width, img_height), '#E0E0E0')
+        draw = ImageDraw.Draw(img)
+
+        try:
+            font = ImageFont.truetype("arialbd.ttf", 24)
+            font_small = ImageFont.truetype("arial.ttf", 16)
+        except IOError:
+            font = ImageFont.load_default()
+            font_small = font
+            
+        # Draw board cells and pieces
+        for r in range(BOARD_SIZE):
+            for c in range(BOARD_SIZE):
+                x1, y1 = margin + c * cell_size, margin + r * cell_size
+                x2, y2 = x1 + cell_size, y1 + cell_size
+                
+                piece_val = int(board[r, c])
+                piece_rank = abs(piece_val)
+                
+                color = PIECE_COLORS.get(piece_rank, '#CCCCCC')
+                if piece_val < 0 and piece_rank not in [LAKE_SQUARE, EMPTY_SQUARE]:
+                     # Player 2 (Red team) gets a red background tint
+                     rgb_color = tuple(int(color[i:i+2], 16) for i in (1, 3, 5))
+                     blended_color = tuple(int(c1*0.4 + c2*0.6) for c1, c2 in zip(rgb_color, (200, 50, 50)))
+                     color = f"#{blended_color[0]:02x}{blended_color[1]:02x}{blended_color[2]:02x}"
+
+                draw.rectangle([x1, y1, x2, y2], fill=color, outline='black')
+
+                if piece_rank in PIECE_NAMES:
+                    symbol = PIECE_NAMES.get(piece_rank, '?')
+                    text_color = 'white' if piece_val < 0 else 'black'
+                    bbox = draw.textbbox((0, 0), symbol, font=font)
+                    text_w, text_h = bbox[2] - bbox[0], bbox[3] - bbox[1]
+                    draw.text((x1 + (cell_size - text_w) / 2, y1 + (cell_size - text_h) / 2),
+                              symbol, fill=text_color, font=font)
+
+        # Highlight last move
+        if action:
+            (r_from, c_from), (r_to, c_to) = action
+            # Highlight destination
+            x1, y1 = margin + c_to * cell_size, margin + r_to * cell_size
+            draw.rectangle([x1, y1, x1 + cell_size, y1 + cell_size], outline='lime', width=4)
+            # Draw arrow
+            center_from = (margin + c_from * cell_size + cell_size//2, margin + r_from * cell_size + cell_size//2)
+            center_to = (margin + c_to * cell_size + cell_size//2, margin + r_to * cell_size + cell_size//2)
+            draw.line([center_from, center_to], fill='purple', width=4)
+
+        # Add game info text
+        info_y = margin + board_dim + 20
+        player_color = "Blue" if current_player == 1 else "Red"
+        info_text = f"Episode: {self.episode_num} | Turn: {turn_num} | Player to move: {player_color}"
+        draw.text((margin, info_y), info_text, fill='black', font=font_small)
+
+        if winner is not None:
+             winner_color = "Blue (P1)" if winner == 1 else "Red (P2)"
+             winner_text = f"GAME OVER! Winner: {winner_color}"
+             if turn_num == len(self.frames) - 1:
+                draw.text((margin, info_y + 30), winner_text, fill='green', font=font)
+
+        return img
+
+# --- Periodic Results Plotter ---
+
+class PeriodicResultsPlotter:
+    """Creates periodic result plots every N episodes."""
+    def __init__(self, plot_frequency=100, output_dir="periodic_results"):
+        self.plot_frequency = plot_frequency
         self.output_dir = output_dir
         os.makedirs(output_dir, exist_ok=True)
+
+    def should_plot(self, episode_num):
+        """Check if we should create a plot at this episode."""
+        return (episode_num + 1) % self.plot_frequency == 0
+
+    def create_periodic_plot(self, episode_num, history):
+        """Create and save a comprehensive results plot."""
+        print(f"📊 Creating periodic results plot for episode {episode_num + 1}...")
         
-        # Metrics to track
-        self.episode_numbers = []
-        self.win_rates_p1 = []
-        self.win_rates_p2 = []
-        self.avg_game_lengths = []
-        self.avg_losses = []
-        self.q_values = []
-        
-        # For creating video frames
-        self.video_frames = []
-        
-    def record_episode(self, episode_num, winner, game_length, loss, q_value):
-        """Record metrics for a single episode."""
-        self.episode_numbers.append(episode_num)
-        self.win_rates_p1.append(1 if winner == 1 else 0)
-        self.win_rates_p2.append(1 if winner == -1 else 0)
-        self.avg_game_lengths.append(game_length)
-        self.avg_losses.append(loss)
-        self.q_values.append(q_value)
-        
-    def create_performance_graph(self):
-        """Create a comprehensive graph showing DQN improvement over time."""
-        if len(self.episode_numbers) < 2:
-            return
-            
-        fig, axes = plt.subplots(2, 2, figsize=(15, 10))
-        fig.suptitle('DQN Performance Improvement', fontsize=16)
-        
-        # Calculate moving averages for smoother curves
-        window_size = max(1, len(self.episode_numbers) // 20)
-        if window_size > 1:
-            win_rate_p1_smooth = np.convolve(self.win_rates_p1, 
-                                           np.ones(window_size)/window_size, 
-                                           mode='valid')
-            win_rate_p2_smooth = np.convolve(self.win_rates_p2, 
-                                           np.ones(window_size)/window_size, 
-                                           mode='valid')
-            episodes_smooth = self.episode_numbers[window_size-1:]
-        else:
-            win_rate_p1_smooth = self.win_rates_p1
-            win_rate_p2_smooth = self.win_rates_p2
-            episodes_smooth = self.episode_numbers
-            
-        # Win rates
-        axes[0, 0].plot(episodes_smooth, win_rate_p1_smooth, 
-                       label='Player 1 Win Rate', color='blue')
-        axes[0, 0].plot(episodes_smooth, win_rate_p2_smooth, 
-                       label='Player 2 Win Rate', color='red')
-        axes[0, 0].set_title('Win Rates Over Time')
-        axes[0, 0].set_xlabel('Episode')
-        axes[0, 0].set_ylabel('Win Rate')
-        axes[0, 0].legend()
-        axes[0, 0].grid(True)
-        
-        # Game lengths
-        if window_size > 1:
-            game_length_smooth = np.convolve(self.avg_game_lengths, 
-                                           np.ones(window_size)/window_size, 
-                                           mode='valid')
-        else:
-            game_length_smooth = self.avg_game_lengths
-            
-        axes[0, 1].plot(self.episode_numbers[:len(game_length_smooth)], 
-                       game_length_smooth, color='green')
-        axes[0, 1].set_title('Average Game Length')
-        axes[0, 1].set_xlabel('Episode')
-        axes[0, 1].set_ylabel('Turns')
-        axes[0, 1].grid(True)
-        
+        fig, axes = plt.subplots(2, 3, figsize=(18, 10))
+        fig.suptitle(f'Training Progress - Episode {episode_num + 1}', fontsize=16, fontweight='bold')
+
+        # Win Rates
+        ax = axes[0, 0]
+        win_history = history['wins']
+        if win_history:
+            win_p1 = np.array([1 if w == 1 else 0 for w in win_history])
+            win_p2 = np.array([1 if w == -1 else 0 for w in win_history])
+            draws = np.array([1 if w == 0 else 0 for w in win_history])
+            window = max(1, len(win_history) // 10)
+            moving_avg_p1 = np.convolve(win_p1, np.ones(window)/window, mode='valid')
+            moving_avg_p2 = np.convolve(win_p2, np.ones(window)/window, mode='valid')
+            ax.plot(moving_avg_p1, label=f'Player 1 Wins (MA)', color='blue')
+            ax.plot(moving_avg_p2, label=f'Player 2 Wins (MA)', color='red')
+        ax.set_title('Win Rate (Moving Average)')
+        ax.set_xlabel('Episodes')
+        ax.set_ylabel('Win Rate')
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+
         # Loss
-        axes[1, 0].plot(self.episode_numbers[:len(self.avg_losses)], 
-                       self.avg_losses, color='purple')
-        axes[1, 0].set_title('Training Loss')
-        axes[1, 0].set_xlabel('Training Step')
-        axes[1, 0].set_ylabel('Loss')
-        axes[1, 0].set_yscale('log')
-        axes[1, 0].grid(True)
+        ax = axes[0, 1]
+        loss_history = history['loss']
+        if loss_history:
+            ax.plot(loss_history, label='Total Loss', color='purple')
+            ax.set_yscale('log')
+        ax.set_title('Training Loss (Log Scale)')
+        ax.set_xlabel('Training Steps')
+        ax.set_ylabel('Loss')
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+
+        # Game Lengths
+        ax = axes[0, 2]
+        game_lengths = history['game_lengths']
+        if game_lengths:
+            window = max(1, len(game_lengths) // 10)
+            moving_avg = np.convolve(game_lengths, np.ones(window)/window, mode='valid')
+            ax.plot(moving_avg, color='green', label=f'{window}-ep MA')
+        ax.set_title('Game Length (Moving Average)')
+        ax.set_xlabel('Episodes')
+        ax.set_ylabel('Number of Turns')
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+
+        # Recent Win/Loss Pie Chart
+        ax = axes[1, 0]
+        recent_games = min(100, len(win_history))
+        if recent_games > 0:
+            recent_results = win_history[-recent_games:]
+            p1_wins = sum(1 for w in recent_results if w == 1)
+            p2_wins = sum(1 for w in recent_results if w == -1)
+            draws = sum(1 for w in recent_results if w == 0)
+            if sum([p1_wins, p2_wins, draws]) > 0:
+                ax.pie([p1_wins, p2_wins, draws], labels=['P1 Wins', 'P2 Wins', 'Draws'],
+                       colors=['blue', 'red', 'gray'], autopct='%1.1f%%', startangle=90)
+        ax.set_title(f'Last {recent_games} Games')
+
+        # Q-Values
+        ax = axes[1, 1]
+        q_values = history['q_values']
+        if q_values:
+            ax.plot(q_values, label='Avg. Root Q-Value', color='orange')
+        ax.set_title('MCTS Root Q-Value')
+        ax.set_xlabel('Episodes')
+        ax.set_ylabel('Avg. Q-Value')
+        ax.legend()
+        ax.grid(True, alpha=0.3)
         
-        # Q-values
-        if window_size > 1:
-            q_values_smooth = np.convolve(self.q_values, 
-                                        np.ones(window_size)/window_size, 
-                                        mode='valid')
-        else:
-            q_values_smooth = self.q_values
-            
-        axes[1, 1].plot(self.episode_numbers[:len(q_values_smooth)], 
-                       q_values_smooth, color='orange')
-        axes[1, 1].set_title('Average Q-Values')
-        axes[1, 1].set_xlabel('Episode')
-        axes[1, 1].set_ylabel('Q-Value')
-        axes[1, 1].grid(True)
-        
-        plt.tight_layout()
-        graph_path = os.path.join(self.output_dir, "dqn_performance.png")
-        plt.savefig(graph_path, dpi=150, bbox_inches='tight')
+        # GPU Memory
+        ax = axes[1, 2]
+        gpu_mem = history['gpu_mem']
+        if gpu_mem:
+             ax.plot(gpu_mem, label='GPU Memory (MB)', color='teal')
+        ax.set_title('GPU Memory Usage')
+        ax.set_xlabel('Episodes')
+        ax.set_ylabel('Memory (MB)')
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+
+
+        plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+        filepath = os.path.join(self.output_dir, f"results_episode_{episode_num + 1}.png")
+        plt.savefig(filepath, dpi=150)
         plt.close()
-        
-        print(f"📊 Performance graph saved: {graph_path}")
-        return graph_path
-        
-    def create_improvement_video(self, fps=2):
-        """Create a video showing DQN improvement over time."""
-        if len(self.episode_numbers) < 2:
-            return
-            
-        graph_path = self.create_performance_graph()
-        
-        # Create video showing the performance graph evolving
-        video_path = os.path.join(self.output_dir, "dqn_improvement.mp4")
-        
-        # We'll create a video by showing more of the graph over time
-        fig, ax = plt.subplots(figsize=(10, 6))
-        
-        # Determine how many points to show at each frame
-        total_points = len(self.episode_numbers)
-        frames = min(100, total_points)  # Cap at 100 frames for reasonable video length
-        
-        frame_paths = []
-        
-        for i in range(1, frames+1):
-            # Determine how many points to show in this frame
-            points_to_show = max(2, int((i/frames) * total_points))
-            
-            # Clear the plot
-            ax.clear()
-            
-            # Plot the data up to this point
-            episodes_subset = self.episode_numbers[:points_to_show]
-            
-            # Win rates
-            ax.plot(episodes_subset, self.win_rates_p1[:points_to_show], 
-                   label='Player 1 Win Rate', color='blue', alpha=0.7)
-            ax.plot(episodes_subset, self.win_rates_p2[:points_to_show], 
-                   label='Player 2 Win Rate', color='red', alpha=0.7)
-            
-            # Game lengths (secondary y-axis)
-            ax2 = ax.twinx()
-            ax2.plot(episodes_subset, self.avg_game_lengths[:points_to_show], 
-                    color='green', label='Avg Game Length')
-            ax2.set_ylabel('Game Length (Turns)', color='green')
-            
-            ax.set_title(f'DQN Performance Improvement (Episodes 0-{episodes_subset[-1]})')
-            ax.set_xlabel('Episode')
-            ax.set_ylabel('Win Rate')
-            ax.legend(loc='upper left')
-            ax2.legend(loc='upper right')
-            ax.grid(True)
-            
-            # Save frame
-            frame_path = os.path.join(self.output_dir, f"frame_{i:03d}.png")
-            plt.savefig(frame_path, dpi=100, bbox_inches='tight')
-            frame_paths.append(frame_path)
-        
-        plt.close()
-        
-        # Create video from frames
-        if frame_paths:
-            # Read first frame to get dimensions
-            frame = cv2.imread(frame_paths[0])
-            height, width, layers = frame.shape
-            
-            # Create video writer
-            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-            video = cv2.VideoWriter(video_path, fourcc, fps, (width, height))
-            
-            # Write frames to video
-            for frame_path in frame_paths:
-                frame = cv2.imread(frame_path)
-                video.write(frame)
-                
-            # Close video writer
-            video.release()
-            
-            # Clean up frame files
-            for frame_path in frame_paths:
-                os.remove(frame_path)
-                
-            print(f"🎥 Improvement video saved: {video_path}")
-        
-        return video_path
+        print(f"✅ Periodic plot saved: {filepath}")
 
 # --- Action Space Helpers ---
 
@@ -335,16 +366,28 @@ def generate_all_possible_moves(board_size):
 # --- GPU-Optimized Stratego Environment ---
 
 class GPUOptimizedStrategoEnv:
-    """GPU-optimized Stratego environment."""
-    def __init__(self, device):
+    """GPU-optimized Stratego environment with recording capability."""
+    def __init__(self, device, record_game=False, episode_num=None):
         self.device = device
         self.board_size = BOARD_SIZE
+        self.record_game = record_game
+        self.recorder = GameRecorder(episode_num) if record_game else None
         
         self.lakes = torch.tensor([(4, 2), (4, 3), (5, 2), (5, 3), (4, 6), (4, 7), (5, 6), (5, 7)], device=device)
         self.directions = torch.tensor([(0, 1), (0, -1), (1, 0), (-1, 0)], device=device)
         
         self.board = torch.zeros((self.board_size, self.board_size), dtype=torch.int8, device=device)
         self.reset()
+
+    def _precompute_positions(self):
+        """Pre-compute all valid positions for faster move generation."""
+        positions = []
+        for r in range(self.board_size):
+            for c in range(self.board_size):
+                # Skip lakes
+                if not any((r == lake[0] and c == lake[1]) for lake in self.lakes):
+                    positions.append((r, c))
+        return torch.tensor(positions, device=self.device)
 
     def reset(self):
         """Resets the environment to a new game."""
@@ -358,6 +401,9 @@ class GPUOptimizedStrategoEnv:
         self.winner = None
         self.turn_count = 0
         self.move_history = []
+
+        if self.recorder:
+            self.recorder.record_state(self.board, self.current_player)
             
         return self._get_state_tensor()
 
@@ -451,6 +497,9 @@ class GPUOptimizedStrategoEnv:
 
         if not self.game_over:
             self._check_game_end()
+
+        if self.recorder:
+            self.recorder.record_state(self.board, self.current_player, action)
             
         info = {"winner": self.winner}
         return self._get_state_tensor(), reward, self.game_over, info
@@ -493,6 +542,11 @@ class GPUOptimizedStrategoEnv:
         state[3] = (self.board == LAKE_SQUARE).float()
         
         return state.unsqueeze(0) # Add batch dimension
+
+    def finalize_recording(self):
+        """Finalizes and saves the timelapse video."""
+        if self.recorder:
+            self.recorder.create_timelapse(winner=self.winner)
 
 # --- Neural Network ---
 
@@ -693,8 +747,7 @@ if __name__ == "__main__":
     agent = StrategoAgent(model, DEVICE, lr=LEARNING_RATE, replay_buffer_size=REPLAY_BUFFER_SIZE)
     agent.mcts.num_simulations = MCTS_SIMULATIONS
     
-    # Initialize performance recorder
-    performance_recorder = DQNPerformanceRecorder()
+    plotter = PeriodicResultsPlotter(plot_frequency=50)
     
     # --- Training History ---
     history = {
@@ -707,7 +760,10 @@ if __name__ == "__main__":
 
     # --- Training Loop ---
     for episode in range(NUM_EPISODES):
-        env = GPUOptimizedStrategoEnv(DEVICE)
+        # Decide if this episode should be recorded
+        record_this_game = (episode % 100 == 0) or (episode == NUM_EPISODES - 1)
+        
+        env = GPUOptimizedStrategoEnv(DEVICE, record_game=record_this_game, episode_num=episode)
         state = env.reset()
         done = False
         
@@ -742,41 +798,30 @@ if __name__ == "__main__":
         history['wins'].append(winner)
         history['game_lengths'].append(env.turn_count)
         if episode_q_values:
-            avg_q_value = np.mean(episode_q_values)
-            history['q_values'].append(avg_q_value)
+            history['q_values'].append(np.mean(episode_q_values))
         if DEVICE.type == 'cuda':
              history['gpu_mem'].append(torch.cuda.memory_allocated(DEVICE) / 1024**2)
 
         # Logging
         duration = time.time() - start_time
         print(f"Episode {episode}/{NUM_EPISODES} | Winner: {winner} | Turns: {env.turn_count} | Duration: {duration:.2f}s")
+        
+        # Finalize recording if it was enabled
+        if record_this_game:
+            env.finalize_recording()
             
         # Train the model periodically
-        loss = 0.0
         if episode > 0 and episode % TRAIN_AFTER_EPISODES == 0:
             print("--- Training Step ---")
             loss = agent.train_step(BATCH_SIZE)
             history['loss'].append(loss)
             print(f"Loss: {loss:.4f} | Buffer Size: {len(agent.replay_buffer)}")
 
-        # Record performance metrics
-        performance_recorder.record_episode(
-            episode, 
-            winner, 
-            env.turn_count, 
-            loss, 
-            avg_q_value if episode_q_values else 0
-        )
-        
-        # Create performance video every 100 episodes
-        if (episode + 1) % 100 == 0 or episode == NUM_EPISODES - 1:
-            performance_recorder.create_improvement_video()
+        # Create periodic plot
+        if plotter.should_plot(episode):
+            plotter.create_periodic_plot(episode, history)
 
     print("\nTraining finished!")
-    
-    # Create final performance visualization
-    performance_recorder.create_improvement_video()
-    
     # Save final model
     torch.save(model.state_dict(), "stratego_final_model.pth")
     print("✅ Final model saved.")
