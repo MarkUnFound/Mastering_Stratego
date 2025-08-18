@@ -1,0 +1,782 @@
+# GPU-Optimized Enhanced Stratego with Periodic Results and Game Timelapse
+# Fixed and completed version
+
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import torch.nn.functional as F
+import numpy as np
+import random
+import collections
+from copy import deepcopy
+import matplotlib.pyplot as plt
+from torch.utils.data import DataLoader, TensorDataset
+import time
+from typing import List, Tuple, Dict, Optional, Set
+from dataclasses import dataclass
+from enum import Enum
+import math
+import os
+import json
+from datetime import datetime
+import imageio
+from PIL import Image, ImageDraw, ImageFont
+import cv2
+
+# --- Configuration ---
+BOARD_SIZE = 10
+NUM_PIECES = 40
+HIDDEN_PIECE = -1
+EMPTY_SQUARE = 0
+LAKE_SQUARE = -2
+
+# Piece Ranks
+FLAG = 0
+SPY = 1
+SCOUT = 2
+MINER = 3
+SERGEANT = 4
+LIEUTENANT = 5
+CAPTAIN = 6
+MAJOR = 7
+COLONEL = 8
+GENERAL = 9
+MARSHAL = 10
+BOMB = 11
+
+PIECE_NAMES = {
+    FLAG: 'F', SPY: '1', SCOUT: '2', MINER: '3', SERGEANT: '4',
+    LIEUTENANT: '5', CAPTAIN: '6', MAJOR: '7', COLONEL: '8',
+    GENERAL: '9', MARSHAL: 'X', BOMB: 'B', EMPTY_SQUARE: '.',
+    LAKE_SQUARE: '~', HIDDEN_PIECE: '?'
+}
+
+# Colors for visualization
+PIECE_COLORS = {
+    FLAG: '#FFD700', SPY: '#FF69B4', SCOUT: '#87CEEB', MINER: '#8B4513',
+    SERGEANT: '#32CD32', LIEUTENANT: '#00CED1', CAPTAIN: '#FF6347',
+    MAJOR: '#9370DB', COLONEL: '#FF4500', GENERAL: '#DC143C',
+    MARSHAL: '#8B0000', BOMB: '#2F4F4F', EMPTY_SQUARE: '#F5F5DC',
+    LAKE_SQUARE: '#4169E1', HIDDEN_PIECE: '#696969'
+}
+
+# --- GPU-Optimized Data Structures ---
+
+@dataclass
+class GameState:
+    """Lightweight game state for GPU processing."""
+    board: torch.Tensor
+    current_player: int
+    turn_count: int
+    game_over: bool
+    winner: Optional[int]
+    move_history: List[Tuple]
+    uncertainty_mask: torch.Tensor
+
+class MCTSNode:
+    """Simplified MCTS node optimized for GPU batch processing."""
+    def __init__(self, parent=None, action=None, prior_prob=0.0):
+        self.parent = parent
+        self.action = action
+        self.children: Dict[Tuple, MCTSNode] = {}
+        self.visits = 0
+        self.total_value = 0.0
+        self.prior_prob = prior_prob
+        self.is_expanded = False
+
+    def ucb_score(self, c_puct=1.4):
+        """Calculates the Upper Confidence Bound for Trees (UCT) score."""
+        if self.visits == 0:
+            return float('inf')
+        
+        exploitation = self.total_value / self.visits
+        exploration = c_puct * self.prior_prob * math.sqrt(self.parent.visits) / (1 + self.visits)
+        return exploitation + exploration
+
+    def select_child(self):
+        """Selects the child with the highest UCB score."""
+        return max(self.children.values(), key=lambda child: child.ucb_score())
+
+    def expand(self, action_probs: List[Tuple[Tuple, float]]):
+        """Expands the node by creating children for valid actions."""
+        for action, prob in action_probs:
+            if action not in self.children:
+                self.children[action] = MCTSNode(parent=self, action=action, prior_prob=prob)
+        self.is_expanded = True
+
+    def backup(self, value: float):
+        """Backpropagates the simulation result up the tree."""
+        node = self
+        while node is not None:
+            node.visits += 1
+            # The value is from the perspective of the player who made the move *into* the state.
+            # So, we negate it for the parent.
+            node.total_value += value
+            value = -value
+            node = node.parent
+
+# --- DQN Performance Recorder ---
+
+class DQNPerformanceRecorder:
+    """Records DQN performance metrics for creating improvement videos and graphs."""
+    def __init__(self, output_dir="dqn_performance"):
+        self.output_dir = output_dir
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # Metrics to track
+        self.episode_numbers = []
+        self.win_rates_p1 = []
+        self.win_rates_p2 = []
+        self.avg_game_lengths = []
+        self.avg_losses = []
+        self.q_values = []
+        
+        # For creating video frames
+        self.video_frames = []
+        
+    def record_episode(self, episode_num, winner, game_length, loss, q_value):
+        """Record metrics for a single episode."""
+        self.episode_numbers.append(episode_num)
+        self.win_rates_p1.append(1 if winner == 1 else 0)
+        self.win_rates_p2.append(1 if winner == -1 else 0)
+        self.avg_game_lengths.append(game_length)
+        self.avg_losses.append(loss)
+        self.q_values.append(q_value)
+        
+    def create_performance_graph(self):
+        """Create a comprehensive graph showing DQN improvement over time."""
+        if len(self.episode_numbers) < 2:
+            return
+            
+        fig, axes = plt.subplots(2, 2, figsize=(15, 10))
+        fig.suptitle('DQN Performance Improvement', fontsize=16)
+        
+        # Calculate moving averages for smoother curves
+        window_size = max(1, len(self.episode_numbers) // 20)
+        if window_size > 1:
+            win_rate_p1_smooth = np.convolve(self.win_rates_p1, 
+                                           np.ones(window_size)/window_size, 
+                                           mode='valid')
+            win_rate_p2_smooth = np.convolve(self.win_rates_p2, 
+                                           np.ones(window_size)/window_size, 
+                                           mode='valid')
+            episodes_smooth = self.episode_numbers[window_size-1:]
+        else:
+            win_rate_p1_smooth = self.win_rates_p1
+            win_rate_p2_smooth = self.win_rates_p2
+            episodes_smooth = self.episode_numbers
+            
+        # Win rates
+        axes[0, 0].plot(episodes_smooth, win_rate_p1_smooth, 
+                       label='Player 1 Win Rate', color='blue')
+        axes[0, 0].plot(episodes_smooth, win_rate_p2_smooth, 
+                       label='Player 2 Win Rate', color='red')
+        axes[0, 0].set_title('Win Rates Over Time')
+        axes[0, 0].set_xlabel('Episode')
+        axes[0, 0].set_ylabel('Win Rate')
+        axes[0, 0].legend()
+        axes[0, 0].grid(True)
+        
+        # Game lengths
+        if window_size > 1:
+            game_length_smooth = np.convolve(self.avg_game_lengths, 
+                                           np.ones(window_size)/window_size, 
+                                           mode='valid')
+        else:
+            game_length_smooth = self.avg_game_lengths
+            
+        axes[0, 1].plot(self.episode_numbers[:len(game_length_smooth)], 
+                       game_length_smooth, color='green')
+        axes[0, 1].set_title('Average Game Length')
+        axes[0, 1].set_xlabel('Episode')
+        axes[0, 1].set_ylabel('Turns')
+        axes[0, 1].grid(True)
+        
+        # Loss
+        axes[1, 0].plot(self.episode_numbers[:len(self.avg_losses)], 
+                       self.avg_losses, color='purple')
+        axes[1, 0].set_title('Training Loss')
+        axes[1, 0].set_xlabel('Training Step')
+        axes[1, 0].set_ylabel('Loss')
+        axes[1, 0].set_yscale('log')
+        axes[1, 0].grid(True)
+        
+        # Q-values
+        if window_size > 1:
+            q_values_smooth = np.convolve(self.q_values, 
+                                        np.ones(window_size)/window_size, 
+                                        mode='valid')
+        else:
+            q_values_smooth = self.q_values
+            
+        axes[1, 1].plot(self.episode_numbers[:len(q_values_smooth)], 
+                       q_values_smooth, color='orange')
+        axes[1, 1].set_title('Average Q-Values')
+        axes[1, 1].set_xlabel('Episode')
+        axes[1, 1].set_ylabel('Q-Value')
+        axes[1, 1].grid(True)
+        
+        plt.tight_layout()
+        graph_path = os.path.join(self.output_dir, "dqn_performance.png")
+        plt.savefig(graph_path, dpi=150, bbox_inches='tight')
+        plt.close()
+        
+        print(f"📊 Performance graph saved: {graph_path}")
+        return graph_path
+        
+    def create_improvement_video(self, fps=2):
+        """Create a video showing DQN improvement over time."""
+        if len(self.episode_numbers) < 2:
+            return
+            
+        graph_path = self.create_performance_graph()
+        
+        # Create video showing the performance graph evolving
+        video_path = os.path.join(self.output_dir, "dqn_improvement.mp4")
+        
+        # We'll create a video by showing more of the graph over time
+        fig, ax = plt.subplots(figsize=(10, 6))
+        
+        # Determine how many points to show at each frame
+        total_points = len(self.episode_numbers)
+        frames = min(100, total_points)  # Cap at 100 frames for reasonable video length
+        
+        frame_paths = []
+        
+        for i in range(1, frames+1):
+            # Determine how many points to show in this frame
+            points_to_show = max(2, int((i/frames) * total_points))
+            
+            # Clear the plot
+            ax.clear()
+            
+            # Plot the data up to this point
+            episodes_subset = self.episode_numbers[:points_to_show]
+            
+            # Win rates
+            ax.plot(episodes_subset, self.win_rates_p1[:points_to_show], 
+                   label='Player 1 Win Rate', color='blue', alpha=0.7)
+            ax.plot(episodes_subset, self.win_rates_p2[:points_to_show], 
+                   label='Player 2 Win Rate', color='red', alpha=0.7)
+            
+            # Game lengths (secondary y-axis)
+            ax2 = ax.twinx()
+            ax2.plot(episodes_subset, self.avg_game_lengths[:points_to_show], 
+                    color='green', label='Avg Game Length')
+            ax2.set_ylabel('Game Length (Turns)', color='green')
+            
+            ax.set_title(f'DQN Performance Improvement (Episodes 0-{episodes_subset[-1]})')
+            ax.set_xlabel('Episode')
+            ax.set_ylabel('Win Rate')
+            ax.legend(loc='upper left')
+            ax2.legend(loc='upper right')
+            ax.grid(True)
+            
+            # Save frame
+            frame_path = os.path.join(self.output_dir, f"frame_{i:03d}.png")
+            plt.savefig(frame_path, dpi=100, bbox_inches='tight')
+            frame_paths.append(frame_path)
+        
+        plt.close()
+        
+        # Create video from frames
+        if frame_paths:
+            # Read first frame to get dimensions
+            frame = cv2.imread(frame_paths[0])
+            height, width, layers = frame.shape
+            
+            # Create video writer
+            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+            video = cv2.VideoWriter(video_path, fourcc, fps, (width, height))
+            
+            # Write frames to video
+            for frame_path in frame_paths:
+                frame = cv2.imread(frame_path)
+                video.write(frame)
+                
+            # Close video writer
+            video.release()
+            
+            # Clean up frame files
+            for frame_path in frame_paths:
+                os.remove(frame_path)
+                
+            print(f"🎥 Improvement video saved: {video_path}")
+        
+        return video_path
+
+# --- Action Space Helpers ---
+
+def generate_all_possible_moves(board_size):
+    """Generates all possible moves and creates index mappings."""
+    moves = []
+    # Normal moves (1 step horizontal/vertical)
+    for r in range(board_size):
+        for c in range(board_size):
+            if r > 0: moves.append(((r, c), (r - 1, c)))
+            if r < board_size - 1: moves.append(((r, c), (r + 1, c)))
+            if c > 0: moves.append(((r, c), (r, c - 1)))
+            if c < board_size - 1: moves.append(((r, c), (r, c + 1)))
+    
+    # Scout moves (straight lines)
+    for r in range(board_size):
+        for c in range(board_size):
+            for i in range(1, board_size):
+                if r + i < board_size: moves.append(((r, c), (r + i, c)))
+                if r - i >= 0: moves.append(((r, c), (r - i, c)))
+                if c + i < board_size: moves.append(((r, c), (r, c + i)))
+                if c - i >= 0: moves.append(((r, c), (r, c - i)))
+    
+    unique_moves = sorted(list(set(moves)))
+    action_to_idx = {move: i for i, move in enumerate(unique_moves)}
+    idx_to_action = {i: move for i, move in enumerate(unique_moves)}
+    return action_to_idx, idx_to_action
+
+# --- GPU-Optimized Stratego Environment ---
+
+class GPUOptimizedStrategoEnv:
+    """GPU-optimized Stratego environment."""
+    def __init__(self, device):
+        self.device = device
+        self.board_size = BOARD_SIZE
+        
+        self.lakes = torch.tensor([(4, 2), (4, 3), (5, 2), (5, 3), (4, 6), (4, 7), (5, 6), (5, 7)], device=device)
+        self.directions = torch.tensor([(0, 1), (0, -1), (1, 0), (-1, 0)], device=device)
+        
+        self.board = torch.zeros((self.board_size, self.board_size), dtype=torch.int8, device=device)
+        self.reset()
+
+    def reset(self):
+        """Resets the environment to a new game."""
+        self.board.fill_(EMPTY_SQUARE)
+        for r, c in self.lakes:
+            self.board[r, c] = LAKE_SQUARE
+        self._setup_board_gpu()
+        
+        self.current_player = 1
+        self.game_over = False
+        self.winner = None
+        self.turn_count = 0
+        self.move_history = []
+            
+        return self._get_state_tensor()
+
+    def _setup_board_gpu(self):
+        """GPU-optimized board setup with random piece placement."""
+        pieces = [FLAG, SPY] + [BOMB]*6 + [MARSHAL] + [GENERAL] + [COLONEL]*2 + \
+                 [MAJOR]*3 + [CAPTAIN]*4 + [LIEUTENANT]*4 + [SERGEANT]*4 + \
+                 [MINER]*5 + [SCOUT]*8
+        
+        p1_pos = [(r, c) for r in range(6, 10) for c in range(10)]
+        p2_pos = [(r, c) for r in range(0, 4) for c in range(10)]
+        
+        random.shuffle(p1_pos)
+        random.shuffle(pieces)
+        for i, piece in enumerate(pieces):
+            r, c = p1_pos[i]
+            self.board[r, c] = piece
+        
+        random.shuffle(p2_pos)
+        random.shuffle(pieces)
+        for i, piece in enumerate(pieces):
+            r, c = p2_pos[i]
+            self.board[r, c] = -piece
+
+    def get_valid_moves_gpu(self):
+        """Generates all valid moves for the current player."""
+        moves = []
+        player_pieces = torch.nonzero(self.board * self.current_player > 0)
+        
+        for r_from, c_from in player_pieces:
+            r, c = r_from.item(), c_from.item()
+            piece_rank = abs(self.board[r, c].item())
+
+            if piece_rank in [BOMB, FLAG]: continue
+
+            if piece_rank == SCOUT:
+                for dr, dc in self.directions:
+                    for i in range(1, self.board_size):
+                        r_to, c_to = r + i * dr.item(), c + i * dc.item()
+                        if not self._is_valid_target(r_to, c_to): break
+                        moves.append(((r, c), (r_to, c_to)))
+                        if self.board[r_to, c_to].item() != EMPTY_SQUARE: break
+            else:
+                for dr, dc in self.directions:
+                    r_to, c_to = r + dr.item(), c + dc.item()
+                    if self._is_valid_target(r_to, c_to):
+                        moves.append(((r, c), (r_to, c_to)))
+        return moves
+
+    def _is_valid_target(self, r, c):
+        """Checks if a target square is valid for a move."""
+        if not (0 <= r < self.board_size and 0 <= c < self.board_size): return False
+        target_val = self.board[r, c].item()
+        return target_val != LAKE_SQUARE and (target_val * self.current_player) <= 0
+
+    def step_gpu(self, action):
+        """Executes a move and returns the new state, reward, and done flag."""
+        if self.game_over:
+            return self._get_state_tensor(), 0.0, True, {"winner": self.winner}
+        
+        (r_from, c_from), (r_to, c_to) = action
+        moving_piece = self.board[r_from, c_from].item()
+        target_piece = self.board[r_to, c_to].item()
+        
+        reward = -0.01 # Small penalty for each move to encourage finishing
+        
+        # Resolve battle or move
+        if target_piece != EMPTY_SQUARE:
+            winner_piece = self._resolve_battle(moving_piece, target_piece)
+            if winner_piece == moving_piece:
+                self.board[r_to, c_to] = moving_piece
+                self.board[r_from, c_from] = EMPTY_SQUARE
+                reward += 0.1 * abs(target_piece) # Reward for capture
+                if abs(target_piece) == FLAG:
+                    self.game_over = True
+                    self.winner = self.current_player
+                    reward += 1.0
+            elif winner_piece == target_piece:
+                self.board[r_from, c_from] = EMPTY_SQUARE
+                reward -= 0.1 * abs(moving_piece) # Penalty for losing a piece
+            else: # Draw
+                self.board[r_from, c_from] = EMPTY_SQUARE
+                self.board[r_to, c_to] = EMPTY_SQUARE
+        else: # Move to empty square
+            self.board[r_to, c_to] = moving_piece
+            self.board[r_from, c_from] = EMPTY_SQUARE
+
+        self.turn_count += 1
+        self.move_history.append(action)
+        self.current_player *= -1
+
+        if not self.game_over:
+            self._check_game_end()
+            
+        info = {"winner": self.winner}
+        return self._get_state_tensor(), reward, self.game_over, info
+        
+    def _resolve_battle(self, attacker, defender):
+        """Resolves a battle based on Stratego rules."""
+        atk_rank, def_rank = abs(attacker), abs(defender)
+        if atk_rank == SPY and def_rank == MARSHAL: return attacker
+        if atk_rank == MINER and def_rank == BOMB: return attacker
+        if def_rank == BOMB: return defender
+        if atk_rank > def_rank: return attacker
+        if def_rank > atk_rank: return defender
+        return None # Both removed
+
+    def _check_game_end(self):
+        """Checks for game-ending conditions."""
+        if not any(abs(p.item()) == FLAG for p in self.board.flatten()):
+             self.game_over = True # Should be caught by capture logic, but as a failsafe
+             self.winner = -self.current_player
+
+        if not self.get_valid_moves_gpu():
+            self.game_over = True
+            self.winner = -self.current_player # Player who cannot move loses
+            
+        if self.turn_count > 500: # Draw condition
+            self.game_over = True
+            self.winner = 0
+
+    def _get_state_tensor(self):
+        """Gets the state as a 4-channel tensor for the neural network."""
+        state = torch.zeros(4, self.board_size, self.board_size, device=self.device)
+        
+        # Player and opponent piece planes
+        player_board = self.board if self.current_player == 1 else -self.board
+        state[0] = (player_board > 0) * player_board / 11.0 # Current player's pieces
+        state[1] = (player_board < 0) * -player_board / 11.0 # Opponent's pieces (ranks are positive)
+        
+        # Turn and lake planes
+        state[2].fill_(self.current_player)
+        state[3] = (self.board == LAKE_SQUARE).float()
+        
+        return state.unsqueeze(0) # Add batch dimension
+
+# --- Neural Network ---
+
+class ResidualBlock(nn.Module):
+    """A residual block for the CNN."""
+    def __init__(self, num_channels):
+        super().__init__()
+        self.conv1 = nn.Conv2d(num_channels, num_channels, kernel_size=3, padding=1)
+        self.bn1 = nn.BatchNorm2d(num_channels)
+        self.conv2 = nn.Conv2d(num_channels, num_channels, kernel_size=3, padding=1)
+        self.bn2 = nn.BatchNorm2d(num_channels)
+
+    def forward(self, x):
+        residual = x
+        out = F.relu(self.bn1(self.conv1(x)))
+        out = self.bn2(self.conv2(out))
+        out += residual
+        return F.relu(out)
+
+class StrategoNet(nn.Module):
+    """The neural network for the Stratego agent."""
+    def __init__(self, num_res_blocks, num_channels, num_actions):
+        super().__init__()
+        self.conv_in = nn.Conv2d(4, num_channels, kernel_size=3, padding=1)
+        self.bn_in = nn.BatchNorm2d(num_channels)
+        self.res_blocks = nn.ModuleList([ResidualBlock(num_channels) for _ in range(num_res_blocks)])
+        
+        # Policy head
+        self.policy_conv = nn.Conv2d(num_channels, 2, kernel_size=1)
+        self.policy_bn = nn.BatchNorm2d(2)
+        self.policy_fc = nn.Linear(2 * BOARD_SIZE * BOARD_SIZE, num_actions)
+        
+        # Value head
+        self.value_conv = nn.Conv2d(num_channels, 1, kernel_size=1)
+        self.value_bn = nn.BatchNorm2d(1)
+        self.value_fc1 = nn.Linear(1 * BOARD_SIZE * BOARD_SIZE, 256)
+        self.value_fc2 = nn.Linear(256, 1)
+
+    def forward(self, x):
+        x = F.relu(self.bn_in(self.conv_in(x)))
+        for block in self.res_blocks:
+            x = block(x)
+        
+        # Policy head
+        policy = F.relu(self.policy_bn(self.policy_conv(x)))
+        policy = policy.view(policy.size(0), -1)
+        policy = F.log_softmax(self.policy_fc(policy), dim=1)
+        
+        # Value head
+        value = F.relu(self.value_bn(self.value_conv(x)))
+        value = value.view(value.size(0), -1)
+        value = F.relu(self.value_fc1(value))
+        value = torch.tanh(self.value_fc2(value))
+        
+        return policy, value
+
+# --- GPU-Accelerated MCTS ---
+
+class GPUAcceleratedMCTS:
+    """GPU-accelerated Monte Carlo Tree Search."""
+    def __init__(self, model, device, num_simulations=50):
+        self.model = model
+        self.device = device
+        self.num_simulations = num_simulations
+        self.c_puct = 1.4
+
+    def search(self, env):
+        """Performs MCTS to find the best action."""
+        root = MCTSNode()
+        
+        for _ in range(self.num_simulations):
+            node = root
+            sim_env = deepcopy(env) # Create a copy for simulation
+            
+            # 1. Selection
+            while node.is_expanded:
+                if not node.children: break
+                node = node.select_child()
+                sim_env.step_gpu(node.action)
+
+            # 2. Expansion & Evaluation
+            if not sim_env.game_over:
+                with torch.no_grad():
+                    state_tensor = sim_env._get_state_tensor()
+                    policy, value = self.model(state_tensor)
+                
+                value = value.item()
+                valid_moves = sim_env.get_valid_moves_gpu()
+                
+                if valid_moves:
+                    policy = torch.exp(policy).squeeze(0)
+                    action_probs = []
+                    for move in valid_moves:
+                        if move in ACTION_TO_IDX:
+                           action_probs.append((move, policy[ACTION_TO_IDX[move]].item()))
+                    
+                    if action_probs:
+                        node.expand(action_probs)
+            else:
+                 # Terminal node value
+                 if sim_env.winner == sim_env.current_player: value = 1.0
+                 elif sim_env.winner == -sim_env.current_player: value = -1.0
+                 else: value = 0.0
+
+            # 3. Backpropagation
+            node.backup(value)
+        
+        if not root.children: return None
+        
+        # Select action based on visit counts
+        best_action = max(root.children.items(), key=lambda item: item[1].visits)[0]
+        
+        # For training data, create a policy vector based on visit counts
+        policy_target = torch.zeros(len(ACTION_TO_IDX), device=self.device)
+        for action, child in root.children.items():
+            if action in ACTION_TO_IDX:
+                policy_target[ACTION_TO_IDX[action]] = child.visits
+        policy_target /= root.visits
+        
+        q_value = root.total_value / root.visits
+
+        return best_action, policy_target, q_value
+
+# --- Agent and Training ---
+
+class ReplayBuffer:
+    """A simple replay buffer."""
+    def __init__(self, capacity):
+        self.capacity = capacity
+        self.buffer = collections.deque(maxlen=capacity)
+
+    def push(self, state, policy, value):
+        self.buffer.append((state, policy, value))
+
+    def sample(self, batch_size):
+        return random.sample(self.buffer, batch_size)
+
+    def __len__(self):
+        return len(self.buffer)
+
+class StrategoAgent:
+    """The agent that learns and plays the game."""
+    def __init__(self, model, device, lr=0.001, replay_buffer_size=10000):
+        self.model = model
+        self.device = device
+        self.optimizer = optim.Adam(model.parameters(), lr=lr)
+        self.replay_buffer = ReplayBuffer(replay_buffer_size)
+        self.mcts = GPUAcceleratedMCTS(model, device, num_simulations=50)
+
+    def choose_action(self, env):
+        """Chooses an action using MCTS."""
+        return self.mcts.search(env)
+
+    def train_step(self, batch_size):
+        """Performs one training step."""
+        if len(self.replay_buffer) < batch_size: return 0.0
+        
+        samples = self.replay_buffer.sample(batch_size)
+        states, policies, values = zip(*samples)
+        
+        states = torch.cat(states).to(self.device)
+        policies = torch.stack(policies).to(self.device)
+        values = torch.tensor(values, dtype=torch.float32).unsqueeze(1).to(self.device)
+
+        self.optimizer.zero_grad()
+        pred_policies, pred_values = self.model(states)
+        
+        policy_loss = F.kl_div(pred_policies, policies, reduction='batchmean')
+        value_loss = F.mse_loss(pred_values, values)
+        total_loss = policy_loss + value_loss
+        
+        total_loss.backward()
+        self.optimizer.step()
+        
+        return total_loss.item()
+
+
+# --- Main Execution ---
+if __name__ == "__main__":
+    # --- Hyperparameters ---
+    NUM_EPISODES = 1000
+    LEARNING_RATE = 0.001
+    BATCH_SIZE = 64
+    REPLAY_BUFFER_SIZE = 20000
+    TRAIN_AFTER_EPISODES = 10
+    MCTS_SIMULATIONS = 40
+    NUM_RES_BLOCKS = 5
+    NUM_CHANNELS = 128
+    
+    # --- Setup ---
+    DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Using device: {DEVICE}")
+
+    ACTION_TO_IDX, IDX_TO_ACTION = generate_all_possible_moves(BOARD_SIZE)
+    NUM_ACTIONS = len(ACTION_TO_IDX)
+
+    model = StrategoNet(NUM_RES_BLOCKS, NUM_CHANNELS, NUM_ACTIONS).to(DEVICE)
+    agent = StrategoAgent(model, DEVICE, lr=LEARNING_RATE, replay_buffer_size=REPLAY_BUFFER_SIZE)
+    agent.mcts.num_simulations = MCTS_SIMULATIONS
+    
+    # Initialize performance recorder
+    performance_recorder = DQNPerformanceRecorder()
+    
+    # --- Training History ---
+    history = {
+        'wins': [],
+        'loss': [],
+        'game_lengths': [],
+        'q_values': [],
+        'gpu_mem': []
+    }
+
+    # --- Training Loop ---
+    for episode in range(NUM_EPISODES):
+        env = GPUOptimizedStrategoEnv(DEVICE)
+        state = env.reset()
+        done = False
+        
+        game_data = []
+        episode_q_values = []
+
+        start_time = time.time()
+        while not done:
+            action_result = agent.choose_action(env)
+            if action_result is None: # No valid moves found
+                break
+            
+            action, policy_target, q_value = action_result
+            episode_q_values.append(q_value)
+
+            # Store experience for replay buffer
+            game_data.append((env._get_state_tensor(), policy_target))
+
+            state, reward, done, info = env.step_gpu(action)
+
+        # Game finished, process results
+        winner = info.get("winner", 0)
+        
+        # Add experiences to replay buffer with final outcome
+        for state_tensor, policy in game_data:
+            value = 0
+            if winner == state_tensor[0, 2, 0, 0].item(): value = 1.0 # If the player to move won
+            elif winner == -state_tensor[0, 2, 0, 0].item(): value = -1.0 # If the player to move lost
+            agent.replay_buffer.push(state_tensor, policy, value)
+
+        # Update history
+        history['wins'].append(winner)
+        history['game_lengths'].append(env.turn_count)
+        if episode_q_values:
+            avg_q_value = np.mean(episode_q_values)
+            history['q_values'].append(avg_q_value)
+        if DEVICE.type == 'cuda':
+             history['gpu_mem'].append(torch.cuda.memory_allocated(DEVICE) / 1024**2)
+
+        # Logging
+        duration = time.time() - start_time
+        print(f"Episode {episode}/{NUM_EPISODES} | Winner: {winner} | Turns: {env.turn_count} | Duration: {duration:.2f}s")
+            
+        # Train the model periodically
+        loss = 0.0
+        if episode > 0 and episode % TRAIN_AFTER_EPISODES == 0:
+            print("--- Training Step ---")
+            loss = agent.train_step(BATCH_SIZE)
+            history['loss'].append(loss)
+            print(f"Loss: {loss:.4f} | Buffer Size: {len(agent.replay_buffer)}")
+
+        # Record performance metrics
+        performance_recorder.record_episode(
+            episode, 
+            winner, 
+            env.turn_count, 
+            loss, 
+            avg_q_value if episode_q_values else 0
+        )
+        
+        # Create performance video every 100 episodes
+        if (episode + 1) % 100 == 0 or episode == NUM_EPISODES - 1:
+            performance_recorder.create_improvement_video()
+
+    print("\nTraining finished!")
+    
+    # Create final performance visualization
+    performance_recorder.create_improvement_video()
+    
+    # Save final model
+    torch.save(model.state_dict(), "stratego_final_model.pth")
+    print("✅ Final model saved.")
