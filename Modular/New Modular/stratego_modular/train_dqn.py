@@ -15,6 +15,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from stratego_modular.environment import StrategoEnvironment
 from stratego_modular.dqn_agent import DQNAgent
 from stratego_modular.game_state import GameState
+from stratego_modular.training_visualizer import plot_training_progress
 
 # Import reset function (optional)
 try:
@@ -49,6 +50,12 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
     draws = 0
     total_rewards_agent1 = []
     total_rewards_agent2 = []
+
+    # History for plotting
+    episode_history = []
+    rewards_history = {'agent1': [], 'agent2': []}
+    wins_history = {'agent1': [], 'agent2': [], 'draws': []}
+    epsilon_history = {'agent1': [], 'agent2': []}
     
     print(f"Starting DQN training for {num_episodes} episodes...")
     print("=" * 60)
@@ -181,6 +188,24 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
             
         # Save models periodically
         if (episode + 1) % save_interval == 0:
+            # Plot training progress
+            episode_history.append(episode + 1)
+            rewards_history['agent1'].append(np.mean(total_rewards_agent1[-save_interval:]))
+            rewards_history['agent2'].append(np.mean(total_rewards_agent2[-save_interval:]))
+            wins_history['agent1'].append(wins_agent1)
+            wins_history['agent2'].append(wins_agent2)
+            wins_history['draws'].append(draws)
+            epsilon_history['agent1'].append(agent1.epsilon)
+            epsilon_history['agent2'].append(agent2.epsilon)
+
+            plot_training_progress(
+                episode_history,
+                rewards_history,
+                wins_history,
+                epsilon_history,
+                save_path=f"{model_save_path}/training_progress_episode_{episode + 1}.png"
+            )
+
             # Create model save directory if it doesn't exist
             os.makedirs(model_save_path, exist_ok=True)
             try:

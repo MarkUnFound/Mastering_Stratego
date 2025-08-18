@@ -1,0 +1,3 @@
+# Ignore training history and saved models
+History/
+dqn_models/

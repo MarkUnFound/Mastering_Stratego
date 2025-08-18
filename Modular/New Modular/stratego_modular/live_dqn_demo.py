@@ -72,7 +72,8 @@ def run_live_dqn_game(num_games: int = 1, move_delay: float = 1.0,
                     break
                 
                 # Agent selects action
-                action = current_agent.act(game_state, valid_moves)
+                state_representation = current_agent.get_state_representation(game_state)
+                action = current_agent.act(state_representation, valid_moves)
                 
                 if action is None:
                     print(f"❌ {current_agent.name} returned invalid action")
