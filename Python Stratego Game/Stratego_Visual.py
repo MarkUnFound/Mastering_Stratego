@@ -2,6 +2,7 @@ import pygame
 import time
 import random
 from stratego import Board, auto_setup, side_name
+from bot_logic import BotLogic
 
 pygame.init()
 TILE_SIZE = 60
@@ -29,6 +30,7 @@ game_state = "menu"
 message = "Welcome to Stratego!"
 human_side = 1
 vs_bot = False
+bot_logic = None
 
 # Track revealed pieces (that have moved or fought)
 revealed_positions = set()
@@ -111,30 +113,15 @@ def get_square_from_mouse(pos):
 
 # --- Bot Logic ---
 def choose_bot_move(board, owner):
-    moves = []
-    capture_moves = []
-    for src in board.owner_positions(owner):
-        piece = board.get(src)
-        if not piece or not piece.is_movable():
-            continue
-        legal = board.legal_moves_from(src)
-        for dst in legal:
-            dest_piece = board.get(dst)
-            if dest_piece and dest_piece.owner != owner:
-                capture_moves.append((src, dst))
-            else:
-                moves.append((src, dst))
-    if capture_moves:
-        return random.choice(capture_moves)
-    if moves:
-        return random.choice(moves)
-    return None
+    if bot_logic:
+        return bot_logic.choose_move(board, owner)
+    return None  # Should not be reached if bot_logic is initialized
 
 # --- Bot Turn ---
 def bot_turn():
     global message, current_player, game_state
     draw_board()
-    draw_text("Bot is thinking...", WIDTH//2, HEIGHT-50, 28, WHITE)
+    #draw_text("Bot is thinking...", WIDTH//2, HEIGHT-50, 28, WHITE)
     pygame.display.flip()
     time.sleep(0.8)
 
@@ -207,6 +194,7 @@ while running:
             human_side = 1
             current_player = 1
             message = "Player 1's turn"
+            bot_logic = BotLogic('d:\\Research\\Python Stratego Game\\agent2_final.pth')
             game_state = "play"
         if draw_button("2-Player Mode", WIDTH//2-100, 280, 200, 60, "2p") == "2p":
             board = Board()

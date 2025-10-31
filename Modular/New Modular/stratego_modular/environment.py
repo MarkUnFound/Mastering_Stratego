@@ -44,6 +44,8 @@ class StrategoEnvironment:
             [(piece, (r, c)) for piece, (r, c) in zip(p2_pieces, self._get_p2_positions())]
         )
         
+        return self._get_game_state()
+        
     def visualize_moves(self, move_index=None, save_path=None):
         """Visualize recorded moves using the DQNMoveVisualizer."""
         if move_index is not None:
