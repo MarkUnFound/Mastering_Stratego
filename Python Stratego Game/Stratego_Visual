@@ -94,7 +94,12 @@ def draw_board(bot_move=None):
 
             color = RED if piece.owner == 1 else BLACK
 
-            visible = (piece.owner == human_side) or piece.revealed or (game_state == "setup")
+            # Only show pieces that belong to the human player or have been revealed
+            # During setup, only show the human's pieces
+            if game_state == "setup":
+                visible = (piece.owner == human_side)
+            else:
+                visible = (piece.owner == human_side) or piece.revealed
 
             if selected == (r, c):
                 pygame.draw.rect(screen, GREEN, rect, 3)
@@ -149,10 +154,8 @@ def bot_turn():
         return
 
     src, dst = move
-    # Format the move into notation
-    move_notation = f"Enemy: {chr(ord('A')+src[1])}{src[0]+1}-{chr(ord('A')+dst[1])}{dst[0]+1}"
-    move_history.append(move_notation)
-    msg, winner = board.move_and_resolve(src, dst)
+    msg, winner = board.move_and_resolve(src, dst, human_side if vs_bot else None)
+    move_history.append(msg)
     message = msg
 
 
@@ -161,8 +164,15 @@ def bot_turn():
     time.sleep(0.5)
 
     if winner:
-        message = f"{side_name(winner)} wins!"
-        game_state = "menu"
+        winner_name = side_name(winner)
+        if vs_bot:
+            if winner == human_side:
+                message = "You win! Congratulations!"
+            else:
+                message = "You lost! Better luck next time!"
+        else:
+            message = f"{winner_name} wins!"
+        game_state = "game_over"
     else:
         current_player = 3 - current_player
 
@@ -209,14 +219,20 @@ while running:
                 else:
                     src, dst = selected, sq
                     if dst in board.legal_moves_from(src):
-                        piece = board.get(src)
-                        move_notation = f"{piece.name()}: {chr(ord('A')+src[1])}{src[0]+1}-{chr(ord('A')+dst[1])}{dst[0]+1}"
-                        move_history.append(move_notation)
-                        msg, winner = board.move_and_resolve(src, dst)
-                        message = msg
+                        msg, winner = board.move_and_resolve(src, dst, human_side if vs_bot else None)
+                        move_history.append(msg)
                         if winner:
-                            game_state = "menu"
-                        current_player = 3 - current_player
+                            if vs_bot:
+                                if winner == human_side:
+                                    message = "You win! Congratulations!"
+                                else:
+                                    message = "You lost! Better luck next time!"
+                            else:
+                                message = f"{side_name(winner)} wins!"
+                            game_state = "game_over"
+                        else:
+                            message = msg
+                            current_player = 3 - current_player
                         selected = None
                     else:
                         selected = None
@@ -287,6 +303,22 @@ while running:
             game_state = "menu"
         if draw_button(text="Exit", x=TOTAL_BOARD_WIDTH // 2 - 100, y=400, w=200, h=60, action="exit") == "exit":
             running = False
+    
+    elif game_state == "game_over":
+        draw_text("Game Over", TOTAL_BOARD_WIDTH // 2, 120, 72, BLUE)
+        draw_text(message, TOTAL_BOARD_WIDTH // 2, 200, 32, BLACK)
+        if draw_button(text="Back to Menu", x=TOTAL_BOARD_WIDTH // 2 - 100, y=300, w=200, h=60, action="menu") == "menu":
+            # Reset game state
+            board = Board()
+            auto_setup(board, 1)
+            auto_setup(board, 2)
+            current_player = 1
+            selected = None
+            message = "Welcome to Stratego!"
+            move_history.clear()
+            game_state = "menu"
+            vs_bot = False
+            human_side = 1
 
     pygame.display.flip()
 

@@ -215,36 +215,65 @@ class Board:
                 moves.append((r, c))
         return moves
 
-    def move_and_resolve(self, src: Tuple[int, int], dst: Tuple[int, int]) -> Tuple[str, Optional[int]]:
+    def move_and_resolve(self, src: Tuple[int, int], dst: Tuple[int, int], human_side: int = None) -> Tuple[str, Optional[int]]:
         attacker = self.get(src)
         defender = self.get(dst)
         assert attacker is not None
+        
+        # Helper function to get piece name with visibility rules
+        def get_piece_name(piece, is_attacker, is_defender):
+            # Always show the human player's piece name if human_side is specified
+            if human_side is not None and piece.owner == human_side:
+                return piece.name()
+                
+            # For bot's pieces or when human_side is not specified:
+            # If it's a move (no defender), show '?'
+            if not is_defender:
+                return '?'
+                
+            # If it's an attack, show the piece name if it's the attacker (already revealed)
+            # or if it's the defender and it's being revealed
+            if is_attacker or piece.revealed:
+                return piece.name()
+                
+            return '?'  # Hide piece if not revealed
+        
+        # Handle simple move (no capture)
         if defender is None:
             self.set(dst, attacker)
             self.set(src, None)
-            return (f"{side_name(attacker.owner)} moved {attacker.name()} from {coord_to_str(src)} to {coord_to_str(dst)}.", None)
-
+            return (f"{get_piece_name(attacker, True, False)}: {coord_to_str(src)}-{coord_to_str(dst)}", None)
+        
+        # Handle capture scenarios
         a, d = attacker, defender
-        if d.rank == -1:
+        if d.rank == -1:  # Flag capture
             self.set(dst, attacker)
             self.set(src, None)
-            return (f"{side_name(a.owner)} captured the enemy Flag at {coord_to_str(dst)} with {a.name()}!", a.owner)
+            a.revealed = True
+            return (f"{a.name()} takes Flag", a.owner)
 
+        # Handle combat
         outcome = resolve_combat(a, d)
+        
+        # Reveal both pieces after combat
         a.revealed = True
         d.revealed = True
+
+        # For move history, use get_piece_name to handle visibility
+        a_name = a.name() if a.owner == human_side else (a.name() if a.revealed else '?')
+        d_name = d.name() if d.owner == human_side else (d.name() if d.revealed else '?')
 
         if outcome == "attacker":
             self.set(dst, attacker)
             self.set(src, None)
-            return (f"Combat at {coord_to_str(dst)}: {a.name()} (attacker) defeated {d.name()} (defender).", None)
+            return (f"{a_name} takes {d_name}", None)
         elif outcome == "defender":
             self.set(src, None)
-            return (f"Combat at {coord_to_str(dst)}: {d.name()} (defender) defeated {a.name()} (attacker).", None)
-        else:
+            return (f"{d_name} takes {a_name}", None)
+        else:  # Equal trade
             self.set(src, None)
             self.set(dst, None)
-            return (f"Combat at {coord_to_str(dst)}: {a.name()} and {d.name()} eliminated each other.", None)
+            return (f"{a_name} takes {d_name} (Equal Trade)", None)
 
 def resolve_combat(attacker: Piece, defender: Piece) -> str:
     if defender.rank == 0:
