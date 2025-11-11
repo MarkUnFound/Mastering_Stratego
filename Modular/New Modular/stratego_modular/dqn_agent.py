@@ -11,6 +11,7 @@ import random
 from collections import deque, namedtuple
 from typing import List, Tuple, Optional
 from .piece import PieceType
+from .probabilistic_belief_state import ProbabilisticBeliefState
 
 # Define a named tuple for experiences
 Experience = namedtuple('Experience', ['state', 'action', 'reward', 'next_state', 'done'])
@@ -58,7 +59,8 @@ class DQNAgent:
                  lr: float = 0.0001, gamma: float = 0.95, 
                  epsilon: float = 1.0, epsilon_min: float = 0.1, 
                  epsilon_decay: float = 0.001, 
-                 buffer_size: int = 10000, batch_size: int = 32):
+                 buffer_size: int = 10000, batch_size: int = 32,
+                 use_pbs: bool = True):
         """
         Initialize the DQN agent
         
@@ -74,6 +76,7 @@ class DQNAgent:
             epsilon_decay: Exploration decay rate
             buffer_size: Size of replay buffer
             batch_size: Size of training batches
+            use_pbs: Whether to use Probabilistic Belief State
         """
         self.player_id = player_id
         self.device = device
@@ -86,6 +89,13 @@ class DQNAgent:
         self.epsilon_decay = epsilon_decay
         self.batch_size = batch_size
         self.name = f"DQN Agent {player_id}"
+        self.use_pbs = use_pbs
+        
+        # Probabilistic Belief State
+        if self.use_pbs:
+            self.pbs = ProbabilisticBeliefState(player_id, device)
+        else:
+            self.pbs = None
         
         # Neural networks
         self.q_network = DQN(state_size, 512, action_size).to(device)
@@ -109,6 +119,9 @@ class DQNAgent:
         self.epsilon = 1.0
         # Clear memory
         self.memory.clear()
+        # Reset PBS
+        if self.pbs:
+            self.pbs.reset()
         # Update target network with new weights
         self.update_target_network()
         
@@ -127,18 +140,55 @@ class DQNAgent:
         experience = Experience(state, action, reward, next_state, done)
         self.memory.append(experience)
         
-    def act(self, state, valid_moves: List[Tuple[Tuple[int, int], Tuple[int, int]]]) -> Tuple[Tuple[int, int], Tuple[int, int]]:
-        """Choose action using epsilon-greedy policy"""
+    def act(self, state, valid_moves: List[Tuple[Tuple[int, int], Tuple[int, int]]], 
+            game_state=None) -> Tuple[Tuple[int, int], Tuple[int, int]]:
+        """
+        Choose action using epsilon-greedy policy.
+        
+        Workflow:
+        1. PBS first gets the value and creates possible values with confidence scores
+        2. DQN then calculates Q-value using PBS-enhanced state
+        
+        Args:
+            state: Current state representation (can be numpy array or None)
+            valid_moves: List of valid moves
+            game_state: Full game state object (for PBS)
+        """
         if not valid_moves:
             return None
+        
+        # Step 1: PBS gets the value and creates possible values with confidence scores
+        if self.pbs and game_state is not None:
+            # Get PBS-enhanced state
+            enhanced_state = self.pbs.get_belief_enhanced_state(game_state)
+            if enhanced_state is not None:
+                # Use enhanced state for DQN
+                state = enhanced_state.cpu().numpy().flatten()
+                # Pad or truncate to fixed size
+                if len(state) < self.state_size:
+                    state = np.pad(state, (0, self.state_size - len(state)), 'constant')
+                elif len(state) > self.state_size:
+                    state = state[:self.state_size]
+        elif state is None and game_state is not None:
+            # Fallback: get state representation if state is None
+            state = self.get_state_representation(game_state)
+        elif state is None:
+            # No state available, return random action
+            return random.choice(valid_moves)
             
         # Exploration: choose random action
         if np.random.rand() <= self.epsilon:
             return random.choice(valid_moves)
             
+        # Step 2: DQN calculates Q-value using PBS-enhanced state
         # Exploitation: choose best action according to Q-network
         if not isinstance(state, torch.Tensor):
-            state = torch.FloatTensor(state).to(self.device)
+            if isinstance(state, np.ndarray):
+                state = torch.FloatTensor(state).to(self.device)
+            else:
+                # Convert to numpy first
+                state = np.array(state, dtype=np.float32)
+                state = torch.FloatTensor(state).to(self.device)
             
         if state.dim() == 1:
             state = state.unsqueeze(0)  # Add batch dimension
@@ -231,22 +281,36 @@ class DQNAgent:
         self.epsilon = checkpoint['epsilon']
         
     def get_state_representation(self, game_state) -> np.ndarray:
-        """Convert game state to neural network input.
+        """
+        Convert game state to neural network input.
         
         This method ensures that agents only use visible information.
         The game_state.board already contains only the visible board for the current player.
+        
+        If PBS is enabled, the state is enhanced with belief probabilities.
         """
-        # Ensure we're only using the visible board information
-        if hasattr(game_state, 'board'):
-            # It's a game state object with visible board for current player
-            visible_board = game_state.board
-            if isinstance(visible_board, torch.Tensor):
-                visible_board = visible_board.cpu().numpy()
+        # Step 1: PBS gets the value and creates possible values with confidence scores
+        if self.pbs and hasattr(game_state, 'board'):
+            enhanced_state = self.pbs.get_belief_enhanced_state(game_state)
+            if enhanced_state is not None:
+                visible_board = enhanced_state.cpu().numpy()
+            else:
+                # Fallback to regular state
+                visible_board = game_state.board
+                if isinstance(visible_board, torch.Tensor):
+                    visible_board = visible_board.cpu().numpy()
         else:
-            # It's already a board/array
-            visible_board = game_state
-            if isinstance(visible_board, torch.Tensor):
-                visible_board = visible_board.cpu().numpy()
+            # Ensure we're only using the visible board information
+            if hasattr(game_state, 'board'):
+                # It's a game state object with visible board for current player
+                visible_board = game_state.board
+                if isinstance(visible_board, torch.Tensor):
+                    visible_board = visible_board.cpu().numpy()
+            else:
+                # It's already a board/array
+                visible_board = game_state
+                if isinstance(visible_board, torch.Tensor):
+                    visible_board = visible_board.cpu().numpy()
         
         # Flatten the visible board (10x10 = 100 values)
         state = visible_board.flatten() if len(visible_board.shape) == 2 else visible_board
@@ -258,3 +322,27 @@ class DQNAgent:
             state = state[:self.state_size]
             
         return state
+    
+    def update_pbs_from_action(self, action: Tuple[Tuple[int, int], Tuple[int, int]], 
+                              game_state, acting_player: int):
+        """
+        Update PBS from an action taken.
+        
+        Args:
+            action: The action taken
+            game_state: Current game state
+            acting_player: Player who took the action
+        """
+        if self.pbs:
+            self.pbs.update_from_action(action, game_state, acting_player)
+    
+    def update_pbs_from_reveal(self, pos: Tuple[int, int], piece_type: PieceType):
+        """
+        Update PBS when a piece is revealed.
+        
+        Args:
+            pos: Position of the revealed piece
+            piece_type: Type of the revealed piece
+        """
+        if self.pbs:
+            self.pbs.update_from_reveal(pos, piece_type)

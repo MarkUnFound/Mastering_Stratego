@@ -55,12 +55,25 @@ class Board:
             return self.visible_board_p2
             
     def move_piece(self, player: int, from_pos: Tuple[int, int], to_pos: Tuple[int, int]):
-        """Move a piece on the board, updating visibility for both players."""
+        """
+        Move a piece on the board, updating visibility for both players.
+        Enemy pieces remain hidden unless they've been revealed.
+        """
         fr, fc = from_pos
         tr, tc = to_pos
         
         moving_piece = self.actual_board[fr, fc].item()
         target_piece = self.actual_board[tr, tc].item()
+        
+        # Check if moving piece has been revealed to opponent (check BEFORE updating actual board)
+        # For player 1 moving: check if p2 can see it
+        # For player -1 moving: check if p1 can see it
+        if player == 1:
+            # Check if opponent can see this piece (either revealed or it's their own piece)
+            moving_piece_revealed_to_p2 = (self.visible_board_p2[fr, fc].item() == moving_piece)
+        else:
+            # Check if opponent can see this piece (either revealed or it's their own piece)
+            moving_piece_revealed_to_p1 = (self.visible_board_p1[fr, fc].item() == moving_piece)
         
         # Update actual board
         self.actual_board[tr, tc] = moving_piece
@@ -68,15 +81,41 @@ class Board:
         
         # Update visible boards
         if player == 1:
+            # Player 1's view: own piece moves (always visible to self)
             self.visible_board_p1[tr, tc] = moving_piece
             self.visible_board_p1[fr, fc] = EMPTY_SQUARE
-            self.visible_board_p2[tr, tc] = HIDDEN_PIECE if target_piece == EMPTY_SQUARE else self.visible_board_p2[tr, tc]
+            
+            # Player 2's view: enemy piece moves
             self.visible_board_p2[fr, fc] = EMPTY_SQUARE
+            if target_piece == EMPTY_SQUARE:
+                # Moving to empty square - show as hidden unless revealed
+                if moving_piece_revealed_to_p2:
+                    self.visible_board_p2[tr, tc] = moving_piece
+                else:
+                    self.visible_board_p2[tr, tc] = HIDDEN_PIECE
+            else:
+                # Moving to occupied square (battle) - piece is already revealed by reveal_pieces
+                # After reveal_pieces, the piece should be visible, so show it
+                # reveal_pieces is called before move_piece in battle scenarios
+                self.visible_board_p2[tr, tc] = moving_piece  # Already revealed by reveal_pieces
         else:
+            # Player -1's view: own piece moves (always visible to self)
             self.visible_board_p2[tr, tc] = moving_piece
             self.visible_board_p2[fr, fc] = EMPTY_SQUARE
-            self.visible_board_p1[tr, tc] = HIDDEN_PIECE if target_piece == EMPTY_SQUARE else self.visible_board_p1[tr, tc]
+            
+            # Player 1's view: enemy piece moves
             self.visible_board_p1[fr, fc] = EMPTY_SQUARE
+            if target_piece == EMPTY_SQUARE:
+                # Moving to empty square - show as hidden unless revealed
+                if moving_piece_revealed_to_p1:
+                    self.visible_board_p1[tr, tc] = moving_piece
+                else:
+                    self.visible_board_p1[tr, tc] = HIDDEN_PIECE
+            else:
+                # Moving to occupied square (battle) - piece is already revealed by reveal_pieces
+                # After reveal_pieces, the piece should be visible, so show it
+                # reveal_pieces is called before move_piece in battle scenarios
+                self.visible_board_p1[tr, tc] = moving_piece  # Already revealed by reveal_pieces
             
     def reveal_pieces(self, pos1: Tuple[int, int], pos2: Tuple[int, int]):
         """Reveal pieces at two positions to both players after a battle."""

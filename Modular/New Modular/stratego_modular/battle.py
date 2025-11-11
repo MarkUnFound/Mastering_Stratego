@@ -10,22 +10,20 @@ class BattleResolver:
     def resolve_battle(attacker: PieceType, defender: PieceType, attacker_player: int = 1, defender_player: int = 2) -> int:
         """
         Resolve a battle between two pieces.
+        Assumes attacker and defender are enemies (validated by get_valid_moves).
         Returns:
             1 if attacker wins
            -1 if defender wins
             0 if both are removed (draw)
         """
-        # Prevent cannibalizing of pieces - pieces cannot eat each other if they belong to the same player
-        if attacker_player == defender_player and attacker_player != 0:
-            return 0  # Draw - both removed (prevent cannibalizing)
             
-        # Check special battle rules
+        # Check special battle rules (only apply when the special piece is the attacker)
+        # SPY vs MARSHAL: SPY wins only when SPY attacks, not when MARSHAL attacks
         if (attacker, defender) in SPECIAL_BATTLES:
             if SPECIAL_BATTLES[(attacker, defender)]:
                 return 1  # Attacker wins
-        elif (defender, attacker) in SPECIAL_BATTLES:
-            if SPECIAL_BATTLES[(defender, attacker)]:
-                return -1  # Defender wins (attacker loses)
+        # Note: We don't check (defender, attacker) because special rules only apply
+        # when the special piece attacks (e.g., SPY must attack MARSHAL to win)
                 
         # BOMB vs non-MINER
         if attacker != PieceType.MINER and defender == PieceType.BOMB:
