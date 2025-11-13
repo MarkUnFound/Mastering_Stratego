@@ -23,8 +23,15 @@ class StrategoEnvironment:
         self.dqn_visualizer = DQNMoveVisualizer()
         self.reset()
         
-    def reset(self) -> GameState:
-        """Reset the environment to start a new game."""
+    def reset(self, p1_placement: Optional[List[Tuple[PieceType, Tuple[int, int]]]] = None,
+              p2_placement: Optional[List[Tuple[PieceType, Tuple[int, int]]]] = None) -> GameState:
+        """
+        Reset the environment to start a new game.
+        
+        Args:
+            p1_placement: Optional custom placement for Player 1 (list of (piece, position) tuples)
+            p2_placement: Optional custom placement for Player 2 (list of (piece, position) tuples)
+        """
         self.board.reset()
         self.current_player = 1
         self.game_over = False
@@ -43,28 +50,28 @@ class StrategoEnvironment:
         self.exchanges = {1: [], -1: []}
         
         # Setup pieces in starting positions
-        p1_pieces = self._generate_pieces()
-        p2_pieces = self._generate_pieces()
-        p1_positions = self._get_p1_positions()
-        p2_positions = self._get_p2_positions()
+        if p1_placement is None:
+            p1_pieces = self._generate_pieces()
+            p1_positions = self._get_p1_positions()
+            p1_placement = [(piece, pos) for piece, pos in zip(p1_pieces, p1_positions)]
+        
+        if p2_placement is None:
+            p2_pieces = self._generate_pieces()
+            p2_positions = self._get_p2_positions()
+            p2_placement = [(piece, pos) for piece, pos in zip(p2_pieces, p2_positions)]
         
         # Ensure we have exactly 40 pieces and 40 positions for each player
-        assert len(p1_pieces) == 40, f"Player 1 should have 40 pieces, got {len(p1_pieces)}"
-        assert len(p2_pieces) == 40, f"Player 2 should have 40 pieces, got {len(p2_pieces)}"
-        assert len(p1_positions) == 40, f"Player 1 should have 40 positions, got {len(p1_positions)}"
-        assert len(p2_positions) == 40, f"Player 2 should have 40 positions, got {len(p2_positions)}"
+        assert len(p1_placement) == 40, f"Player 1 should have 40 pieces, got {len(p1_placement)}"
+        assert len(p2_placement) == 40, f"Player 2 should have 40 pieces, got {len(p2_placement)}"
         
         # Verify no pieces in rows 4-5 (lake rows)
-        for r, c in p1_positions:
+        for piece, (r, c) in p1_placement:
             assert r not in [4, 5], f"Player 1 piece in lake row: ({r}, {c})"
-        for r, c in p2_positions:
+        for piece, (r, c) in p2_placement:
             assert r not in [4, 5], f"Player 2 piece in lake row: ({r}, {c})"
         
         # Place pieces on the board
-        self.board.setup_pieces(
-            [(piece, pos) for piece, pos in zip(p1_pieces, p1_positions)],
-            [(piece, pos) for piece, pos in zip(p2_pieces, p2_positions)]
-        )
+        self.board.setup_pieces(p1_placement, p2_placement)
         
         return self._get_game_state()
         
@@ -252,18 +259,45 @@ class StrategoEnvironment:
         move_penalty = self.dqn_visualizer.get_move_penalty(action, self.current_player)
         reward += move_penalty
         
-        # 1. Reward for moving forward (toward enemy flag)
+        # Determine game phase for reward scaling
+        game_phase = "early" if self.turn_count < 50 else ("mid" if self.turn_count < 200 else "end")
+        phase_multiplier = 1.2 if game_phase == "early" else (1.0 if game_phase == "mid" else 0.8)
+        
+        # 1. IMPROVED: Reward for moving forward (toward enemy flag) with distance scaling
         # Player 1 (rows 6-9) moves forward when moving up (decreasing row)
         # Player 2 (rows 0-3) moves forward when moving down (increasing row)
         row_change = r_to - r_from
+        col_change = abs(c_to - c_from)
+        distance_moved = abs(row_change) + col_change
+        
         if self.current_player == 1:
             # Player 1 moves forward when row decreases (moving up toward enemy)
             if row_change < 0:
-                reward += 0.02  # Small reward for moving forward
+                # Base reward + distance bonus (scouts can move multiple squares)
+                forward_reward = 0.05 + (0.02 * min(distance_moved, 3))  # Cap at 3 squares
+                reward += forward_reward * phase_multiplier
         else:  # Player -1
             # Player 2 moves forward when row increases (moving down toward enemy)
             if row_change > 0:
-                reward += 0.02  # Small reward for moving forward
+                # Base reward + distance bonus
+                forward_reward = 0.05 + (0.02 * min(distance_moved, 3))
+                reward += forward_reward * phase_multiplier
+        
+        # 2. NEW: Strategic positioning rewards
+        # Center control (rows 4-5 are center, excluding lakes)
+        center_rows = [4, 5]
+        if r_to in center_rows and (r_to, c_to) not in [(4,2), (4,3), (5,2), (5,3), (4,6), (4,7), (5,6), (5,7)]:
+            reward += 0.05 * phase_multiplier  # Reward for controlling center
+        
+        # Territory control (pieces in enemy half)
+        if self.current_player == 1:
+            # Player 1 in enemy territory (rows 0-3)
+            if r_to <= 3:
+                reward += 0.02 * phase_multiplier
+        else:
+            # Player 2 in enemy territory (rows 6-9)
+            if r_to >= 6:
+                reward += 0.02 * phase_multiplier
         
         # Handle battle or simple move
         if target_piece_value != EMPTY_SQUARE and target_piece_value != LAKE_SQUARE:
@@ -284,20 +318,56 @@ class StrategoEnvironment:
             defender_player = 1 if target_piece_value > 0 else 2 if target_piece_value < 0 else 0
             result = self.battle_resolver.resolve_battle(attacker_type, defender_type, attacker_player, defender_player)
             
-            # 3. Penalty for revealing own high-value pieces (rank 8+)
-            # High value pieces: MAJOR (8), COLONEL (9), GENERAL (10), MARSHAL (11)
+            # 3. IMPROVED: Penalty for revealing own high-value pieces (scaled by piece value)
             attacker_rank = abs(moving_piece_value)
             if attacker_rank >= 8:  # High value piece
-                reward -= 0.3  # Penalty for revealing own high-value piece
+                # Scale penalty by piece value (MARSHAL=11 gets highest penalty)
+                reveal_penalty = 0.3 * (attacker_rank / 11.0)
+                reward -= reveal_penalty * phase_multiplier
             
-            # 4. Reward for revealing enemy high-value pieces (rank 8+)
+            # 4. IMPROVED: Reward for revealing enemy high-value pieces (scaled by piece value)
             defender_rank = abs(target_piece_value)
             if defender_rank >= 8:  # High value piece
-                reward += 0.3  # Reward for revealing enemy high-value piece
+                # Scale reward by piece value
+                reveal_reward = 0.3 * (defender_rank / 11.0)
+                reward += reveal_reward * phase_multiplier
+            
+            # 5. NEW: Tactical rewards (special battle outcomes)
+            # Miner defusing bomb
+            if attacker_type == PieceType.MINER and defender_type == PieceType.BOMB:
+                reward += 0.5 * phase_multiplier  # Significant reward for defusing bomb
+            
+            # Spy capturing Marshal
+            if attacker_type == PieceType.SPY and defender_type == PieceType.MARSHAL:
+                reward += 1.0 * phase_multiplier  # Big reward for spy capturing marshal
+            
+            # Scout reconnaissance (reward for revealing enemy pieces with scouts)
+            if attacker_type == PieceType.SCOUT:
+                reward += 0.1 * phase_multiplier  # Reward for scouting/revealing enemy
             
             if result == 1:  # Attacker wins
                 self.board.move_piece(self.current_player, (r_from, c_from), (r_to, c_to))
-                reward += 0.1 * abs(target_piece_value)
+                
+                # IMPROVED: Better piece value scaling for captures
+                captured_value = abs(target_piece_value)
+                # Scale reward by piece rank (higher rank = more reward)
+                capture_reward = 0.15 * (captured_value / 11.0)  # Normalized to 0-0.15
+                reward += capture_reward * phase_multiplier
+                
+                # NEW: Trade evaluation (favorable vs unfavorable trades)
+                lost_value = abs(moving_piece_value)
+                value_difference = captured_value - lost_value
+                if value_difference > 0:
+                    # Favorable trade: captured higher value piece
+                    trade_bonus = 0.2 * (value_difference / 11.0)
+                    reward += trade_bonus * phase_multiplier
+                elif value_difference < 0:
+                    # Unfavorable trade: lost higher value piece
+                    trade_penalty = 0.15 * (abs(value_difference) / 11.0)
+                    reward -= trade_penalty * phase_multiplier
+                else:
+                    # Equal trade: small bonus
+                    reward += 0.05 * phase_multiplier
                 
                 # Track exchange: attacker captured enemy piece
                 # Store temporarily to record after turn increment
@@ -308,6 +378,7 @@ class StrategoEnvironment:
                 if defender_type == PieceType.FLAG:
                     self.game_over = True
                     self.winner = self.current_player
+                    # Flag capture reward (keep this, but remove duplicate at end)
                     reward += 10.0
             elif result == -1:  # Defender wins
                 # Remove attacker
@@ -318,7 +389,11 @@ class StrategoEnvironment:
                 else:
                     self.board.visible_board_p2[r_from, c_from] = EMPTY_SQUARE
                     self.board.visible_board_p1[r_from, c_from] = EMPTY_SQUARE
-                reward -= 0.1 * abs(moving_piece_value)
+                
+                # IMPROVED: Better piece loss penalty (scaled by piece value)
+                lost_value = abs(moving_piece_value)
+                loss_penalty = 0.15 * (lost_value / 11.0)  # Normalized to 0-0.15
+                reward -= loss_penalty * phase_multiplier
                 
                 # Track piece loss: attacker lost a piece (not an exchange for attacker)
                 # Note: We'll record this after incrementing turn_count
@@ -363,6 +438,14 @@ class StrategoEnvironment:
         else:
             # Simple move to empty square
             self.board.move_piece(self.current_player, (r_from, c_from), (r_to, c_to))
+            
+            # NEW: Piece preservation reward (reward for keeping high-value pieces alive)
+            # Check if moving piece is high-value and moving to safer position
+            moving_rank = abs(moving_piece_value)
+            if moving_rank >= 8:  # High value piece
+                # Reward for moving high-value piece (preservation)
+                preservation_reward = 0.05 * (moving_rank / 11.0)
+                reward += preservation_reward * phase_multiplier
         
         # Only increment turn and add to history for valid moves
         # (Invalid moves already returned above)
@@ -414,19 +497,70 @@ class StrategoEnvironment:
         # Record the player who made the move (before switching)
         self.dqn_visualizer.record_move(action, current_state, self.current_player * -1)
         
+        # NEW: Defensive rewards (flag protection and defensive positioning)
+        # Check if piece is protecting flag or other high-value pieces
+        if not self.game_over:
+            # Find flag position for current player
+            flag_pos = None
+            for r in range(BOARD_SIZE):
+                for c in range(BOARD_SIZE):
+                    piece_val = self.board.actual_board[r, c].item()
+                    if self.current_player == 1 and piece_val == PieceType.FLAG.value:
+                        flag_pos = (r, c)
+                        break
+                    elif self.current_player == -1 and piece_val == -PieceType.FLAG.value:
+                        flag_pos = (r, c)
+                        break
+                if flag_pos:
+                    break
+            
+            # Check if moved piece is now protecting flag
+            if flag_pos:
+                flag_r, flag_c = flag_pos
+                # Check if piece is adjacent to flag
+                if abs(r_to - flag_r) <= 1 and abs(c_to - flag_c) <= 1:
+                    moving_rank = abs(moving_piece_value)
+                    if moving_rank >= 8:  # High value piece protecting flag
+                        reward += 0.1 * phase_multiplier  # Reward for flag protection
+            
+            # NEW: Defensive positioning (strong pieces protecting weaker ones)
+            # Check if moved piece is now adjacent to weaker friendly pieces
+            for dr in [-1, 0, 1]:
+                for dc in [-1, 0, 1]:
+                    if dr == 0 and dc == 0:
+                        continue
+                    adj_r, adj_c = r_to + dr, c_to + dc
+                    if 0 <= adj_r < BOARD_SIZE and 0 <= adj_c < BOARD_SIZE:
+                        adj_piece_val = self.board.actual_board[adj_r, adj_c].item()
+                        # Check if adjacent piece is friendly and weaker
+                        if (self.current_player == 1 and adj_piece_val > 0 and 
+                            adj_piece_val < abs(moving_piece_value) and adj_piece_val != PieceType.BOMB.value):
+                            reward += 0.05 * phase_multiplier  # Reward for defensive positioning
+                        elif (self.current_player == -1 and adj_piece_val < 0 and 
+                              abs(adj_piece_val) < abs(moving_piece_value) and abs(adj_piece_val) != PieceType.BOMB.value):
+                            reward += 0.05 * phase_multiplier
+        
+        # NEW: Piece advantage reward (reward for having more pieces than opponent)
+        if not self.game_over:
+            p1_pieces = torch.sum((self.board.actual_board > 0) & (self.board.actual_board != LAKE_SQUARE)).item()
+            p2_pieces = torch.sum((self.board.actual_board < 0) & (self.board.actual_board != LAKE_SQUARE)).item()
+            
+            if self.current_player == 1:
+                piece_advantage = p1_pieces - p2_pieces
+            else:
+                piece_advantage = p2_pieces - p1_pieces
+            
+            if piece_advantage > 0:
+                # Reward for piece advantage (scaled by advantage size)
+                advantage_reward = 0.05 * min(piece_advantage / 10.0, 1.0)  # Cap at 10 piece advantage
+                reward += advantage_reward * phase_multiplier
+        
         # Check for game end conditions
         self._check_game_end()
         
-        # Apply losing penalty if game is over and the player who just moved lost
-        # Note: current_player has been switched, so we need to check against the previous player
-        previous_player = self.current_player * -1
-        if self.game_over and self.winner != 0:
-            if self.winner == previous_player:
-                # Winner gets +10 reward
-                reward += 10.0
-            elif self.winner != previous_player:
-                # Loser gets -10 reward
-                reward -= 10.0
+        # FIXED: Remove duplicate win/loss rewards (these are handled in train_dqn.py)
+        # Only keep flag capture reward which is already added above
+        # Note: Win/loss rewards are now only in train_dqn.py to avoid duplication
         
         return self._get_game_state(), reward, self.game_over, {"winner": self.winner}
         

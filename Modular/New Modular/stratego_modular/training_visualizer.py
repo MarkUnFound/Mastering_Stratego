@@ -1,7 +1,13 @@
 # stratego_modular/training_visualizer.py
 
+# Set matplotlib backend to non-interactive before importing pyplot
+# This prevents Tkinter errors when used in multi-threaded environments
+import matplotlib
+matplotlib.use('Agg')  # Use non-interactive backend (no GUI required)
+
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
+import matplotlib.colors as mcolors
 import numpy as np
 import torch
 import os
@@ -10,13 +16,13 @@ from typing import List, Dict, Optional, Tuple
 from PIL import Image
 import glob
 from .piece import PieceType, PIECE_NAMES, PIECE_RANKS
-from .board import BOARD_SIZE, EMPTY_SQUARE, LAKE_SQUARE
+from .board import BOARD_SIZE, EMPTY_SQUARE, LAKE_SQUARE, HIDDEN_PIECE
 
 def plot_training_progress(
     episode_history: List[int],
     rewards_history: Dict[str, List[float]],
     wins_history: Dict[str, List[int]],
-    epsilon_history: Dict[str, List[float]],
+    policy_loss_history: Dict[str, List[float]],
     save_path: str
 ):
     """
@@ -25,240 +31,136 @@ def plot_training_progress(
     Args:
         episode_history: List of episode numbers.
         rewards_history: Dict containing lists of average rewards for each agent.
-        wins_history: Dict containing lists of win counts for each agent and draws.
-        epsilon_history: Dict containing lists of epsilon values for each agent.
+        wins_history: Dict containing lists of win counts for each agent (draws removed).
+        policy_loss_history: Dict containing lists of policy loss values for each agent.
         save_path: Path to save the plot image.
     """
+    # Validate input data
+    if not episode_history or len(episode_history) == 0:
+        raise ValueError("episode_history is empty - cannot plot training progress")
+    
+    if not rewards_history or not rewards_history.get('agent1') or not rewards_history.get('agent2'):
+        raise ValueError("rewards_history is empty or missing agent data")
+    
+    if len(episode_history) != len(rewards_history['agent1']) or len(episode_history) != len(rewards_history['agent2']):
+        raise ValueError(f"Length mismatch: episode_history={len(episode_history)}, "
+                        f"rewards_history agent1={len(rewards_history['agent1'])}, "
+                        f"rewards_history agent2={len(rewards_history['agent2'])}")
+    
     fig, axs = plt.subplots(3, 1, figsize=(12, 18))
     fig.suptitle('DQN Agent Training Progress', fontsize=16)
 
-    # Plot 1: Average Rewards
-    axs[0].plot(episode_history, rewards_history['agent1'], label='Agent 1 Avg Reward', color='blue')
-    axs[0].plot(episode_history, rewards_history['agent2'], label='Agent 2 Avg Reward', color='red')
+    # Plot 1: Average Rewards (with discrete points and cumulative average line)
+    if len(episode_history) > 0:
+        # Plot discrete points for each episode
+        axs[0].scatter(episode_history, rewards_history['agent1'], label='Agent 1 Reward', 
+                      color='blue', marker='o', s=30, alpha=0.5, zorder=3)
+        axs[0].scatter(episode_history, rewards_history['agent2'], label='Agent 2 Reward', 
+                      color='red', marker='o', s=30, alpha=0.5, zorder=3)
+        
+        # Calculate and plot cumulative average from the start
+        if len(episode_history) >= 1:
+            # Cumulative average: average of all episodes from episode 1 to current
+            agent1_cumulative_avg = np.cumsum(rewards_history['agent1']) / np.arange(1, len(rewards_history['agent1']) + 1)
+            agent2_cumulative_avg = np.cumsum(rewards_history['agent2']) / np.arange(1, len(rewards_history['agent2']) + 1)
+            
+            axs[0].plot(episode_history, agent1_cumulative_avg, color='blue', linestyle='-', linewidth=2, 
+                       label='Agent 1 Cumulative Avg', alpha=0.8, zorder=2)
+            axs[0].plot(episode_history, agent2_cumulative_avg, color='red', linestyle='-', linewidth=2, 
+                       label='Agent 2 Cumulative Avg', alpha=0.8, zorder=2)
+    
     axs[0].set_xlabel('Episodes')
-    axs[0].set_ylabel('Average Reward (over interval)')
-    axs[0].set_title('Average Rewards per Episode')
+    axs[0].set_ylabel('Reward')
+    axs[0].set_title('Rewards per Episode (with Cumulative Average)')
     axs[0].legend()
-    axs[0].grid(True)
+    axs[0].grid(True, alpha=0.3)
 
-    # Plot 2: Win/Draw Counts
-    axs[1].plot(episode_history, wins_history['agent1'], label='Agent 1 Wins', color='blue')
-    axs[1].plot(episode_history, wins_history['agent2'], label='Agent 2 Wins', color='red')
-    axs[1].plot(episode_history, wins_history['draws'], label='Draws', color='green')
+    # Plot 2: Win Counts (cumulative wins with win rate)
+    if len(episode_history) > 0:
+        # Plot discrete points for cumulative wins
+        scatter1 = axs[1].scatter(episode_history, wins_history['agent1'], label='Agent 1 Wins', 
+                      color='blue', marker='o', s=30, alpha=0.5, zorder=3)
+        scatter2 = axs[1].scatter(episode_history, wins_history['agent2'], label='Agent 2 Wins', 
+                      color='red', marker='o', s=30, alpha=0.5, zorder=3)
+        
+        # Calculate and plot cumulative average win rate from the start (on secondary y-axis)
+        if len(episode_history) >= 1:
+            # Cumulative win rate: wins / total episodes
+            episode_nums = np.arange(1, len(wins_history['agent1']) + 1)
+            agent1_win_rate = np.array(wins_history['agent1'], dtype=float) / episode_nums
+            agent2_win_rate = np.array(wins_history['agent2'], dtype=float) / episode_nums
+            
+            # Create secondary y-axis for win rate
+            axs1_twin = axs[1].twinx()
+            line1, = axs1_twin.plot(episode_history, agent1_win_rate, color='blue', linestyle='--', linewidth=2, 
+                       label='Agent 1 Win Rate', alpha=0.8, zorder=2)
+            line2, = axs1_twin.plot(episode_history, agent2_win_rate, color='red', linestyle='--', linewidth=2, 
+                       label='Agent 2 Win Rate', alpha=0.8, zorder=2)
+            axs1_twin.set_ylabel('Win Rate (0-1)', color='gray')
+            axs1_twin.tick_params(axis='y', labelcolor='gray')
+            axs1_twin.set_ylim(0, 1)
+            
+            # Create combined legend manually
+            legend_elements = [
+                scatter1, scatter2, line1, line2
+            ]
+            axs[1].legend(legend_elements, ['Agent 1 Wins', 'Agent 2 Wins', 'Agent 1 Win Rate', 'Agent 2 Win Rate'], 
+                         loc='upper left')
+    
     axs[1].set_xlabel('Episodes')
-    axs[1].set_ylabel('Count (per interval)')
-    axs[1].set_title('Wins and Draws per Interval')
-    axs[1].legend()
-    axs[1].grid(True)
+    axs[1].set_ylabel('Cumulative Win Count', color='black')
+    axs[1].tick_params(axis='y', labelcolor='black')
+    axs[1].set_title('Cumulative Wins (with Win Rate)')
+    axs[1].grid(True, alpha=0.3)
 
-    # Plot 3: Epsilon Decay
-    axs[2].plot(episode_history, epsilon_history['agent1'], label='Agent 1 Epsilon', color='blue', linestyle='--')
-    axs[2].plot(episode_history, epsilon_history['agent2'], label='Agent 2 Epsilon', color='red', linestyle='--')
+    # Plot 3: Policy Loss (with cumulative average)
+    if len(episode_history) > 0 and len(policy_loss_history.get('agent1', [])) > 0:
+        # Plot discrete points for each episode
+        axs[2].scatter(episode_history, policy_loss_history['agent1'], label='Agent 1 Policy Loss', 
+                      color='blue', marker='o', s=30, alpha=0.5, zorder=3)
+        axs[2].scatter(episode_history, policy_loss_history['agent2'], label='Agent 2 Policy Loss', 
+                      color='red', marker='o', s=30, alpha=0.5, zorder=3)
+        
+        # Calculate and plot cumulative average from the start
+        if len(episode_history) >= 1:
+            # Cumulative average: average of all policy losses from episode 1 to current
+            agent1_loss_avg = np.cumsum(policy_loss_history['agent1']) / np.arange(1, len(policy_loss_history['agent1']) + 1)
+            agent2_loss_avg = np.cumsum(policy_loss_history['agent2']) / np.arange(1, len(policy_loss_history['agent2']) + 1)
+            
+            axs[2].plot(episode_history, agent1_loss_avg, color='blue', linestyle='-', linewidth=2, 
+                       label='Agent 1 Cumulative Avg', alpha=0.8, zorder=2)
+            axs[2].plot(episode_history, agent2_loss_avg, color='red', linestyle='-', linewidth=2, 
+                       label='Agent 2 Cumulative Avg', alpha=0.8, zorder=2)
+    
     axs[2].set_xlabel('Episodes')
-    axs[2].set_ylabel('Epsilon Value')
-    axs[2].set_title('Epsilon Decay')
+    axs[2].set_ylabel('Policy Loss')
+    axs[2].set_title('Policy Loss per Episode (with Cumulative Average)')
     axs[2].legend()
-    axs[2].grid(True)
+    axs[2].grid(True, alpha=0.3)
 
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
     
     # Ensure the directory exists
-    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+    save_dir = os.path.dirname(save_path)
+    if save_dir:  # Only create directory if path contains a directory component
+        os.makedirs(save_dir, exist_ok=True)
     
-    plt.savefig(save_path)
+    # Save the figure with error handling
+    try:
+        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+        # Verify file was created
+        if not os.path.exists(save_path):
+            raise FileNotFoundError(f"Failed to create file: {save_path}")
+    except Exception as e:
+        plt.close(fig)
+        raise Exception(f"Error saving plot to {save_path}: {e}")
+    
     plt.close(fig)
-    print(f"📈 Training progress graph saved to {save_path}")
+    # Note: Printing confirmation is handled by the training script to avoid duplicates
 
 
-def visualize_pbs_state(
-    actual_board: torch.Tensor,
-    agent1_pbs,
-    agent2_pbs,
-    episode: int,
-    save_path: str
-):
-    """
-    Visualize the Probabilistic Belief State (PBS) for both agents.
-    
-    Shows:
-    - Actual board with pieces
-    - Agent 1's PBS beliefs (inferred values and confidence)
-    - Agent 2's PBS beliefs (inferred values and confidence)
-    
-    Args:
-        actual_board: The actual game board (10x10 tensor)
-        agent1_pbs: Agent 1's PBS object (or None if not available)
-        agent2_pbs: Agent 2's PBS object (or None if not available)
-        episode: Current episode number
-        save_path: Path to save the visualization
-    """
-    fig = plt.figure(figsize=(20, 12))
-    fig.suptitle(f'PBS Visualization - Episode {episode}', fontsize=16, fontweight='bold')
-    
-    # Convert board to numpy
-    board_np = actual_board.cpu().numpy() if isinstance(actual_board, torch.Tensor) else actual_board
-    
-    # Create subplots: Actual board, Agent 1 PBS, Agent 2 PBS
-    ax1 = plt.subplot(1, 3, 1)
-    ax2 = plt.subplot(1, 3, 2)
-    ax3 = plt.subplot(1, 3, 3)
-    
-    # Plot 1: Actual Board
-    _plot_actual_board(ax1, board_np, "Actual Board State")
-    
-    # Plot 2: Agent 1 PBS
-    if agent1_pbs:
-        _plot_pbs_beliefs(ax2, board_np, agent1_pbs, player_id=1, title="Agent 1 PBS Beliefs")
-    else:
-        ax2.text(0.5, 0.5, 'PBS Not Available', ha='center', va='center', 
-                transform=ax2.transAxes, fontsize=14)
-        ax2.set_title("Agent 1 PBS Beliefs")
-    
-    # Plot 3: Agent 2 PBS
-    if agent2_pbs:
-        _plot_pbs_beliefs(ax3, board_np, agent2_pbs, player_id=-1, title="Agent 2 PBS Beliefs")
-    else:
-        ax3.text(0.5, 0.5, 'PBS Not Available', ha='center', va='center', 
-                transform=ax3.transAxes, fontsize=14)
-        ax3.set_title("Agent 2 PBS Beliefs")
-    
-    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
-    
-    # Ensure directory exists
-    os.makedirs(os.path.dirname(save_path), exist_ok=True)
-    
-    plt.savefig(save_path, dpi=150, bbox_inches='tight')
-    plt.close(fig)
-    print(f"🎯 PBS visualization saved to {save_path}")
-
-
-def _plot_actual_board(ax, board_np: np.ndarray, title: str):
-    """Plot the actual board with pieces."""
-    ax.set_xlim(-0.5, BOARD_SIZE - 0.5)
-    ax.set_ylim(-0.5, BOARD_SIZE - 0.5)
-    ax.set_aspect('equal')
-    ax.invert_yaxis()
-    ax.set_title(title, fontsize=14, fontweight='bold')
-    ax.set_xticks(range(BOARD_SIZE))
-    ax.set_yticks(range(BOARD_SIZE))
-    ax.grid(True, color='gray', linewidth=0.5)
-    
-    # Draw board squares
-    for r in range(BOARD_SIZE):
-        for c in range(BOARD_SIZE):
-            piece_val = board_np[r, c]
-            
-            # Determine square color
-            if piece_val == LAKE_SQUARE:
-                color = 'lightblue'
-            elif piece_val == EMPTY_SQUARE:
-                color = 'white'
-            elif piece_val > 0:
-                color = 'lightcoral'  # Player 1
-            else:
-                color = 'lightgreen'  # Player 2
-            
-            # Draw square
-            rect = patches.Rectangle((c - 0.5, r - 0.5), 1, 1, 
-                                   facecolor=color, edgecolor='black', linewidth=1)
-            ax.add_patch(rect)
-            
-            # Draw piece label
-            if piece_val != EMPTY_SQUARE and piece_val != LAKE_SQUARE:
-                piece_type = PieceType(abs(int(piece_val)))
-                piece_name = PIECE_NAMES.get(piece_type, '?')
-                text_color = 'black' if abs(piece_val) <= 6 else 'white'
-                ax.text(c, r, piece_name, ha='center', va='center', 
-                       fontsize=10, fontweight='bold', color=text_color)
-
-
-def _plot_pbs_beliefs(ax, board_np: np.ndarray, pbs, player_id: int, title: str):
-    """Plot PBS beliefs for a specific agent."""
-    ax.set_xlim(-0.5, BOARD_SIZE - 0.5)
-    ax.set_ylim(-0.5, BOARD_SIZE - 0.5)
-    ax.set_aspect('equal')
-    ax.invert_yaxis()
-    ax.set_title(title, fontsize=14, fontweight='bold')
-    ax.set_xticks(range(BOARD_SIZE))
-    ax.set_yticks(range(BOARD_SIZE))
-    ax.grid(True, color='gray', linewidth=0.5)
-    
-    # Draw board squares with PBS information
-    for r in range(BOARD_SIZE):
-        for c in range(BOARD_SIZE):
-            pos = (r, c)
-            piece_val = board_np[r, c]
-            
-            # Determine square color
-            if piece_val == LAKE_SQUARE:
-                color = 'lightblue'
-                rect = patches.Rectangle((c - 0.5, r - 0.5), 1, 1, 
-                                       facecolor=color, edgecolor='black', linewidth=1)
-                ax.add_patch(rect)
-                continue
-            elif piece_val == EMPTY_SQUARE:
-                color = 'white'
-            elif (player_id == 1 and piece_val > 0) or (player_id == -1 and piece_val < 0):
-                # Own piece - show actual
-                color = 'lightcoral' if player_id == 1 else 'lightgreen'
-                rect = patches.Rectangle((c - 0.5, r - 0.5), 1, 1, 
-                                       facecolor=color, edgecolor='black', linewidth=1)
-                ax.add_patch(rect)
-                # Show actual piece
-                piece_type = PieceType(abs(int(piece_val)))
-                piece_name = PIECE_NAMES.get(piece_type, '?')
-                ax.text(c, r, piece_name, ha='center', va='center', 
-                       fontsize=10, fontweight='bold', color='black')
-                continue
-            else:
-                # Enemy piece - show PBS beliefs
-                color = 'lightyellow'  # Highlight unknown pieces
-                # Get PBS beliefs
-                if pos in pbs.belief_distributions:
-                    beliefs = pbs.belief_distributions[pos]
-                    # Find most likely piece type
-                    most_likely = max(beliefs.items(), key=lambda x: x[1])
-                    piece_type, confidence = most_likely
-                    expected_val = pbs.get_expected_value(pos)
-                    
-                    # Color intensity based on confidence
-                    # Use a color map: green (high confidence) to yellow (low confidence)
-                    # plt.cm.RdYlGn returns RGBA tuple, convert to hex or use directly
-                    rgba = plt.cm.RdYlGn(confidence)  # Green (high conf) to Red (low conf)
-                    color = rgba[:3]  # Use RGB only (matplotlib patches can use this)
-                else:
-                    # No PBS data for this position
-                    piece_type = None
-                    confidence = 0.0
-                    expected_val = 0.0
-                    color = 'lightgray'
-            
-            # Draw square
-            rect = patches.Rectangle((c - 0.5, r - 0.5), 1, 1, 
-                                   facecolor=color, edgecolor='black', linewidth=1)
-            ax.add_patch(rect)
-            
-            # Draw PBS information
-            if piece_val != EMPTY_SQUARE and piece_val != LAKE_SQUARE:
-                if pos in pbs.belief_distributions and pos not in pbs.revealed_pieces:
-                    # Show inferred piece and confidence
-                    beliefs = pbs.belief_distributions[pos]
-                    most_likely = max(beliefs.items(), key=lambda x: x[1])
-                    piece_type, confidence = most_likely
-                    piece_name = PIECE_NAMES.get(piece_type, '?')
-                    
-                    # Top: Inferred piece type
-                    ax.text(c, r - 0.25, piece_name, ha='center', va='center', 
-                           fontsize=12, fontweight='bold', color='black')
-                    # Bottom: Confidence score
-                    ax.text(c, r + 0.25, f'{confidence:.2f}', ha='center', va='center', 
-                           fontsize=8, color='darkblue', fontweight='bold')
-                elif piece_val != EMPTY_SQUARE:
-                    # Known piece (revealed)
-                    piece_type = PieceType(abs(int(piece_val)))
-                    piece_name = PIECE_NAMES.get(piece_type, '?')
-                    ax.text(c, r, piece_name, ha='center', va='center', 
-                           fontsize=10, fontweight='bold', color='black')
+# NOTE: visualize_pbs_state, _plot_actual_board, and _plot_pbs_beliefs have been moved to pbs_visualizer.py
+# This file now only contains training progress visualization functions
 
 
 def create_training_gif(model_save_path: str, episode: int, gif_duration: int = 500):
@@ -532,3 +434,107 @@ def create_episode_gif(game_states: List[Dict], episode: int, save_path: str,
         print(f"⚠️  Error creating episode GIF for episode {episode}: {e}")
         import traceback
         traceback.print_exc()
+
+
+def plot_setup_agent_progress(
+    episode_history: List[int],
+    setup_agent1_rewards: List[float],
+    setup_agent2_rewards: List[float],
+    setup_agent1_losses: List[float],
+    setup_agent2_losses: List[float],
+    save_path: str
+):
+    """
+    Plots and saves the training progress of setup agents.
+
+    Args:
+        episode_history: List of episode numbers.
+        setup_agent1_rewards: List of average rewards for setup agent 1.
+        setup_agent2_rewards: List of average rewards for setup agent 2.
+        setup_agent1_losses: List of loss values for setup agent 1.
+        setup_agent2_losses: List of loss values for setup agent 2.
+        save_path: Path to save the plot image.
+    """
+    # Validate input data
+    if not episode_history or len(episode_history) == 0:
+        raise ValueError("episode_history is empty - cannot plot setup agent progress")
+    
+    if not setup_agent1_rewards or not setup_agent2_rewards:
+        raise ValueError("setup agent rewards are empty")
+    
+    if len(episode_history) != len(setup_agent1_rewards) or len(episode_history) != len(setup_agent2_rewards):
+        raise ValueError(f"Length mismatch: episode_history={len(episode_history)}, "
+                        f"setup_agent1_rewards={len(setup_agent1_rewards)}, "
+                        f"setup_agent2_rewards={len(setup_agent2_rewards)}")
+    
+    fig, axs = plt.subplots(2, 1, figsize=(12, 12))
+    fig.suptitle('Setup Agent Training Progress', fontsize=16)
+
+    # Plot 1: Average Rewards (with discrete points and cumulative average line)
+    if len(episode_history) > 0:
+        # Plot discrete points for each episode
+        axs[0].scatter(episode_history, setup_agent1_rewards, label='Setup Agent 1 Reward', 
+                      color='blue', marker='o', s=30, alpha=0.5, zorder=3)
+        axs[0].scatter(episode_history, setup_agent2_rewards, label='Setup Agent 2 Reward', 
+                      color='red', marker='o', s=30, alpha=0.5, zorder=3)
+        
+        # Calculate and plot cumulative average from the start
+        if len(episode_history) >= 1:
+            # Cumulative average: average of all episodes from episode 1 to current
+            agent1_cumulative_avg = np.cumsum(setup_agent1_rewards) / np.arange(1, len(setup_agent1_rewards) + 1)
+            agent2_cumulative_avg = np.cumsum(setup_agent2_rewards) / np.arange(1, len(setup_agent2_rewards) + 1)
+            
+            axs[0].plot(episode_history, agent1_cumulative_avg, color='blue', linestyle='-', linewidth=2, 
+                       label='Setup Agent 1 Cumulative Avg', alpha=0.8, zorder=2)
+            axs[0].plot(episode_history, agent2_cumulative_avg, color='red', linestyle='-', linewidth=2, 
+                       label='Setup Agent 2 Cumulative Avg', alpha=0.8, zorder=2)
+    
+    axs[0].set_xlabel('Episodes')
+    axs[0].set_ylabel('Reward')
+    axs[0].set_title('Rewards per Episode (with Cumulative Average)')
+    axs[0].legend()
+    axs[0].grid(True, alpha=0.3)
+
+    # Plot 2: Loss (with cumulative average)
+    if len(episode_history) > 0 and len(setup_agent1_losses) > 0:
+        # Plot discrete points for each episode
+        axs[1].scatter(episode_history, setup_agent1_losses, label='Setup Agent 1 Loss', 
+                      color='blue', marker='o', s=30, alpha=0.5, zorder=3)
+        axs[1].scatter(episode_history, setup_agent2_losses, label='Setup Agent 2 Loss', 
+                      color='red', marker='o', s=30, alpha=0.5, zorder=3)
+        
+        # Calculate and plot cumulative average from the start
+        if len(episode_history) >= 1:
+            # Cumulative average: average of all losses from episode 1 to current
+            agent1_loss_avg = np.cumsum(setup_agent1_losses) / np.arange(1, len(setup_agent1_losses) + 1)
+            agent2_loss_avg = np.cumsum(setup_agent2_losses) / np.arange(1, len(setup_agent2_losses) + 1)
+            
+            axs[1].plot(episode_history, agent1_loss_avg, color='blue', linestyle='-', linewidth=2, 
+                       label='Setup Agent 1 Cumulative Avg', alpha=0.8, zorder=2)
+            axs[1].plot(episode_history, agent2_loss_avg, color='red', linestyle='-', linewidth=2, 
+                       label='Setup Agent 2 Cumulative Avg', alpha=0.8, zorder=2)
+    
+    axs[1].set_xlabel('Episodes')
+    axs[1].set_ylabel('Loss')
+    axs[1].set_title('Loss per Episode (with Cumulative Average)')
+    axs[1].legend()
+    axs[1].grid(True, alpha=0.3)
+
+    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+    
+    # Ensure the directory exists
+    save_dir = os.path.dirname(save_path)
+    if save_dir:  # Only create directory if path contains a directory component
+        os.makedirs(save_dir, exist_ok=True)
+    
+    # Save the figure with error handling
+    try:
+        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+        # Verify file was created
+        if not os.path.exists(save_path):
+            raise FileNotFoundError(f"Failed to create file: {save_path}")
+    except Exception as e:
+        plt.close(fig)
+        raise Exception(f"Error saving plot to {save_path}: {e}")
+    
+    plt.close(fig)

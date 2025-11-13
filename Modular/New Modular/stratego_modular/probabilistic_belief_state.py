@@ -19,6 +19,13 @@ from .piece import PieceType, PIECE_RANKS
 # Number of piece types (excluding FLAG and BOMB for some inferences)
 NUM_PIECE_TYPES = len(PieceType)
 
+# Import PBS evaluator (optional, to avoid circular imports)
+try:
+    from .pbs_evaluator import PBSEvaluator
+    PBS_EVALUATOR_AVAILABLE = True
+except ImportError:
+    PBS_EVALUATOR_AVAILABLE = False
+
 
 class PieceActionLSTM(nn.Module):
     """LSTM network to learn piece value patterns from action sequences."""
@@ -96,8 +103,11 @@ class ProbabilisticBeliefState:
         )
         
         # Belief distributions: position -> {piece_type: confidence}
+        # Use sorted PieceType to ensure deterministic default (FLAG first)
+        sorted_piece_types = sorted(PieceType, key=lambda pt: pt.value)
+        default_beliefs = {pt: 1.0 / NUM_PIECE_TYPES for pt in sorted_piece_types}
         self.belief_distributions: Dict[Tuple[int, int], Dict[PieceType, float]] = defaultdict(
-            lambda: {pt: 1.0 / NUM_PIECE_TYPES for pt in PieceType}
+            lambda: default_beliefs.copy()
         )
         
         # LSTM model for learning action patterns
@@ -109,10 +119,15 @@ class ProbabilisticBeliefState:
             device=device
         ).to(device)
         
-        self.lstm_optimizer = torch.optim.Adam(self.lstm_model.parameters(), lr=0.001)
+        self.lstm_optimizer = torch.optim.AdamW(self.lstm_model.parameters(), lr=0.001, weight_decay=0.01)
         
         # Track revealed pieces to update beliefs
         self.revealed_pieces: Dict[Tuple[int, int], PieceType] = {}
+        
+        # PBS evaluator (optional, for RL-based evaluation)
+        self.evaluator = None
+        if PBS_EVALUATOR_AVAILABLE:
+            self.evaluator = PBSEvaluator(device=device)
         
     def reset(self):
         """Reset the belief state for a new game."""
@@ -218,19 +233,39 @@ class ProbabilisticBeliefState:
             return
         
         # Check if this is an unknown piece
-        if hasattr(game_state, 'board'):
+        # CRITICAL: game_state.board is the visible board for the current player
+        # For Agent 2, Agent 1's pieces show as HIDDEN_PIECE (-3), not positive values
+        # Use actual_board if available, otherwise use visible board
+        board = None
+        if hasattr(game_state, 'actual_board'):
+            board = game_state.actual_board
+        elif hasattr(game_state, 'board'):
             board = game_state.board
-            if isinstance(board, torch.Tensor):
-                piece_val = board[r_from, c_from].item()
-                # If piece is revealed, don't track it
-                if (r_from, c_from) in self.revealed_pieces:
-                    return
-                
-                # Check if it's an unknown enemy piece
-                if self.player_id == 1 and piece_val < 0:
-                    # This is an unknown enemy piece
+        else:
+            return
+        
+        if isinstance(board, torch.Tensor):
+            piece_val = board[r_from, c_from].item()
+            # If piece is revealed, don't track it
+            if (r_from, c_from) in self.revealed_pieces:
+                return
+            
+            # Check if it's an unknown enemy piece
+            # CRITICAL: Use actual board values:
+            # - Agent 1's pieces are positive (> 0)
+            # - Agent 2's pieces are negative (< 0)
+            # - HIDDEN_PIECE = -3 (only in visible boards, not actual board)
+            # - LAKE_SQUARE = -13
+            # - EMPTY_SQUARE = 0
+            if self.player_id == 1:
+                # Agent 1 tracking Agent 2's pieces (negative values in actual board)
+                if piece_val < 0 and piece_val != -13:  # Not empty, not lake, enemy piece
                     pos = (r_from, c_from)
-                elif self.player_id == -1 and piece_val > 0:
+                else:
+                    return
+            elif self.player_id == -1:
+                # Agent 2 tracking Agent 1's pieces (positive values in actual board)
+                if piece_val > 0:  # Enemy piece (Agent 1's pieces are positive in actual board)
                     pos = (r_from, c_from)
                 else:
                     return
@@ -284,26 +319,28 @@ class ProbabilisticBeliefState:
         
         # Rule 1: Multi-tile move = Scout
         if distance > 1:
-            # Strong evidence for Scout
-            beliefs[PieceType.SCOUT] = min(0.9, beliefs[PieceType.SCOUT] + 0.3)
-            # Reduce probability for non-moving pieces
-            beliefs[PieceType.FLAG] *= 0.5
-            beliefs[PieceType.BOMB] *= 0.5
-            # Normalize
-            total = sum(beliefs.values())
-            for pt in PieceType:
-                beliefs[pt] /= total
+            # Strong evidence for Scout (ensure Python float)
+            beliefs[PieceType.SCOUT] = float(min(0.9, float(beliefs[PieceType.SCOUT]) + 0.3))
+            # Reduce probability for non-moving pieces (ensure Python float)
+            beliefs[PieceType.FLAG] = float(beliefs[PieceType.FLAG] * 0.5)
+            beliefs[PieceType.BOMB] = float(beliefs[PieceType.BOMB] * 0.5)
+            # Normalize (ensure all values are Python floats)
+            total = float(sum(beliefs.values()))
+            if total > 0:
+                for pt in PieceType:
+                    beliefs[pt] = float(beliefs[pt] / total)
         
         # Rule 2: Single tile move = Not Scout, Flag, or Bomb
         elif distance == 1:
-            # Reduce Scout probability
-            beliefs[PieceType.SCOUT] *= 0.3
-            beliefs[PieceType.FLAG] *= 0.5
-            beliefs[PieceType.BOMB] *= 0.5
-            # Normalize
-            total = sum(beliefs.values())
-            for pt in PieceType:
-                beliefs[pt] /= total
+            # Reduce Scout probability (ensure Python float)
+            beliefs[PieceType.SCOUT] = float(beliefs[PieceType.SCOUT] * 0.3)
+            beliefs[PieceType.FLAG] = float(beliefs[PieceType.FLAG] * 0.5)
+            beliefs[PieceType.BOMB] = float(beliefs[PieceType.BOMB] * 0.5)
+            # Normalize (ensure all values are Python floats)
+            total = float(sum(beliefs.values()))
+            if total > 0:
+                for pt in PieceType:
+                    beliefs[pt] = float(beliefs[pt] / total)
     
     def _apply_lstm_inference(self, pos: Tuple[int, int]):
         """
@@ -333,31 +370,88 @@ class ProbabilisticBeliefState:
         # LSTM outputs probabilities for each piece type index
         pred_probs = predictions[0].cpu().numpy()
         
-        # Map indices to PieceType (assuming order matches PieceType enum)
-        piece_types = list(PieceType)
+        # Map indices to PieceType - use sorted order to match default distribution
+        # CRITICAL: Use sorted PieceType to ensure consistent mapping
+        piece_types = sorted(PieceType, key=lambda pt: pt.value)
         beliefs = self.belief_distributions[pos]
         
         # Combine LSTM predictions with existing beliefs (weighted average)
         alpha = 0.3  # Weight for LSTM predictions
         for i, piece_type in enumerate(piece_types):
             if i < len(pred_probs):
-                beliefs[piece_type] = (1 - alpha) * beliefs[piece_type] + alpha * pred_probs[i]
+                # Convert to Python float to avoid numpy type issues
+                new_belief = float((1 - alpha) * float(beliefs[piece_type]) + alpha * float(pred_probs[i]))
+                beliefs[piece_type] = new_belief
         
-        # Normalize
-        total = sum(beliefs.values())
+        # Normalize (ensure all values are Python floats)
+        total = float(sum(beliefs.values()))
         if total > 0:
             for pt in PieceType:
-                beliefs[pt] /= total
+                beliefs[pt] = float(beliefs[pt] / total)
     
-    def update_from_reveal(self, pos: Tuple[int, int], piece_type: PieceType):
+    def update_from_reveal(self, pos: Tuple[int, int], piece_type: PieceType, 
+                          game_phase: str = 'middle', turn_count: int = 0):
         """
         Update beliefs when a piece is revealed (e.g., after battle).
+        Also collect data for PBS evaluator training if evaluator is available.
+        
+        Args:
+            pos: Position of the revealed piece
+            piece_type: Actual piece type (ground truth)
+            game_phase: 'middle' or 'end' game phase
+            turn_count: Current turn number
         """
+        # Get PBS prediction before updating (for evaluator training)
+        if self.evaluator is not None and pos in self.belief_distributions:
+            pbs_prediction = self.belief_distributions[pos].copy()
+            # Only collect data from middle/end game (skip early game)
+            if game_phase in ['middle', 'end']:
+                self.evaluator.remember(
+                    pbs_prediction=pbs_prediction,
+                    ground_truth=piece_type,
+                    position=pos,
+                    game_phase=game_phase,
+                    turn_count=turn_count
+                )
+        
         self.revealed_pieces[pos] = piece_type
         # Set belief to 1.0 for revealed type, 0.0 for others
         self.belief_distributions[pos] = {
             pt: 1.0 if pt == piece_type else 0.0 for pt in PieceType
         }
+    
+    def get_evaluator_feedback(self, pos: Tuple[int, int], 
+                               ground_truth: Optional[PieceType] = None) -> Optional[Dict]:
+        """
+        Get feedback from PBS evaluator on prediction quality.
+        
+        Args:
+            pos: Position to evaluate
+            ground_truth: Optional ground truth piece type
+            
+        Returns:
+            Feedback dictionary or None if evaluator not available
+        """
+        if self.evaluator is None or pos not in self.belief_distributions:
+            return None
+        
+        pbs_prediction = self.belief_distributions[pos]
+        return self.evaluator.get_feedback(pbs_prediction, ground_truth)
+    
+    def train_evaluator(self, epochs: int = 1) -> Optional[float]:
+        """
+        Train the PBS evaluator on collected data.
+        
+        Args:
+            epochs: Number of training epochs
+            
+        Returns:
+            Average loss or None if evaluator not available
+        """
+        if self.evaluator is None:
+            return None
+        
+        return self.evaluator.train(epochs=epochs)
     
     def get_belief_distribution(self, pos: Tuple[int, int]) -> Dict[PieceType, float]:
         """
@@ -497,4 +591,27 @@ class ProbabilisticBeliefState:
                 total_loss += loss.item()
         
         self.lstm_model.eval()
+    
+    def save_lstm_model(self, filepath: str):
+        """
+        Save the LSTM model separately.
+        
+        Args:
+            filepath: Path to save the LSTM model
+        """
+        torch.save({
+            'lstm_state_dict': self.lstm_model.state_dict(),
+            'lstm_optimizer_state_dict': self.lstm_optimizer.state_dict(),
+        }, filepath)
+    
+    def load_lstm_model(self, filepath: str):
+        """
+        Load the LSTM model separately.
+        
+        Args:
+            filepath: Path to load the LSTM model from
+        """
+        checkpoint = torch.load(filepath, map_location=self.device)
+        self.lstm_model.load_state_dict(checkpoint['lstm_state_dict'])
+        self.lstm_optimizer.load_state_dict(checkpoint['lstm_optimizer_state_dict'])
 

@@ -3,6 +3,10 @@ DQN Agent Move Visualizer for Stratego Game
 """
 
 import torch
+# Set matplotlib backend to non-interactive (thread-safe)
+import matplotlib
+matplotlib.use('Agg')  # Use non-interactive backend (no GUI required)
+
 import matplotlib.pyplot as plt
 import numpy as np
 from typing import List, Tuple, Optional
@@ -121,8 +125,8 @@ class DQNMoveVisualizer:
         if save_path:
             plt.savefig(save_path, dpi=300, bbox_inches='tight')
             print(f"Move visualization saved to {save_path}")
-        else:
-            plt.show()
+        # Note: plt.show() is disabled when using 'Agg' backend (non-interactive, thread-safe)
+        # Plots are saved to files instead
         
         plt.close()
         

@@ -136,12 +136,12 @@ class DeepCFR:
         
         # Optimizers
         self.regret_optimizers = [
-            optim.Adam(self.regret_networks[0].parameters(), lr=0.001),
-            optim.Adam(self.regret_networks[1].parameters(), lr=0.001)
+            optim.AdamW(self.regret_networks[0].parameters(), lr=0.001, weight_decay=0.01),
+            optim.AdamW(self.regret_networks[1].parameters(), lr=0.001, weight_decay=0.01)
         ]
         self.strategy_optimizers = [
-            optim.Adam(self.strategy_networks[0].parameters(), lr=0.001),
-            optim.Adam(self.strategy_networks[1].parameters(), lr=0.001)
+            optim.AdamW(self.strategy_networks[0].parameters(), lr=0.001, weight_decay=0.01),
+            optim.AdamW(self.strategy_networks[1].parameters(), lr=0.001, weight_decay=0.01)
         ]
         
         # Training data
