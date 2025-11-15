@@ -430,8 +430,9 @@ class StrategoEnvironment:
                 if defender_type == PieceType.FLAG:
                     self.game_over = True
                     self.winner = self.current_player
-                    # Flag capture reward (scaled down by 10x)
-                    reward += 10.0  # (was 100.0, now 10.0 after scaling down)
+                    # Flag capture reward - make it MUCH larger to incentivize winning
+                    # Keep it large relative to other rewards to encourage aggressive play
+                    reward += 50.0  # Increased from 10.0 to 50.0 (5x larger) to incentivize winning
                     # OPTIMIZATION: Update flag cache when flag is captured
                     if hasattr(self, '_flag_positions'):
                         self._flag_positions[-self.current_player] = None
@@ -525,8 +526,12 @@ class StrategoEnvironment:
                     distance_after = abs(r_to - enemy_flag_r) + abs(c_to - enemy_flag_c)
                     distance_before = abs(r_from - enemy_flag_r) + abs(c_from - enemy_flag_c)
                     if distance_after < distance_before:
-                        endgame_aggression_reward = 0.2 * REWARD_SCALE
+                        endgame_aggression_reward = 0.5 * REWARD_SCALE  # Increased from 0.2 to 0.5 (more reward for aggressive play)
                         reward += endgame_aggression_reward
+                    # Additional reward for being very close to flag
+                    if distance_after < 3:
+                        proximity_bonus = 0.3 * REWARD_SCALE  # Bonus for being within 3 squares
+                        reward += proximity_bonus
             
             # 9. NEW: Tactical Support Rewards
             # Count pieces that can support the moved piece in battle
@@ -595,7 +600,7 @@ class StrategoEnvironment:
         available_moves_before = self._previous_move_count.get(player_who_moved, available_moves_after)
         
         if available_moves_after < available_moves_before * 0.5 and available_moves_before > 0:
-            stalemate_penalty = 0.15 * REWARD_SCALE
+            stalemate_penalty = 0.05 * REWARD_SCALE  # Reduced from 0.15 to 0.05 (less penalty to encourage aggressive play)
             reward -= stalemate_penalty * phase_multiplier
         
         # Store current move count for next turn
@@ -897,8 +902,8 @@ class StrategoEnvironment:
             if not self.get_valid_moves():
                 self.game_over = True
                 self.winner = -self.current_player # Player who cannot move loses
-        # Smart draw detection
-        if self.turn_count > 300:  # Start checking after 300 moves
+        # Smart draw detection (relaxed to allow more decisive games)
+        if self.turn_count > 400:  # Increased from 300 to 400 moves before checking (gives more time for decisive play)
             # Check for repetitive positions (same piece arrangement)
             if self._is_position_repetitive():
                 self.game_over = True
@@ -909,8 +914,8 @@ class StrategoEnvironment:
                 self.game_over = True
                 self.winner = 0
                 return
-        # Ultimate limit
-        if self.turn_count > 1000:
+        # Ultimate limit (increased to allow longer games)
+        if self.turn_count > 1500:  # Increased from 1000 to 1500
             self.game_over = True
             self.winner = 0
             

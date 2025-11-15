@@ -367,6 +367,9 @@ class ProbabilisticBeliefState:
         if PBS_EVALUATOR_AVAILABLE:
             self.evaluator = PBSEvaluator(device=device)
         
+        # Active learning: track uncertain positions that need more observation
+        self.uncertain_positions: set = set()
+        
     def reset(self):
         """Reset the belief state for a new game."""
         self.piece_action_history.clear()
@@ -379,9 +382,11 @@ class ProbabilisticBeliefState:
         self.piece_observation_times.clear()
         self.turn_count = 0
         self.piece_coordination.clear()
+        self.uncertain_positions.clear()
     
     def _extract_action_features(self, action: Tuple[Tuple[int, int], Tuple[int, int]], 
-                                 game_state, pos: Optional[Tuple[int, int]] = None) -> np.ndarray:
+                                 game_state, pos: Optional[Tuple[int, int]] = None,
+                                 apply_feature_weights: bool = True) -> np.ndarray:
         """
         Extract enhanced features from an action for Aaren input.
         
@@ -521,7 +526,7 @@ class ProbabilisticBeliefState:
         # Feature 23: Threat level (simplified)
         threat_level = is_attack * 0.5 + (adjacent_enemy / 4.0)
         
-        return np.array([
+        features = np.array([
             distance / 10.0,  # 0
             is_attack,  # 1
             direction / 3.0,  # 2
@@ -547,6 +552,19 @@ class ProbabilisticBeliefState:
             mobility_estimate,  # 22
             threat_level  # 23
         ], dtype=np.float32)
+        
+        # Apply feature importance weighting if evaluator is available
+        if apply_feature_weights and self.evaluator is not None:
+            try:
+                importance_weights = self.evaluator.get_feature_importance(features)
+                # Ensure weights match features shape
+                if importance_weights.shape == features.shape:
+                    features = features * importance_weights
+            except Exception:
+                # If feature importance fails, use unweighted features
+                pass
+        
+        return features
     
     def update_from_action(self, action: Tuple[Tuple[int, int], Tuple[int, int]], 
                           game_state, acting_player: int):
@@ -627,6 +645,30 @@ class ProbabilisticBeliefState:
         # Aaren-based inference (sequential update for efficiency)
         if len(self.piece_action_history[pos]) >= 1:
             self._apply_aaren_inference(pos)
+        
+        # Apply bias correction from evaluator
+        if self.evaluator is not None and pos in self.belief_distributions:
+            beliefs = self.belief_distributions[pos]
+            # Apply correction factors to each piece type
+            corrected_beliefs = {}
+            for piece_type in beliefs:
+                correction = self.evaluator.get_bias_correction(piece_type)
+                corrected_beliefs[piece_type] = beliefs[piece_type] * correction
+            
+            # Normalize to ensure probabilities sum to 1
+            total = sum(corrected_beliefs.values())
+            if total > 0:
+                for piece_type in corrected_beliefs:
+                    corrected_beliefs[piece_type] /= total
+                self.belief_distributions[pos] = corrected_beliefs
+        
+        # Check if we need more information (active learning)
+        if self.evaluator is not None and pos in self.belief_distributions:
+            beliefs = self.belief_distributions[pos]
+            if self.evaluator.should_gather_more_info(beliefs):
+                self.uncertain_positions.add(pos)
+            else:
+                self.uncertain_positions.discard(pos)
         
         # Apply piece count constraints
         self._apply_piece_count_constraints(pos)
@@ -927,12 +969,19 @@ class ProbabilisticBeliefState:
             pbs_prediction = self.belief_distributions[pos].copy()
             # Only collect data from middle/end game (skip early game)
             if game_phase in ['middle', 'end']:
+                # Get action features for this position if available
+                action_features = None
+                if pos in self.piece_action_history and len(self.piece_action_history[pos]) > 0:
+                    # Use the most recent action features
+                    action_features = self.piece_action_history[pos][-1]
+                
                 self.evaluator.remember(
                     pbs_prediction=pbs_prediction,
                     ground_truth=piece_type,
                     position=pos,
                     game_phase=game_phase,
-                    turn_count=turn_count
+                    turn_count=turn_count,
+                    action_features=action_features
                 )
                 # Get evaluator feedback for AAREN training
                 evaluator_feedback = self.get_evaluator_feedback(pos, ground_truth=piece_type)
@@ -1008,7 +1057,31 @@ class ProbabilisticBeliefState:
         if self.evaluator is None:
             return None
         
+        # Train feature importance network
+        self.evaluator.train_feature_importance(epochs=epochs)
+        
+        # Train main evaluator network
         return self.evaluator.train(epochs=epochs)
+    
+    def get_uncertain_positions(self) -> set:
+        """
+        Get positions that need more information gathering (active learning).
+        
+        Returns:
+            Set of positions that are uncertain and should be prioritized for observation
+        """
+        return self.uncertain_positions.copy()
+    
+    def get_bias_summary(self) -> Optional[Dict[str, float]]:
+        """
+        Get summary of detected PBS biases from evaluator.
+        
+        Returns:
+            Dictionary mapping piece type names to correction factors, or None if evaluator not available
+        """
+        if self.evaluator is None:
+            return None
+        return self.evaluator.bias_tracker.get_bias_summary()
     
     def get_belief_distribution(self, pos: Tuple[int, int]) -> Dict[PieceType, float]:
         """
@@ -1077,6 +1150,76 @@ class ProbabilisticBeliefState:
                 return float(min(1.0, calibrated_confidence))
         
         return float(base_confidence)
+    
+    def get_uncertainty_map(self, game_state, board_size: int = 10) -> Dict[Tuple[int, int], float]:
+        """
+        Get uncertainty map for all positions on the board.
+        Uncertainty is calculated as entropy of belief distribution.
+        
+        Args:
+            game_state: Current game state
+            board_size: Size of the board
+            
+        Returns:
+            Dictionary mapping positions to uncertainty values (0.0 = certain, 1.0 = uncertain)
+        """
+        uncertainty_map = {}
+        
+        for r in range(board_size):
+            for c in range(board_size):
+                pos = (r, c)
+                if pos in self.belief_distributions:
+                    beliefs = self.belief_distributions[pos]
+                    if beliefs:
+                        # Calculate entropy (uncertainty)
+                        probs = [p for p in beliefs.values() if p > 0]
+                        if probs:
+                            entropy = -sum(p * math.log(p + 1e-10) for p in probs)
+                            max_entropy = math.log(len(beliefs))
+                            normalized_entropy = entropy / max_entropy if max_entropy > 0 else 0.0
+                            uncertainty_map[pos] = float(normalized_entropy)
+                        else:
+                            uncertainty_map[pos] = 1.0  # No beliefs = maximum uncertainty
+                    else:
+                        uncertainty_map[pos] = 1.0  # Empty beliefs = maximum uncertainty
+                else:
+                    # Position not in beliefs - check if it's an enemy piece
+                    if hasattr(game_state, 'board'):
+                        board = game_state.board
+                        if isinstance(board, torch.Tensor):
+                            piece_val = board[r, c].item()
+                        else:
+                            piece_val = board[r][c]
+                        
+                        # If it's an enemy piece (hidden), it has uncertainty
+                        from .board import HIDDEN_PIECE
+                        if piece_val == HIDDEN_PIECE or (self.player_id == 1 and piece_val < 0) or (self.player_id == -1 and piece_val > 0):
+                            uncertainty_map[pos] = 1.0  # Unknown enemy piece = maximum uncertainty
+                        else:
+                            uncertainty_map[pos] = 0.0  # Known piece = no uncertainty
+        
+        return uncertainty_map
+    
+    def get_position_uncertainty(self, pos: Tuple[int, int]) -> float:
+        """
+        Get uncertainty for a specific position.
+        
+        Args:
+            pos: Position tuple (row, col)
+            
+        Returns:
+            Uncertainty value (0.0 = certain, 1.0 = uncertain)
+        """
+        if pos in self.belief_distributions:
+            beliefs = self.belief_distributions[pos]
+            if beliefs:
+                probs = [p for p in beliefs.values() if p > 0]
+                if probs:
+                    entropy = -sum(p * math.log(p + 1e-10) for p in probs)
+                    max_entropy = math.log(len(beliefs))
+                    normalized_entropy = entropy / max_entropy if max_entropy > 0 else 0.0
+                    return float(normalized_entropy)
+        return 1.0  # No beliefs = maximum uncertainty
     
     def _update_piece_coordination(self, pos: Tuple[int, int],
                                    action: Tuple[Tuple[int, int], Tuple[int, int]],

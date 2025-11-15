@@ -633,8 +633,18 @@ def plot_setup_agent_progress(
     if not episode_history or len(episode_history) == 0:
         raise ValueError("episode_history is empty - cannot plot setup agent progress")
     
-    if not setup_agent1_rewards or not setup_agent2_rewards:
-        raise ValueError("setup agent rewards are empty")
+    # Handle empty rewards gracefully - skip plotting if no data yet
+    if not setup_agent1_rewards or not setup_agent2_rewards or len(setup_agent1_rewards) == 0 or len(setup_agent2_rewards) == 0:
+        print("⚠️  Setup agent rewards are empty - skipping setup agent progress plot")
+        # Create a simple placeholder plot with a message
+        fig, ax = plt.subplots(1, 1, figsize=(10, 6))
+        ax.text(0.5, 0.5, 'No setup agent data available yet', 
+                ha='center', va='center', fontsize=14, transform=ax.transAxes)
+        ax.set_title('Setup Agent Training Progress', fontsize=16)
+        plt.tight_layout()
+        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+        plt.close()
+        return
     
     if len(episode_history) != len(setup_agent1_rewards) or len(episode_history) != len(setup_agent2_rewards):
         raise ValueError(f"Length mismatch: episode_history={len(episode_history)}, "

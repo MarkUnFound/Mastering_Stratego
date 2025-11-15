@@ -8,8 +8,9 @@ import torch.optim as optim
 import torch.nn.functional as F
 import numpy as np
 import random
+import math
 from collections import deque, namedtuple
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Dict
 from .piece import PieceType
 from .probabilistic_belief_state import ProbabilisticBeliefState
 
@@ -97,6 +98,21 @@ class DQNAgent:
         else:
             self.pbs = None
         
+        # Uncertainty-driven exploration parameters
+        self.uncertainty_exploration_multiplier = 0.5  # How much uncertainty affects exploration
+        self.uncertainty_penalty_scale = 0.3  # Penalty for uncertain actions
+        
+        # Action-PBS buffer for tracking Q-values with PBS states
+        self.action_pbs_buffer = deque(maxlen=50)  # Track PBS state for actions
+        
+        # Performance monitoring
+        self.pbs_dqn_alignment_history = deque(maxlen=100)  # Track alignment between PBS and DQN
+        self.performance_metrics = {
+            'pbs_accuracy_trend': deque(maxlen=100),
+            'dqn_loss_trend': deque(maxlen=100),
+            'action_prediction_alignment': deque(maxlen=100)
+        }
+        
         # Neural networks (keep on GPU, no compilation for Windows compatibility)
         self.q_network = DQN(state_size, 512, action_size).to(device)
         self.target_network = DQN(state_size, 512, action_size).to(device)
@@ -114,9 +130,34 @@ class DQNAgent:
         # Track policy losses
         self.policy_losses = []
         
-        # Step counter for epsilon decay (become deterministic at 500,000 steps)
+        # Loss smoothing (exponential moving average)
+        self.smoothed_loss = None
+        self.loss_smoothing_factor = 0.95  # EMA factor (higher = more smoothing)
+        
+        # Step counter for epsilon decay
         self.step_count = 0
-        self.epsilon_decay_interval = 500_000  # Become deterministic (epsilon = 0) at 500,000 steps
+        self.epsilon_decay_interval = 500_000  # Decay epsilon over 500,000 steps
+        self.epsilon_min = max(epsilon_min, 0.01)  # Ensure minimum epsilon for continued exploration
+        
+        # Learning rate scheduling with automatic adjustment
+        self.initial_lr = lr
+        self.lr_decay_factor = 0.5  # Reduce LR by half every 500k steps
+        self.lr_decay_interval = 500_000
+        self.min_lr = lr * 0.01  # Minimum learning rate (1% of initial)
+        
+        # Automatic learning rate adjustment based on loss trends
+        self.loss_history_for_lr = deque(maxlen=200)  # Track losses for LR adjustment
+        self.lr_adjustment_interval = 50  # Check every 50 training steps
+        self.lr_adjustment_threshold = 1.5  # If loss increases by 1.5x, reduce LR
+        self.lr_reduction_factor = 0.8  # Reduce LR by 20% when loss spikes
+        self.lr_increase_factor = 1.1  # Increase LR by 10% when loss is very low
+        self.lr_increase_threshold = 0.1  # If loss < 0.1, consider increasing LR
+        
+        # Adaptive epsilon: increase if performance stagnates
+        self.reward_history = deque(maxlen=1000)  # Track recent rewards
+        self.stagnation_threshold = 50  # Episodes without improvement
+        self.stagnation_episodes = 0
+        self.best_avg_reward = float('-inf')
         
         # Pre-allocate tensors on GPU for batch operations
         self._batch_actions = None
@@ -140,11 +181,28 @@ class DQNAgent:
         self.memory.clear()
         # Clear policy losses
         self.policy_losses = []
+        # Reset smoothed loss
+        self.smoothed_loss = None
+        # Reset loss history for LR adjustment
+        self.loss_history_for_lr = deque(maxlen=200)
         # Reset step counter
         self.step_count = 0
+        # Reset adaptive epsilon tracking
+        self.reward_history = deque(maxlen=1000)
+        self.stagnation_episodes = 0
+        self.best_avg_reward = float('-inf')
         # Reset PBS
         if self.pbs:
             self.pbs.reset()
+        # Clear action-PBS buffer
+        self.action_pbs_buffer.clear()
+        if hasattr(self, '_action_q_values'):
+            self._action_q_values.clear()
+        # Clear alignment history
+        self.pbs_dqn_alignment_history.clear()
+        # Clear performance metrics
+        for key in self.performance_metrics:
+            self.performance_metrics[key].clear()
         # Update target network with new weights
         self.update_target_network()
         
@@ -221,12 +279,12 @@ class DQNAgent:
             # No state available, return random action
             return random.choice(valid_moves)
             
-        # Exploration: choose random action (keep random on GPU to avoid CPU transfer)
-        if torch.rand(1, device=self.device, dtype=torch.float32).item() <= self.epsilon:
-            return random.choice(valid_moves)
-            
-        # Step 2: DQN calculates Q-value using PBS-enhanced state
-        # Exploitation: choose best action according to Q-network
+        # Step 2: Get uncertainty map for uncertainty-driven exploration
+        uncertainty_map = {}
+        if self.pbs and game_state is not None:
+            uncertainty_map = self.pbs.get_uncertainty_map(game_state)
+        
+        # Step 3: DQN calculates Q-value using PBS-enhanced state
         # Ensure state is a GPU tensor
         if not isinstance(state, torch.Tensor):
             if isinstance(state, np.ndarray):
@@ -245,13 +303,25 @@ class DQNAgent:
             
         self.q_network.eval()
         with torch.no_grad():
-            q_values = self.q_network(state)
+            base_q_values = self.q_network(state)
         self.q_network.train()
         
-        # Convert valid moves to action indices and find best (all on GPU)
-        best_action = None
-        best_q_value = torch.tensor(float('-inf'), device=self.device)
+        # Step 4: Apply uncertainty-aware Q-value calculation
+        q_values = self.calculate_uncertainty_aware_q_values(
+            base_q_values, valid_moves, uncertainty_map
+        )
         
+        # Step 5: Uncertainty-driven exploration (modify epsilon based on uncertainty)
+        # Higher uncertainty in available moves -> more exploration
+        avg_uncertainty = self.get_average_uncertainty(valid_moves, uncertainty_map)
+        adjusted_epsilon = self.epsilon + (avg_uncertainty * self.uncertainty_exploration_multiplier)
+        adjusted_epsilon = min(1.0, adjusted_epsilon)  # Cap at 1.0
+        
+        # Exploration: choose random action with adjusted epsilon
+        if torch.rand(1, device=self.device, dtype=torch.float32).item() <= adjusted_epsilon:
+            return random.choice(valid_moves)
+        
+        # Step 6: Exploitation: choose best action with uncertainty weighting
         # Pre-compute action indices for all valid moves on GPU
         action_indices = torch.tensor(
             [self._move_to_action_index(move) for move in valid_moves],
@@ -261,8 +331,23 @@ class DQNAgent:
         
         # Get Q-values for all valid moves at once (vectorized)
         valid_q_values = q_values[0, action_indices]
-        best_idx = torch.argmax(valid_q_values).item()
+        
+        # Add exploration bonus for uncertain positions
+        exploration_bonuses = torch.zeros(len(valid_moves), device=self.device)
+        for i, move in enumerate(valid_moves):
+            uncertainty = self.get_move_uncertainty(move, uncertainty_map)
+            exploration_bonuses[i] = uncertainty * self.uncertainty_exploration_multiplier
+        
+        # Modified Q-values: Q + exploration_bonus
+        modified_q_values = valid_q_values + exploration_bonuses
+        
+        # Choose action with highest modified Q-value
+        best_idx = torch.argmax(modified_q_values).item()
         best_action = valid_moves[best_idx]
+        
+        # Store action-PBS state for feedback
+        if self.pbs and game_state is not None:
+            self.store_action_pbs_state(best_action, base_q_values, uncertainty_map, game_state)
                 
         return best_action if best_action is not None else random.choice(valid_moves)
         
@@ -305,20 +390,69 @@ class DQNAgent:
         self.optimizer.step()
         
         # Track policy loss (minimize CPU transfer - only get item() once)
-        # Clip loss value for reporting to prevent extremely large values
-        loss_value = min(loss.item(), 100.0)  # Cap at 100 for reporting
-        self.policy_losses.append(loss_value)
+        # Store actual loss value without capping to see true loss magnitude
+        loss_value = loss.item()
+        self.policy_losses.append(loss_value)  # No cap - track actual loss values
         
-        # Gradual epsilon decay: linearly decrease from 1.0 to 0.0 over 500,000 steps
-        if self.step_count < self.epsilon_decay_interval:
-            # Linear decay: epsilon decreases from 1.0 to 0.0 over 500,000 steps
-            # Formula: epsilon = 1.0 - (step_count / 500000)
-            self.epsilon = 1.0 - (self.step_count / self.epsilon_decay_interval)
-            # Clamp to valid range [0.0, 1.0]
-            self.epsilon = max(0.0, min(1.0, self.epsilon))
+        # Update smoothed loss (exponential moving average)
+        if self.smoothed_loss is None:
+            self.smoothed_loss = loss_value
         else:
-            # After 500,000 steps: fully deterministic (epsilon = 0, no exploration)
-            self.epsilon = 0.0
+            self.smoothed_loss = self.loss_smoothing_factor * self.smoothed_loss + (1 - self.loss_smoothing_factor) * loss_value
+        
+        # Track loss for automatic LR adjustment
+        self.loss_history_for_lr.append(loss_value)
+        
+        # Learning rate scheduling: reduce LR over time for fine-tuning
+        lr_decay_steps = self.step_count // self.lr_decay_interval
+        base_lr = self.initial_lr * (self.lr_decay_factor ** lr_decay_steps)
+        base_lr = max(base_lr, self.min_lr)
+        
+        # Automatic learning rate adjustment based on loss trends
+        current_lr = self.optimizer.param_groups[0]['lr']
+        if len(self.loss_history_for_lr) >= self.lr_adjustment_interval:
+            recent_losses = list(self.loss_history_for_lr)[-self.lr_adjustment_interval:]
+            older_losses = list(self.loss_history_for_lr)[-self.lr_adjustment_interval * 2:-self.lr_adjustment_interval]
+            
+            if len(older_losses) > 0:
+                recent_avg = sum(recent_losses) / len(recent_losses)
+                older_avg = sum(older_losses) / len(older_losses)
+                
+                # If loss increased significantly, reduce learning rate
+                if older_avg > 0 and recent_avg > older_avg * self.lr_adjustment_threshold:
+                    new_lr = current_lr * self.lr_reduction_factor
+                    new_lr = max(new_lr, self.min_lr)
+                    for param_group in self.optimizer.param_groups:
+                        param_group['lr'] = new_lr
+                # If loss is very low and stable, consider increasing LR slightly
+                elif recent_avg < self.lr_increase_threshold and recent_avg < older_avg * 0.9:
+                    new_lr = min(current_lr * self.lr_increase_factor, self.initial_lr)
+                    for param_group in self.optimizer.param_groups:
+                        param_group['lr'] = new_lr
+                else:
+                    # Use base LR from time-based decay
+                    for param_group in self.optimizer.param_groups:
+                        param_group['lr'] = base_lr
+            else:
+                # Use base LR from time-based decay
+                for param_group in self.optimizer.param_groups:
+                    param_group['lr'] = base_lr
+        else:
+            # Use base LR from time-based decay
+            for param_group in self.optimizer.param_groups:
+                param_group['lr'] = base_lr
+        
+        # Gradual epsilon decay: linearly decrease from 1.0 to epsilon_min over 500,000 steps
+        if self.step_count < self.epsilon_decay_interval:
+            # Linear decay: epsilon decreases from 1.0 to epsilon_min over 500,000 steps
+            # Formula: epsilon = epsilon_min + (1.0 - epsilon_min) * (1 - step_count / 500000)
+            progress = self.step_count / self.epsilon_decay_interval
+            self.epsilon = self.epsilon_min + (1.0 - self.epsilon_min) * (1.0 - progress)
+            # Clamp to valid range [epsilon_min, 1.0]
+            self.epsilon = max(self.epsilon_min, min(1.0, self.epsilon))
+        else:
+            # After 500,000 steps: maintain minimum epsilon for continued exploration
+            self.epsilon = self.epsilon_min
             
         return loss_value
         
@@ -328,6 +462,61 @@ class DQNAgent:
             return 0.0
         recent_losses = self.policy_losses[-window:]
         return sum(recent_losses) / len(recent_losses)
+    
+    def get_smoothed_loss(self) -> float:
+        """Get the exponentially smoothed loss value"""
+        return self.smoothed_loss if self.smoothed_loss is not None else 0.0
+    
+    def get_policy_loss_stats(self, window: int = 100) -> dict:
+        """Get detailed statistics about policy loss"""
+        if not self.policy_losses:
+            return {'mean': 0.0, 'min': 0.0, 'max': 0.0, 'median': 0.0, 'std': 0.0}
+        
+        recent_losses = self.policy_losses[-window:]
+        if not recent_losses:
+            return {'mean': 0.0, 'min': 0.0, 'max': 0.0, 'median': 0.0, 'std': 0.0}
+        
+        sorted_losses = sorted(recent_losses)
+        n = len(sorted_losses)
+        
+        stats = {
+            'mean': sum(recent_losses) / n,
+            'min': sorted_losses[0],
+            'max': sorted_losses[-1],
+            'median': sorted_losses[n // 2] if n > 0 else 0.0,
+            'std': (sum((x - sum(recent_losses) / n) ** 2 for x in recent_losses) / n) ** 0.5 if n > 1 else 0.0
+        }
+        return stats
+    
+    def get_current_learning_rate(self) -> float:
+        """Get the current learning rate"""
+        return self.optimizer.param_groups[0]['lr']
+    
+    def update_episode_reward(self, episode_reward: float):
+        """
+        Track episode reward and adaptively adjust epsilon if performance stagnates.
+        This helps the agent continue exploring when it gets stuck in a local optimum.
+        """
+        self.reward_history.append(episode_reward)
+        
+        # Calculate average reward over last 100 episodes
+        if len(self.reward_history) >= 100:
+            recent_avg = sum(list(self.reward_history)[-100:]) / 100
+            
+            # Check if we've improved
+            if recent_avg > self.best_avg_reward:
+                self.best_avg_reward = recent_avg
+                self.stagnation_episodes = 0
+            else:
+                self.stagnation_episodes += 1
+            
+            # If performance has stagnated, increase epsilon to encourage exploration
+            if self.stagnation_episodes >= self.stagnation_threshold:
+                # Increase epsilon (but cap at 0.2 to avoid too much randomness)
+                self.epsilon = min(0.2, self.epsilon * 1.5)
+                self.stagnation_episodes = 0  # Reset counter after adjustment
+                # Optionally reset best_avg_reward to allow new baseline
+                self.best_avg_reward = recent_avg
             
     def _move_to_action_index(self, move: Tuple[Tuple[int, int], Tuple[int, int]]) -> int:
         """Convert a move to an action index (0-999 for 10x10 board)"""
@@ -540,18 +729,304 @@ class DQNAgent:
             
         return state
     
+    def calculate_uncertainty_aware_q_values(self, base_q_values: torch.Tensor,
+                                             valid_moves: List[Tuple[Tuple[int, int], Tuple[int, int]]],
+                                             uncertainty_map: Dict[Tuple[int, int], float]) -> torch.Tensor:
+        """
+        Integrate PBS uncertainty into Q-value calculations.
+        Reduces Q-values for actions in uncertain areas.
+        
+        Args:
+            base_q_values: Base Q-values from network
+            valid_moves: List of valid moves
+            uncertainty_map: Dictionary mapping positions to uncertainty values
+            
+        Returns:
+            Uncertainty-adjusted Q-values
+        """
+        q_values = base_q_values.clone()
+        
+        # Apply uncertainty penalty to each valid action
+        for move in valid_moves:
+            action_idx = self._move_to_action_index(move)
+            uncertainty_penalty = self.get_uncertainty_penalty(move, uncertainty_map)
+            q_values[0, action_idx] -= uncertainty_penalty * self.uncertainty_penalty_scale
+        
+        return q_values
+    
+    def get_uncertainty_penalty(self, move: Tuple[Tuple[int, int], Tuple[int, int]],
+                                uncertainty_map: Dict[Tuple[int, int], float]) -> float:
+        """
+        Get uncertainty penalty for a move.
+        Considers uncertainty at both source and destination.
+        
+        Args:
+            move: Action tuple
+            uncertainty_map: Dictionary mapping positions to uncertainty values
+            
+        Returns:
+            Uncertainty penalty value
+        """
+        (r_from, c_from), (r_to, c_to) = move
+        from_pos = (r_from, c_from)
+        to_pos = (r_to, c_to)
+        
+        # Average uncertainty at source and destination
+        from_uncertainty = uncertainty_map.get(from_pos, 0.0)
+        to_uncertainty = uncertainty_map.get(to_pos, 0.0)
+        avg_uncertainty = (from_uncertainty + to_uncertainty) / 2.0
+        
+        return float(avg_uncertainty)
+    
+    def get_move_uncertainty(self, move: Tuple[Tuple[int, int], Tuple[int, int]],
+                            uncertainty_map: Dict[Tuple[int, int], float]) -> float:
+        """
+        Get uncertainty for a move (for exploration bonus).
+        
+        Args:
+            move: Action tuple
+            uncertainty_map: Dictionary mapping positions to uncertainty values
+            
+        Returns:
+            Uncertainty value
+        """
+        (r_from, c_from), (r_to, c_to) = move
+        from_pos = (r_from, c_from)
+        to_pos = (r_to, c_to)
+        
+        # Average uncertainty at source and destination
+        from_uncertainty = uncertainty_map.get(from_pos, 0.0)
+        to_uncertainty = uncertainty_map.get(to_pos, 0.0)
+        return (from_uncertainty + to_uncertainty) / 2.0
+    
+    def get_average_uncertainty(self, valid_moves: List[Tuple[Tuple[int, int], Tuple[int, int]]],
+                               uncertainty_map: Dict[Tuple[int, int], float]) -> float:
+        """
+        Get average uncertainty across all valid moves.
+        
+        Args:
+            valid_moves: List of valid moves
+            uncertainty_map: Dictionary mapping positions to uncertainty values
+            
+        Returns:
+            Average uncertainty value
+        """
+        if not valid_moves:
+            return 0.0
+        
+        uncertainties = [self.get_move_uncertainty(move, uncertainty_map) for move in valid_moves]
+        return sum(uncertainties) / len(uncertainties) if uncertainties else 0.0
+    
+    def store_action_pbs_state(self, action: Tuple[Tuple[int, int], Tuple[int, int]],
+                               q_values: torch.Tensor, uncertainty_map: Dict[Tuple[int, int], float],
+                               game_state):
+        """
+        Store action with PBS state and Q-values for feedback learning.
+        
+        Args:
+            action: Action taken
+            q_values: Q-values from network
+            uncertainty_map: Uncertainty map
+            game_state: Current game state
+        """
+        action_idx = self._move_to_action_index(action)
+        action_q_value = q_values[0, action_idx].item()
+        
+        # Get uncertainty for this action
+        action_uncertainty = self.get_move_uncertainty(action, uncertainty_map)
+        
+        self.action_pbs_buffer.append({
+            'action': action,
+            'q_value': action_q_value,
+            'uncertainty': action_uncertainty,
+            'game_state': game_state
+        })
+    
+    def compute_combined_reward(self, game_reward: float, pbs_quality_reward: Optional[float] = None,
+                               dqn_q_value: Optional[float] = None) -> Dict[str, float]:
+        """
+        Combine rewards from multiple sources:
+        - game_reward: Standard game reward (win/loss/draw)
+        - pbs_quality_reward: PBS prediction quality reward
+        - dqn_q_value: Q-value confidence reward
+        
+        Args:
+            game_reward: Standard game reward
+            pbs_quality_reward: PBS quality reward (optional)
+            dqn_q_value: Q-value for confidence (optional)
+            
+        Returns:
+            Dictionary with combined reward components
+        """
+        combined = {
+            'game_reward': game_reward * 1.0,
+            'pbs_quality': 0.0,
+            'q_confidence': 0.0,
+            'total': game_reward
+        }
+        
+        # Add PBS quality reward (weighted contribution)
+        if pbs_quality_reward is not None:
+            combined['pbs_quality'] = pbs_quality_reward * 0.3
+            combined['total'] += combined['pbs_quality']
+        
+        # Add Q-value confidence reward (normalized)
+        if dqn_q_value is not None:
+            normalized_q = self.normalize_q_value(dqn_q_value)
+            combined['q_confidence'] = normalized_q * 0.2
+            combined['total'] += combined['q_confidence']
+        
+        return combined
+    
+    def normalize_q_value(self, q_value: float) -> float:
+        """
+        Normalize Q-value to [0, 1] range for reward shaping.
+        
+        Args:
+            q_value: Raw Q-value
+            
+        Returns:
+            Normalized Q-value in [0, 1]
+        """
+        # Simple normalization: use sigmoid to map to [0, 1]
+        # Adjust scale based on typical Q-value range
+        return 1.0 / (1.0 + math.exp(-q_value / 10.0))
+    
     def update_pbs_from_action(self, action: Tuple[Tuple[int, int], Tuple[int, int]], 
                               game_state, acting_player: int):
         """
         Update PBS from an action taken.
+        Enhanced with Q-value feedback from DQN.
         
         Args:
-            action: The action taken
+            action: Action tuple ((from_row, from_col), (to_row, to_col))
             game_state: Current game state
-            acting_player: Player who took the action
+            acting_player: Player ID who took the action
         """
         if self.pbs:
+            # Get Q-value feedback if available
+            action_q_value = None
+            for stored in self.action_pbs_buffer:
+                if stored['action'] == action:
+                    action_q_value = stored['q_value']
+                    break
+            
+            # Update PBS with action
             self.pbs.update_from_action(action, game_state, acting_player)
+            
+            # Store Q-value for PBS evaluator training (if this is opponent's action)
+            if acting_player != self.player_id and action_q_value is not None:
+                # This will be used when the piece is revealed
+                # Store in a way that can be retrieved later
+                if not hasattr(self, '_action_q_values'):
+                    self._action_q_values = {}
+                self._action_q_values[action] = action_q_value
+    
+    def update_performance_metrics(self, pbs_accuracy: Optional[float] = None,
+                                  dqn_loss: Optional[float] = None,
+                                  action_alignment: Optional[float] = None):
+        """
+        Update cross-system performance metrics.
+        
+        Args:
+            pbs_accuracy: PBS prediction accuracy (0-1)
+            dqn_loss: DQN training loss
+            action_alignment: Alignment between PBS predictions and DQN actions (0-1)
+        """
+        if pbs_accuracy is not None:
+            self.performance_metrics['pbs_accuracy_trend'].append(pbs_accuracy)
+        if dqn_loss is not None:
+            self.performance_metrics['dqn_loss_trend'].append(dqn_loss)
+        if action_alignment is not None:
+            self.performance_metrics['action_prediction_alignment'].append(action_alignment)
+    
+    def get_performance_summary(self) -> Dict[str, float]:
+        """
+        Get summary of performance metrics.
+        
+        Returns:
+            Dictionary with average metrics
+        """
+        summary = {}
+        
+        if self.performance_metrics['pbs_accuracy_trend']:
+            summary['avg_pbs_accuracy'] = sum(self.performance_metrics['pbs_accuracy_trend']) / len(self.performance_metrics['pbs_accuracy_trend'])
+        else:
+            summary['avg_pbs_accuracy'] = 0.0
+        
+        if self.performance_metrics['dqn_loss_trend']:
+            summary['avg_dqn_loss'] = sum(self.performance_metrics['dqn_loss_trend']) / len(self.performance_metrics['dqn_loss_trend'])
+        else:
+            summary['avg_dqn_loss'] = 0.0
+        
+        if self.performance_metrics['action_prediction_alignment']:
+            summary['avg_action_alignment'] = sum(self.performance_metrics['action_prediction_alignment']) / len(self.performance_metrics['action_prediction_alignment'])
+        else:
+            summary['avg_action_alignment'] = 0.0
+        
+        return summary
+    
+    def detect_pbs_dqn_misalignment(self) -> bool:
+        """
+        Detect if PBS and DQN are misaligned.
+        
+        Returns:
+            True if misalignment detected
+        """
+        if len(self.performance_metrics['pbs_accuracy_trend']) < 10:
+            return False
+        
+        # Check if PBS accuracy is low while DQN loss is also high
+        recent_pbs = list(self.performance_metrics['pbs_accuracy_trend'])[-10:]
+        recent_dqn = list(self.performance_metrics['dqn_loss_trend'])[-10:]
+        
+        avg_pbs = sum(recent_pbs) / len(recent_pbs)
+        avg_dqn = sum(recent_dqn) / len(recent_dqn)
+        
+        # Misalignment: low PBS accuracy (< 0.5) and high DQN loss (> 0.5)
+        return avg_pbs < 0.5 and avg_dqn > 0.5
+    
+    def get_optimization_recommendations(self) -> List[Dict[str, str]]:
+        """
+        Analyze trends and recommend system adjustments.
+        
+        Returns:
+            List of recommendation dictionaries
+        """
+        recommendations = []
+        
+        if self.detect_pbs_dqn_misalignment():
+            recommendations.append({
+                'type': 'balance_adjustment',
+                'suggestion': 'Increase PBS weight in DQN decision making',
+                'priority': 'high'
+            })
+        
+        # Check if PBS accuracy is consistently low
+        if self.performance_metrics['pbs_accuracy_trend']:
+            recent_pbs = list(self.performance_metrics['pbs_accuracy_trend'])[-20:]
+            if len(recent_pbs) >= 10:
+                avg_pbs = sum(recent_pbs) / len(recent_pbs)
+                if avg_pbs < 0.4:
+                    recommendations.append({
+                        'type': 'pbs_improvement',
+                        'suggestion': 'PBS accuracy is low - consider increasing training frequency',
+                        'priority': 'medium'
+                    })
+        
+        # Check if DQN loss is consistently high
+        if self.performance_metrics['dqn_loss_trend']:
+            recent_dqn = list(self.performance_metrics['dqn_loss_trend'])[-20:]
+            if len(recent_dqn) >= 10:
+                avg_dqn = sum(recent_dqn) / len(recent_dqn)
+                if avg_dqn > 1.0:
+                    recommendations.append({
+                        'type': 'dqn_improvement',
+                        'suggestion': 'DQN loss is high - consider adjusting learning rate',
+                        'priority': 'medium'
+                    })
+        
+        return recommendations
     
     def update_pbs_from_reveal(self, pos: Tuple[int, int], piece_type: PieceType,
                               game_phase: str = 'middle', turn_count: int = 0):

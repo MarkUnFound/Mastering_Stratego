@@ -17,6 +17,7 @@ import threading
 import time
 import copy
 import traceback
+import json
 from typing import List, Tuple, Optional
 
 # Add the parent directory to sys.path to enable imports
@@ -78,6 +79,61 @@ def _save_counters(total_episodes_file, total_steps_file, total_episodes, total_
     with open(total_steps_file, 'w') as f:
         f.write(str(total_steps))
     print(f"💾 Saved persistent counters: {total_episodes} episodes, {total_steps:,} steps")
+
+
+def _save_training_history(model_save_path: str, 
+                          episode_history: List[int],
+                          rewards_history: dict,
+                          wins_history: dict,
+                          epsilon_history: dict,
+                          policy_loss_history: dict,
+                          setup_agent1_rewards: List[float],
+                          setup_agent2_rewards: List[float],
+                          setup_agent1_losses: List[float],
+                          setup_agent2_losses: List[float],
+                          pbs_evaluator1_losses: List[float],
+                          pbs_evaluator2_losses: List[float],
+                          pbs_evaluator1_buffer_sizes: List[int],
+                          pbs_evaluator2_buffer_sizes: List[int]):
+    """Save training history to JSON file for continuity across training sessions"""
+    history_file = os.path.join(model_save_path, "training_history.json")
+    try:
+        history_data = {
+            'episode_history': episode_history,
+            'rewards_history': rewards_history,
+            'wins_history': wins_history,
+            'epsilon_history': epsilon_history,
+            'policy_loss_history': policy_loss_history,
+            'setup_agent1_rewards': setup_agent1_rewards,
+            'setup_agent2_rewards': setup_agent2_rewards,
+            'setup_agent1_losses': setup_agent1_losses,
+            'setup_agent2_losses': setup_agent2_losses,
+            'pbs_evaluator1_losses': pbs_evaluator1_losses,
+            'pbs_evaluator2_losses': pbs_evaluator2_losses,
+            'pbs_evaluator1_buffer_sizes': pbs_evaluator1_buffer_sizes,
+            'pbs_evaluator2_buffer_sizes': pbs_evaluator2_buffer_sizes
+        }
+        with open(history_file, 'w') as f:
+            json.dump(history_data, f, indent=2)
+    except Exception as e:
+        print(f"⚠️  Could not save training history: {e}")
+
+
+def _load_training_history(model_save_path: str) -> dict:
+    """Load training history from JSON file if it exists"""
+    history_file = os.path.join(model_save_path, "training_history.json")
+    
+    if not os.path.exists(history_file):
+        return None
+    
+    try:
+        with open(history_file, 'r') as f:
+            history_data = json.load(f)
+        print(f"📊 Loaded training history: {len(history_data.get('episode_history', []))} episodes")
+        return history_data
+    except (json.JSONDecodeError, IOError) as e:
+        print(f"⚠️  Could not load training history: {e}, starting fresh")
+        return None
 
 
 def evaluate_flag_protection(placement: List[Tuple[PieceType, Tuple[int, int]]], 
@@ -852,28 +908,44 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
     total_rewards_agent1 = []
     total_rewards_agent2 = []
 
-    # History for plotting
-    episode_history = []
-    rewards_history = {'agent1': [], 'agent2': []}
-    wins_history = {'agent1': [], 'agent2': [], 'draws': []}
-    epsilon_history = {'agent1': [], 'agent2': []}
-    policy_loss_history = {'agent1': [], 'agent2': []}
+    # Load existing training history if available (for continuity across training sessions)
+    loaded_history = _load_training_history(model_save_path)
+    
+    # History for plotting (load from previous session or start fresh)
+    if loaded_history:
+        episode_history = loaded_history.get('episode_history', [])
+        rewards_history = loaded_history.get('rewards_history', {'agent1': [], 'agent2': []})
+        wins_history = loaded_history.get('wins_history', {'agent1': [], 'agent2': [], 'draws': []})
+        epsilon_history = loaded_history.get('epsilon_history', {'agent1': [], 'agent2': []})
+        policy_loss_history = loaded_history.get('policy_loss_history', {'agent1': [], 'agent2': []})
+        setup_agent1_rewards = loaded_history.get('setup_agent1_rewards', [])
+        setup_agent2_rewards = loaded_history.get('setup_agent2_rewards', [])
+        setup_agent1_losses = loaded_history.get('setup_agent1_losses', [])
+        setup_agent2_losses = loaded_history.get('setup_agent2_losses', [])
+        pbs_evaluator1_losses = loaded_history.get('pbs_evaluator1_losses', [])
+        pbs_evaluator2_losses = loaded_history.get('pbs_evaluator2_losses', [])
+        pbs_evaluator1_buffer_sizes = loaded_history.get('pbs_evaluator1_buffer_sizes', [])
+        pbs_evaluator2_buffer_sizes = loaded_history.get('pbs_evaluator2_buffer_sizes', [])
+        print(f"📈 Continuing training history from previous session")
+    else:
+        episode_history = []
+        rewards_history = {'agent1': [], 'agent2': []}
+        wins_history = {'agent1': [], 'agent2': [], 'draws': []}
+        epsilon_history = {'agent1': [], 'agent2': []}
+        policy_loss_history = {'agent1': [], 'agent2': []}
+        setup_agent1_rewards = []
+        setup_agent2_rewards = []
+        setup_agent1_losses = []
+        setup_agent2_losses = []
+        pbs_evaluator1_losses = []
+        pbs_evaluator2_losses = []
+        pbs_evaluator1_buffer_sizes = []
+        pbs_evaluator2_buffer_sizes = []
+        print(f"📈 Starting fresh training history")
     
     agent1_prefetcher = ReplayPrefetcher(agent1, max_queue_size=PREFETCH_QUEUE_SIZE)
     agent2_prefetcher = ReplayPrefetcher(agent2, max_queue_size=PREFETCH_QUEUE_SIZE)
     prefetchers = [agent1_prefetcher, agent2_prefetcher]
-    
-    # Setup agent history for plotting
-    setup_agent1_rewards = []
-    setup_agent2_rewards = []
-    setup_agent1_losses = []
-    setup_agent2_losses = []
-    
-    # PBS evaluator history for plotting
-    pbs_evaluator1_losses = []
-    pbs_evaluator2_losses = []
-    pbs_evaluator1_buffer_sizes = []
-    pbs_evaluator2_buffer_sizes = []
     
     print(f"Starting DQN training for {num_episodes} episodes...")
     print(f"Total Episodes (all runs): {total_episodes}")
@@ -936,7 +1008,7 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                 agent2_pbs = agent2.pbs if hasattr(agent2, 'pbs') else None
                 
                 if current_actual_board is not None:
-                    pbs_setup_save_path = f"{model_save_path}/pbs_visualization_episode_{episode + 1}_setup.png"
+                    pbs_setup_save_path = f"{model_save_path}/pbs_visualization_episode_{total_episodes}_setup.png"
                     visualize_pbs_state(
                         current_actual_board,
                         agent1_pbs,
@@ -1065,7 +1137,7 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                     current_actual_board = env.board.actual_board if hasattr(env, 'board') and hasattr(env.board, 'actual_board') else None
                     
                     if current_actual_board is not None:
-                        pbs_save_path = f"{model_save_path}/pbs_visualization_episode_{episode + 1}_move_50.png"
+                        pbs_save_path = f"{model_save_path}/pbs_visualization_episode_{total_episodes}_move_50.png"
                         visualize_pbs_state(
                             current_actual_board,
                             agent1_pbs,
@@ -1218,7 +1290,7 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                 'game_states': episode_game_states
             })
             
-            episode_gif_path = f"{model_save_path}/episode_recording_win_{episode + 1}.gif"
+            episode_gif_path = f"{model_save_path}/episode_recording_win_{total_episodes}.gif"
             create_episode_gif(
                 episode_game_states,
                 episode + 1,
@@ -1244,7 +1316,7 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                 visible_board_p2 = env.board.visible_board_p2 if hasattr(env, 'board') and hasattr(env.board, 'visible_board_p2') else None
                 
                 # Create PBS visualization at end of checkpoint episode
-                pbs_save_path = f"{model_save_path}/pbs_visualization_episode_{episode + 1}_end.png"
+                pbs_save_path = f"{model_save_path}/pbs_visualization_episode_{total_episodes}_end.png"
                 visualize_pbs_state(
                     actual_board,
                     agent1_pbs,
@@ -1317,22 +1389,22 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
         # Update epsilon based on total_steps (not agent's step_count which resets)
         # This ensures epsilon decay continues even after agent resets
         epsilon_decay_interval = 500_000  # Same as agent's epsilon_decay_interval
-        if total_steps < epsilon_decay_interval:
-            # Linear decay: epsilon decreases from 1.0 to 0.0 over 500,000 steps
-            new_epsilon = max(0.0, min(1.0, 1.0 - (total_steps / epsilon_decay_interval)))
-            agent1.epsilon = new_epsilon
-            agent2.epsilon = new_epsilon
-        else:
-            # After 500,000 steps: fully deterministic (epsilon = 0, no exploration)
-            agent1.epsilon = 0.0
-            agent2.epsilon = 0.0
+        # Epsilon decay is now handled internally by the agent (with minimum epsilon for exploration)
+        # No need to manually set epsilon here - the agent manages it with adaptive adjustments
         
         # Store episode rewards
         total_rewards_agent1.append(episode_reward_agent1)
         total_rewards_agent2.append(episode_reward_agent2)
         
+        # Update adaptive epsilon based on episode performance
+        if hasattr(agent1, 'update_episode_reward'):
+            agent1.update_episode_reward(episode_reward_agent1)
+        if hasattr(agent2, 'update_episode_reward'):
+            agent2.update_episode_reward(episode_reward_agent2)
+        
         # Update history for plotting every episode (discrete points)
-        episode_history.append(episode + 1)
+        # Use total_episodes for continuity across training sessions
+        episode_history.append(total_episodes)
         rewards_history['agent1'].append(episode_reward_agent1)  # Store individual episode reward
         rewards_history['agent2'].append(episode_reward_agent2)  # Store individual episode reward
         wins_history['agent1'].append(wins_agent1)
@@ -1387,11 +1459,27 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
             print(f"  Avg Reward Agent 2 (last 50): {avg_reward2:.2f}")
             print(f"  Avg Policy Loss Agent 1 (last 100): {avg_loss1:.4f}")
             print(f"  Avg Policy Loss Agent 2 (last 100): {avg_loss2:.4f}")
+            # Show detailed loss statistics if available
+            if hasattr(agent1, 'get_policy_loss_stats'):
+                stats1 = agent1.get_policy_loss_stats(100)
+                stats2 = agent2.get_policy_loss_stats(100)
+                print(f"  Loss Stats Agent 1: min={stats1['min']:.2f}, max={stats1['max']:.2f}, median={stats1['median']:.2f}, std={stats1['std']:.2f}")
+                print(f"  Loss Stats Agent 2: min={stats2['min']:.2f}, max={stats2['max']:.2f}, median={stats2['median']:.2f}, std={stats2['std']:.2f}")
+            # Show smoothed loss if available
+            if hasattr(agent1, 'get_smoothed_loss'):
+                smoothed1 = agent1.get_smoothed_loss()
+                smoothed2 = agent2.get_smoothed_loss()
+                print(f"  Smoothed Loss Agent 1: {smoothed1:.4f}, Agent 2: {smoothed2:.4f}")
             print(f"  Epsilon Agent 1: {agent1.epsilon:.3f}, Epsilon Agent 2: {agent2.epsilon:.3f}")
+            # Show learning rates if available
+            if hasattr(agent1, 'get_current_learning_rate'):
+                lr1 = agent1.get_current_learning_rate()
+                lr2 = agent2.get_current_learning_rate()
+                print(f"  Learning Rate Agent 1: {lr1:.6f}, Agent 2: {lr2:.6f}")
             print("-" * 60)
             
             # Reset agents if average reward is too large
-            if abs(avg_reward1) > 50 or abs(avg_reward2) > 50:
+            if abs(avg_reward1) > 100 or abs(avg_reward2) > 100:
                 print("Average reward too large, resetting agents...")
                 reset_agents()
                 # Reset statistics
@@ -1400,12 +1488,28 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                 draws = 0
                 total_rewards_agent1 = []
                 total_rewards_agent2 = []
-                # Also reset history for plotting
-                episode_history = []
-                rewards_history = {'agent1': [], 'agent2': []}
-                wins_history = {'agent1': [], 'agent2': [], 'draws': []}
-                epsilon_history = {'agent1': [], 'agent2': []}
-                policy_loss_history = {'agent1': [], 'agent2': []}
+                # Reset history for plotting (but keep previous session's history)
+                # Only clear current session's data, not loaded history
+                # This allows graphs to show the reset point clearly
+                current_session_start = len(episode_history)
+                episode_history = episode_history[:current_session_start]  # Keep previous history
+                # Truncate other histories to match
+                for key in rewards_history:
+                    rewards_history[key] = rewards_history[key][:current_session_start]
+                for key in wins_history:
+                    wins_history[key] = wins_history[key][:current_session_start]
+                for key in epsilon_history:
+                    epsilon_history[key] = epsilon_history[key][:current_session_start]
+                for key in policy_loss_history:
+                    policy_loss_history[key] = policy_loss_history[key][:current_session_start]
+                setup_agent1_rewards = setup_agent1_rewards[:current_session_start]
+                setup_agent2_rewards = setup_agent2_rewards[:current_session_start]
+                setup_agent1_losses = setup_agent1_losses[:current_session_start]
+                setup_agent2_losses = setup_agent2_losses[:current_session_start]
+                pbs_evaluator1_losses = pbs_evaluator1_losses[:current_session_start]
+                pbs_evaluator2_losses = pbs_evaluator2_losses[:current_session_start]
+                pbs_evaluator1_buffer_sizes = pbs_evaluator1_buffer_sizes[:current_session_start]
+                pbs_evaluator2_buffer_sizes = pbs_evaluator2_buffer_sizes[:current_session_start]
                 # Reset setup agent tracking lists
                 if use_setup_agents:
                     setup_agent1_rewards = []
@@ -1427,6 +1531,23 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                     total_episodes,
                     total_steps
                 )
+                # Also save training history for continuity
+                _save_training_history(
+                    model_save_path,
+                    episode_history,
+                    rewards_history,
+                    wins_history,
+                    epsilon_history,
+                    policy_loss_history,
+                    setup_agent1_rewards,
+                    setup_agent2_rewards,
+                    setup_agent1_losses,
+                    setup_agent2_losses,
+                    pbs_evaluator1_losses,
+                    pbs_evaluator2_losses,
+                    pbs_evaluator1_buffer_sizes,
+                    pbs_evaluator2_buffer_sizes
+                )
             
             # Save chart every 50 episodes (only if we have data)
             if len(episode_history) > 0:
@@ -1436,23 +1557,35 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                     rewards_history,
                     wins_history,
                     policy_loss_history,
-                    save_path=f"{model_save_path}/training_progress_episode_{episode + 1}.png",
+                    save_path=f"{model_save_path}/training_progress_episode_{total_episodes}.png",
                     total_episodes=total_episodes,
                     total_steps=total_steps
                 )
-                print(f"📈 Training progress graph saved: {model_save_path}/training_progress_episode_{episode + 1}.png")
+                print(f"📈 Training progress graph saved: {model_save_path}/training_progress_episode_{total_episodes}.png")
                 
                 # Save setup agent progress chart (separate PNG file, independent from main DQN plot)
                 if use_setup_agents and setup_agent1 and setup_agent2:
-                    plot_setup_agent_progress(
-                        episode_history,
-                        setup_agent1_rewards,
-                        setup_agent2_rewards,
-                        setup_agent1_losses,
-                        setup_agent2_losses,
-                        save_path=f"{model_save_path}/setup_agent_progress_episode_{episode + 1}.png"
-                    )
-                    print(f"📊 Setup agent progress graph saved: {model_save_path}/setup_agent_progress_episode_{episode + 1}.png")
+                    # Only plot if we have data (rewards lists are not empty)
+                    if setup_agent1_rewards and setup_agent2_rewards and len(setup_agent1_rewards) > 0 and len(setup_agent2_rewards) > 0:
+                        plot_setup_agent_progress(
+                            episode_history,
+                            setup_agent1_rewards,
+                            setup_agent2_rewards,
+                            setup_agent1_losses,
+                            setup_agent2_losses,
+                            save_path=f"{model_save_path}/setup_agent_progress_episode_{total_episodes}.png"
+                        )
+                        print(f"📊 Setup agent progress graph saved: {model_save_path}/setup_agent_progress_episode_{total_episodes}.png")
+                    else:
+                        # Create placeholder plot if no data yet
+                        plot_setup_agent_progress(
+                            episode_history,
+                            setup_agent1_rewards,
+                            setup_agent2_rewards,
+                            setup_agent1_losses,
+                            setup_agent2_losses,
+                            save_path=f"{model_save_path}/setup_agent_progress_episode_{total_episodes}.png"
+                        )
                 
                 # Save PBS evaluator progress chart (separate PNG file)
                 plot_pbs_evaluator_progress(
@@ -1461,10 +1594,10 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                     pbs_evaluator2_losses,
                     pbs_evaluator1_buffer_sizes,
                     pbs_evaluator2_buffer_sizes,
-                    save_path=f"{model_save_path}/pbs_evaluator_progress_episode_{episode + 1}.png",
+                    save_path=f"{model_save_path}/pbs_evaluator_progress_episode_{total_episodes}.png",
                     total_episodes=total_episodes
                 )
-                print(f"📊 PBS evaluator progress graph saved: {model_save_path}/pbs_evaluator_progress_episode_{episode + 1}.png")
+                print(f"📊 PBS evaluator progress graph saved: {model_save_path}/pbs_evaluator_progress_episode_{total_episodes}.png")
             else:
                 print(f"⚠️  Skipping progress plots - no episode history yet (agents were reset)")
             
@@ -1473,15 +1606,15 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
             # Create model save directory if it doesn't exist
             os.makedirs(model_save_path, exist_ok=True)
             try:
-                agent1_path = f"{model_save_path}/agent1_episode_{episode + 1}.pth"
-                agent2_path = f"{model_save_path}/agent2_episode_{episode + 1}.pth"
+                agent1_path = f"{model_save_path}/agent1_episode_{total_episodes}.pth"
+                agent2_path = f"{model_save_path}/agent2_episode_{total_episodes}.pth"
                 agent1.save_model(agent1_path)
                 agent2.save_model(agent2_path)
                 
                 # Save setup agents if they exist
                 if use_setup_agents and setup_agent1 and setup_agent2:
-                    setup_agent1_path = f"{model_save_path}/setup_agent1_episode_{episode + 1}.pth"
-                    setup_agent2_path = f"{model_save_path}/setup_agent2_episode_{episode + 1}.pth"
+                    setup_agent1_path = f"{model_save_path}/setup_agent1_episode_{total_episodes}.pth"
+                    setup_agent2_path = f"{model_save_path}/setup_agent2_episode_{total_episodes}.pth"
                     setup_agent1.save_model(setup_agent1_path)
                     setup_agent2.save_model(setup_agent2_path)
                 
@@ -1508,6 +1641,28 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
         print(f"💾 Saved persistent counters: {total_episodes} episodes, {total_steps:,} steps")
     except Exception as e:
         print(f"⚠️  Could not save persistent counters: {e}")
+    
+    # Save final training history for continuity
+    try:
+        _save_training_history(
+            model_save_path,
+            episode_history,
+            rewards_history,
+            wins_history,
+            epsilon_history,
+            policy_loss_history,
+            setup_agent1_rewards,
+            setup_agent2_rewards,
+            setup_agent1_losses,
+            setup_agent2_losses,
+            pbs_evaluator1_losses,
+            pbs_evaluator2_losses,
+            pbs_evaluator1_buffer_sizes,
+            pbs_evaluator2_buffer_sizes
+        )
+        print(f"💾 Saved final training history for continuity")
+    except Exception as e:
+        print(f"⚠️  Could not save final training history: {e}")
     
     # Final training metrics
     print("\n" + "=" * 60)

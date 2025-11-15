@@ -10,8 +10,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
+import math
 from typing import Dict, List, Tuple, Optional
-from collections import deque, namedtuple
+from collections import deque, namedtuple, defaultdict
 from .piece import PieceType, PIECE_RANKS
 
 # Number of piece types
@@ -72,6 +73,146 @@ class PBSEvaluatorNetwork(nn.Module):
         return x
 
 
+class FeatureImportanceNetwork(nn.Module):
+    """
+    Learns which action features are most predictive for PBS inference.
+    Outputs importance weights for each feature.
+    """
+    
+    def __init__(self, num_features: int = 24, hidden_size: int = 64):
+        """
+        Initialize feature importance network.
+        
+        Args:
+            num_features: Number of action features (24 in current implementation)
+            hidden_size: Hidden layer size
+        """
+        super(FeatureImportanceNetwork, self).__init__()
+        self.fc1 = nn.Linear(num_features, hidden_size)
+        self.fc2 = nn.Linear(hidden_size, num_features)  # Output: importance weight per feature
+        self.bn1 = nn.BatchNorm1d(hidden_size)
+        
+    def forward(self, features: torch.Tensor) -> torch.Tensor:
+        """
+        Forward pass through feature importance network.
+        
+        Args:
+            features: Tensor of shape (batch_size, num_features) with action features
+            
+        Returns:
+            Importance weights tensor of shape (batch_size, num_features) in [0, 1]
+        """
+        x = F.relu(self.bn1(self.fc1(features)))
+        weights = torch.sigmoid(self.fc2(x))  # [0, 1] per feature
+        return weights
+
+
+class BiasTracker:
+    """
+    Tracks systematic PBS biases and provides correction factors.
+    Identifies when PBS consistently over/under-predicts certain piece types.
+    """
+    
+    def __init__(self):
+        """Initialize bias tracker."""
+        # Confusion matrix: predicted -> actual -> count
+        self.confusion_matrix = defaultdict(lambda: defaultdict(int))
+        # Track overconfidence: predicted_type -> list of confidence values when wrong
+        self.overconfidence_by_type = defaultdict(list)
+        # Track underconfidence: predicted_type -> list of confidence values when correct but low
+        self.underconfidence_by_type = defaultdict(list)
+        # Total predictions per type
+        self.prediction_counts = defaultdict(int)
+        # Total actual occurrences per type
+        self.actual_counts = defaultdict(int)
+        
+    def update(self, predicted: PieceType, actual: PieceType, confidence: float):
+        """
+        Update bias tracking with a prediction-accuracy pair.
+        
+        Args:
+            predicted: Predicted piece type
+            actual: Actual piece type
+            confidence: Confidence in prediction
+        """
+        self.confusion_matrix[predicted][actual] += 1
+        self.prediction_counts[predicted] += 1
+        self.actual_counts[actual] += 1
+        
+        if predicted == actual:
+            # Correct prediction
+            if confidence < 0.5:
+                # Underconfident: correct but low confidence
+                self.underconfidence_by_type[predicted].append(confidence)
+        else:
+            # Wrong prediction
+            if confidence > 0.5:
+                # Overconfident: wrong but high confidence
+                self.overconfidence_by_type[predicted].append(confidence)
+    
+    def get_correction_factor(self, piece_type: PieceType, min_samples: int = 10) -> float:
+        """
+        Get multiplicative correction factor for a piece type.
+        
+        Returns:
+            Correction factor:
+            - < 1.0 if PBS over-predicts this type (reduce probability)
+            - > 1.0 if PBS under-predicts this type (increase probability)
+            - 1.0 if no bias detected or insufficient data
+        """
+        if self.prediction_counts[piece_type] < min_samples:
+            return 1.0  # No correction if insufficient data
+        
+        # Calculate prediction rate vs actual rate
+        total_predictions = sum(self.prediction_counts.values())
+        total_actuals = sum(self.actual_counts.values())
+        
+        if total_predictions == 0 or total_actuals == 0:
+            return 1.0
+        
+        predicted_rate = self.prediction_counts[piece_type] / total_predictions
+        actual_rate = self.actual_counts[piece_type] / total_actuals
+        
+        # Calculate accuracy for this type
+        correct = self.confusion_matrix[piece_type][piece_type]
+        total_predicted = self.prediction_counts[piece_type]
+        accuracy = correct / total_predicted if total_predicted > 0 else 0.0
+        
+        # Correction factor based on:
+        # 1. Prediction rate vs actual rate (over/under-prediction)
+        # 2. Accuracy (if low accuracy, reduce confidence)
+        if actual_rate > 0:
+            rate_ratio = predicted_rate / actual_rate
+        else:
+            rate_ratio = 1.0
+        
+        # If over-predicting (rate_ratio > 1.2) or low accuracy, reduce
+        # If under-predicting (rate_ratio < 0.8) and good accuracy, increase
+        if rate_ratio > 1.2 or accuracy < 0.3:
+            correction = 0.7 + 0.3 * accuracy  # Reduce: 0.7-1.0 range
+        elif rate_ratio < 0.8 and accuracy > 0.5:
+            correction = 1.0 + 0.3 * (1.0 - rate_ratio)  # Increase: 1.0-1.3 range
+        else:
+            correction = 1.0
+        
+        # Clamp to reasonable range
+        return max(0.5, min(1.5, correction))
+    
+    def get_bias_summary(self) -> Dict[str, float]:
+        """
+        Get summary of detected biases.
+        
+        Returns:
+            Dictionary mapping piece type names to correction factors
+        """
+        summary = {}
+        for piece_type in PieceType:
+            correction = self.get_correction_factor(piece_type)
+            if correction != 1.0:
+                summary[piece_type.name] = correction
+        return summary
+
+
 class PBSEvaluator:
     """
     RL-based PBS evaluator that learns to assess prediction quality.
@@ -102,6 +243,20 @@ class PBSEvaluator:
         
         # Experience replay buffer
         self.memory = deque(maxlen=buffer_size)
+        
+        # Bias tracking for systematic error detection
+        self.bias_tracker = BiasTracker()
+        
+        # Feature importance network for adaptive feature weighting
+        self.feature_importance_network = FeatureImportanceNetwork(num_features=24).to(device)
+        self.feature_optimizer = torch.optim.AdamW(
+            self.feature_importance_network.parameters(), 
+            lr=lr * 0.5,  # Slightly lower LR for feature network
+            weight_decay=0.01
+        )
+        
+        # Feature importance training data
+        self.feature_training_data = deque(maxlen=5000)  # Store (features, quality_score) pairs
         
         # Update target network
         self.update_target_network()
@@ -179,7 +334,8 @@ class PBSEvaluator:
         return reward
     
     def remember(self, pbs_prediction: Dict[PieceType, float], ground_truth: PieceType,
-                position: Tuple[int, int], game_phase: str, turn_count: int):
+                position: Tuple[int, int], game_phase: str, turn_count: int,
+                action_features: Optional[np.ndarray] = None):
         """
         Store PBS evaluation experience.
         
@@ -189,6 +345,7 @@ class PBSEvaluator:
             position: Position of the piece
             game_phase: 'middle' or 'end'
             turn_count: Current turn number
+            action_features: Optional action features for feature importance learning
         """
         # Convert prediction dict to tensor
         piece_types = list(PieceType)
@@ -207,6 +364,17 @@ class PBSEvaluator:
         )
         
         self.memory.append(experience)
+        
+        # Update bias tracker
+        predicted_type = max(pbs_prediction.items(), key=lambda x: x[1])[0]
+        confidence = pbs_prediction.get(predicted_type, 0.0)
+        self.bias_tracker.update(predicted_type, ground_truth, confidence)
+        
+        # Store feature data for importance learning
+        if action_features is not None:
+            # Compute quality score for this prediction
+            quality_score = self.compute_reward(pbs_prediction, ground_truth)
+            self.feature_training_data.append((action_features.copy(), quality_score))
     
     def train(self, epochs: int = 1, use_target_network: bool = True) -> Optional[float]:
         """
@@ -382,12 +550,34 @@ class PBSEvaluator:
                 'turn_count': exp.turn_count
             })
         
+        # Convert bias tracker to serializable format
+        bias_data = {
+            'confusion_matrix': {pred.name: {act.name: count for act, count in actuals.items()} 
+                                for pred, actuals in self.bias_tracker.confusion_matrix.items()},
+            'prediction_counts': {pt.name: count for pt, count in self.bias_tracker.prediction_counts.items()},
+            'actual_counts': {pt.name: count for pt, count in self.bias_tracker.actual_counts.items()},
+            'overconfidence_by_type': {pt.name: confidences for pt, confidences in self.bias_tracker.overconfidence_by_type.items()},
+            'underconfidence_by_type': {pt.name: confidences for pt, confidences in self.bias_tracker.underconfidence_by_type.items()}
+        }
+        
+        # Convert feature training data to CPU
+        feature_data = []
+        for features, quality in self.feature_training_data:
+            if isinstance(features, np.ndarray):
+                feature_data.append((features.tolist(), float(quality)))
+            else:
+                feature_data.append((features, float(quality)))
+        
         torch.save({
             'evaluator_state_dict': self.evaluator_network.state_dict(),
             'target_state_dict': self.target_network.state_dict(),
             'optimizer_state_dict': self.optimizer.state_dict(),
+            'feature_importance_state_dict': self.feature_importance_network.state_dict(),
+            'feature_optimizer_state_dict': self.feature_optimizer.state_dict(),
             'memory': memory_data,  # Save experience buffer
             'training_losses': self.training_losses,  # Save training history
+            'bias_tracker': bias_data,  # Save bias tracking data
+            'feature_training_data': feature_data,  # Save feature importance training data
         }, filepath)
     
     def load_model(self, filepath: str):
@@ -396,6 +586,40 @@ class PBSEvaluator:
         self.evaluator_network.load_state_dict(checkpoint['evaluator_state_dict'])
         self.target_network.load_state_dict(checkpoint['target_state_dict'])
         self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        
+        # Load feature importance network if available
+        if 'feature_importance_state_dict' in checkpoint:
+            self.feature_importance_network.load_state_dict(checkpoint['feature_importance_state_dict'])
+        if 'feature_optimizer_state_dict' in checkpoint:
+            self.feature_optimizer.load_state_dict(checkpoint['feature_optimizer_state_dict'])
+        
+        # Load bias tracker if available
+        if 'bias_tracker' in checkpoint:
+            bias_data = checkpoint['bias_tracker']
+            self.bias_tracker.confusion_matrix = defaultdict(lambda: defaultdict(int))
+            for pred_name, actuals in bias_data.get('confusion_matrix', {}).items():
+                pred_type = PieceType[pred_name]
+                for act_name, count in actuals.items():
+                    act_type = PieceType[act_name]
+                    self.bias_tracker.confusion_matrix[pred_type][act_type] = count
+            
+            self.bias_tracker.prediction_counts = {PieceType[name]: count 
+                                                   for name, count in bias_data.get('prediction_counts', {}).items()}
+            self.bias_tracker.actual_counts = {PieceType[name]: count 
+                                              for name, count in bias_data.get('actual_counts', {}).items()}
+            self.bias_tracker.overconfidence_by_type = {PieceType[name]: confidences 
+                                                        for name, confidences in bias_data.get('overconfidence_by_type', {}).items()}
+            self.bias_tracker.underconfidence_by_type = {PieceType[name]: confidences 
+                                                         for name, confidences in bias_data.get('underconfidence_by_type', {}).items()}
+        
+        # Load feature training data if available
+        if 'feature_training_data' in checkpoint:
+            self.feature_training_data.clear()
+            for features, quality in checkpoint['feature_training_data']:
+                if isinstance(features, list):
+                    features = np.array(features)
+                self.feature_training_data.append((features, quality))
+        
         self.update_target_network()
         
         # Load experience buffer if available
@@ -432,4 +656,135 @@ class PBSEvaluator:
             return 0.0
         recent_losses = self.training_losses[-window:]
         return sum(recent_losses) / len(recent_losses)
+    
+    def get_bias_correction(self, piece_type: PieceType) -> float:
+        """
+        Get bias correction factor for a piece type.
+        
+        Args:
+            piece_type: Piece type to get correction for
+            
+        Returns:
+            Correction factor (multiply belief by this value)
+        """
+        return self.bias_tracker.get_correction_factor(piece_type)
+    
+    def get_feature_importance(self, action_features: np.ndarray) -> np.ndarray:
+        """
+        Get importance weights for action features.
+        
+        Args:
+            action_features: Array of 24 action features
+            
+        Returns:
+            Array of importance weights (same shape as input)
+        """
+        self.feature_importance_network.eval()
+        
+        # Convert to tensor
+        features_tensor = torch.tensor(
+            action_features.reshape(1, -1), 
+            device=self.device, 
+            dtype=torch.float32
+        )
+        
+        with torch.no_grad():
+            importance_weights = self.feature_importance_network(features_tensor)
+        
+        # Convert back to numpy
+        return importance_weights.cpu().numpy().flatten()
+    
+    def train_feature_importance(self, epochs: int = 1):
+        """
+        Train feature importance network on collected feature-quality pairs.
+        
+        Args:
+            epochs: Number of training epochs
+        """
+        if len(self.feature_training_data) < self.batch_size:
+            return
+        
+        self.feature_importance_network.train()
+        
+        # Prepare training data
+        features_list = [data[0] for data in self.feature_training_data]
+        quality_scores = [data[1] for data in self.feature_training_data]
+        
+        # Normalize quality scores to [0, 1] for training
+        quality_array = np.array(quality_scores)
+        if quality_array.max() > quality_array.min():
+            quality_normalized = (quality_array - quality_array.min()) / (quality_array.max() - quality_array.min())
+        else:
+            quality_normalized = np.ones_like(quality_array) * 0.5
+        
+        num_batches = max(1, len(self.feature_training_data) // self.batch_size)
+        
+        for epoch in range(epochs):
+            for batch_idx in range(num_batches):
+                # Sample random batch
+                batch_indices = np.random.choice(
+                    len(self.feature_training_data),
+                    size=min(self.batch_size, len(self.feature_training_data)),
+                    replace=False
+                )
+                
+                batch_features = torch.tensor(
+                    np.array([features_list[i] for i in batch_indices]),
+                    device=self.device,
+                    dtype=torch.float32
+                )
+                batch_quality = torch.tensor(
+                    quality_normalized[batch_indices],
+                    device=self.device,
+                    dtype=torch.float32
+                )
+                
+                # Forward pass
+                importance_weights = self.feature_importance_network(batch_features)
+                
+                # Loss: features with higher quality should have higher importance
+                # Use weighted features to predict quality (simplified approach)
+                weighted_features = batch_features * importance_weights
+                # Simple prediction: sum of weighted features should correlate with quality
+                predicted_quality = torch.sigmoid(weighted_features.sum(dim=1))
+                
+                # MSE loss between predicted and actual quality
+                loss = F.mse_loss(predicted_quality, batch_quality)
+                
+                # Backward pass
+                self.feature_optimizer.zero_grad()
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(self.feature_importance_network.parameters(), max_norm=1.0)
+                self.feature_optimizer.step()
+        
+        self.feature_importance_network.eval()
+    
+    def should_gather_more_info(self, pbs_prediction: Dict[PieceType, float], 
+                                uncertainty_threshold: float = 0.7,
+                                quality_threshold: float = -5.0) -> bool:
+        """
+        Determine if more information should be gathered for this prediction (active learning).
+        
+        Args:
+            pbs_prediction: PBS belief distribution
+            uncertainty_threshold: High uncertainty threshold (0-1)
+            quality_threshold: Low quality score threshold
+            
+        Returns:
+            True if more information gathering is recommended
+        """
+        # Calculate entropy (uncertainty)
+        probs = [p for p in pbs_prediction.values() if p > 0]
+        if not probs:
+            return True  # No prediction, need info
+        
+        entropy = -sum(p * math.log(p + 1e-10) for p in probs)
+        max_entropy = math.log(len(pbs_prediction))
+        normalized_entropy = entropy / max_entropy if max_entropy > 0 else 0.0
+        
+        # Get quality score
+        quality_score = self.evaluate_prediction(pbs_prediction)
+        
+        # Request more info if quality is poor AND uncertainty is high
+        return quality_score < quality_threshold and normalized_entropy > uncertainty_threshold
 
