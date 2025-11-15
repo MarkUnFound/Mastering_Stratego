@@ -12,6 +12,11 @@ import numpy as np
 import random
 import os
 import sys
+import queue
+import threading
+import time
+import copy
+import traceback
 from typing import List, Tuple, Optional
 
 # Add the parent directory to sys.path to enable imports
@@ -21,9 +26,10 @@ from stratego_modular.environment import StrategoEnvironment
 from stratego_modular.dqn_agent import DQNAgent
 from stratego_modular.setup_agent import SetupAgent
 from stratego_modular.game_state import GameState
-from stratego_modular.training_visualizer import plot_training_progress, create_training_gif, create_episode_gif, plot_setup_agent_progress
+from stratego_modular.training_visualizer import plot_training_progress, create_training_gif, create_episode_gif, plot_setup_agent_progress, plot_pbs_evaluator_progress
 from stratego_modular.pbs_visualizer import visualize_pbs_state
 from stratego_modular.piece import PieceType, PIECE_RANKS
+from stratego_modular.board import LAKE_SQUARE
 
 # Import reset function (optional)
 try:
@@ -31,6 +37,47 @@ try:
     RESET_AVAILABLE = True
 except ImportError:
     RESET_AVAILABLE = False
+
+
+class ReplayPrefetcher:
+    """Background prefetcher that samples replay batches asynchronously."""
+
+    def __init__(self, agent, max_queue_size: int = 4):
+        self.agent = agent
+        self.queue = queue.Queue(maxsize=max_queue_size)
+        self.stop_event = threading.Event()
+        self.thread = threading.Thread(target=self._worker, daemon=True)
+        self.thread.start()
+
+    def _worker(self):
+        while not self.stop_event.is_set():
+            batch = self.agent.sample_replay_batch()
+            if batch is None:
+                time.sleep(0.01)
+                continue
+            try:
+                self.queue.put(batch, timeout=0.1)
+            except queue.Full:
+                continue
+
+    def get_batch(self):
+        try:
+            return self.queue.get_nowait()
+        except queue.Empty:
+            return None
+
+    def stop(self):
+        self.stop_event.set()
+        if self.thread.is_alive():
+            self.thread.join(timeout=1.0)
+
+
+def _save_counters(total_episodes_file, total_steps_file, total_episodes, total_steps):
+    with open(total_episodes_file, 'w') as f:
+        f.write(str(total_episodes))
+    with open(total_steps_file, 'w') as f:
+        f.write(str(total_steps))
+    print(f"💾 Saved persistent counters: {total_episodes} episodes, {total_steps:,} steps")
 
 
 def evaluate_flag_protection(placement: List[Tuple[PieceType, Tuple[int, int]]], 
@@ -76,6 +123,21 @@ def evaluate_flag_protection(placement: List[Tuple[PieceType, Tuple[int, int]]],
     # Check for protection
     protection_score = 0.0
     
+    # IMPROVED: Add row-based vulnerability penalty
+    # Flags closer to enemy (front rows) are more vulnerable
+    if player_id == 1:
+        # Player 1: row 9 is front (most vulnerable), row 6 is back (safest)
+        # Vulnerability: 0.0 (back) to 1.0 (front)
+        row_vulnerability = (flag_r - 6) / 3.0 if flag_r >= 6 else 0.0
+    else:  # player_id == -1
+        # Player 2: row 0 is front (most vulnerable), row 3 is back (safest)
+        # Vulnerability: 0.0 (back) to 1.0 (front)
+        row_vulnerability = (3 - flag_r) / 3.0 if flag_r <= 3 else 0.0
+    
+    # Reduce protection score based on vulnerability
+    # Front-row flags need MUCH more protection to get same score
+    vulnerability_penalty = row_vulnerability * 0.5  # Reduce protection score by up to 50% for front-row flags
+    
     for adj_pos in valid_adjacent:
         if adj_pos in position_to_piece:
             piece = position_to_piece[adj_pos]
@@ -98,6 +160,9 @@ def evaluate_flag_protection(placement: List[Tuple[PieceType, Tuple[int, int]]],
             lakes = [(4,2), (4,3), (5,2), (5,3), (4,6), (4,7), (5,6), (5,7)]
             if adj_pos in lakes:
                 protection_score += 0.3  # Lake provides protection
+    
+    # Apply vulnerability penalty (front-row flags need more protection)
+    protection_score = max(0.0, protection_score - vulnerability_penalty)
     
     # Normalize score (max possible is 4 adjacent positions * 0.4 = 1.6, but we cap at 1.0)
     return min(1.0, protection_score)
@@ -305,6 +370,269 @@ def evaluate_piece_coordination(placement: List[Tuple[PieceType, Tuple[int, int]
     return coordinated_count / len(bomb_positions)
 
 
+def evaluate_piece_value_distribution(placement: List[Tuple[PieceType, Tuple[int, int]]], 
+                                     player_id: int) -> float:
+    """
+    Reward for spreading high-value pieces across rows (not all in one row).
+    Prevents clustering of strong pieces.
+    
+    Args:
+        placement: List of (piece, position) tuples
+        player_id: Player ID (1 or -1)
+        
+    Returns:
+        Distribution score (0.0 to 1.0, higher is better)
+    """
+    # Get rows for this player
+    if player_id == 1:
+        player_rows = [6, 7, 8, 9]
+    else:
+        player_rows = [0, 1, 2, 3]
+    
+    # Calculate total piece value per row
+    row_values = {r: 0.0 for r in player_rows}
+    
+    for piece, (r, c) in placement:
+        if r in player_rows:
+            piece_value = PIECE_RANKS.get(piece, 0)
+            row_values[r] += piece_value
+    
+    # Calculate variance (lower variance = better distribution)
+    values = [v for v in row_values.values() if v > 0]
+    if len(values) == 0:
+        return 0.0
+    
+    mean_value = sum(values) / len(values)
+    if mean_value == 0:
+        return 0.0
+    
+    variance = sum((v - mean_value) ** 2 for v in values) / len(values)
+    max_variance = mean_value ** 2  # Worst case: all value in one row
+    
+    if max_variance == 0:
+        return 1.0
+    
+    distribution_score = 1.0 - (variance / max_variance)
+    return max(0.0, min(1.0, distribution_score))
+
+
+def evaluate_strategic_positioning(placement: List[Tuple[PieceType, Tuple[int, int]]], 
+                                  player_id: int) -> float:
+    """
+    Reward for strategic piece positioning:
+    - High-value pieces in center/back (protected)
+    - Scouts in front (aggressive)
+    - Bombs near flag (defensive)
+    - Miners near bombs (tactical)
+    
+    Args:
+        placement: List of (piece, position) tuples
+        player_id: Player ID (1 or -1)
+        
+    Returns:
+        Strategic positioning score (0.0 to 1.0, higher is better)
+    """
+    score = 0.0
+    position_to_piece = {pos: piece for piece, pos in placement}
+    
+    # Find flag position
+    flag_pos = next((pos for piece, pos in placement if piece == PieceType.FLAG), None)
+    
+    for piece, (r, c) in placement:
+        piece_value = PIECE_RANKS.get(piece, 0)
+        
+        # High-value pieces (8+) should be in back rows
+        if piece_value >= 8:
+            if player_id == 1:
+                if r >= 7:  # Back rows (7-9)
+                    score += 0.1
+            else:
+                if r <= 2:  # Back rows (0-2)
+                    score += 0.1
+        
+        # Scouts should be in front rows
+        if piece == PieceType.SCOUT:
+            if player_id == 1:
+                if r >= 8:  # Front rows (8-9)
+                    score += 0.05
+            else:
+                if r <= 1:  # Front rows (0-1)
+                    score += 0.05
+        
+        # Bombs should be near flag
+        if piece == PieceType.BOMB and flag_pos:
+            flag_r, flag_c = flag_pos
+            distance = abs(r - flag_r) + abs(c - flag_c)
+            if distance <= 2:
+                score += 0.1
+        
+        # Miners should be near bombs
+        if piece == PieceType.MINER:
+            for bomb_pos, bomb_piece in position_to_piece.items():
+                if bomb_piece == PieceType.BOMB:
+                    bomb_r, bomb_c = bomb_pos
+                    distance = abs(r - bomb_r) + abs(c - bomb_c)
+                    if distance <= 2:
+                        score += 0.05
+                        break
+    
+    return min(1.0, score)
+
+
+def evaluate_defensive_depth(placement: List[Tuple[PieceType, Tuple[int, int]]], 
+                            player_id: int) -> float:
+    """
+    Reward for creating multiple defensive layers (not just one row).
+    Strong pieces in multiple rows provide better defense.
+    
+    Args:
+        placement: List of (piece, position) tuples
+        player_id: Player ID (1 or -1)
+        
+    Returns:
+        Defensive depth score (0.0 to 1.0, higher is better)
+    """
+    # Get rows for this player
+    if player_id == 1:
+        player_rows = [6, 7, 8, 9]
+    else:
+        player_rows = [0, 1, 2, 3]
+    
+    # Count strong pieces (value >= 7) per row
+    row_strong_pieces = {r: 0 for r in player_rows}
+    
+    for piece, (r, c) in placement:
+        if r in player_rows:
+            piece_value = PIECE_RANKS.get(piece, 0)
+            if piece_value >= 7:
+                row_strong_pieces[r] += 1
+    
+    # Reward for having strong pieces in multiple rows
+    rows_with_strong = sum(1 for count in row_strong_pieces.values() if count > 0)
+    
+    if rows_with_strong >= 3:
+        return 1.0
+    elif rows_with_strong == 2:
+        return 0.6
+    elif rows_with_strong == 1:
+        return 0.3
+    else:
+        return 0.0
+
+
+def evaluate_piece_synergy(placement: List[Tuple[PieceType, Tuple[int, int]]], 
+                           player_id: int) -> float:
+    """
+    Reward for placing pieces that synergize:
+    - Marshal/General near each other (command structure)
+    - Miners near bombs (defusing capability)
+    - Strong pieces protecting weaker ones
+    - Scouts in groups (coordination)
+    
+    Args:
+        placement: List of (piece, position) tuples
+        player_id: Player ID (1 or -1)
+        
+    Returns:
+        Synergy score (0.0 to 1.0, higher is better)
+    """
+    score = 0.0
+    position_to_piece = {pos: piece for piece, pos in placement}
+    
+    for piece, (r, c) in placement:
+        # Check adjacent pieces for synergy
+        for dr in [-1, 0, 1]:
+            for dc in [-1, 0, 1]:
+                if dr == 0 and dc == 0:
+                    continue
+                adj_r, adj_c = r + dr, c + dc
+                adj_pos = (adj_r, adj_c)
+                
+                if adj_pos in position_to_piece:
+                    adj_piece = position_to_piece[adj_pos]
+                    
+                    # Marshal/General synergy
+                    if piece in [PieceType.MARSHAL, PieceType.GENERAL]:
+                        if adj_piece in [PieceType.MARSHAL, PieceType.GENERAL, PieceType.COLONEL]:
+                            score += 0.05
+                    
+                    # Miner-Bomb synergy
+                    if piece == PieceType.MINER and adj_piece == PieceType.BOMB:
+                        score += 0.1
+                    
+                    # Strong-weak protection
+                    piece_value = PIECE_RANKS.get(piece, 0)
+                    adj_value = PIECE_RANKS.get(adj_piece, 0)
+                    if piece_value >= 8 and adj_value < 5:
+                        score += 0.03
+    
+    return min(1.0, score)
+
+
+def evaluate_vulnerability(placement: List[Tuple[PieceType, Tuple[int, int]]], 
+                          player_id: int) -> float:
+    """
+    Penalty for vulnerable piece placements:
+    - High-value pieces in front rows (exposed)
+    - Flag with weak protection
+    - Isolated pieces (no support)
+    
+    Args:
+        placement: List of (piece, position) tuples
+        player_id: Player ID (1 or -1)
+        
+    Returns:
+        Vulnerability penalty score (0.0 to 1.0, higher = more vulnerable)
+    """
+    penalty = 0.0
+    position_to_piece = {pos: piece for piece, pos in placement}
+    
+    # Find flag
+    flag_pos = next((pos for piece, pos in placement if piece == PieceType.FLAG), None)
+    
+    for piece, (r, c) in placement:
+        piece_value = PIECE_RANKS.get(piece, 0)
+        
+        # High-value pieces in front rows
+        if piece_value >= 9:
+            if player_id == 1:
+                if r >= 8:  # Front row (8-9)
+                    penalty += 0.2
+            else:
+                if r <= 1:  # Front row (0-1)
+                    penalty += 0.2
+        
+        # Isolated pieces (no adjacent friendly pieces)
+        adjacent_friendly = 0
+        for dr in [-1, 0, 1]:
+            for dc in [-1, 0, 1]:
+                if dr == 0 and dc == 0:
+                    continue
+                adj_r, adj_c = r + dr, c + dc
+                if (adj_r, adj_c) in position_to_piece:
+                    adjacent_friendly += 1
+        
+        if adjacent_friendly == 0 and piece_value >= 7:
+            penalty += 0.1
+    
+    # Flag vulnerability
+    if flag_pos:
+        flag_r, flag_c = flag_pos
+        protection_count = 0
+        for dr in [-1, 0, 1]:
+            for dc in [-1, 0, 1]:
+                if dr == 0 and dc == 0:
+                    continue
+                adj_r, adj_c = flag_r + dr, flag_c + dc
+                if (adj_r, adj_c) in position_to_piece:
+                    protection_count += 1
+        
+        if protection_count < 2:
+            penalty += 0.3
+    
+    return min(1.0, penalty)
+
+
 def calculate_setup_agent_reward(placement: List[Tuple[PieceType, Tuple[int, int]]],
                                   player_id: int,
                                   winner: Optional[int],
@@ -334,57 +662,101 @@ def calculate_setup_agent_reward(placement: List[Tuple[PieceType, Tuple[int, int
     """
     reward = 0.0
     
-    # 1. Flag protection reward (0.0 to 1.0, scaled to 0-5.0)
-    protection_score = evaluate_flag_protection(placement, player_id)
-    reward += protection_score * 5.0  # Scale to 0-5.0
+    # Find flag position for row-based penalties
+    flag_pos = None
+    for piece, pos in placement:
+        if piece == PieceType.FLAG:
+            flag_pos = pos
+            break
     
-    # 2. Game length reward/penalty
+    # 0. CRITICAL: Penalty for flag in front row (very vulnerable)
+    # ADJUSTED: Reduced penalty to allow learning while still discouraging bad placement
+    if flag_pos is not None:
+        flag_r, flag_c = flag_pos
+        # Player 1's front row is row 9 (closest to enemy)
+        # Player 2's front row is row 0 (closest to enemy)
+        if (player_id == 1 and flag_r == 9) or (player_id == -1 and flag_r == 0):
+            reward -= 0.5  # Scaled down by 10x (was -5.0, now -0.5)
+        # Penalty for second row (still vulnerable)
+        elif (player_id == 1 and flag_r == 8) or (player_id == -1 and flag_r == 1):
+            reward -= 0.25  # Scaled down by 10x (was -2.5, now -0.25)
+        # Bonus for back rows (safer)
+        elif (player_id == 1 and flag_r <= 6) or (player_id == -1 and flag_r >= 3):
+            reward += 0.3  # Scaled down by 10x (was 3.0, now 0.3)
+    
+    # 1. Flag protection reward (0.0 to 1.0, scaled to 0-0.5)
+    protection_score = evaluate_flag_protection(placement, player_id)
+    reward += protection_score * 0.5  # Scaled down by 10x (was 5.0, now 0.5)
+    
+    # 2. Game length reward/penalty (scaled down by 10x)
     if move_count < min_survival_moves:
         # Penalty for short games (games that end too quickly)
-        # Linear penalty: -0.1 per move below threshold
-        penalty = -0.1 * (min_survival_moves - move_count)
+        # Linear penalty: -0.01 per move below threshold (was -0.1)
+        penalty = -0.01 * (min_survival_moves - move_count)
         reward += penalty
     else:
         # Reward for surviving longer (games that last at least min_survival_moves)
         # Small reward for each move above threshold
-        bonus = 0.01 * (move_count - min_survival_moves)
+        bonus = 0.001 * (move_count - min_survival_moves)  # Scaled down by 10x (was 0.01)
         reward += bonus
     
-    # 3. Win/loss reward
+    # 3. Win/loss reward (scaled down by 10x)
     if winner == player_id:
         # Big reward for winning
-        reward += 10.0
+        reward += 1.0  # Scaled down by 10x (was 10.0)
     elif winner is not None and winner != player_id:
         # Penalty for losing (but less severe than short game penalty)
-        reward -= 2.0
+        reward -= 0.2  # Scaled down by 10x (was -2.0)
     else:
         # Small reward for draw
-        reward += 1.0
+        reward += 0.1  # Scaled down by 10x (was 1.0)
     
-    # 4. Piece distribution bonus (0.0 to 1.0, scaled to 0-2.0)
+    # 4. Piece distribution bonus (0.0 to 1.0, scaled to 0-0.2)
     distribution_score = evaluate_piece_distribution(placement, player_id)
-    reward += distribution_score * 2.0
+    reward += distribution_score * 0.2  # Scaled down by 10x (was 2.0)
     
-    # 5. Scout placement reward (0.0 to 1.0, scaled to 0-1.5)
+    # 5. Scout placement reward (0.0 to 1.0, scaled to 0-0.15)
     scout_score = evaluate_scout_placement(placement, player_id)
-    reward += scout_score * 1.5
+    reward += scout_score * 0.15  # Scaled down by 10x (was 1.5)
     
-    # 6. Bomb placement reward (0.0 to 1.0, scaled to 0-2.0)
+    # 6. Bomb placement reward (0.0 to 1.0, scaled to 0-0.2)
     bomb_score = evaluate_bomb_placement(placement, player_id)
-    reward += bomb_score * 2.0
+    reward += bomb_score * 0.2  # Scaled down by 10x (was 2.0)
     
-    # 7. Defensive formation reward (0.0 to 1.0, scaled to 0-1.5)
+    # 7. Defensive formation reward (0.0 to 1.0, scaled to 0-0.15)
     formation_score = evaluate_defensive_formation(placement, player_id)
-    reward += formation_score * 1.5
+    reward += formation_score * 0.15  # Scaled down by 10x (was 1.5)
     
-    # 8. Piece coordination reward (0.0 to 1.0, scaled to 0-1.0)
+    # 8. Piece coordination reward (0.0 to 1.0, scaled to 0-0.1)
     coordination_score = evaluate_piece_coordination(placement, player_id)
-    reward += coordination_score * 1.0
+    reward += coordination_score * 0.1  # Scaled down by 10x (was 1.0)
     
     # 9. Early game survival bonus (extra reward if flag survives first 50 moves)
     if move_count >= 50:
         # Bonus for surviving early game
-        reward += 2.0
+        reward += 0.2  # Scaled down by 10x (was 2.0)
+    
+    # NEW: Additional Setup Agent Rewards (#1-5) - Scaled down by 10x
+    
+    # 1. Piece Value Distribution Rewards (0.0 to 1.0, scaled to 0-0.2)
+    value_distribution_score = evaluate_piece_value_distribution(placement, player_id)
+    reward += value_distribution_score * 0.2  # Scaled down by 10x (was 2.0)
+    
+    # 2. Strategic Piece Positioning (0.0 to 1.0, scaled to 0-0.25)
+    strategic_score = evaluate_strategic_positioning(placement, player_id)
+    reward += strategic_score * 0.25  # Scaled down by 10x (was 2.5)
+    
+    # 3. Defensive Depth Rewards (0.0 to 1.0, scaled to 0-0.15)
+    defensive_depth_score = evaluate_defensive_depth(placement, player_id)
+    reward += defensive_depth_score * 0.15  # Scaled down by 10x (was 1.5)
+    
+    # 4. Piece Synergy Rewards (0.0 to 1.0, scaled to 0-0.15)
+    synergy_score = evaluate_piece_synergy(placement, player_id)
+    reward += synergy_score * 0.15  # Scaled down by 10x (was 1.5)
+    
+    # 5. Vulnerability Assessment Penalties (0.0 to 1.0, scaled to 0-0.3 penalty)
+    vulnerability_penalty = evaluate_vulnerability(placement, player_id)
+    reward -= vulnerability_penalty * 0.3  # Scaled down by 10x (was 3.0)
     
     return reward
 
@@ -403,29 +775,64 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
         use_setup_agents: Whether to use setup agents for piece placement
         generate_gifs: Whether to generate GIFs (False to skip overhead)
     """
+    REPLAY_UPDATE_INTERVAL = 4
+    REPLAY_UPDATES_PER_STEP = 2
+    PREFETCH_QUEUE_SIZE = 6
+    TRAINING_BATCH_SIZE = 128
     
     # Set up device
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
     
     # Optimize GPU settings for better performance
+    torch_version = torch.__version__
+    print(f"PyTorch version: {torch_version}")
     if device.type == 'cuda':
         # Enable TensorFloat32 (TF32) for faster float32 matrix multiplication on Ampere+ GPUs
         torch.set_float32_matmul_precision('high')
-        
-        torch_version = torch.__version__
-        print(f"PyTorch version: {torch_version}")
-        if hasattr(torch, 'compile'):
-            print("✅ torch.compile available - networks will be optimized (if Triton is available)")
-        else:
-            print("⚠️  torch.compile not available - upgrade to PyTorch 2.0+ for better GPU utilization")
+        print(f"✅ Using GPU: {torch.cuda.get_device_name(0)}")
+        print(f"✅ GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.2f} GB")
+        # Enable optimizations for GPU
+        torch.backends.cudnn.benchmark = True
+        torch.backends.cudnn.deterministic = False
+    else:
+        print("⚠️  Using CPU - training will be slower")
+    
+    # Load persistent total episode and step counters (survives across training runs)
+    total_episodes_file = os.path.join(model_save_path, "total_episodes.txt")
+    total_steps_file = os.path.join(model_save_path, "total_steps.txt")
+    
+    total_episodes = 0
+    total_steps = 0
+    
+    if os.path.exists(total_episodes_file):
+        try:
+            with open(total_episodes_file, 'r') as f:
+                total_episodes = int(f.read().strip())
+            print(f"📊 Loaded total episodes counter: {total_episodes}")
+        except (ValueError, IOError) as e:
+            print(f"⚠️  Could not load total episodes counter: {e}, starting from 0")
+            total_episodes = 0
+    else:
+        print(f"📊 Starting total episodes counter from 0")
+    
+    if os.path.exists(total_steps_file):
+        try:
+            with open(total_steps_file, 'r') as f:
+                total_steps = int(f.read().strip())
+            print(f"📊 Loaded total steps counter: {total_steps}")
+        except (ValueError, IOError) as e:
+            print(f"⚠️  Could not load total steps counter: {e}, starting from 0")
+            total_steps = 0
+    else:
+        print(f"📊 Starting total steps counter from 0")
     
     # Create environment
     env = StrategoEnvironment(device=device)
     
     # Create game-playing agents
-    agent1 = DQNAgent(player_id=1, device=device, lr=0.001)
-    agent2 = DQNAgent(player_id=-1, device=device, lr=0.001)
+    agent1 = DQNAgent(player_id=1, device=device, lr=0.001, batch_size=TRAINING_BATCH_SIZE)
+    agent2 = DQNAgent(player_id=-1, device=device, lr=0.001, batch_size=TRAINING_BATCH_SIZE)
     
     # Create setup agents (for piece placement)
     setup_agent1 = SetupAgent(player_id=1, device=device) if use_setup_agents else None
@@ -452,13 +859,25 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
     epsilon_history = {'agent1': [], 'agent2': []}
     policy_loss_history = {'agent1': [], 'agent2': []}
     
+    agent1_prefetcher = ReplayPrefetcher(agent1, max_queue_size=PREFETCH_QUEUE_SIZE)
+    agent2_prefetcher = ReplayPrefetcher(agent2, max_queue_size=PREFETCH_QUEUE_SIZE)
+    prefetchers = [agent1_prefetcher, agent2_prefetcher]
+    
     # Setup agent history for plotting
     setup_agent1_rewards = []
     setup_agent2_rewards = []
     setup_agent1_losses = []
     setup_agent2_losses = []
     
+    # PBS evaluator history for plotting
+    pbs_evaluator1_losses = []
+    pbs_evaluator2_losses = []
+    pbs_evaluator1_buffer_sizes = []
+    pbs_evaluator2_buffer_sizes = []
+    
     print(f"Starting DQN training for {num_episodes} episodes...")
+    print(f"Total Episodes (all runs): {total_episodes}")
+    print(f"Total Steps (all runs): {total_steps}")
     print("=" * 60)
     
     def reset_agents():
@@ -506,6 +925,31 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
         is_checkpoint_episode = (episode + 1) % 50 == 0
         captured_move_50_pbs = False  # Track if we've captured PBS at move 50
         
+        # Create PBS visualization for episode 1 to check initial results
+        # Also create for checkpoint episodes every 100 episodes
+        if episode == 0 or (is_checkpoint_episode and (episode + 1) % 100 == 0):
+            try:
+                current_actual_board = env.board.actual_board if hasattr(env, 'board') and hasattr(env.board, 'actual_board') else None
+                visible_board_p1 = env.board.get_visible_board(1) if hasattr(env, 'board') and hasattr(env.board, 'get_visible_board') else None
+                visible_board_p2 = env.board.get_visible_board(-1) if hasattr(env, 'board') and hasattr(env.board, 'get_visible_board') else None
+                agent1_pbs = agent1.pbs if hasattr(agent1, 'pbs') else None
+                agent2_pbs = agent2.pbs if hasattr(agent2, 'pbs') else None
+                
+                if current_actual_board is not None:
+                    pbs_setup_save_path = f"{model_save_path}/pbs_visualization_episode_{episode + 1}_setup.png"
+                    visualize_pbs_state(
+                        current_actual_board,
+                        agent1_pbs,
+                        agent2_pbs,
+                        episode + 1,
+                        pbs_setup_save_path,
+                        visible_board_p1,
+                        visible_board_p2
+                    )
+                    print(f"🎯 PBS visualization after setup for episode {episode + 1}: {pbs_setup_save_path}")
+            except Exception as e:
+                print(f"⚠️  Error scheduling PBS visualization after setup for episode {episode + 1}: {e}")
+        
         # Episode rewards
         episode_reward_agent1 = 0
         episode_reward_agent2 = 0
@@ -547,9 +991,11 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
             # Execute action (action is guaranteed to be valid from get_valid_moves)
             next_game_state, reward, done, info = env.step(action)
             
-            # Record game state ONLY for potential winning games (we'll check at the end)
-            # We record all moves but will only create GIF if it's a winning game
-            if generate_gifs:
+            # OPTIMIZATION: Only record game states if we're tracking a potentially winning game
+            # This avoids expensive .clone() operations for games that won't be visualized
+            # We'll only record if the game is progressing well (not losing badly)
+            if generate_gifs and (episode_reward_agent1 > -20 or episode_reward_agent2 > -20):
+                # Only clone if we might use it (avoid unnecessary GPU operations)
                 current_board = env.board.actual_board.clone() if hasattr(env, 'board') and hasattr(env.board, 'actual_board') else None
                 if current_board is not None:
                     episode_game_states.append({
@@ -566,21 +1012,23 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
             elif move_count > 50:
                 game_phase = 'middle'
             
-            # Update PBS from revealed pieces (after battle)
+            # OPTIMIZATION: Update PBS from revealed pieces more efficiently
             # Check if pieces were revealed in the battle
             if hasattr(env, 'revealed_pieces_p1') and hasattr(env, 'revealed_pieces_p2'):
-                # Update agent1's PBS with revealed pieces
-                for pos, piece_value in env.revealed_pieces_p1.items():
-                    if pos not in agent1.pbs.revealed_pieces if agent1.pbs else True:
-                        from stratego_modular.piece import PieceType
-                        piece_type = PieceType(abs(piece_value))
-                        agent1.update_pbs_from_reveal(pos, piece_type, game_phase=game_phase, turn_count=move_count)
-                # Update agent2's PBS with revealed pieces
-                for pos, piece_value in env.revealed_pieces_p2.items():
-                    if pos not in agent2.pbs.revealed_pieces if agent2.pbs else True:
-                        from stratego_modular.piece import PieceType
-                        piece_type = PieceType(abs(piece_value))
-                        agent2.update_pbs_from_reveal(pos, piece_type, game_phase=game_phase, turn_count=move_count)
+                # Update agent1's PBS with revealed pieces (only if PBS exists)
+                if hasattr(agent1, 'pbs') and agent1.pbs:
+                    for pos, piece_value in env.revealed_pieces_p1.items():
+                        # OPTIMIZATION: Check revealed_pieces set first (faster than dict lookup)
+                        if pos not in agent1.pbs.revealed_pieces:
+                            piece_type = PieceType(abs(piece_value))
+                            agent1.update_pbs_from_reveal(pos, piece_type, game_phase=game_phase, turn_count=move_count)
+                # Update agent2's PBS with revealed pieces (only if PBS exists)
+                if hasattr(agent2, 'pbs') and agent2.pbs:
+                    for pos, piece_value in env.revealed_pieces_p2.items():
+                        # OPTIMIZATION: Check revealed_pieces set first (faster than dict lookup)
+                        if pos not in agent2.pbs.revealed_pieces:
+                            piece_type = PieceType(abs(piece_value))
+                            agent2.update_pbs_from_reveal(pos, piece_type, game_phase=game_phase, turn_count=move_count)
             
             # Get next state representation (returns GPU tensor)
             next_state = current_agent.get_state_representation(next_game_state)
@@ -606,74 +1054,83 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                 
             move_count += 1  # Only increment for valid moves
             
-            # Capture PBS at move 50 for checkpoint episodes (multiples of 50) if game hasn't ended
-            if is_checkpoint_episode and move_count == 50 and not done and not captured_move_50_pbs:
+            # OPTIMIZATION: Only capture PBS at move 50 every 100 episodes (not every 50)
+            # This reduces visualization overhead significantly
+            if is_checkpoint_episode and (episode + 1) % 100 == 0 and move_count == 50 and not done and not captured_move_50_pbs:
                 try:
                     agent1_pbs = agent1.pbs if hasattr(agent1, 'pbs') and agent1.pbs else None
                     agent2_pbs = agent2.pbs if hasattr(agent2, 'pbs') and agent2.pbs else None
-                    
-                    # Get visible boards for each player
-                    visible_board_p1 = None
-                    visible_board_p2 = None
-                    if hasattr(env, 'board') and hasattr(env.board, 'visible_board_p1'):
-                        visible_board_p1 = env.board.visible_board_p1.clone()
-                        visible_board_p2 = env.board.visible_board_p2.clone()
-                    
-                    # Get actual board
-                    current_actual_board = env.board.actual_board.clone() if hasattr(env, 'board') and hasattr(env.board, 'actual_board') else None
+                    visible_board_p1 = env.board.visible_board_p1 if hasattr(env, 'board') and hasattr(env.board, 'visible_board_p1') else None
+                    visible_board_p2 = env.board.visible_board_p2 if hasattr(env, 'board') and hasattr(env.board, 'visible_board_p2') else None
+                    current_actual_board = env.board.actual_board if hasattr(env, 'board') and hasattr(env.board, 'actual_board') else None
                     
                     if current_actual_board is not None:
                         pbs_save_path = f"{model_save_path}/pbs_visualization_episode_{episode + 1}_move_50.png"
                         visualize_pbs_state(
-                            actual_board=current_actual_board,
-                            agent1_pbs=agent1_pbs,
-                            agent2_pbs=agent2_pbs,
-                            episode=episode + 1,
-                            save_path=pbs_save_path,
-                            visible_board_p1=visible_board_p1,
-                            visible_board_p2=visible_board_p2
+                            current_actual_board,
+                            agent1_pbs,
+                            agent2_pbs,
+                            episode + 1,
+                            pbs_save_path,
+                            visible_board_p1,
+                            visible_board_p2
                         )
-                        print(f"🎯 PBS visualization saved at move 50 of episode {episode + 1}: {pbs_save_path}")
+                        print(f"🎯 PBS visualization at move 50 of episode {episode + 1}: {pbs_save_path}")
                         captured_move_50_pbs = True
                 except Exception as e:
-                    print(f"⚠️  Error creating PBS visualization at move 50 of episode {episode + 1}: {e}")
+                    print(f"⚠️  Error scheduling PBS visualization at move 50 of episode {episode + 1}: {e}")
             
-            # Train agents periodically
-            if move_count % 4 == 0:  # Train every 4 moves
-                agent1.replay()
-                agent2.replay()
+            # Batched training updates to maximize GPU utilization
+            if move_count % REPLAY_UPDATE_INTERVAL == 0:
+                for _ in range(REPLAY_UPDATES_PER_STEP):
+                    agent1.replay(batch=agent1_prefetcher.get_batch())
+                    agent2.replay(batch=agent2_prefetcher.get_batch())
                 
+        # Post-episode training burst to use prefetched batches
+        for _ in range(REPLAY_UPDATES_PER_STEP):
+            agent1.replay(batch=agent1_prefetcher.get_batch())
+            agent2.replay(batch=agent2_prefetcher.get_batch())
+        
         # Game finished - get final game state for PBS visualization
         # Use the last game state (next_game_state from the loop, or get it from env)
         final_game_state = next_game_state if 'next_game_state' in locals() else env._get_game_state()
         actual_board = env.board.actual_board if hasattr(env, 'board') and hasattr(env.board, 'actual_board') else None
         
-        # Collect end-game PBS data for all remaining pieces (ground truth from actual board)
+        # OPTIMIZATION: Collect end-game PBS data more efficiently
+        # Only collect for positions that actually have beliefs (avoid full board scan)
         if actual_board is not None and move_count > 50:  # Only collect if game progressed past early phase
-            from stratego_modular.piece import PieceType
+            # OPTIMIZATION: Only iterate through positions that have beliefs, not entire board
+            # OPTIMIZATION: Batch process positions to reduce .item() calls
             # Collect data for agent1's PBS (opponent pieces are player -1)
-            if agent1.pbs and agent1.pbs.evaluator:
-                for r in range(10):
-                    for c in range(10):
-                        pos = (r, c)
-                        piece_value = actual_board[r, c].item()
+            if agent1.pbs and agent1.pbs.evaluator and agent1.pbs.belief_distributions:
+                # Only check positions that have beliefs (much faster than scanning entire board)
+                # OPTIMIZATION: Batch extract piece values to reduce .item() calls
+                positions_to_check = [pos for pos in agent1.pbs.belief_distributions.keys() 
+                                     if 0 <= pos[0] < 10 and 0 <= pos[1] < 10 and pos not in agent1.pbs.revealed_pieces]
+                if positions_to_check:
+                    # Batch extract values (faster than individual .item() calls)
+                    for pos in positions_to_check:
+                        r, c = pos
+                        piece_value = int(actual_board[r, c].item())
                         # Check if this is an opponent piece (negative for player 1)
-                        if piece_value < 0 and piece_value != -13:  # Not empty or lake
-                            if pos not in agent1.pbs.revealed_pieces and pos in agent1.pbs.belief_distributions:
-                                piece_type = PieceType(abs(piece_value))
-                                agent1.pbs.update_from_reveal(pos, piece_type, game_phase='end', turn_count=move_count)
+                        if piece_value < 0 and piece_value != LAKE_SQUARE:  # Not empty or lake
+                            piece_type = PieceType(abs(piece_value))
+                            agent1.pbs.update_from_reveal(pos, piece_type, game_phase='end', turn_count=move_count)
             
             # Collect data for agent2's PBS (opponent pieces are player 1)
-            if agent2.pbs and agent2.pbs.evaluator:
-                for r in range(10):
-                    for c in range(10):
-                        pos = (r, c)
-                        piece_value = actual_board[r, c].item()
+            if agent2.pbs and agent2.pbs.evaluator and agent2.pbs.belief_distributions:
+                # Only check positions that have beliefs (much faster than scanning entire board)
+                # OPTIMIZATION: Batch process positions
+                positions_to_check = [pos for pos in agent2.pbs.belief_distributions.keys() 
+                                     if 0 <= pos[0] < 10 and 0 <= pos[1] < 10 and pos not in agent2.pbs.revealed_pieces]
+                if positions_to_check:
+                    for pos in positions_to_check:
+                        r, c = pos
+                        piece_value = int(actual_board[r, c].item())
                         # Check if this is an opponent piece (positive for player -1)
                         if piece_value > 0:
-                            if pos not in agent2.pbs.revealed_pieces and pos in agent2.pbs.belief_distributions:
-                                piece_type = PieceType(abs(piece_value))
-                                agent2.pbs.update_from_reveal(pos, piece_type, game_phase='end', turn_count=move_count)
+                            piece_type = PieceType(abs(piece_value))
+                            agent2.pbs.update_from_reveal(pos, piece_type, game_phase='end', turn_count=move_count)
         
         # Get winner from the final state or environment
         winner = final_game_state.winner if hasattr(final_game_state, 'winner') else (env.winner if hasattr(env, 'winner') else None)
@@ -761,44 +1218,45 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                 'game_states': episode_game_states
             })
             
-            # Create GIF for winning game
-            try:
-                episode_gif_path = f"{model_save_path}/episode_recording_win_{episode + 1}.gif"
-                create_episode_gif(episode_game_states, episode + 1, episode_gif_path, frame_duration=750)
-                print(f"✅ Created GIF for winning game at episode {episode + 1}")
-            except Exception as e:
-                print(f"⚠️  Error creating winning game GIF at episode {episode + 1}: {e}")
+            episode_gif_path = f"{model_save_path}/episode_recording_win_{episode + 1}.gif"
+            create_episode_gif(
+                episode_game_states,
+                episode + 1,
+                episode_gif_path,
+                frame_duration=750
+            )
+            print(f"✅ GIF created for winning game at episode {episode + 1}")
+            episode_game_states = []
         elif generate_gifs and not is_winning_game:
             # Clear game states for non-winning games to save memory
             episode_game_states = []
         
-        # Capture PBS at end of checkpoint episodes (multiples of 50)
-        if is_checkpoint_episode and actual_board is not None:
+        # OPTIMIZATION: Only capture PBS at end every 100 episodes (not every 50)
+        # This reduces visualization overhead significantly
+        if is_checkpoint_episode and (episode + 1) % 100 == 0 and actual_board is not None:
             try:
                 agent1_pbs = agent1.pbs if hasattr(agent1, 'pbs') and agent1.pbs else None
                 agent2_pbs = agent2.pbs if hasattr(agent2, 'pbs') and agent2.pbs else None
                 
-                # Get visible boards for each player
-                visible_board_p1 = None
-                visible_board_p2 = None
-                if hasattr(env, 'board') and hasattr(env.board, 'visible_board_p1'):
-                    visible_board_p1 = env.board.visible_board_p1.clone()
-                    visible_board_p2 = env.board.visible_board_p2.clone()
+                # OPTIMIZATION: Avoid unnecessary clones - use references when possible
+                # Get visible boards for each player (no clone needed, visualization handles it)
+                visible_board_p1 = env.board.visible_board_p1 if hasattr(env, 'board') and hasattr(env.board, 'visible_board_p1') else None
+                visible_board_p2 = env.board.visible_board_p2 if hasattr(env, 'board') and hasattr(env.board, 'visible_board_p2') else None
                 
                 # Create PBS visualization at end of checkpoint episode
                 pbs_save_path = f"{model_save_path}/pbs_visualization_episode_{episode + 1}_end.png"
                 visualize_pbs_state(
-                    actual_board=actual_board,
-                    agent1_pbs=agent1_pbs,
-                    agent2_pbs=agent2_pbs,
-                    episode=episode + 1,
-                    save_path=pbs_save_path,
-                    visible_board_p1=visible_board_p1,
-                    visible_board_p2=visible_board_p2
+                    actual_board,
+                    agent1_pbs,
+                    agent2_pbs,
+                    episode + 1,
+                    pbs_save_path,
+                    visible_board_p1,
+                    visible_board_p2
                 )
-                print(f"🎯 PBS visualization saved at end of episode {episode + 1} (move {move_count}): {pbs_save_path}")
+                print(f"🎯 PBS visualization at end of episode {episode + 1} (move {move_count}): {pbs_save_path}")
             except Exception as e:
-                print(f"⚠️  Error creating PBS visualization at end of episode {episode + 1}: {e}")
+                print(f"⚠️  Error scheduling PBS visualization at end of episode {episode + 1}: {e}")
         
         # Note: PBS visualization for checkpoint episodes (multiples of 50) is now handled above
         # It captures PBS at both move 50 (if game hasn't ended) and at end of game
@@ -811,14 +1269,16 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
         # Train PBS evaluators periodically (only if they have collected data)
         if episode % 20 == 0 and episode > 0:
             # Train evaluators on collected data
+            evaluator1_loss = None
+            evaluator2_loss = None
             if agent1.pbs and agent1.pbs.evaluator:
-                loss1 = agent1.pbs.train_evaluator(epochs=2)
-                if loss1 is not None and episode % 100 == 0:
-                    print(f"  PBS Evaluator 1 Loss: {loss1:.4f}")
+                evaluator1_loss = agent1.pbs.train_evaluator(epochs=2)
+                if evaluator1_loss is not None and episode % 100 == 0:
+                    print(f"  PBS Evaluator 1 Loss: {evaluator1_loss:.4f}")
             if agent2.pbs and agent2.pbs.evaluator:
-                loss2 = agent2.pbs.train_evaluator(epochs=2)
-                if loss2 is not None and episode % 100 == 0:
-                    print(f"  PBS Evaluator 2 Loss: {loss2:.4f}")
+                evaluator2_loss = agent2.pbs.train_evaluator(epochs=2)
+                if evaluator2_loss is not None and episode % 100 == 0:
+                    print(f"  PBS Evaluator 2 Loss: {evaluator2_loss:.4f}")
             
             # Update target networks for evaluators
             if agent1.pbs and agent1.pbs.evaluator:
@@ -826,6 +1286,47 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
             if agent2.pbs and agent2.pbs.evaluator:
                 agent2.pbs.evaluator.update_target_network()
             
+            # Track PBS evaluator metrics
+            pbs_evaluator1_losses.append(evaluator1_loss)
+            pbs_evaluator2_losses.append(evaluator2_loss)
+            pbs_evaluator1_buffer_sizes.append(
+                len(agent1.pbs.evaluator.memory) if agent1.pbs and agent1.pbs.evaluator else 0
+            )
+            pbs_evaluator2_buffer_sizes.append(
+                len(agent2.pbs.evaluator.memory) if agent2.pbs and agent2.pbs.evaluator else 0
+            )
+        else:
+            # Track metrics even when not training (to keep lists aligned)
+            pbs_evaluator1_losses.append(None)
+            pbs_evaluator2_losses.append(None)
+            pbs_evaluator1_buffer_sizes.append(
+                len(agent1.pbs.evaluator.memory) if agent1.pbs and agent1.pbs.evaluator else 0
+            )
+            pbs_evaluator2_buffer_sizes.append(
+                len(agent2.pbs.evaluator.memory) if agent2.pbs and agent2.pbs.evaluator else 0
+            )
+            
+        # Update persistent counters (survive across agent resets)
+        total_episodes += 1
+        
+        # Update total steps by adding moves from this episode
+        # move_count tracks the number of moves in this episode
+        # This is more reliable than using agent.step_count which resets
+        total_steps += move_count
+        
+        # Update epsilon based on total_steps (not agent's step_count which resets)
+        # This ensures epsilon decay continues even after agent resets
+        epsilon_decay_interval = 500_000  # Same as agent's epsilon_decay_interval
+        if total_steps < epsilon_decay_interval:
+            # Linear decay: epsilon decreases from 1.0 to 0.0 over 500,000 steps
+            new_epsilon = max(0.0, min(1.0, 1.0 - (total_steps / epsilon_decay_interval)))
+            agent1.epsilon = new_epsilon
+            agent2.epsilon = new_epsilon
+        else:
+            # After 500,000 steps: fully deterministic (epsilon = 0, no exploration)
+            agent1.epsilon = 0.0
+            agent2.epsilon = 0.0
+        
         # Store episode rewards
         total_rewards_agent1.append(episode_reward_agent1)
         total_rewards_agent2.append(episode_reward_agent2)
@@ -846,24 +1347,41 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
         policy_loss_history['agent1'].append(avg_loss1)
         policy_loss_history['agent2'].append(avg_loss2)
         
-        # Track setup agent rewards and losses
+        # Track setup agent rewards and losses (ensure both lists stay same length as episode_history)
         if use_setup_agents and setup_agent1:
             if len(setup_agent1.episode_rewards) > 0:
                 setup_agent1_rewards.append(setup_agent1.episode_rewards[-1])
+            else:
+                # Append last known reward or 0.0 if no rewards yet
+                last_reward = setup_agent1_rewards[-1] if len(setup_agent1_rewards) > 0 else 0.0
+                setup_agent1_rewards.append(last_reward)
             avg_setup_loss1 = setup_agent1.get_average_policy_loss(100) if hasattr(setup_agent1, 'get_average_policy_loss') else 0.0
             setup_agent1_losses.append(avg_setup_loss1)
+        elif use_setup_agents:
+            # Setup agent 1 not available, append 0.0 to keep lists aligned
+            setup_agent1_rewards.append(0.0)
+            setup_agent1_losses.append(0.0)
         
         if use_setup_agents and setup_agent2:
             if len(setup_agent2.episode_rewards) > 0:
                 setup_agent2_rewards.append(setup_agent2.episode_rewards[-1])
+            else:
+                # Append last known reward or 0.0 if no rewards yet
+                last_reward = setup_agent2_rewards[-1] if len(setup_agent2_rewards) > 0 else 0.0
+                setup_agent2_rewards.append(last_reward)
             avg_setup_loss2 = setup_agent2.get_average_policy_loss(100) if hasattr(setup_agent2, 'get_average_policy_loss') else 0.0
             setup_agent2_losses.append(avg_setup_loss2)
+        elif use_setup_agents:
+            # Setup agent 2 not available, append 0.0 to keep lists aligned
+            setup_agent2_rewards.append(0.0)
+            setup_agent2_losses.append(0.0)
         
         # Print progress
         if (episode + 1) % 50 == 0:
             avg_reward1 = np.mean(total_rewards_agent1[-50:]) if total_rewards_agent1 else 0
             avg_reward2 = np.mean(total_rewards_agent2[-50:]) if total_rewards_agent2 else 0
-            print(f"Episode {episode + 1}/{num_episodes}")
+            print(f"Episode {episode + 1}/{num_episodes} (Total: {total_episodes})")
+            print(f"  Total Steps: {total_steps:,}")
             print(f"  Agent 1 wins: {wins_agent1}, Agent 2 wins: {wins_agent2}, Draws: {draws}")
             print(f"  Avg Reward Agent 1 (last 50): {avg_reward1:.2f}")
             print(f"  Avg Reward Agent 2 (last 50): {avg_reward2:.2f}")
@@ -888,26 +1406,44 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                 wins_history = {'agent1': [], 'agent2': [], 'draws': []}
                 epsilon_history = {'agent1': [], 'agent2': []}
                 policy_loss_history = {'agent1': [], 'agent2': []}
+                # Reset setup agent tracking lists
+                if use_setup_agents:
+                    setup_agent1_rewards = []
+                    setup_agent2_rewards = []
+                    setup_agent1_losses = []
+                    setup_agent2_losses = []
+                # Reset PBS evaluator tracking lists
+                pbs_evaluator1_losses = []
+                pbs_evaluator2_losses = []
+                pbs_evaluator1_buffer_sizes = []
+                pbs_evaluator2_buffer_sizes = []
             
-            # Save chart every 50 episodes
-            # Save main DQN training progress (separate from setup agent progress)
-            try:
+            # OPTIMIZATION: Save persistent counters every 100 episodes (not just every 50)
+            # This ensures counters are saved more frequently
+            if (episode + 1) % 100 == 0:
+                _save_counters(
+                    total_episodes_file,
+                    total_steps_file,
+                    total_episodes,
+                    total_steps
+                )
+            
+            # Save chart every 50 episodes (only if we have data)
+            if len(episode_history) > 0:
+                # Save main DQN training progress (separate from setup agent progress)
                 plot_training_progress(
                     episode_history,
                     rewards_history,
                     wins_history,
                     policy_loss_history,
-                    save_path=f"{model_save_path}/training_progress_episode_{episode + 1}.png"
+                    save_path=f"{model_save_path}/training_progress_episode_{episode + 1}.png",
+                    total_episodes=total_episodes,
+                    total_steps=total_steps
                 )
-                print(f"📈 Training progress graph saved to {model_save_path}/training_progress_episode_{episode + 1}.png")
-            except Exception as e:
-                print(f"⚠️  Error saving training progress graph at episode {episode + 1}: {e}")
-                import traceback
-                traceback.print_exc()
-            
-            # Save setup agent progress chart (separate PNG file, independent from main DQN plot)
-            if use_setup_agents and setup_agent1 and setup_agent2:
-                try:
+                print(f"📈 Training progress graph saved: {model_save_path}/training_progress_episode_{episode + 1}.png")
+                
+                # Save setup agent progress chart (separate PNG file, independent from main DQN plot)
+                if use_setup_agents and setup_agent1 and setup_agent2:
                     plot_setup_agent_progress(
                         episode_history,
                         setup_agent1_rewards,
@@ -916,11 +1452,21 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                         setup_agent2_losses,
                         save_path=f"{model_save_path}/setup_agent_progress_episode_{episode + 1}.png"
                     )
-                    print(f"📊 Setup agent progress graph saved to {model_save_path}/setup_agent_progress_episode_{episode + 1}.png")
-                except Exception as e:
-                    print(f"⚠️  Error saving setup agent progress graph: {e}")
-                    import traceback
-                    traceback.print_exc()
+                    print(f"📊 Setup agent progress graph saved: {model_save_path}/setup_agent_progress_episode_{episode + 1}.png")
+                
+                # Save PBS evaluator progress chart (separate PNG file)
+                plot_pbs_evaluator_progress(
+                    episode_history,
+                    pbs_evaluator1_losses,
+                    pbs_evaluator2_losses,
+                    pbs_evaluator1_buffer_sizes,
+                    pbs_evaluator2_buffer_sizes,
+                    save_path=f"{model_save_path}/pbs_evaluator_progress_episode_{episode + 1}.png",
+                    total_episodes=total_episodes
+                )
+                print(f"📊 PBS evaluator progress graph saved: {model_save_path}/pbs_evaluator_progress_episode_{episode + 1}.png")
+            else:
+                print(f"⚠️  Skipping progress plots - no episode history yet (agents were reset)")
             
         # Save models periodically (keep at save_interval)
         if (episode + 1) % save_interval == 0:
@@ -951,14 +1497,25 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                     print(f"⚠️  Warning: Model files may not have been created at episode {episode + 1}")
             except Exception as e:
                 print(f"⚠️  Error saving models at episode {episode + 1}: {e}")
-                import traceback
                 traceback.print_exc()
             
+    # Save final persistent counters
+    try:
+        with open(total_episodes_file, 'w') as f:
+            f.write(str(total_episodes))
+        with open(total_steps_file, 'w') as f:
+            f.write(str(total_steps))
+        print(f"💾 Saved persistent counters: {total_episodes} episodes, {total_steps:,} steps")
+    except Exception as e:
+        print(f"⚠️  Could not save persistent counters: {e}")
+    
     # Final training metrics
     print("\n" + "=" * 60)
     print("TRAINING COMPLETED")
     print("=" * 60)
-    print(f"Total Episodes: {num_episodes}")
+    print(f"Episodes this run: {num_episodes}")
+    print(f"Total Episodes (all runs): {total_episodes}")
+    print(f"Total Steps (all runs): {total_steps:,}")
     print(f"Agent 1 Wins: {wins_agent1} ({wins_agent1/num_episodes*100:.1f}%)")
     print(f"Agent 2 Wins: {wins_agent2} ({wins_agent2/num_episodes*100:.1f}%)")
     print(f"Draws: {draws} ({draws/num_episodes*100:.1f}%)")
@@ -994,11 +1551,13 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
             print(f"\n⚠️  Warning: Final model files may not have been created")
     except Exception as e:
         print(f"\n⚠️  Error saving final models: {e}")
-        import traceback
         traceback.print_exc()
     
     # Training completed
     print("Training environment closed")
+    
+    for prefetcher in prefetchers:
+        prefetcher.stop()
     
     return agent1, agent2
 
@@ -1009,7 +1568,7 @@ def main():
     print("=" * 50)
     
     # Training parameters
-    num_episodes = 2000  # More than 500 as requested
+    num_episodes = 4000  # More than 500 as requested
     save_interval = 100
     model_save_path = "dqn_models"
     use_setup_agents = True  # Enable setup agents for piece placement
@@ -1026,7 +1585,6 @@ def main():
         print("\n⏹️  Training interrupted by user")
     except Exception as e:
         print(f"\n❌ Error during training: {e}")
-        import traceback
         traceback.print_exc()
 
 

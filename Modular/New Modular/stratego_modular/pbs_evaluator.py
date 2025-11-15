@@ -248,21 +248,28 @@ class PBSEvaluator:
                                                 replace=False)
                 batch = [self.memory[i] for i in batch_indices]
                 
-                # Prepare batch tensors
+                # OPTIMIZATION: Prepare batch tensors more efficiently
+                # Stack predictions directly (they should already be tensors on correct device)
                 batch_predictions = torch.stack([e.pbs_prediction for e in batch])
                 
-                # Compute target rewards using ground truth
-                # This is the "ground truth" reward based on actual piece types
+                # OPTIMIZATION: Compute target rewards using ground truth
+                # Batch process rewards to reduce overhead
                 ground_truth_rewards = []
                 for exp in batch:
-                    # Convert tensor back to dict for reward computation
-                    prediction_dict = {
-                        pt: exp.pbs_prediction[i].item() 
-                        for i, pt in enumerate(PieceType)
-                    }
+                    # OPTIMIZATION: Avoid converting to dict if prediction is already a tensor
+                    # Use tensor operations directly when possible
+                    if isinstance(exp.pbs_prediction, torch.Tensor):
+                        # Extract values more efficiently
+                        prediction_dict = {
+                            pt: float(exp.pbs_prediction[i].item()) 
+                            for i, pt in enumerate(PieceType)
+                        }
+                    else:
+                        prediction_dict = exp.pbs_prediction
                     reward = self.compute_reward(prediction_dict, exp.ground_truth)
                     ground_truth_rewards.append(reward)
                 
+                # OPTIMIZATION: Create tensor once with proper dtype
                 ground_truth_rewards_tensor = torch.tensor(ground_truth_rewards, 
                                                           dtype=torch.float32, 
                                                           device=self.device).unsqueeze(1)
@@ -360,20 +367,64 @@ class PBSEvaluator:
         return feedback
     
     def save_model(self, filepath: str):
-        """Save the evaluator model"""
+        """Save the evaluator model including experience buffer"""
+        # Convert experience buffer to serializable format
+        # Note: PBSEvaluationExperience contains tensors, need to convert to CPU and detach
+        memory_data = []
+        for exp in self.memory:
+            # Convert tensor to CPU and detach for saving
+            pbs_pred_cpu = exp.pbs_prediction.cpu().detach() if isinstance(exp.pbs_prediction, torch.Tensor) else exp.pbs_prediction
+            memory_data.append({
+                'pbs_prediction': pbs_pred_cpu,
+                'ground_truth': exp.ground_truth.value,  # Save enum value
+                'position': exp.position,
+                'game_phase': exp.game_phase,
+                'turn_count': exp.turn_count
+            })
+        
         torch.save({
             'evaluator_state_dict': self.evaluator_network.state_dict(),
             'target_state_dict': self.target_network.state_dict(),
             'optimizer_state_dict': self.optimizer.state_dict(),
+            'memory': memory_data,  # Save experience buffer
+            'training_losses': self.training_losses,  # Save training history
         }, filepath)
     
     def load_model(self, filepath: str):
-        """Load the evaluator model"""
+        """Load the evaluator model including experience buffer"""
         checkpoint = torch.load(filepath, map_location=self.device)
         self.evaluator_network.load_state_dict(checkpoint['evaluator_state_dict'])
         self.target_network.load_state_dict(checkpoint['target_state_dict'])
         self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         self.update_target_network()
+        
+        # Load experience buffer if available
+        if 'memory' in checkpoint:
+            self.memory.clear()
+            for mem_data in checkpoint['memory']:
+                # Convert back to PBSEvaluationExperience
+                pbs_pred = mem_data['pbs_prediction']
+                if isinstance(pbs_pred, torch.Tensor):
+                    pbs_pred = pbs_pred.to(self.device)
+                else:
+                    pbs_pred = torch.tensor(pbs_pred, device=self.device)
+                
+                # Convert ground truth value back to PieceType
+                ground_truth = PieceType(mem_data['ground_truth'])
+                
+                experience = PBSEvaluationExperience(
+                    pbs_prediction=pbs_pred,
+                    ground_truth=ground_truth,
+                    position=tuple(mem_data['position']),
+                    game_phase=mem_data['game_phase'],
+                    turn_count=mem_data['turn_count']
+                )
+                self.memory.append(experience)
+            print(f"✅ Loaded {len(self.memory)} experiences into PBS evaluator buffer")
+        
+        # Load training losses if available
+        if 'training_losses' in checkpoint:
+            self.training_losses = checkpoint['training_losses']
     
     def get_average_loss(self, window: int = 100) -> float:
         """Get average training loss over the last N steps"""

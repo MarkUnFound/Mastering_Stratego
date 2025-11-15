@@ -97,52 +97,14 @@ class DQNAgent:
         else:
             self.pbs = None
         
-        # Neural networks
+        # Neural networks (keep on GPU, no compilation for Windows compatibility)
         self.q_network = DQN(state_size, 512, action_size).to(device)
         self.target_network = DQN(state_size, 512, action_size).to(device)
         
-        # Compile networks with PyTorch 2.0+ for better GPU utilization
-        # Try compilation, but fallback gracefully if Triton is not available
-        self._compiled = False
-        if hasattr(torch, 'compile') and device.type == 'cuda':
-            try:
-                # Test if compilation works by trying to compile a simple test
-                # This helps catch Triton issues early
-                test_model = nn.Linear(10, 10).to(device)
-                try:
-                    compiled_test = torch.compile(test_model, mode='default')
-                    # Test that it actually works (catches TritonMissing at runtime)
-                    test_input = torch.randn(1, 10, device=device)
-                    _ = compiled_test(test_input)
-                    del compiled_test, test_model, test_input
-                    
-                    # If test passed, compile the actual networks
-                    self.q_network = torch.compile(self.q_network, mode='default')
-                    self.target_network = torch.compile(self.target_network, mode='default')
-                    self._compiled = True
-                    print(f"✅ Compiled {self.name} networks with torch.compile")
-                except Exception as compile_error:
-                    # Compilation or execution failed (likely Triton missing)
-                    error_msg = str(compile_error)
-                    # Extract just the first line if it's a long error message
-                    if '\n' in error_msg:
-                        error_msg = error_msg.split('\n')[0]
-                    # Suppress verbose Triton errors - it's optional
-                    if 'triton' in error_msg.lower():
-                        print(f"⚠️  Could not compile {self.name} networks (Triton not available - running without compilation)")
-                    else:
-                        print(f"⚠️  Could not compile {self.name} networks: {error_msg[:100]}")
-                    self._compiled = False
-            except Exception as e:
-                # If compilation setup fails, continue without compilation
-                error_msg = str(e)
-                if '\n' in error_msg:
-                    error_msg = error_msg.split('\n')[0]
-                if 'triton' in error_msg.lower():
-                    print(f"⚠️  Could not compile {self.name} networks (Triton not available - running without compilation)")
-                else:
-                    print(f"⚠️  Could not compile {self.name} networks: {error_msg[:100]}")
-                self._compiled = False
+        # Enable cuDNN benchmarking for faster convolutions (if using conv layers)
+        if device.type == 'cuda':
+            torch.backends.cudnn.benchmark = True
+            torch.backends.cudnn.deterministic = False  # Faster, non-deterministic
         
         self.optimizer = optim.AdamW(self.q_network.parameters(), lr=lr, weight_decay=0.01)
         
@@ -169,14 +131,6 @@ class DQNAgent:
         # Reinitialize Q-network and target network
         self.q_network = DQN(self.state_size, 512, self.action_size).to(self.device)
         self.target_network = DQN(self.state_size, 512, self.action_size).to(self.device)
-        
-        # Recompile networks if available
-        if hasattr(torch, 'compile') and self.device.type == 'cuda' and self._compiled:
-            try:
-                self.q_network = torch.compile(self.q_network, mode='default')
-                self.target_network = torch.compile(self.target_network, mode='default')
-            except Exception:
-                self._compiled = False
         
         # Reinitialize optimizer
         self.optimizer = optim.AdamW(self.q_network.parameters(), lr=self.lr, weight_decay=0.01)
@@ -222,6 +176,12 @@ class DQNAgent:
         
         # Increment step counter for epsilon decay
         self.step_count += 1
+
+    def sample_replay_batch(self) -> Optional[List[Experience]]:
+        """Sample a batch from the replay buffer without performing an update."""
+        if len(self.memory) < self.batch_size:
+            return None
+        return random.sample(self.memory, self.batch_size)
         
     def act(self, state, valid_moves: List[Tuple[Tuple[int, int], Tuple[int, int]]], 
             game_state=None) -> Tuple[Tuple[int, int], Tuple[int, int]]:
@@ -261,8 +221,8 @@ class DQNAgent:
             # No state available, return random action
             return random.choice(valid_moves)
             
-        # Exploration: choose random action (use torch for GPU-friendly random)
-        if torch.rand(1, device=self.device).item() <= self.epsilon:
+        # Exploration: choose random action (keep random on GPU to avoid CPU transfer)
+        if torch.rand(1, device=self.device, dtype=torch.float32).item() <= self.epsilon:
             return random.choice(valid_moves)
             
         # Step 2: DQN calculates Q-value using PBS-enhanced state
@@ -306,18 +266,17 @@ class DQNAgent:
                 
         return best_action if best_action is not None else random.choice(valid_moves)
         
-    def replay(self) -> Optional[float]:
+    def replay(self, batch: Optional[List[Experience]] = None) -> Optional[float]:
         """
         Train the model on a batch of experiences - optimized for GPU
         
         Returns:
             Policy loss value or None if not enough experiences
         """
-        if len(self.memory) < self.batch_size:
-            return None
-            
-        # Sample a batch of experiences
-        batch = random.sample(self.memory, self.batch_size)
+        if batch is None:
+            if len(self.memory) < self.batch_size:
+                return None
+            batch = random.sample(self.memory, self.batch_size)
         
         # Stack states and next_states (already on GPU from remember())
         states = torch.stack([e.state for e in batch])
@@ -345,12 +304,10 @@ class DQNAgent:
         torch.nn.utils.clip_grad_norm_(self.q_network.parameters(), max_norm=10.0)
         self.optimizer.step()
         
-        # Track policy loss (only move to CPU for tracking)
+        # Track policy loss (minimize CPU transfer - only get item() once)
         # Clip loss value for reporting to prevent extremely large values
-        loss_value = loss.item()
-        # Cap reported loss at 100 to prevent misleading statistics
-        loss_value_clipped = min(loss_value, 100.0)
-        self.policy_losses.append(loss_value_clipped)
+        loss_value = min(loss.item(), 100.0)  # Cap at 100 for reporting
+        self.policy_losses.append(loss_value)
         
         # Gradual epsilon decay: linearly decrease from 1.0 to 0.0 over 500,000 steps
         if self.step_count < self.epsilon_decay_interval:
@@ -403,16 +360,37 @@ class DQNAgent:
         
         # Save PBS models if they exist
         if self.pbs:
-            # Save LSTM model
-            if hasattr(self.pbs, 'lstm_model') and self.pbs.lstm_model is not None:
+            # Save Aaren model (backward compatible with LSTM naming)
+            if hasattr(self.pbs, 'aaren_model') and self.pbs.aaren_model is not None:
+                checkpoint['pbs_aaren_state_dict'] = self.pbs.aaren_model.state_dict()
+                checkpoint['pbs_aaren_optimizer_state_dict'] = self.pbs.aaren_optimizer.state_dict()
+                # Backward compatibility: also save with LSTM keys
+                checkpoint['pbs_lstm_state_dict'] = self.pbs.aaren_model.state_dict()
+                checkpoint['pbs_lstm_optimizer_state_dict'] = self.pbs.aaren_optimizer.state_dict()
+            elif hasattr(self.pbs, 'lstm_model') and self.pbs.lstm_model is not None:
+                # Legacy LSTM support
                 checkpoint['pbs_lstm_state_dict'] = self.pbs.lstm_model.state_dict()
                 checkpoint['pbs_lstm_optimizer_state_dict'] = self.pbs.lstm_optimizer.state_dict()
             
-            # Save PBS evaluator if it exists
+            # Save PBS evaluator if it exists (including experience buffer)
             if self.pbs.evaluator is not None:
                 checkpoint['pbs_evaluator_state_dict'] = self.pbs.evaluator.evaluator_network.state_dict()
                 checkpoint['pbs_evaluator_target_state_dict'] = self.pbs.evaluator.target_network.state_dict()
                 checkpoint['pbs_evaluator_optimizer_state_dict'] = self.pbs.evaluator.optimizer.state_dict()
+                
+                # Save experience buffer (convert to CPU for serialization)
+                memory_data = []
+                for exp in self.pbs.evaluator.memory:
+                    pbs_pred_cpu = exp.pbs_prediction.cpu().detach() if isinstance(exp.pbs_prediction, torch.Tensor) else exp.pbs_prediction
+                    memory_data.append({
+                        'pbs_prediction': pbs_pred_cpu,
+                        'ground_truth': exp.ground_truth.value,  # Save enum value
+                        'position': exp.position,
+                        'game_phase': exp.game_phase,
+                        'turn_count': exp.turn_count
+                    })
+                checkpoint['pbs_evaluator_memory'] = memory_data
+                checkpoint['pbs_evaluator_training_losses'] = self.pbs.evaluator.training_losses
         
         torch.save(checkpoint, filepath)
         
@@ -428,17 +406,36 @@ class DQNAgent:
         
         # Load PBS models if they exist in checkpoint
         if self.pbs:
-            # Load LSTM model if available
-            if 'pbs_lstm_state_dict' in checkpoint and hasattr(self.pbs, 'lstm_model'):
+            # Load Aaren model (preferred, backward compatible with LSTM)
+            if 'pbs_aaren_state_dict' in checkpoint and hasattr(self.pbs, 'aaren_model'):
                 try:
-                    self.pbs.lstm_model.load_state_dict(checkpoint['pbs_lstm_state_dict'])
-                    if 'pbs_lstm_optimizer_state_dict' in checkpoint:
-                        self.pbs.lstm_optimizer.load_state_dict(checkpoint['pbs_lstm_optimizer_state_dict'])
-                    print(f"✅ Loaded PBS LSTM model for {self.name}")
+                    self.pbs.aaren_model.load_state_dict(checkpoint['pbs_aaren_state_dict'])
+                    if 'pbs_aaren_optimizer_state_dict' in checkpoint:
+                        self.pbs.aaren_optimizer.load_state_dict(checkpoint['pbs_aaren_optimizer_state_dict'])
+                    print(f"✅ Loaded PBS Aaren model for {self.name}")
                 except Exception as e:
-                    print(f"⚠️  Warning: Could not load PBS LSTM model for {self.name}: {e}")
+                    print(f"⚠️  Warning: Could not load PBS Aaren model for {self.name}: {e}")
+            elif 'pbs_lstm_state_dict' in checkpoint:
+                # Try to load as Aaren (backward compatibility)
+                if hasattr(self.pbs, 'aaren_model'):
+                    try:
+                        self.pbs.aaren_model.load_state_dict(checkpoint['pbs_lstm_state_dict'])
+                        if 'pbs_lstm_optimizer_state_dict' in checkpoint:
+                            self.pbs.aaren_optimizer.load_state_dict(checkpoint['pbs_lstm_optimizer_state_dict'])
+                        print(f"✅ Loaded PBS Aaren model (from LSTM checkpoint) for {self.name}")
+                    except Exception as e:
+                        print(f"⚠️  Warning: Could not load PBS Aaren model from LSTM checkpoint for {self.name}: {e}")
+                # Legacy LSTM support
+                elif hasattr(self.pbs, 'lstm_model'):
+                    try:
+                        self.pbs.lstm_model.load_state_dict(checkpoint['pbs_lstm_state_dict'])
+                        if 'pbs_lstm_optimizer_state_dict' in checkpoint:
+                            self.pbs.lstm_optimizer.load_state_dict(checkpoint['pbs_lstm_optimizer_state_dict'])
+                        print(f"✅ Loaded PBS LSTM model for {self.name}")
+                    except Exception as e:
+                        print(f"⚠️  Warning: Could not load PBS LSTM model for {self.name}: {e}")
             
-            # Load PBS evaluator if available
+            # Load PBS evaluator if available (including experience buffer)
             if 'pbs_evaluator_state_dict' in checkpoint and self.pbs.evaluator is not None:
                 try:
                     self.pbs.evaluator.evaluator_network.load_state_dict(checkpoint['pbs_evaluator_state_dict'])
@@ -446,9 +443,45 @@ class DQNAgent:
                     if 'pbs_evaluator_optimizer_state_dict' in checkpoint:
                         self.pbs.evaluator.optimizer.load_state_dict(checkpoint['pbs_evaluator_optimizer_state_dict'])
                     self.pbs.evaluator.update_target_network()
-                    print(f"✅ Loaded PBS evaluator model for {self.name}")
+                    
+                    # Load experience buffer if available
+                    if 'pbs_evaluator_memory' in checkpoint:
+                        from .pbs_evaluator import PBSEvaluationExperience
+                        from .piece import PieceType
+                        
+                        self.pbs.evaluator.memory.clear()
+                        for mem_data in checkpoint['pbs_evaluator_memory']:
+                            # Convert back to PBSEvaluationExperience
+                            pbs_pred = mem_data['pbs_prediction']
+                            if isinstance(pbs_pred, torch.Tensor):
+                                pbs_pred = pbs_pred.to(self.pbs.evaluator.device)
+                            else:
+                                pbs_pred = torch.tensor(pbs_pred, device=self.pbs.evaluator.device)
+                            
+                            # Convert ground truth value back to PieceType
+                            ground_truth = PieceType(mem_data['ground_truth'])
+                            
+                            experience = PBSEvaluationExperience(
+                                pbs_prediction=pbs_pred,
+                                ground_truth=ground_truth,
+                                position=tuple(mem_data['position']),
+                                game_phase=mem_data['game_phase'],
+                                turn_count=mem_data['turn_count']
+                            )
+                            self.pbs.evaluator.memory.append(experience)
+                        
+                        print(f"✅ Loaded PBS evaluator model for {self.name} with {len(self.pbs.evaluator.memory)} experiences")
+                    else:
+                        print(f"✅ Loaded PBS evaluator model for {self.name} (no experience buffer found)")
+                    
+                    # Load training losses if available
+                    if 'pbs_evaluator_training_losses' in checkpoint:
+                        self.pbs.evaluator.training_losses = checkpoint['pbs_evaluator_training_losses']
+                    
                 except Exception as e:
                     print(f"⚠️  Warning: Could not load PBS evaluator model for {self.name}: {e}")
+                    import traceback
+                    traceback.print_exc()
         
     def get_state_representation(self, game_state) -> torch.Tensor:
         """
@@ -478,22 +511,20 @@ class DQNAgent:
                     visible_board = torch.tensor(visible_board, dtype=torch.float32, device=self.device)
         else:
             # Ensure we're only using the visible board information
+            # OPTIMIZATION: Consolidate tensor conversion logic to avoid duplication
             if hasattr(game_state, 'board'):
                 # It's a game state object with visible board for current player
                 visible_board = game_state.board
-                if isinstance(visible_board, torch.Tensor):
-                    if visible_board.device != self.device:
-                        visible_board = visible_board.to(self.device)
-                else:
-                    visible_board = torch.tensor(visible_board, dtype=torch.float32, device=self.device)
             else:
                 # It's already a board/array
                 visible_board = game_state
-                if isinstance(visible_board, torch.Tensor):
-                    if visible_board.device != self.device:
-                        visible_board = visible_board.to(self.device)
-                else:
-                    visible_board = torch.tensor(visible_board, dtype=torch.float32, device=self.device)
+            
+            # OPTIMIZATION: Single conversion logic (reduces code duplication)
+            if isinstance(visible_board, torch.Tensor):
+                if visible_board.device != self.device:
+                    visible_board = visible_board.to(self.device)
+            else:
+                visible_board = torch.tensor(visible_board, dtype=torch.float32, device=self.device)
         
         # Flatten the visible board (10x10 = 100 values) - keep on GPU
         if len(visible_board.shape) == 2:

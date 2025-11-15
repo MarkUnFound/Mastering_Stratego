@@ -1,3 +1,4 @@
 # Ignore training history and saved models
 History/
 dqn_models/
+setup_agent_models/

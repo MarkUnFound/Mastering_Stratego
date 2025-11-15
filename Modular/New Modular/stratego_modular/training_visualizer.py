@@ -23,7 +23,9 @@ def plot_training_progress(
     rewards_history: Dict[str, List[float]],
     wins_history: Dict[str, List[int]],
     policy_loss_history: Dict[str, List[float]],
-    save_path: str
+    save_path: str,
+    total_episodes: Optional[int] = None,
+    total_steps: Optional[int] = None
 ):
     """
     Plots and saves the training progress of DQN agents.
@@ -34,6 +36,8 @@ def plot_training_progress(
         wins_history: Dict containing lists of win counts for each agent (draws removed).
         policy_loss_history: Dict containing lists of policy loss values for each agent.
         save_path: Path to save the plot image.
+        total_episodes: Total episodes across all training runs (for display).
+        total_steps: Total steps across all training runs (for display).
     """
     # Validate input data
     if not episode_history or len(episode_history) == 0:
@@ -48,7 +52,18 @@ def plot_training_progress(
                         f"rewards_history agent2={len(rewards_history['agent2'])}")
     
     fig, axs = plt.subplots(3, 1, figsize=(12, 18))
-    fig.suptitle('DQN Agent Training Progress', fontsize=16)
+    
+    # Create title with total episodes and steps if provided
+    title = 'DQN Agent Training Progress'
+    if total_episodes is not None or total_steps is not None:
+        title_parts = [title]
+        if total_episodes is not None:
+            title_parts.append(f'Total Episodes: {total_episodes:,}')
+        if total_steps is not None:
+            title_parts.append(f'Total Steps: {total_steps:,}')
+        title = ' | '.join(title_parts)
+    
+    fig.suptitle(title, fontsize=16)
 
     # Plot 1: Average Rewards (with discrete points and cumulative average line)
     if len(episode_history) > 0:
@@ -434,6 +449,165 @@ def create_episode_gif(game_states: List[Dict], episode: int, save_path: str,
         print(f"⚠️  Error creating episode GIF for episode {episode}: {e}")
         import traceback
         traceback.print_exc()
+
+
+def plot_pbs_evaluator_progress(
+    episode_history: List[int],
+    evaluator1_losses: List[float],
+    evaluator2_losses: List[float],
+    evaluator1_buffer_sizes: List[int],
+    evaluator2_buffer_sizes: List[int],
+    save_path: str,
+    total_episodes: Optional[int] = None
+):
+    """
+    Plot PBS evaluator improvement metrics.
+    
+    Args:
+        episode_history: List of episode numbers
+        evaluator1_losses: List of training losses for evaluator 1
+        evaluator2_losses: List of training losses for evaluator 2
+        evaluator1_buffer_sizes: List of experience buffer sizes for evaluator 1
+        evaluator2_buffer_sizes: List of experience buffer sizes for evaluator 2
+        save_path: Path to save the plot
+        total_episodes: Total episodes across all training runs (for display)
+    """
+    # Validate input data
+    if not episode_history:
+        return  # Skip if no data
+    
+    # Ensure all lists have the same length
+    min_len = min(len(episode_history), len(evaluator1_losses), len(evaluator2_losses),
+                  len(evaluator1_buffer_sizes), len(evaluator2_buffer_sizes))
+    if min_len == 0:
+        return  # Skip if no data
+    
+    episode_history = episode_history[:min_len]
+    evaluator1_losses = evaluator1_losses[:min_len]
+    evaluator2_losses = evaluator2_losses[:min_len]
+    evaluator1_buffer_sizes = evaluator1_buffer_sizes[:min_len]
+    evaluator2_buffer_sizes = evaluator2_buffer_sizes[:min_len]
+    
+    # Create figure with subplots
+    fig, axes = plt.subplots(2, 2, figsize=(16, 12))
+    fig.patch.set_facecolor('white')
+    
+    # Title
+    title = 'PBS Evaluator Improvement Metrics'
+    if total_episodes is not None:
+        title += f' | Total Episodes: {total_episodes:,}'
+    fig.suptitle(title, fontsize=16, fontweight='bold')
+    
+    # 1. Training Loss Over Time
+    ax1 = axes[0, 0]
+    # Filter out None values and plot
+    valid_episodes_1 = [ep for ep, loss in zip(episode_history, evaluator1_losses) if loss is not None]
+    valid_losses_1 = [loss for loss in evaluator1_losses if loss is not None]
+    valid_episodes_2 = [ep for ep, loss in zip(episode_history, evaluator2_losses) if loss is not None]
+    valid_losses_2 = [loss for loss in evaluator2_losses if loss is not None]
+    
+    has_lines_ax1 = False
+    if valid_episodes_1:
+        ax1.plot(valid_episodes_1, valid_losses_1, 'b-', label='Evaluator 1', linewidth=2, alpha=0.7)
+        has_lines_ax1 = True
+    if valid_episodes_2:
+        ax1.plot(valid_episodes_2, valid_losses_2, 'r-', label='Evaluator 2', linewidth=2, alpha=0.7)
+        has_lines_ax1 = True
+    
+    ax1.set_xlabel('Episode', fontsize=12)
+    ax1.set_ylabel('Training Loss (MSE)', fontsize=12)
+    ax1.set_title('PBS Evaluator Training Loss', fontsize=14, fontweight='bold')
+    if has_lines_ax1:
+        ax1.legend(loc='upper right')
+    ax1.grid(True, alpha=0.3)
+    ax1.set_yscale('log')  # Log scale for better visualization
+    
+    # 2. Experience Buffer Size Over Time
+    ax2 = axes[0, 1]
+    ax2.plot(episode_history, evaluator1_buffer_sizes, 'b-', label='Evaluator 1', linewidth=2, alpha=0.7)
+    ax2.plot(episode_history, evaluator2_buffer_sizes, 'r-', label='Evaluator 2', linewidth=2, alpha=0.7)
+    ax2.set_xlabel('Episode', fontsize=12)
+    ax2.set_ylabel('Experience Buffer Size', fontsize=12)
+    ax2.set_title('PBS Evaluator Experience Buffer Growth', fontsize=14, fontweight='bold')
+    ax2.legend(loc='lower right')
+    ax2.grid(True, alpha=0.3)
+    ax2.set_ylim(bottom=0)
+    
+    # 3. Average Loss (Moving Average)
+    ax3 = axes[1, 0]
+    has_lines = False
+    window = min(50, len(valid_episodes_1) // 2) if valid_episodes_1 else 10
+    if window > 1 and valid_episodes_1:
+        # Calculate moving average
+        ma_losses_1 = []
+        ma_episodes_1 = []
+        for i in range(window, len(valid_losses_1)):
+            ma_losses_1.append(np.mean(valid_losses_1[i-window:i]))
+            ma_episodes_1.append(valid_episodes_1[i])
+        if ma_episodes_1:
+            ax3.plot(ma_episodes_1, ma_losses_1, 'b-', label='Evaluator 1 (MA)', linewidth=2, alpha=0.8)
+            has_lines = True
+    
+    window = min(50, len(valid_episodes_2) // 2) if valid_episodes_2 else 10
+    if window > 1 and valid_episodes_2:
+        ma_losses_2 = []
+        ma_episodes_2 = []
+        for i in range(window, len(valid_losses_2)):
+            ma_losses_2.append(np.mean(valid_losses_2[i-window:i]))
+            ma_episodes_2.append(valid_episodes_2[i])
+        if ma_episodes_2:
+            ax3.plot(ma_episodes_2, ma_losses_2, 'r-', label='Evaluator 2 (MA)', linewidth=2, alpha=0.8)
+            has_lines = True
+    
+    ax3.set_xlabel('Episode', fontsize=12)
+    ax3.set_ylabel('Average Loss (Moving Average)', fontsize=12)
+    ax3.set_title('PBS Evaluator Loss Trend (50-Episode Moving Average)', fontsize=14, fontweight='bold')
+    if has_lines:
+        ax3.legend(loc='upper right')
+    ax3.grid(True, alpha=0.3)
+    ax3.set_yscale('log')
+    
+    # 4. Loss Improvement Rate
+    ax4 = axes[1, 1]
+    has_lines_ax4 = False
+    if len(valid_losses_1) > 1:
+        # Calculate improvement: negative change means improvement
+        improvements_1 = []
+        improvement_episodes_1 = []
+        for i in range(1, len(valid_losses_1)):
+            improvement = valid_losses_1[i-1] - valid_losses_1[i]  # Positive = improvement
+            improvements_1.append(improvement)
+            improvement_episodes_1.append(valid_episodes_1[i])
+        if improvement_episodes_1:
+            ax4.plot(improvement_episodes_1, improvements_1, 'b-', label='Evaluator 1', linewidth=2, alpha=0.7)
+            has_lines_ax4 = True
+    
+    if len(valid_losses_2) > 1:
+        improvements_2 = []
+        improvement_episodes_2 = []
+        for i in range(1, len(valid_losses_2)):
+            improvement = valid_losses_2[i-1] - valid_losses_2[i]
+            improvements_2.append(improvement)
+            improvement_episodes_2.append(valid_episodes_2[i])
+        if improvement_episodes_2:
+            ax4.plot(improvement_episodes_2, improvements_2, 'r-', label='Evaluator 2', linewidth=2, alpha=0.7)
+            has_lines_ax4 = True
+    
+    ax4.axhline(y=0, color='black', linestyle='--', linewidth=1, alpha=0.5)
+    ax4.set_xlabel('Episode', fontsize=12)
+    ax4.set_ylabel('Loss Improvement (Δ Loss)', fontsize=12)
+    ax4.set_title('PBS Evaluator Loss Improvement Rate', fontsize=14, fontweight='bold')
+    if has_lines_ax4:
+        ax4.legend(loc='upper right')
+    ax4.grid(True, alpha=0.3)
+    ax4.set_ylim([-max(abs(ax4.get_ylim()[0]), abs(ax4.get_ylim()[1])), 
+                  max(abs(ax4.get_ylim()[0]), abs(ax4.get_ylim()[1]))])
+    
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=150, bbox_inches='tight')
+    plt.close()
+    
+    print(f"📊 PBS Evaluator progress plot saved to {save_path}")
 
 
 def plot_setup_agent_progress(

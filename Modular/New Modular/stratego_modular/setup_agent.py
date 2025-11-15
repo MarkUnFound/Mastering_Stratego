@@ -79,37 +79,16 @@ class SetupAgent:
         self.epsilon_decay = epsilon_decay
         self.batch_size = batch_size
         
-        # Neural networks
+        # Neural networks (keep on GPU, no compilation for Windows compatibility)
         input_size = 400  # 40 pieces * 10 features (piece_type, row, col, etc.)
         output_size = 400  # 40 possible positions
         self.q_network = SetupNetwork(input_size, 512, output_size).to(device)
         self.target_network = SetupNetwork(input_size, 512, output_size).to(device)
         
-        # Compile networks with PyTorch 2.0+ for better GPU utilization
-        # Try compilation, but fallback gracefully if Triton is not available
-        self._compiled = False
-        if hasattr(torch, 'compile') and device.type == 'cuda':
-            try:
-                # Test if compilation works by trying to compile a simple test
-                # This helps catch Triton issues early
-                test_model = nn.Linear(10, 10).to(device)
-                try:
-                    compiled_test = torch.compile(test_model, mode='default')
-                    # Test that it actually works (catches TritonMissing at runtime)
-                    test_input = torch.randn(1, 10, device=device)
-                    _ = compiled_test(test_input)
-                    del compiled_test, test_model, test_input
-                    
-                    # If test passed, compile the actual networks
-                    self.q_network = torch.compile(self.q_network, mode='default')
-                    self.target_network = torch.compile(self.target_network, mode='default')
-                    self._compiled = True
-                except Exception:
-                    # Compilation or execution failed (likely Triton missing)
-                    self._compiled = False
-            except Exception:
-                # If compilation setup fails, continue without compilation
-                self._compiled = False
+        # Enable cuDNN benchmarking for faster convolutions (if using conv layers)
+        if device.type == 'cuda':
+            torch.backends.cudnn.benchmark = True
+            torch.backends.cudnn.deterministic = False  # Faster, non-deterministic
         
         self.optimizer = optim.AdamW(self.q_network.parameters(), lr=lr, weight_decay=0.01)
         
@@ -130,14 +109,6 @@ class SetupAgent:
         """Reset the setup agent"""
         self.q_network = SetupNetwork(400, 512, 400).to(self.device)
         self.target_network = SetupNetwork(400, 512, 400).to(self.device)
-        
-        # Recompile networks if available
-        if hasattr(torch, 'compile') and self.device.type == 'cuda' and self._compiled:
-            try:
-                self.q_network = torch.compile(self.q_network, mode='default')
-                self.target_network = torch.compile(self.target_network, mode='default')
-            except Exception:
-                self._compiled = False
         
         self.optimizer = optim.AdamW(self.q_network.parameters(), lr=self.lr, weight_decay=0.01)
         self.memory.clear()
