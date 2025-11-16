@@ -208,7 +208,7 @@ def get_font_size(base_size):
     scaled_size = int(base_size * scale)
     return max(10, min(scaled_size, base_size * 2))  # Cap at 2x original size
 
-def draw_text(text, x, y, size=28, color=BLACK, center=True, bold=False):
+def draw_text(text, x, y, size=20, color=BLACK, center=True, bold=False):
     """Draw text with dynamic scaling"""
     font_size = get_font_size(size)
     font = pygame.font.SysFont('Arial', font_size, bold=bold)
@@ -410,7 +410,7 @@ def draw_button(text, x, y, w, h, action=None, primary=False):
     
     # Text (slightly offset when pressed for press effect)
     text_offset = 1 if is_pressed else 0
-    font_size = get_font_size(20)
+    font_size = get_font_size(18)
     font = pygame.font.SysFont('Arial', font_size, bold=True)
     text_surf = font.render(str(text), True, WHITE)
     text_rect = text_surf.get_rect(center=(button_rect.centerx, button_rect.centery + text_offset))
@@ -439,14 +439,14 @@ def draw_board():
     # Column labels (letters) - above board with MINIMAL spacing
     for i in range(BOARD_SIZE):
         label_x = board_start_x + i * tile_size + tile_size // 2
-        label_y = board_start_y - border_size // 2 - 2  # Minimal spacing from board
+        label_y = board_start_y - border_size // 2 - 10 # Minimal spacing from board
         text_surf = label_font.render(FILES[i], True, DARK_BLUE)
         text_rect = text_surf.get_rect(center=(label_x, label_y))
         screen.blit(text_surf, text_rect)
     
     # Row labels (numbers) - left of board with MINIMAL spacing
     for i in range(BOARD_SIZE):
-        label_x = board_start_x - border_size // 2 - 2  # Minimal spacing from board
+        label_x = board_start_x - border_size // 2 - 10  # Minimal spacing from board
         label_y = board_start_y + i * tile_size + tile_size // 2
         text_surf = label_font.render(str(i + 1), True, DARK_BLUE)
         text_rect = text_surf.get_rect(center=(label_x, label_y))
@@ -571,7 +571,7 @@ def draw_lost_pieces_tracker():
     
     # Header text with shadow
     header_text = "Casualties"
-    header_font_size = get_font_size(16)
+    header_font_size = get_font_size(12)
     shadow_offset = 1
     draw_text(header_text, panel_x + panel_width // 2 + shadow_offset, panel_y + header_height // 2 + shadow_offset, 
               header_font_size, (0, 0, 0, 100), bold=True)
@@ -581,7 +581,7 @@ def draw_lost_pieces_tracker():
     # Content area with padding - larger for better readability
     content_y = panel_y + header_height + 15
     content_height = panel_height - header_height - 30
-    font_size = get_font_size(14)  # Increased from 12 to 14
+    font_size = get_font_size(10)  # Increased from 12 to 14
     line_height = font_size + 8  # Increased from 6 to 8
     item_padding = 6  # Increased from 4 to 6
     
@@ -1067,7 +1067,7 @@ while running:
         
         # Fullscreen hint
         hint_y = current_height - get_font_size(16)
-        draw_text("Press F11 for fullscreen mode", center_x, hint_y, get_font_size(14), GREY)
+        draw_text("Press F11 for fullscreen mode", center_x, hint_y, get_font_size(14), BLACK)
 
     elif game_state == "setup":
         draw_board()
@@ -1092,7 +1092,7 @@ while running:
                             button_width, button_height, action="start", primary=True)
         
         # Add instruction text centered above button
-        instruction_y = button_y - get_font_size(16) - 10
+        instruction_y = button_y - get_font_size(16) + 5
         draw_text("Rearrange pieces, then click START!", board_center_x, instruction_y, 
                   get_font_size(15), DARK_GREY)
         
@@ -1117,7 +1117,7 @@ while running:
             setup_text = f"Setup Phase - Arrange Player {human_side}'s pieces"
         
         draw_text(setup_text, setup_banner_center_x, setup_info_y, 
-                  get_font_size(16), WHITE, bold=True)
+                  get_font_size(12), WHITE, bold=True)
         
         if final_action == "start":
             print(f"Starting game from setup - Player: {human_side}, Bot: {vs_bot}")
@@ -1153,13 +1153,13 @@ while running:
         pygame.draw.rect(screen, DARK_BLUE, msg_bar, 2, border_radius=8)
         
         draw_text(message, msg_bar_center_x, msg_bar_y + msg_bar_height // 2, 
-                  get_font_size(20), WHITE, bold=True)
+                  get_font_size(12), WHITE, bold=True)
         
         # Show history toggle hint - more compact
         hint_text = f"Press H to {'show' if not show_history_panel else 'hide'} history" if dims['history_width'] > 0 else ""
         if hint_text:
             draw_text(hint_text, msg_bar_center_x, msg_bar_y + msg_bar_height + 20, 
-                      get_font_size(12), GREY)
+                      get_font_size(12), BLACK)
 
     elif game_state == "pause":
         menu_area_width = current_width - history_width if history_width > 0 else current_width
