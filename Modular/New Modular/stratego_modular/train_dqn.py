@@ -12,6 +12,7 @@ import numpy as np
 import random
 import os
 import sys
+import glob
 import queue
 import threading
 import time
@@ -28,7 +29,7 @@ from stratego_modular.dqn_agent import DQNAgent
 from stratego_modular.setup_agent import SetupAgent
 from stratego_modular.game_state import GameState
 from stratego_modular.training_visualizer import plot_training_progress, create_training_gif, create_episode_gif, plot_setup_agent_progress, plot_pbs_evaluator_progress
-from stratego_modular.pbs_visualizer import visualize_pbs_state
+from stratego_modular.pbs_visualizer import visualize_pbs_state, create_pbs_gif
 from stratego_modular.piece import PieceType, PIECE_RANKS
 from stratego_modular.board import LAKE_SQUARE
 
@@ -886,30 +887,113 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
     # Create environment
     env = StrategoEnvironment(device=device)
     
+    # Create model save directory
+    if not os.path.exists(model_save_path):
+        os.makedirs(model_save_path)
+    
+    # Load existing training history if available (for continuity across training sessions)
+    loaded_history = _load_training_history(model_save_path)
+    
     # Create game-playing agents
     agent1 = DQNAgent(player_id=1, device=device, lr=0.001, batch_size=TRAINING_BATCH_SIZE)
     agent2 = DQNAgent(player_id=-1, device=device, lr=0.001, batch_size=TRAINING_BATCH_SIZE)
+    
+    # Try to load the most recent saved models
+    try:
+        # Find the most recent model checkpoint files
+        agent1_files = glob.glob(os.path.join(model_save_path, "agent1_episode_*.pth"))
+        agent2_files = glob.glob(os.path.join(model_save_path, "agent2_episode_*.pth"))
+        
+        # Also check for final models
+        final_agent1_path = os.path.join(model_save_path, "agent1_final.pth")
+        final_agent2_path = os.path.join(model_save_path, "agent2_final.pth")
+        
+        # Determine which models to load (prefer most recent checkpoint, fallback to final)
+        agent1_path = None
+        agent2_path = None
+        
+        if agent1_files:
+            # Sort by episode number (extract from filename)
+            def extract_episode(filepath):
+                basename = os.path.basename(filepath)
+                try:
+                    episode_num = int(basename.split('_episode_')[1].split('.')[0])
+                    return episode_num
+                except:
+                    return 0
+            
+            agent1_files.sort(key=extract_episode, reverse=True)
+            agent2_files.sort(key=extract_episode, reverse=True)
+            agent1_path = agent1_files[0]
+            if agent2_files:
+                agent2_path = agent2_files[0]
+        elif os.path.exists(final_agent1_path):
+            agent1_path = final_agent1_path
+            if os.path.exists(final_agent2_path):
+                agent2_path = final_agent2_path
+        
+        # Load models if found
+        if agent1_path and os.path.exists(agent1_path):
+            agent1.load_model(agent1_path)
+            print(f"✅ Loaded Agent 1 model from: {agent1_path}")
+        
+        if agent2_path and os.path.exists(agent2_path):
+            agent2.load_model(agent2_path)
+            print(f"✅ Loaded Agent 2 model from: {agent2_path}")
+    except Exception as e:
+        print(f"⚠️  Could not load saved models: {e}")
+        print("   Starting with fresh agents")
     
     # Create setup agents (for piece placement)
     setup_agent1 = SetupAgent(player_id=1, device=device) if use_setup_agents else None
     setup_agent2 = SetupAgent(player_id=-1, device=device) if use_setup_agents else None
     
-    # Memory buffer for winning games (for GIF generation)
-    winning_games_buffer = []
+    # Try to load setup agent models if available
+    if use_setup_agents and setup_agent1 and setup_agent2:
+        try:
+            setup_agent1_files = glob.glob(os.path.join(model_save_path, "setup_agent1_episode_*.pth"))
+            setup_agent2_files = glob.glob(os.path.join(model_save_path, "setup_agent2_episode_*.pth"))
+            
+            final_setup_agent1_path = os.path.join(model_save_path, "setup_agent1_final.pth")
+            final_setup_agent2_path = os.path.join(model_save_path, "setup_agent2_final.pth")
+            
+            setup_agent1_path = None
+            setup_agent2_path = None
+            
+            if setup_agent1_files:
+                def extract_episode(filepath):
+                    basename = os.path.basename(filepath)
+                    try:
+                        episode_num = int(basename.split('_episode_')[1].split('.')[0])
+                        return episode_num
+                    except:
+                        return 0
+                
+                setup_agent1_files.sort(key=extract_episode, reverse=True)
+                setup_agent2_files.sort(key=extract_episode, reverse=True)
+                setup_agent1_path = setup_agent1_files[0]
+                if setup_agent2_files:
+                    setup_agent2_path = setup_agent2_files[0]
+            elif os.path.exists(final_setup_agent1_path):
+                setup_agent1_path = final_setup_agent1_path
+                if os.path.exists(final_setup_agent2_path):
+                    setup_agent2_path = final_setup_agent2_path
+            
+            if setup_agent1_path and os.path.exists(setup_agent1_path):
+                setup_agent1.load_model(setup_agent1_path)
+                print(f"✅ Loaded Setup Agent 1 model from: {setup_agent1_path}")
+            
+            if setup_agent2_path and os.path.exists(setup_agent2_path):
+                setup_agent2.load_model(setup_agent2_path)
+                print(f"✅ Loaded Setup Agent 2 model from: {setup_agent2_path}")
+        except Exception as e:
+            print(f"⚠️  Could not load saved setup agent models: {e}")
+            print("   Starting with fresh setup agents")
     
-    # Create model save directory
-    if not os.path.exists(model_save_path):
-        os.makedirs(model_save_path)
-    
-    # Training metrics
-    wins_agent1 = 0
-    wins_agent2 = 0
-    draws = 0
-    total_rewards_agent1 = []
-    total_rewards_agent2 = []
-
-    # Load existing training history if available (for continuity across training sessions)
-    loaded_history = _load_training_history(model_save_path)
+    # Track GIF creation flags
+    episode1_pbs_gif_created = False  # Track if episode 1 PBS GIF was created
+    winning_game_pbs_gif_created = False  # Track if winning game PBS GIF was created
+    winning_game_gif_created = False  # Track if winning game (non-PBS) GIF was created
     
     # History for plotting (load from previous session or start fresh)
     if loaded_history:
@@ -926,7 +1010,30 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
         pbs_evaluator2_losses = loaded_history.get('pbs_evaluator2_losses', [])
         pbs_evaluator1_buffer_sizes = loaded_history.get('pbs_evaluator1_buffer_sizes', [])
         pbs_evaluator2_buffer_sizes = loaded_history.get('pbs_evaluator2_buffer_sizes', [])
+        
+        # Initialize win counters from loaded history (use last values for continuity)
+        if wins_history and len(wins_history.get('agent1', [])) > 0:
+            wins_agent1 = wins_history['agent1'][-1]
+        else:
+            wins_agent1 = 0
+        
+        if wins_history and len(wins_history.get('agent2', [])) > 0:
+            wins_agent2 = wins_history['agent2'][-1]
+        else:
+            wins_agent2 = 0
+        
+        if wins_history and len(wins_history.get('draws', [])) > 0:
+            draws = wins_history['draws'][-1]
+        else:
+            draws = 0
+        
+        # Initialize reward lists from loaded history
+        total_rewards_agent1 = rewards_history.get('agent1', [])[-50:] if rewards_history.get('agent1') else []
+        total_rewards_agent2 = rewards_history.get('agent2', [])[-50:] if rewards_history.get('agent2') else []
+        
         print(f"📈 Continuing training history from previous session")
+        print(f"   Last episode: {episode_history[-1] if episode_history else 0}")
+        print(f"   Wins (Agent1/Agent2/Draws): {wins_agent1}/{wins_agent2}/{draws}")
     else:
         episode_history = []
         rewards_history = {'agent1': [], 'agent2': []}
@@ -941,6 +1048,14 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
         pbs_evaluator2_losses = []
         pbs_evaluator1_buffer_sizes = []
         pbs_evaluator2_buffer_sizes = []
+        
+        # Initialize win counters to 0 for fresh start
+        wins_agent1 = 0
+        wins_agent2 = 0
+        draws = 0
+        total_rewards_agent1 = []
+        total_rewards_agent2 = []
+        
         print(f"📈 Starting fresh training history")
     
     agent1_prefetcher = ReplayPrefetcher(agent1, max_queue_size=PREFETCH_QUEUE_SIZE)
@@ -990,7 +1105,17 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
         
         # Track if this is a winning game (for GIF generation)
         is_winning_game = False
-        episode_game_states = []
+        
+        # Track PBS states for GIF creation
+        # Only track for episode 1 OR first winning game
+        is_episode_1 = (episode == 0)
+        should_track_pbs = is_episode_1 or (not winning_game_pbs_gif_created and not is_episode_1)
+        episode_pbs_states = [] if should_track_pbs else None  # Only track if needed
+        
+        # Track actual game board states for GIF creation (non-PBS)
+        # Track for first winning game (not episode 1, as episode 1 is already tracked for PBS)
+        should_track_game = generate_gifs and (not winning_game_gif_created and not is_episode_1)
+        episode_game_states = [] if should_track_game else None  # Track actual board states
         
         # Track PBS captures for episode 1 and checkpoint episodes (multiples of 50)
         # Capture PBS at setup, move 50, and end of game for episode 1 and episodes 50, 100, 150, etc.
@@ -1033,6 +1158,51 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
         state1 = agent1.get_state_representation(game_state)
         state2 = agent2.get_state_representation(game_state)
         
+        # Capture initial PBS state at setup (for episode 1 or first winning game)
+        if generate_gifs and should_track_pbs:
+            try:
+                current_actual_board = env.board.actual_board if hasattr(env, 'board') and hasattr(env.board, 'actual_board') else None
+                visible_board_p1 = env.board.get_visible_board(1) if hasattr(env, 'board') and hasattr(env.board, 'get_visible_board') else None
+                visible_board_p2 = env.board.get_visible_board(-1) if hasattr(env, 'board') and hasattr(env.board, 'get_visible_board') else None
+                agent1_pbs = agent1.pbs if hasattr(agent1, 'pbs') else None
+                agent2_pbs = agent2.pbs if hasattr(agent2, 'pbs') else None
+                
+                if current_actual_board is not None:
+                    # Clone tensors to avoid reference issues
+                    cloned_actual = current_actual_board.clone() if hasattr(current_actual_board, 'clone') else current_actual_board
+                    cloned_visible_p1 = visible_board_p1.clone() if visible_board_p1 is not None and hasattr(visible_board_p1, 'clone') else visible_board_p1
+                    cloned_visible_p2 = visible_board_p2.clone() if visible_board_p2 is not None and hasattr(visible_board_p2, 'clone') else visible_board_p2
+                    
+                    episode_pbs_states.append({
+                        'actual_board': cloned_actual,
+                        'agent1_pbs': agent1_pbs,
+                        'agent2_pbs': agent2_pbs,
+                        'move_num': 0,  # Setup state
+                        'visible_board_p1': cloned_visible_p1,
+                        'visible_board_p2': cloned_visible_p2
+                    })
+            except Exception as e:
+                # Silently skip if PBS capture fails (don't interrupt game)
+                pass
+        
+        # Capture initial game board state at setup (for winning games, non-PBS)
+        if should_track_game:
+            try:
+                current_actual_board = env.board.actual_board if hasattr(env, 'board') and hasattr(env.board, 'actual_board') else None
+                
+                if current_actual_board is not None:
+                    # Clone tensor to avoid reference issues
+                    cloned_actual = current_actual_board.clone() if hasattr(current_actual_board, 'clone') else current_actual_board
+                    
+                    episode_game_states.append({
+                        'board': cloned_actual,
+                        'move_num': 0,  # Setup state
+                        'last_move': None
+                    })
+            except Exception as e:
+                # Silently skip if game state capture fails (don't interrupt game)
+                pass
+        
         while not done and move_count < max_moves:
             # Determine current player and agent
             current_agent = agent1 if env.current_player == 1 else agent2
@@ -1066,18 +1236,56 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
             # Execute action (action is guaranteed to be valid from get_valid_moves)
             next_game_state, reward, done, info = env.step(action)
             
-            # OPTIMIZATION: Only record game states if we're tracking a potentially winning game
-            # This avoids expensive .clone() operations for games that won't be visualized
-            # We'll only record if the game is progressing well (not losing badly)
-            if generate_gifs and (episode_reward_agent1 > -20 or episode_reward_agent2 > -20):
-                # Only clone if we might use it (avoid unnecessary GPU operations)
-                current_board = env.board.actual_board.clone() if hasattr(env, 'board') and hasattr(env.board, 'actual_board') else None
-                if current_board is not None:
-                    episode_game_states.append({
-                        'board': current_board,
-                        'move_num': move_count + 1,
-                        'last_move': action
-                    })
+            # Track PBS states every move for episode 1 or first winning game (to create PBS GIF)
+            # Capture every move to show complete game progression
+            if generate_gifs and should_track_pbs:  # Capture every move
+                try:
+                    current_actual_board = env.board.actual_board if hasattr(env, 'board') and hasattr(env.board, 'actual_board') else None
+                    visible_board_p1 = env.board.get_visible_board(1) if hasattr(env, 'board') and hasattr(env.board, 'get_visible_board') else None
+                    visible_board_p2 = env.board.get_visible_board(-1) if hasattr(env, 'board') and hasattr(env.board, 'get_visible_board') else None
+                    agent1_pbs = agent1.pbs if hasattr(agent1, 'pbs') else None
+                    agent2_pbs = agent2.pbs if hasattr(agent2, 'pbs') else None
+                    
+                    if current_actual_board is not None:
+                        # Clone tensors to avoid reference issues
+                        cloned_actual = current_actual_board.clone() if hasattr(current_actual_board, 'clone') else current_actual_board
+                        cloned_visible_p1 = visible_board_p1.clone() if visible_board_p1 is not None and hasattr(visible_board_p1, 'clone') else visible_board_p1
+                        cloned_visible_p2 = visible_board_p2.clone() if visible_board_p2 is not None and hasattr(visible_board_p2, 'clone') else visible_board_p2
+                        
+                        episode_pbs_states.append({
+                            'actual_board': cloned_actual,
+                            'agent1_pbs': agent1_pbs,
+                            'agent2_pbs': agent2_pbs,
+                            'move_num': move_count + 1,
+                            'visible_board_p1': cloned_visible_p1,
+                            'visible_board_p2': cloned_visible_p2
+                        })
+                except Exception as e:
+                    # Silently skip if PBS capture fails (don't interrupt game)
+                    pass
+            
+            # Track actual game board states every move for winning games (to create non-PBS game GIF)
+            if should_track_game:  # Track for first winning game
+                try:
+                    current_actual_board = env.board.actual_board if hasattr(env, 'board') and hasattr(env.board, 'actual_board') else None
+                    
+                    if current_actual_board is not None:
+                        # Clone tensor to avoid reference issues
+                        cloned_actual = current_actual_board.clone() if hasattr(current_actual_board, 'clone') else current_actual_board
+                        
+                        # Get last move for visualization
+                        last_move = None
+                        if move_count > 0 and hasattr(env, 'last_action') and env.last_action:
+                            last_move = env.last_action  # Should be ((from_r, from_c), (to_r, to_c))
+                        
+                        episode_game_states.append({
+                            'board': cloned_actual,
+                            'move_num': move_count + 1,
+                            'last_move': last_move
+                        })
+                except Exception as e:
+                    # Silently skip if game state capture fails (don't interrupt game)
+                    pass
             
             # Determine game phase for PBS evaluator data collection
             # Early game: turns 0-50, Middle game: turns 51-200, End game: turns 201+
@@ -1213,6 +1421,56 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
         # Get winner from the final state or environment
         winner = final_game_state.winner if hasattr(final_game_state, 'winner') else (env.winner if hasattr(env, 'winner') else None)
         
+        # Capture final PBS state for episode 1 or first winning game (to include in GIF)
+        if generate_gifs and should_track_pbs and (winner == 1 or winner == -1 or is_episode_1):
+            try:
+                current_actual_board = env.board.actual_board if hasattr(env, 'board') and hasattr(env.board, 'actual_board') else None
+                visible_board_p1 = env.board.get_visible_board(1) if hasattr(env, 'board') and hasattr(env.board, 'get_visible_board') else None
+                visible_board_p2 = env.board.get_visible_board(-1) if hasattr(env, 'board') and hasattr(env.board, 'get_visible_board') else None
+                agent1_pbs = agent1.pbs if hasattr(agent1, 'pbs') else None
+                agent2_pbs = agent2.pbs if hasattr(agent2, 'pbs') else None
+                
+                if current_actual_board is not None:
+                    # Clone tensors to avoid reference issues
+                    cloned_actual = current_actual_board.clone() if hasattr(current_actual_board, 'clone') else current_actual_board
+                    cloned_visible_p1 = visible_board_p1.clone() if visible_board_p1 is not None and hasattr(visible_board_p1, 'clone') else visible_board_p1
+                    cloned_visible_p2 = visible_board_p2.clone() if visible_board_p2 is not None and hasattr(visible_board_p2, 'clone') else visible_board_p2
+                    
+                    episode_pbs_states.append({
+                        'actual_board': cloned_actual,
+                        'agent1_pbs': agent1_pbs,
+                        'agent2_pbs': agent2_pbs,
+                        'move_num': move_count,
+                        'visible_board_p1': cloned_visible_p1,
+                        'visible_board_p2': cloned_visible_p2
+                    })
+            except Exception as e:
+                # Silently skip if PBS capture fails (don't interrupt game)
+                pass
+        
+        # Capture final game board state for winning games (non-PBS)
+        if should_track_game and (winner == 1 or winner == -1):
+            try:
+                current_actual_board = env.board.actual_board if hasattr(env, 'board') and hasattr(env.board, 'actual_board') else None
+                
+                if current_actual_board is not None:
+                    # Clone tensor to avoid reference issues
+                    cloned_actual = current_actual_board.clone() if hasattr(current_actual_board, 'clone') else current_actual_board
+                    
+                    # Get last move for visualization
+                    last_move = None
+                    if move_count > 0 and hasattr(env, 'last_action') and env.last_action:
+                        last_move = env.last_action
+                    
+                    episode_game_states.append({
+                        'board': cloned_actual,
+                        'move_num': move_count,
+                        'last_move': last_move
+                    })
+            except Exception as e:
+                # Silently skip if game state capture fails (don't interrupt game)
+                pass
+        
         if winner == 1:
             wins_agent1 += 1
             is_winning_game = True
@@ -1288,25 +1546,64 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                 )
                 setup_agent2.replay()
         
-        # Store winning games and create GIFs ONLY for winning games
-        if generate_gifs and is_winning_game and episode_game_states:
-            winning_games_buffer.append({
-                'episode': episode + 1,
-                'winner': winner,
-                'game_states': episode_game_states
-            })
-            
-            episode_gif_path = f"{model_save_path}/episode_recording_win_{total_episodes}.gif"
-            create_episode_gif(
-                episode_game_states,
-                episode + 1,
-                episode_gif_path,
-                frame_duration=750
+        # Create PBS visualization GIF for episode 1
+        if generate_gifs and is_episode_1 and episode_pbs_states:
+            pbs_gif_path = f"{model_save_path}/pbs_visualization_episode_1.gif"
+            print(f"🎬 Creating PBS GIF for episode 1 with 750ms per frame...")
+            create_pbs_gif(
+                episode_pbs_states,
+                1,
+                pbs_gif_path,
+                frame_duration=750  # 750ms per frame as requested
             )
-            print(f"✅ GIF created for winning game at episode {episode + 1}")
-            episode_game_states = []
-        elif generate_gifs and not is_winning_game:
-            # Clear game states for non-winning games to save memory
+            print(f"✅ PBS GIF created for episode 1")
+            episode1_pbs_gif_created = True
+        
+        # Create PBS visualization GIF for first winning game (if episode 1 didn't win)
+        # If episode 1 won, wait for next winning game
+        if generate_gifs and is_winning_game and not winning_game_pbs_gif_created:
+            if is_episode_1:
+                # Episode 1 won - mark that we'll skip this and wait for next winning game
+                # Don't create winning game GIF for episode 1, already created episode 1 GIF
+                pass
+            elif episode_pbs_states:
+                # First winning game after episode 1 - create winning game GIF
+                pbs_gif_path = f"{model_save_path}/pbs_visualization_win_{total_episodes}.gif"
+                print(f"🎬 Creating PBS GIF for winning game at episode {episode + 1} with 750ms per frame...")
+                create_pbs_gif(
+                    episode_pbs_states,
+                    episode + 1,
+                    pbs_gif_path,
+                    frame_duration=750  # 750ms per frame as requested
+                )
+                print(f"✅ PBS GIF created for winning game at episode {episode + 1}")
+                winning_game_pbs_gif_created = True
+        
+        # Create actual game board GIF for first winning game (non-PBS)
+        if generate_gifs and is_winning_game and not winning_game_gif_created:
+            if is_episode_1:
+                # Episode 1 won - mark that we'll skip this and wait for next winning game
+                # Don't create winning game GIF for episode 1, already created episode 1 GIF
+                pass
+            elif episode_game_states:
+                # First winning game after episode 1 - create actual game board GIF
+                game_gif_path = f"{model_save_path}/game_visualization_win_{total_episodes}.gif"
+                print(f"🎬 Creating game board GIF for winning game at episode {episode + 1} with 750ms per frame...")
+                create_episode_gif(
+                    episode_game_states,
+                    episode + 1,
+                    game_gif_path,
+                    frame_duration=750  # 750ms per frame
+                )
+                print(f"✅ Game board GIF created for winning game at episode {episode + 1}")
+                winning_game_gif_created = True
+        
+        # Clear PBS states to save memory
+        if generate_gifs and episode_pbs_states is not None:
+            episode_pbs_states = []
+        
+        # Clear game states to save memory
+        if generate_gifs and episode_game_states is not None:
             episode_game_states = []
         
         # Capture PBS at end for episode 1 and checkpoint episodes (50, 100, 150, etc.)
@@ -1734,7 +2031,7 @@ def main():
     save_interval = 100
     model_save_path = "dqn_models"
     use_setup_agents = True  # Enable setup agents for piece placement
-    generate_gifs = False  # Set to False to skip GIF generation overhead (GIFs created only for wins)
+    generate_gifs = False  # Set to True to enable GIF generation for episode 1 and winning games
     
     try:
         # Train agents with single environment

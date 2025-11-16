@@ -131,6 +131,161 @@ def _get_top3_predictions(pbs, pos: tuple) -> List[Tuple[PieceType, float]]:
     return [(piece_type, prob) for piece_type, prob in sorted_beliefs[:3]]
 
 
+def visualize_pbs_state_as_image(
+    actual_board,
+    agent1_pbs,
+    agent2_pbs,
+    episode: int,
+    move_num: int = 0,
+    visible_board_p1: Optional = None,
+    visible_board_p2: Optional = None
+):
+    """
+    Visualize PBS state and return as PIL Image (for GIF creation).
+    
+    Similar to visualize_pbs_state but returns PIL Image instead of saving to file.
+    
+    Args:
+        actual_board: Actual board state
+        agent1_pbs: Agent 1's PBS object
+        agent2_pbs: Agent 2's PBS object
+        episode: Episode number
+        move_num: Move number for title
+        visible_board_p1: Optional visible board for player 1
+        visible_board_p2: Optional visible board for player 2
+        
+    Returns:
+        PIL Image of the PBS visualization
+    """
+    import io
+    from PIL import Image
+    
+    # Create the visualization
+    fig = _create_pbs_figure(
+        actual_board,
+        agent1_pbs,
+        agent2_pbs,
+        episode,
+        move_num,
+        visible_board_p1,
+        visible_board_p2
+    )
+    
+    # Convert to PIL Image
+    buf = io.BytesIO()
+    fig.savefig(buf, format='png', dpi=150, bbox_inches='tight', facecolor='white')
+    buf.seek(0)
+    img = Image.open(buf)
+    img = img.convert('RGB')
+    plt.close(fig)
+    
+    return img
+
+
+def create_pbs_gif(pbs_states: List[Dict], episode: int, save_path: str, frame_duration: int = 750):
+    """
+    Create a GIF from a sequence of PBS states recorded during an episode.
+    
+    Args:
+        pbs_states: List of dicts with keys: 'actual_board', 'agent1_pbs', 'agent2_pbs', 
+                   'move_num', 'visible_board_p1', 'visible_board_p2'
+        episode: Episode number
+        save_path: Path to save the GIF
+        frame_duration: Duration of each frame in milliseconds (default 750ms)
+    """
+    import io
+    from PIL import Image
+    
+    try:
+        if not pbs_states:
+            print(f"⚠️  No PBS states to create GIF for episode {episode}")
+            return
+        
+        frames = []
+        print(f"🎬 Creating {len(pbs_states)} frames for PBS GIF...")
+        
+        for i, state in enumerate(pbs_states):
+            try:
+                actual_board = state['actual_board']
+                agent1_pbs = state.get('agent1_pbs', None)
+                agent2_pbs = state.get('agent2_pbs', None)
+                move_num = state.get('move_num', i)
+                visible_board_p1 = state.get('visible_board_p1', None)
+                visible_board_p2 = state.get('visible_board_p2', None)
+                
+                # Create PBS visualization for this state
+                img = visualize_pbs_state_as_image(
+                    actual_board,
+                    agent1_pbs,
+                    agent2_pbs,
+                    episode,
+                    move_num,
+                    visible_board_p1,
+                    visible_board_p2
+                )
+                
+                # Convert to RGB if necessary
+                if img.mode != 'RGB':
+                    img = img.convert('RGB')
+                
+                frames.append(img)
+                print(f"  Frame {i+1}/{len(pbs_states)} created (move {move_num})")
+                
+            except Exception as e:
+                print(f"⚠️  Error creating frame {i}: {e}")
+                continue
+        
+        if not frames:
+            print(f"⚠️  No frames created for PBS GIF episode {episode}")
+            return
+        
+        # Ensure directory exists
+        os.makedirs(os.path.dirname(save_path) if os.path.dirname(save_path) else '.', exist_ok=True)
+        
+        print(f"💾 Saving GIF with {len(frames)} frames at {frame_duration}ms per frame...")
+        
+        # Save GIF with improved compatibility
+        try:
+            # First try with optimization
+            frames[0].save(
+                save_path,
+                save_all=True,
+                append_images=frames[1:],
+                duration=frame_duration,
+                loop=0,
+                optimize=True,
+                disposal=2  # Clear frame before next one
+            )
+        except Exception as e:
+            print(f"⚠️  Optimization failed, trying without optimization: {e}")
+            # Fallback without optimization
+            frames[0].save(
+                save_path,
+                save_all=True,
+                append_images=frames[1:],
+                duration=frame_duration,
+                loop=0,
+                disposal=2  # Clear frame before next one
+            )
+        
+        print(f"✅ PBS GIF created for episode {episode}: {save_path}")
+        print(f"   Frame duration: {frame_duration}ms")
+        print(f"   Total frames: {len(frames)}")
+        
+        # Verify the file was created and get its size
+        if os.path.exists(save_path):
+            file_size = os.path.getsize(save_path)
+            print(f"   File size: {file_size / 1024:.1f} KB")
+        
+    except ImportError as e:
+        print(f"❌ PIL/Pillow not available: {e}")
+        print("   Install with: pip install Pillow")
+    except Exception as e:
+        print(f"⚠️  Error creating PBS GIF for episode {episode}: {e}")
+        import traceback
+        traceback.print_exc()
+
+
 def visualize_pbs_state(
     actual_board,
     agent1_pbs,
@@ -163,8 +318,46 @@ def visualize_pbs_state(
         visible_board_p1: Visible board for player 1 (shows what player 1 can see)
         visible_board_p2: Visible board for player 2 (shows what player 2 can see)
     """
+    fig = _create_pbs_figure(actual_board, agent1_pbs, agent2_pbs, episode, 
+                            visible_board_p1=visible_board_p1, visible_board_p2=visible_board_p2)
+    
+    # Ensure directory exists
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+    
+    plt.savefig(save_path, dpi=150, bbox_inches='tight')
+    plt.close(fig)
+    print(f"🎯 PBS visualization saved to {save_path}")
+
+
+def _create_pbs_figure(
+    actual_board,
+    agent1_pbs,
+    agent2_pbs,
+    episode: int,
+    move_num: int = 0,
+    visible_board_p1: Optional = None,
+    visible_board_p2: Optional = None
+):
+    """
+    Create PBS visualization figure (without saving).
+    
+    Args:
+        actual_board: The actual game board (10x10 tensor)
+        agent1_pbs: Agent 1's PBS object (or None if not available)
+        agent2_pbs: Agent 2's PBS object (or None if not available)
+        episode: Current episode number
+        move_num: Move number (0 if not specified)
+        visible_board_p1: Visible board for player 1
+        visible_board_p2: Visible board for player 2
+        
+    Returns:
+        Matplotlib figure object
+    """
     fig = plt.figure(figsize=(20, 12))
-    fig.suptitle(f'PBS Visualization - Episode {episode}', fontsize=16, fontweight='bold')
+    title = f'PBS Visualization - Episode {episode}'
+    if move_num > 0:
+        title += f' - Move {move_num}'
+    fig.suptitle(title, fontsize=16, fontweight='bold')
     
     # Convert boards to numpy
     actual_board_np = actual_board.cpu().numpy() if hasattr(actual_board, 'cpu') else actual_board
@@ -199,12 +392,7 @@ def visualize_pbs_state(
     
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
     
-    # Ensure directory exists
-    os.makedirs(os.path.dirname(save_path), exist_ok=True)
-    
-    plt.savefig(save_path, dpi=150, bbox_inches='tight')
-    plt.close(fig)
-    print(f"🎯 PBS visualization saved to {save_path}")
+    return fig
 
 
 def _plot_actual_board(ax, board_np: np.ndarray, title: str):
