@@ -992,14 +992,14 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
         is_winning_game = False
         episode_game_states = []
         
-        # Track PBS captures for checkpoint episodes (multiples of 50)
-        # Capture PBS at move 50 and end of game for episodes 50, 100, 150, etc.
+        # Track PBS captures for episode 1 and checkpoint episodes (multiples of 50)
+        # Capture PBS at setup, move 50, and end of game for episode 1 and episodes 50, 100, 150, etc.
         is_checkpoint_episode = (episode + 1) % 50 == 0
         captured_move_50_pbs = False  # Track if we've captured PBS at move 50
         
-        # Create PBS visualization for episode 1 to check initial results
-        # Also create for checkpoint episodes every 100 episodes
-        if episode == 0 or (is_checkpoint_episode and (episode + 1) % 100 == 0):
+        # Create PBS visualization for episode 1 and checkpoint episodes (50, 100, 150, etc.)
+        # Episode 1 gets all three snapshots: setup, move_50, and end (same as checkpoint episodes)
+        if episode == 0 or is_checkpoint_episode:
             try:
                 current_actual_board = env.board.actual_board if hasattr(env, 'board') and hasattr(env.board, 'actual_board') else None
                 visible_board_p1 = env.board.get_visible_board(1) if hasattr(env, 'board') and hasattr(env.board, 'get_visible_board') else None
@@ -1008,19 +1008,22 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                 agent2_pbs = agent2.pbs if hasattr(agent2, 'pbs') else None
                 
                 if current_actual_board is not None:
-                    pbs_setup_save_path = f"{model_save_path}/pbs_visualization_episode_{total_episodes}_setup.png"
+                    # Use episode + 1 for numbering (starts from 1, not 0)
+                    episode_number = episode + 1
+                    pbs_setup_save_path = f"{model_save_path}/pbs_visualization_episode_{episode_number}_setup.png"
                     visualize_pbs_state(
                         current_actual_board,
                         agent1_pbs,
                         agent2_pbs,
-                        episode + 1,
+                        episode_number,
                         pbs_setup_save_path,
                         visible_board_p1,
                         visible_board_p2
                     )
-                    print(f"🎯 PBS visualization after setup for episode {episode + 1}: {pbs_setup_save_path}")
+                    print(f"🎯 PBS visualization after setup for episode {episode_number}: {pbs_setup_save_path}")
             except Exception as e:
                 print(f"⚠️  Error scheduling PBS visualization after setup for episode {episode + 1}: {e}")
+                traceback.print_exc()
         
         # Episode rewards
         episode_reward_agent1 = 0
@@ -1126,31 +1129,34 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                 
             move_count += 1  # Only increment for valid moves
             
-            # OPTIMIZATION: Only capture PBS at move 50 every 100 episodes (not every 50)
-            # This reduces visualization overhead significantly
-            if is_checkpoint_episode and (episode + 1) % 100 == 0 and move_count == 50 and not done and not captured_move_50_pbs:
+            # Capture PBS at move 50 for episode 1 and checkpoint episodes (50, 100, 150, etc.)
+            if (episode == 0 or is_checkpoint_episode) and move_count == 50 and not done and not captured_move_50_pbs:
                 try:
-                    agent1_pbs = agent1.pbs if hasattr(agent1, 'pbs') and agent1.pbs else None
-                    agent2_pbs = agent2.pbs if hasattr(agent2, 'pbs') and agent2.pbs else None
-                    visible_board_p1 = env.board.visible_board_p1 if hasattr(env, 'board') and hasattr(env.board, 'visible_board_p1') else None
-                    visible_board_p2 = env.board.visible_board_p2 if hasattr(env, 'board') and hasattr(env.board, 'visible_board_p2') else None
+                    # Use EXACTLY the same logic as setup visualization for consistency
                     current_actual_board = env.board.actual_board if hasattr(env, 'board') and hasattr(env.board, 'actual_board') else None
+                    visible_board_p1 = env.board.get_visible_board(1) if hasattr(env, 'board') and hasattr(env.board, 'get_visible_board') else None
+                    visible_board_p2 = env.board.get_visible_board(-1) if hasattr(env, 'board') and hasattr(env.board, 'get_visible_board') else None
+                    agent1_pbs = agent1.pbs if hasattr(agent1, 'pbs') else None
+                    agent2_pbs = agent2.pbs if hasattr(agent2, 'pbs') else None
                     
                     if current_actual_board is not None:
-                        pbs_save_path = f"{model_save_path}/pbs_visualization_episode_{total_episodes}_move_50.png"
+                        # Use episode + 1 for numbering (starts from 1, not 0)
+                        episode_number = episode + 1
+                        pbs_save_path = f"{model_save_path}/pbs_visualization_episode_{episode_number}_move_50.png"
                         visualize_pbs_state(
                             current_actual_board,
                             agent1_pbs,
                             agent2_pbs,
-                            episode + 1,
+                            episode_number,
                             pbs_save_path,
                             visible_board_p1,
                             visible_board_p2
                         )
-                        print(f"🎯 PBS visualization at move 50 of episode {episode + 1}: {pbs_save_path}")
+                        print(f"🎯 PBS visualization at move 50 of episode {episode_number}: {pbs_save_path}")
                         captured_move_50_pbs = True
                 except Exception as e:
                     print(f"⚠️  Error scheduling PBS visualization at move 50 of episode {episode + 1}: {e}")
+                    traceback.print_exc()
             
             # Batched training updates to maximize GPU utilization
             if move_count % REPLAY_UPDATE_INTERVAL == 0:
@@ -1303,32 +1309,33 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
             # Clear game states for non-winning games to save memory
             episode_game_states = []
         
-        # OPTIMIZATION: Only capture PBS at end every 100 episodes (not every 50)
-        # This reduces visualization overhead significantly
-        if is_checkpoint_episode and (episode + 1) % 100 == 0 and actual_board is not None:
+        # Capture PBS at end for episode 1 and checkpoint episodes (50, 100, 150, etc.)
+        if episode == 0 or is_checkpoint_episode:
             try:
-                agent1_pbs = agent1.pbs if hasattr(agent1, 'pbs') and agent1.pbs else None
-                agent2_pbs = agent2.pbs if hasattr(agent2, 'pbs') and agent2.pbs else None
+                # Use EXACTLY the same logic as setup visualization for consistency
+                current_actual_board = env.board.actual_board if hasattr(env, 'board') and hasattr(env.board, 'actual_board') else None
+                visible_board_p1 = env.board.get_visible_board(1) if hasattr(env, 'board') and hasattr(env.board, 'get_visible_board') else None
+                visible_board_p2 = env.board.get_visible_board(-1) if hasattr(env, 'board') and hasattr(env.board, 'get_visible_board') else None
+                agent1_pbs = agent1.pbs if hasattr(agent1, 'pbs') else None
+                agent2_pbs = agent2.pbs if hasattr(agent2, 'pbs') else None
                 
-                # OPTIMIZATION: Avoid unnecessary clones - use references when possible
-                # Get visible boards for each player (no clone needed, visualization handles it)
-                visible_board_p1 = env.board.visible_board_p1 if hasattr(env, 'board') and hasattr(env.board, 'visible_board_p1') else None
-                visible_board_p2 = env.board.visible_board_p2 if hasattr(env, 'board') and hasattr(env.board, 'visible_board_p2') else None
-                
-                # Create PBS visualization at end of checkpoint episode
-                pbs_save_path = f"{model_save_path}/pbs_visualization_episode_{total_episodes}_end.png"
-                visualize_pbs_state(
-                    actual_board,
-                    agent1_pbs,
-                    agent2_pbs,
-                    episode + 1,
-                    pbs_save_path,
-                    visible_board_p1,
-                    visible_board_p2
-                )
-                print(f"🎯 PBS visualization at end of episode {episode + 1} (move {move_count}): {pbs_save_path}")
+                if current_actual_board is not None:
+                    # Use episode + 1 for numbering (starts from 1, not 0)
+                    episode_number = episode + 1
+                    pbs_save_path = f"{model_save_path}/pbs_visualization_episode_{episode_number}_end.png"
+                    visualize_pbs_state(
+                        current_actual_board,
+                        agent1_pbs,
+                        agent2_pbs,
+                        episode_number,
+                        pbs_save_path,
+                        visible_board_p1,
+                        visible_board_p2
+                    )
+                    print(f"🎯 PBS visualization at end of episode {episode_number} (move {move_count}): {pbs_save_path}")
             except Exception as e:
                 print(f"⚠️  Error scheduling PBS visualization at end of episode {episode + 1}: {e}")
+                traceback.print_exc()
         
         # Note: PBS visualization for checkpoint episodes (multiples of 50) is now handled above
         # It captures PBS at both move 50 (if game hasn't ended) and at end of game

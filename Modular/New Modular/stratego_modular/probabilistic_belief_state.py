@@ -1004,6 +1004,15 @@ class ProbabilisticBeliefState:
             self._aaren_training_positions[pos] = pos
         
         # 9. NEW: Reveal-Based Learning - Track revealed pieces and learn from outcomes
+        # CRITICAL: Store the piece_type directly (it's already a PieceType enum from update_from_reveal)
+        # Ensure we're storing the correct PieceType, not a converted value
+        if not isinstance(piece_type, PieceType):
+            # Safety check: if piece_type is not a PieceType enum, convert it
+            if isinstance(piece_type, int):
+                piece_type = PieceType(piece_type)
+            else:
+                raise ValueError(f"piece_type must be PieceType enum, got {type(piece_type)}: {piece_type}")
+        
         self.revealed_pieces[pos] = piece_type
         self.revealed_piece_counts[piece_type] = self.revealed_piece_counts.get(piece_type, 0) + 1
         
