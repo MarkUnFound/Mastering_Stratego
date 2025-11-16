@@ -894,55 +894,191 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
     # Load existing training history if available (for continuity across training sessions)
     loaded_history = _load_training_history(model_save_path)
     
-    # Create game-playing agents
-    agent1 = DQNAgent(player_id=1, device=device, lr=0.001, batch_size=TRAINING_BATCH_SIZE)
-    agent2 = DQNAgent(player_id=-1, device=device, lr=0.001, batch_size=TRAINING_BATCH_SIZE)
+    # Create game-playing agents (with reduced learning rate)
+    agent1 = DQNAgent(player_id=1, device=device, lr=0.00001, batch_size=TRAINING_BATCH_SIZE)
+    agent2 = DQNAgent(player_id=-1, device=device, lr=0.00001, batch_size=TRAINING_BATCH_SIZE)
     
-    # Try to load the most recent saved models
+    # Try to load the most recent saved models (separate files)
     try:
-        # Find the most recent model checkpoint files
-        agent1_files = glob.glob(os.path.join(model_save_path, "agent1_episode_*.pth"))
-        agent2_files = glob.glob(os.path.join(model_save_path, "agent2_episode_*.pth"))
+        # Find the most recent model checkpoint files (new separate format)
+        agent1_dqn_files = glob.glob(os.path.join(model_save_path, "agent1_dqn_episode_*.pth"))
+        agent2_dqn_files = glob.glob(os.path.join(model_save_path, "agent2_dqn_episode_*.pth"))
+        
+        # Also check for old combined format (backward compatibility)
+        agent1_old_files = glob.glob(os.path.join(model_save_path, "agent1_episode_*.pth"))
+        agent2_old_files = glob.glob(os.path.join(model_save_path, "agent2_episode_*.pth"))
         
         # Also check for final models
-        final_agent1_path = os.path.join(model_save_path, "agent1_final.pth")
-        final_agent2_path = os.path.join(model_save_path, "agent2_final.pth")
+        final_agent1_dqn_path = os.path.join(model_save_path, "agent1_dqn_final.pth")
+        final_agent2_dqn_path = os.path.join(model_save_path, "agent2_dqn_final.pth")
+        final_agent1_old_path = os.path.join(model_save_path, "agent1_final.pth")
+        final_agent2_old_path = os.path.join(model_save_path, "agent2_final.pth")
         
-        # Determine which models to load (prefer most recent checkpoint, fallback to final)
-        agent1_path = None
-        agent2_path = None
+        def extract_episode(filepath):
+            basename = os.path.basename(filepath)
+            try:
+                episode_num = int(basename.split('_episode_')[1].split('.')[0])
+                return episode_num
+            except:
+                return 0
         
-        if agent1_files:
-            # Sort by episode number (extract from filename)
-            def extract_episode(filepath):
-                basename = os.path.basename(filepath)
-                try:
-                    episode_num = int(basename.split('_episode_')[1].split('.')[0])
-                    return episode_num
-                except:
-                    return 0
+        # Determine which DQN models to load
+        agent1_dqn_path = None
+        agent2_dqn_path = None
+        
+        if agent1_dqn_files:
+            agent1_dqn_files.sort(key=extract_episode, reverse=True)
+            agent2_dqn_files.sort(key=extract_episode, reverse=True)
+            agent1_dqn_path = agent1_dqn_files[0]
+            if agent2_dqn_files:
+                agent2_dqn_path = agent2_dqn_files[0]
+        elif os.path.exists(final_agent1_dqn_path):
+            agent1_dqn_path = final_agent1_dqn_path
+            if os.path.exists(final_agent2_dqn_path):
+                agent2_dqn_path = final_agent2_dqn_path
+        elif agent1_old_files:
+            # Fallback to old combined format
+            agent1_old_files.sort(key=extract_episode, reverse=True)
+            agent2_old_files.sort(key=extract_episode, reverse=True)
+            agent1_dqn_path = agent1_old_files[0]
+            if agent2_old_files:
+                agent2_dqn_path = agent2_old_files[0]
+        elif os.path.exists(final_agent1_old_path):
+            agent1_dqn_path = final_agent1_old_path
+            if os.path.exists(final_agent2_old_path):
+                agent2_dqn_path = final_agent2_old_path
+        
+        # Load DQN models if found
+        if agent1_dqn_path and os.path.exists(agent1_dqn_path):
+            agent1.load_model(agent1_dqn_path)
+            print(f"✅ Loaded Agent 1 DQN model from: {agent1_dqn_path}")
             
-            agent1_files.sort(key=extract_episode, reverse=True)
-            agent2_files.sort(key=extract_episode, reverse=True)
-            agent1_path = agent1_files[0]
-            if agent2_files:
-                agent2_path = agent2_files[0]
-        elif os.path.exists(final_agent1_path):
-            agent1_path = final_agent1_path
-            if os.path.exists(final_agent2_path):
-                agent2_path = final_agent2_path
+            # Check if old combined format has PBS components and load them
+            try:
+                checkpoint = torch.load(agent1_dqn_path, map_location=device)
+                if 'pbs_aaren_state_dict' in checkpoint or 'pbs_lstm_state_dict' in checkpoint:
+                    # Old combined format - try to load AAREN from it
+                    if 'pbs_aaren_state_dict' in checkpoint:
+                        agent1.pbs.aaren_model.load_state_dict(checkpoint['pbs_aaren_state_dict'])
+                        if 'pbs_aaren_optimizer_state_dict' in checkpoint:
+                            agent1.pbs.aaren_optimizer.load_state_dict(checkpoint['pbs_aaren_optimizer_state_dict'])
+                        print(f"✅ Loaded Agent 1 AAREN from combined checkpoint")
+                    elif 'pbs_lstm_state_dict' in checkpoint:
+                        agent1.pbs.aaren_model.load_state_dict(checkpoint['pbs_lstm_state_dict'])
+                        if 'pbs_lstm_optimizer_state_dict' in checkpoint:
+                            agent1.pbs.aaren_optimizer.load_state_dict(checkpoint['pbs_lstm_optimizer_state_dict'])
+                        print(f"✅ Loaded Agent 1 AAREN (from LSTM) from combined checkpoint")
+                
+                if 'pbs_evaluator_state_dict' in checkpoint and agent1.pbs.evaluator is not None:
+                    agent1.pbs.evaluator.evaluator_network.load_state_dict(checkpoint['pbs_evaluator_state_dict'])
+                    agent1.pbs.evaluator.target_network.load_state_dict(checkpoint['pbs_evaluator_target_state_dict'])
+                    if 'pbs_evaluator_optimizer_state_dict' in checkpoint:
+                        agent1.pbs.evaluator.optimizer.load_state_dict(checkpoint['pbs_evaluator_optimizer_state_dict'])
+                    agent1.pbs.evaluator.update_target_network()
+                    print(f"✅ Loaded Agent 1 PBS Evaluator from combined checkpoint")
+            except Exception as e:
+                # Not a combined checkpoint or error loading PBS components - that's okay
+                pass
         
-        # Load models if found
-        if agent1_path and os.path.exists(agent1_path):
-            agent1.load_model(agent1_path)
-            print(f"✅ Loaded Agent 1 model from: {agent1_path}")
+        if agent2_dqn_path and os.path.exists(agent2_dqn_path):
+            agent2.load_model(agent2_dqn_path)
+            print(f"✅ Loaded Agent 2 DQN model from: {agent2_dqn_path}")
+            
+            # Check if old combined format has PBS components and load them
+            try:
+                checkpoint = torch.load(agent2_dqn_path, map_location=device)
+                if 'pbs_aaren_state_dict' in checkpoint or 'pbs_lstm_state_dict' in checkpoint:
+                    # Old combined format - try to load AAREN from it
+                    if 'pbs_aaren_state_dict' in checkpoint:
+                        agent2.pbs.aaren_model.load_state_dict(checkpoint['pbs_aaren_state_dict'])
+                        if 'pbs_aaren_optimizer_state_dict' in checkpoint:
+                            agent2.pbs.aaren_optimizer.load_state_dict(checkpoint['pbs_aaren_optimizer_state_dict'])
+                        print(f"✅ Loaded Agent 2 AAREN from combined checkpoint")
+                    elif 'pbs_lstm_state_dict' in checkpoint:
+                        agent2.pbs.aaren_model.load_state_dict(checkpoint['pbs_lstm_state_dict'])
+                        if 'pbs_lstm_optimizer_state_dict' in checkpoint:
+                            agent2.pbs.aaren_optimizer.load_state_dict(checkpoint['pbs_lstm_optimizer_state_dict'])
+                        print(f"✅ Loaded Agent 2 AAREN (from LSTM) from combined checkpoint")
+                
+                if 'pbs_evaluator_state_dict' in checkpoint and agent2.pbs.evaluator is not None:
+                    agent2.pbs.evaluator.evaluator_network.load_state_dict(checkpoint['pbs_evaluator_state_dict'])
+                    agent2.pbs.evaluator.target_network.load_state_dict(checkpoint['pbs_evaluator_target_state_dict'])
+                    if 'pbs_evaluator_optimizer_state_dict' in checkpoint:
+                        agent2.pbs.evaluator.optimizer.load_state_dict(checkpoint['pbs_evaluator_optimizer_state_dict'])
+                    agent2.pbs.evaluator.update_target_network()
+                    print(f"✅ Loaded Agent 2 PBS Evaluator from combined checkpoint")
+            except Exception as e:
+                # Not a combined checkpoint or error loading PBS components - that's okay
+                pass
         
-        if agent2_path and os.path.exists(agent2_path):
-            agent2.load_model(agent2_path)
-            print(f"✅ Loaded Agent 2 model from: {agent2_path}")
+        # Load AAREN models if found (separate files)
+        agent1_aaren_files = glob.glob(os.path.join(model_save_path, "agent1_aaren_episode_*.pth"))
+        agent2_aaren_files = glob.glob(os.path.join(model_save_path, "agent2_aaren_episode_*.pth"))
+        final_agent1_aaren_path = os.path.join(model_save_path, "agent1_aaren_final.pth")
+        final_agent2_aaren_path = os.path.join(model_save_path, "agent2_aaren_final.pth")
+        
+        agent1_aaren_path = None
+        agent2_aaren_path = None
+        
+        if agent1_aaren_files:
+            agent1_aaren_files.sort(key=extract_episode, reverse=True)
+            agent2_aaren_files.sort(key=extract_episode, reverse=True)
+            agent1_aaren_path = agent1_aaren_files[0]
+            if agent2_aaren_files:
+                agent2_aaren_path = agent2_aaren_files[0]
+        elif os.path.exists(final_agent1_aaren_path):
+            agent1_aaren_path = final_agent1_aaren_path
+            if os.path.exists(final_agent2_aaren_path):
+                agent2_aaren_path = final_agent2_aaren_path
+        
+        if agent1_aaren_path and os.path.exists(agent1_aaren_path):
+            try:
+                agent1.load_aaren_model(agent1_aaren_path)
+            except Exception as e:
+                print(f"⚠️  Could not load Agent 1 AAREN model: {e}")
+        
+        if agent2_aaren_path and os.path.exists(agent2_aaren_path):
+            try:
+                agent2.load_aaren_model(agent2_aaren_path)
+            except Exception as e:
+                print(f"⚠️  Could not load Agent 2 AAREN model: {e}")
+        
+        # Load PBS Evaluator models if found (separate files)
+        agent1_evaluator_files = glob.glob(os.path.join(model_save_path, "agent1_pbs_evaluator_episode_*.pth"))
+        agent2_evaluator_files = glob.glob(os.path.join(model_save_path, "agent2_pbs_evaluator_episode_*.pth"))
+        final_agent1_evaluator_path = os.path.join(model_save_path, "agent1_pbs_evaluator_final.pth")
+        final_agent2_evaluator_path = os.path.join(model_save_path, "agent2_pbs_evaluator_final.pth")
+        
+        agent1_evaluator_path = None
+        agent2_evaluator_path = None
+        
+        if agent1_evaluator_files:
+            agent1_evaluator_files.sort(key=extract_episode, reverse=True)
+            agent2_evaluator_files.sort(key=extract_episode, reverse=True)
+            agent1_evaluator_path = agent1_evaluator_files[0]
+            if agent2_evaluator_files:
+                agent2_evaluator_path = agent2_evaluator_files[0]
+        elif os.path.exists(final_agent1_evaluator_path):
+            agent1_evaluator_path = final_agent1_evaluator_path
+            if os.path.exists(final_agent2_evaluator_path):
+                agent2_evaluator_path = final_agent2_evaluator_path
+        
+        if agent1_evaluator_path and os.path.exists(agent1_evaluator_path):
+            try:
+                agent1.load_pbs_evaluator(agent1_evaluator_path)
+            except Exception as e:
+                print(f"⚠️  Could not load Agent 1 PBS Evaluator model: {e}")
+        
+        if agent2_evaluator_path and os.path.exists(agent2_evaluator_path):
+            try:
+                agent2.load_pbs_evaluator(agent2_evaluator_path)
+            except Exception as e:
+                print(f"⚠️  Could not load Agent 2 PBS Evaluator model: {e}")
+                
     except Exception as e:
         print(f"⚠️  Could not load saved models: {e}")
         print("   Starting with fresh agents")
+        traceback.print_exc()
     
     # Create setup agents (for piece placement)
     setup_agent1 = SetupAgent(player_id=1, device=device) if use_setup_agents else None
@@ -1377,6 +1513,30 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
             agent1.replay(batch=agent1_prefetcher.get_batch())
             agent2.replay(batch=agent2_prefetcher.get_batch())
         
+        # ADD THIS: Check for loss explosion after episode (every 10 episodes)
+        if (episode + 1) % 10 == 0:
+            avg_loss1 = agent1.get_average_policy_loss(10)
+            avg_loss2 = agent2.get_average_policy_loss(10)
+            
+            # Reset if loss explodes
+            if avg_loss1 > 1000 or avg_loss2 > 1000:
+                print(f"⚠️ Loss explosion detected after episode {episode + 1}! Resetting agents...")
+                print(f"   Agent 1 loss: {avg_loss1:.2f}, Agent 2 loss: {avg_loss2:.2f}")
+                reset_agents()
+                # Try to reload last good checkpoint if available
+                try:
+                    checkpoint_episode = max(0, total_episodes - 100)
+                    agent1_checkpoint = f"{model_save_path}/agent1_episode_{checkpoint_episode}.pth"
+                    agent2_checkpoint = f"{model_save_path}/agent2_episode_{checkpoint_episode}.pth"
+                    if os.path.exists(agent1_checkpoint):
+                        agent1.load_model(agent1_checkpoint)
+                        print(f"   Reloaded Agent 1 from checkpoint {checkpoint_episode}")
+                    if os.path.exists(agent2_checkpoint):
+                        agent2.load_model(agent2_checkpoint)
+                        print(f"   Reloaded Agent 2 from checkpoint {checkpoint_episode}")
+                except Exception as e:
+                    print(f"   Could not reload checkpoint: {e}")
+        
         # Game finished - get final game state for PBS visualization
         # Use the last game state (next_game_state from the loop, or get it from env)
         final_game_state = next_game_state if 'next_game_state' in locals() else env._get_game_state()
@@ -1515,9 +1675,9 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                 setup_agent2.replay()
         else:
             draws += 1
-            # Give small reward to both for draw
-            agent1.remember(state1, agent1._move_to_action_index(action), 1.0, next_state, True)
-            agent2.remember(state2, agent2._move_to_action_index(action), 1.0, next_state, True)
+            # CHANGED: Penalize draws to encourage decisive play
+            agent1.remember(state1, agent1._move_to_action_index(action), -5.0, next_state, True)
+            agent2.remember(state2, agent2._move_to_action_index(action), -5.0, next_state, True)
             
             # Reward setup agents for draw (with enhanced reward calculation)
             if use_setup_agents and setup_agent1 and p1_placement is not None:
@@ -1775,11 +1935,14 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                 smoothed2 = agent2.get_smoothed_loss()
                 print(f"  Smoothed Loss Agent 1: {smoothed1:.4f}, Agent 2: {smoothed2:.4f}")
             print(f"  Epsilon Agent 1: {agent1.epsilon:.3f}, Epsilon Agent 2: {agent2.epsilon:.3f}")
-            # Show learning rates if available
+            # Show learning rates if available (with more precision and change tracking)
             if hasattr(agent1, 'get_current_learning_rate'):
                 lr1 = agent1.get_current_learning_rate()
                 lr2 = agent2.get_current_learning_rate()
-                print(f"  Learning Rate Agent 1: {lr1:.6f}, Agent 2: {lr2:.6f}")
+                # Show if LR has changed from initial
+                lr1_change = ((lr1 - agent1.initial_lr) / agent1.initial_lr * 100) if hasattr(agent1, 'initial_lr') else 0
+                lr2_change = ((lr2 - agent2.initial_lr) / agent2.initial_lr * 100) if hasattr(agent2, 'initial_lr') else 0
+                print(f"  Learning Rate Agent 1: {lr1:.8f} ({lr1_change:+.1f}%), Agent 2: {lr2:.8f} ({lr2_change:+.1f}%)")
             print("-" * 60)
             
             # Reset agents if average reward is too large
@@ -1910,10 +2073,29 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
             # Create model save directory if it doesn't exist
             os.makedirs(model_save_path, exist_ok=True)
             try:
-                agent1_path = f"{model_save_path}/agent1_episode_{total_episodes}.pth"
-                agent2_path = f"{model_save_path}/agent2_episode_{total_episodes}.pth"
-                agent1.save_model(agent1_path)
-                agent2.save_model(agent2_path)
+                # Save DQN models separately
+                agent1_dqn_path = f"{model_save_path}/agent1_dqn_episode_{total_episodes}.pth"
+                agent2_dqn_path = f"{model_save_path}/agent2_dqn_episode_{total_episodes}.pth"
+                agent1.save_model(agent1_dqn_path)
+                agent2.save_model(agent2_dqn_path)
+                
+                # Save AAREN models separately
+                agent1_aaren_path = f"{model_save_path}/agent1_aaren_episode_{total_episodes}.pth"
+                agent2_aaren_path = f"{model_save_path}/agent2_aaren_episode_{total_episodes}.pth"
+                try:
+                    agent1.save_aaren_model(agent1_aaren_path)
+                    agent2.save_aaren_model(agent2_aaren_path)
+                except Exception as e:
+                    print(f"⚠️  Warning: Could not save AAREN models: {e}")
+                
+                # Save PBS Evaluator models separately
+                agent1_evaluator_path = f"{model_save_path}/agent1_pbs_evaluator_episode_{total_episodes}.pth"
+                agent2_evaluator_path = f"{model_save_path}/agent2_pbs_evaluator_episode_{total_episodes}.pth"
+                try:
+                    agent1.save_pbs_evaluator(agent1_evaluator_path)
+                    agent2.save_pbs_evaluator(agent2_evaluator_path)
+                except Exception as e:
+                    print(f"⚠️  Warning: Could not save PBS Evaluator models: {e}")
                 
                 # Save setup agents if they exist
                 if use_setup_agents and setup_agent1 and setup_agent2:
@@ -1923,10 +2105,18 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                     setup_agent2.save_model(setup_agent2_path)
                 
                 # Verify files were created
-                if os.path.exists(agent1_path) and os.path.exists(agent2_path):
+                if os.path.exists(agent1_dqn_path) and os.path.exists(agent2_dqn_path):
                     print(f"💾 Models saved at episode {episode + 1}:")
-                    print(f"   - {agent1_path} (includes DQN + PBS LSTM + PBS Evaluator NN)")
-                    print(f"   - {agent2_path} (includes DQN + PBS LSTM + PBS Evaluator NN)")
+                    print(f"   - {agent1_dqn_path} (DQN only)")
+                    print(f"   - {agent2_dqn_path} (DQN only)")
+                    if os.path.exists(agent1_aaren_path):
+                        print(f"   - {agent1_aaren_path} (AAREN-RNN)")
+                    if os.path.exists(agent2_aaren_path):
+                        print(f"   - {agent2_aaren_path} (AAREN-RNN)")
+                    if os.path.exists(agent1_evaluator_path):
+                        print(f"   - {agent1_evaluator_path} (PBS Evaluator)")
+                    if os.path.exists(agent2_evaluator_path):
+                        print(f"   - {agent2_evaluator_path} (PBS Evaluator)")
                     if use_setup_agents and setup_agent1 and setup_agent2:
                         print(f"   - {setup_agent1_path} (Setup Agent NN)")
                         print(f"   - {setup_agent2_path} (Setup Agent NN)")
@@ -1984,12 +2174,31 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
     # Create model save directory if it doesn't exist
     os.makedirs(model_save_path, exist_ok=True)
     
-    # Save final models
+    # Save final models (separate files)
     try:
-        agent1_final_path = f"{model_save_path}/agent1_final.pth"
-        agent2_final_path = f"{model_save_path}/agent2_final.pth"
-        agent1.save_model(agent1_final_path)
-        agent2.save_model(agent2_final_path)
+        # Save final DQN models
+        agent1_dqn_final_path = f"{model_save_path}/agent1_dqn_final.pth"
+        agent2_dqn_final_path = f"{model_save_path}/agent2_dqn_final.pth"
+        agent1.save_model(agent1_dqn_final_path)
+        agent2.save_model(agent2_dqn_final_path)
+        
+        # Save final AAREN models
+        try:
+            agent1_aaren_final_path = f"{model_save_path}/agent1_aaren_final.pth"
+            agent2_aaren_final_path = f"{model_save_path}/agent2_aaren_final.pth"
+            agent1.save_aaren_model(agent1_aaren_final_path)
+            agent2.save_aaren_model(agent2_aaren_final_path)
+        except Exception as e:
+            print(f"⚠️  Warning: Could not save final AAREN models: {e}")
+        
+        # Save final PBS Evaluator models
+        try:
+            agent1_evaluator_final_path = f"{model_save_path}/agent1_pbs_evaluator_final.pth"
+            agent2_evaluator_final_path = f"{model_save_path}/agent2_pbs_evaluator_final.pth"
+            agent1.save_pbs_evaluator(agent1_evaluator_final_path)
+            agent2.save_pbs_evaluator(agent2_evaluator_final_path)
+        except Exception as e:
+            print(f"⚠️  Warning: Could not save final PBS Evaluator models: {e}")
         
         # Save final setup agents if they exist
         if use_setup_agents and setup_agent1 and setup_agent2:
@@ -1999,10 +2208,18 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
             setup_agent2.save_model(setup_agent2_final_path)
         
         # Verify files were created
-        if os.path.exists(agent1_final_path) and os.path.exists(agent2_final_path):
+        if os.path.exists(agent1_dqn_final_path) and os.path.exists(agent2_dqn_final_path):
             print(f"\n💾 Final models saved:")
-            print(f"   - {agent1_final_path} (includes DQN + PBS LSTM + PBS Evaluator NN)")
-            print(f"   - {agent2_final_path} (includes DQN + PBS LSTM + PBS Evaluator NN)")
+            print(f"   - {agent1_dqn_final_path} (DQN only)")
+            print(f"   - {agent2_dqn_final_path} (DQN only)")
+            if os.path.exists(agent1_aaren_final_path):
+                print(f"   - {agent1_aaren_final_path} (AAREN-RNN)")
+            if os.path.exists(agent2_aaren_final_path):
+                print(f"   - {agent2_aaren_final_path} (AAREN-RNN)")
+            if os.path.exists(agent1_evaluator_final_path):
+                print(f"   - {agent1_evaluator_final_path} (PBS Evaluator)")
+            if os.path.exists(agent2_evaluator_final_path):
+                print(f"   - {agent2_evaluator_final_path} (PBS Evaluator)")
             if use_setup_agents and setup_agent1 and setup_agent2:
                 print(f"   - {setup_agent1_final_path} (Setup Agent NN)")
                 print(f"   - {setup_agent2_final_path} (Setup Agent NN)")

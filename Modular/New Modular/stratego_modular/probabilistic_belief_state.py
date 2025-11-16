@@ -4,10 +4,10 @@
 Probabilistic Belief State (PBS) for Stratego
 Tracks piece actions and infers possible piece types/values using:
 1. Rule-based inference (e.g., multi-tile moves = Scout)
-2. Aaren-based pattern learning from action sequences (replaces LSTM)
+2. AAREN-based pattern learning from action sequences
 3. Confidence scores for each possible piece value
 
-Aaren (Attention as a Recurrent Neural Network) provides:
+AAREN (Attention as a Recurrent Neural Network) provides:
 - Parallel training (like Transformers)
 - Efficient O(1) inference updates (like RNNs)
 - Constant memory usage
@@ -110,9 +110,9 @@ class AarenCell(nn.Module):
 
 class PieceActionAaren(nn.Module):
     """
-    Aaren-based network to learn piece value patterns from action sequences.
+    AAREN-based network to learn piece value patterns from action sequences.
     
-    Replaces LSTM with Aaren for:
+    AAREN provides:
     - Parallel training (no sequential bottleneck)
     - Efficient O(1) inference updates
     - Constant memory usage
@@ -339,7 +339,7 @@ class ProbabilisticBeliefState:
         # Track multi-piece patterns
         self.piece_coordination: Dict[Tuple[int, int], List[Tuple[int, int]]] = defaultdict(list)
         
-        # Aaren model for learning action patterns (replaces LSTM)
+        # AAREN model for learning action patterns
         # Expanded input size for enhanced features (8 -> 24)
         self.aaren_model = PieceActionAaren(
             input_size=24,  # Enhanced from 8 to 24 features
@@ -1462,16 +1462,4 @@ class ProbabilisticBeliefState:
                 positions=positions
             )
     
-    # Backward compatibility aliases
-    def train_lstm(self, *args, **kwargs):
-        """Backward compatibility: alias for train_aaren."""
-        return self.train_aaren(*args, **kwargs)
-    
-    def save_lstm_model(self, *args, **kwargs):
-        """Backward compatibility: alias for save_aaren_model."""
-        return self.save_aaren_model(*args, **kwargs)
-    
-    def load_lstm_model(self, *args, **kwargs):
-        """Backward compatibility: alias for load_aaren_model."""
-        return self.load_aaren_model(*args, **kwargs)
 

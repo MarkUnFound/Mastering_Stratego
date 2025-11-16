@@ -57,7 +57,7 @@ class DQNAgent:
     
     def __init__(self, player_id: int, device, 
                  state_size: int = 200, action_size: int = 1000,
-                 lr: float = 0.0001, gamma: float = 0.95, 
+                 lr: float = 0.00001, gamma: float = 0.95, 
                  epsilon: float = 1.0, epsilon_min: float = 0.1, 
                  epsilon_decay: float = 0.001, 
                  buffer_size: int = 10000, batch_size: int = 32,
@@ -148,8 +148,8 @@ class DQNAgent:
         # Automatic learning rate adjustment based on loss trends
         self.loss_history_for_lr = deque(maxlen=200)  # Track losses for LR adjustment
         self.lr_adjustment_interval = 50  # Check every 50 training steps
-        self.lr_adjustment_threshold = 1.5  # If loss increases by 1.5x, reduce LR
-        self.lr_reduction_factor = 0.8  # Reduce LR by 20% when loss spikes
+        self.lr_adjustment_threshold = 1.2  # Changed from 1.5 (more sensitive)
+        self.lr_reduction_factor = 0.5  # Changed from 0.8 (more aggressive reduction)
         self.lr_increase_factor = 1.1  # Increase LR by 10% when loss is very low
         self.lr_increase_threshold = 0.1  # If loss < 0.1, consider increasing LR
         
@@ -230,7 +230,13 @@ class DQNAgent:
             next_state = next_state.to(self.device)
             
         experience = Experience(state, action, reward, next_state, done)
-        self.memory.append(experience)
+        
+        # ADD THIS: Store important experiences multiple times
+        if abs(reward) > 5.0:  # Win/loss experiences
+            for _ in range(3):  # Triple-store important experiences
+                self.memory.append(experience)
+        else:
+            self.memory.append(experience)
         
         # Increment step counter for epsilon decay
         self.step_count += 1
@@ -377,10 +383,17 @@ class DQNAgent:
         
         # Next Q values from target network
         next_q_values = self.target_network(next_states).max(1)[0].detach()
+        
+        # ADD THIS: Clip Q-values to prevent explosion
+        next_q_values = torch.clamp(next_q_values, min=-100.0, max=100.0)
+        
         target_q_values = rewards + (self.gamma * next_q_values * ~dones)
         
-        # Compute loss
-        loss = F.mse_loss(current_q_values.squeeze(), target_q_values)
+        # ADD THIS: Clip target Q-values
+        target_q_values = torch.clamp(target_q_values, min=-100.0, max=100.0)
+        
+        # Compute loss with Huber loss instead of MSE (more robust to outliers)
+        loss = F.smooth_l1_loss(current_q_values.squeeze(), target_q_values)
         
         # Optimize with gradient clipping to prevent excessive loss
         self.optimizer.zero_grad()
@@ -410,6 +423,9 @@ class DQNAgent:
         
         # Automatic learning rate adjustment based on loss trends
         current_lr = self.optimizer.param_groups[0]['lr']
+        lr_changed = False
+        lr_change_reason = None
+        
         if len(self.loss_history_for_lr) >= self.lr_adjustment_interval:
             recent_losses = list(self.loss_history_for_lr)[-self.lr_adjustment_interval:]
             older_losses = list(self.loss_history_for_lr)[-self.lr_adjustment_interval * 2:-self.lr_adjustment_interval]
@@ -418,29 +434,59 @@ class DQNAgent:
                 recent_avg = sum(recent_losses) / len(recent_losses)
                 older_avg = sum(older_losses) / len(older_losses)
                 
+                # NEW: Check for consistently high absolute loss (Agent 1 case)
+                # If average loss is consistently above 3.0, aggressively reduce LR
+                if recent_avg > 3.0:
+                    # More aggressive reduction for high absolute losses
+                    reduction_factor = 0.3 if recent_avg > 5.0 else 0.4
+                    new_lr = current_lr * reduction_factor
+                    new_lr = max(new_lr, self.min_lr)
+                    if new_lr < current_lr:
+                        for param_group in self.optimizer.param_groups:
+                            param_group['lr'] = new_lr
+                        lr_changed = True
+                        lr_change_reason = f"High absolute loss ({recent_avg:.2f} > 3.0)"
                 # If loss increased significantly, reduce learning rate
-                if older_avg > 0 and recent_avg > older_avg * self.lr_adjustment_threshold:
+                elif older_avg > 0 and recent_avg > older_avg * self.lr_adjustment_threshold:
                     new_lr = current_lr * self.lr_reduction_factor
                     new_lr = max(new_lr, self.min_lr)
-                    for param_group in self.optimizer.param_groups:
-                        param_group['lr'] = new_lr
+                    if new_lr < current_lr:
+                        for param_group in self.optimizer.param_groups:
+                            param_group['lr'] = new_lr
+                        lr_changed = True
+                        lr_change_reason = f"Loss spike ({recent_avg:.2f} > {older_avg:.2f} * {self.lr_adjustment_threshold})"
                 # If loss is very low and stable, consider increasing LR slightly
                 elif recent_avg < self.lr_increase_threshold and recent_avg < older_avg * 0.9:
                     new_lr = min(current_lr * self.lr_increase_factor, self.initial_lr)
-                    for param_group in self.optimizer.param_groups:
-                        param_group['lr'] = new_lr
+                    if new_lr > current_lr:
+                        for param_group in self.optimizer.param_groups:
+                            param_group['lr'] = new_lr
+                        lr_changed = True
+                        lr_change_reason = f"Low stable loss ({recent_avg:.2f} < {self.lr_increase_threshold})"
                 else:
                     # Use base LR from time-based decay
-                    for param_group in self.optimizer.param_groups:
-                        param_group['lr'] = base_lr
+                    if abs(base_lr - current_lr) > 1e-8:
+                        for param_group in self.optimizer.param_groups:
+                            param_group['lr'] = base_lr
+                        lr_changed = True
+                        lr_change_reason = "Time-based decay"
             else:
                 # Use base LR from time-based decay
-                for param_group in self.optimizer.param_groups:
-                    param_group['lr'] = base_lr
+                if abs(base_lr - current_lr) > 1e-8:
+                    for param_group in self.optimizer.param_groups:
+                        param_group['lr'] = base_lr
+                    lr_changed = True
+                    lr_change_reason = "Time-based decay (no history)"
         else:
             # Use base LR from time-based decay
-            for param_group in self.optimizer.param_groups:
-                param_group['lr'] = base_lr
+            if abs(base_lr - current_lr) > 1e-8:
+                for param_group in self.optimizer.param_groups:
+                    param_group['lr'] = base_lr
+                lr_changed = True
+                lr_change_reason = "Time-based decay (insufficient history)"
+        
+        # LR changes are tracked but only reported at checkpoints (every 50 episodes)
+        # The current LR is already shown in training progress reports
         
         # Gradual epsilon decay: linearly decrease from 1.0 to epsilon_min over 500,000 steps
         if self.step_count < self.epsilon_decay_interval:
@@ -538,7 +584,7 @@ class DQNAgent:
         return ((r_from, c_from), (r_to, c_to))
         
     def save_model(self, filepath: str):
-        """Save the trained model including PBS models"""
+        """Save the DQN model only (without PBS components)"""
         checkpoint = {
             'q_network_state_dict': self.q_network.state_dict(),
             'target_network_state_dict': self.target_network.state_dict(),
@@ -546,45 +592,48 @@ class DQNAgent:
             'epsilon': self.epsilon,
             'step_count': self.step_count,
         }
+        torch.save(checkpoint, filepath)
+    
+    def save_aaren_model(self, filepath: str):
+        """Save the AAREN-RNN model separately"""
+        if not self.pbs or not hasattr(self.pbs, 'aaren_model') or self.pbs.aaren_model is None:
+            raise ValueError(f"AAREN model not available for {self.name}")
         
-        # Save PBS models if they exist
-        if self.pbs:
-            # Save Aaren model (backward compatible with LSTM naming)
-            if hasattr(self.pbs, 'aaren_model') and self.pbs.aaren_model is not None:
-                checkpoint['pbs_aaren_state_dict'] = self.pbs.aaren_model.state_dict()
-                checkpoint['pbs_aaren_optimizer_state_dict'] = self.pbs.aaren_optimizer.state_dict()
-                # Backward compatibility: also save with LSTM keys
-                checkpoint['pbs_lstm_state_dict'] = self.pbs.aaren_model.state_dict()
-                checkpoint['pbs_lstm_optimizer_state_dict'] = self.pbs.aaren_optimizer.state_dict()
-            elif hasattr(self.pbs, 'lstm_model') and self.pbs.lstm_model is not None:
-                # Legacy LSTM support
-                checkpoint['pbs_lstm_state_dict'] = self.pbs.lstm_model.state_dict()
-                checkpoint['pbs_lstm_optimizer_state_dict'] = self.pbs.lstm_optimizer.state_dict()
-            
-            # Save PBS evaluator if it exists (including experience buffer)
-            if self.pbs.evaluator is not None:
-                checkpoint['pbs_evaluator_state_dict'] = self.pbs.evaluator.evaluator_network.state_dict()
-                checkpoint['pbs_evaluator_target_state_dict'] = self.pbs.evaluator.target_network.state_dict()
-                checkpoint['pbs_evaluator_optimizer_state_dict'] = self.pbs.evaluator.optimizer.state_dict()
-                
-                # Save experience buffer (convert to CPU for serialization)
-                memory_data = []
-                for exp in self.pbs.evaluator.memory:
-                    pbs_pred_cpu = exp.pbs_prediction.cpu().detach() if isinstance(exp.pbs_prediction, torch.Tensor) else exp.pbs_prediction
-                    memory_data.append({
-                        'pbs_prediction': pbs_pred_cpu,
-                        'ground_truth': exp.ground_truth.value,  # Save enum value
-                        'position': exp.position,
-                        'game_phase': exp.game_phase,
-                        'turn_count': exp.turn_count
-                    })
-                checkpoint['pbs_evaluator_memory'] = memory_data
-                checkpoint['pbs_evaluator_training_losses'] = self.pbs.evaluator.training_losses
+        checkpoint = {
+            'pbs_aaren_state_dict': self.pbs.aaren_model.state_dict(),
+            'pbs_aaren_optimizer_state_dict': self.pbs.aaren_optimizer.state_dict(),
+        }
+        torch.save(checkpoint, filepath)
+    
+    def save_pbs_evaluator(self, filepath: str):
+        """Save the PBS Evaluator model separately"""
+        if not self.pbs or self.pbs.evaluator is None:
+            raise ValueError(f"PBS Evaluator not available for {self.name}")
+        
+        checkpoint = {
+            'pbs_evaluator_state_dict': self.pbs.evaluator.evaluator_network.state_dict(),
+            'pbs_evaluator_target_state_dict': self.pbs.evaluator.target_network.state_dict(),
+            'pbs_evaluator_optimizer_state_dict': self.pbs.evaluator.optimizer.state_dict(),
+            'pbs_evaluator_training_losses': self.pbs.evaluator.training_losses,
+        }
+        
+        # Save experience buffer (convert to CPU for serialization)
+        memory_data = []
+        for exp in self.pbs.evaluator.memory:
+            pbs_pred_cpu = exp.pbs_prediction.cpu().detach() if isinstance(exp.pbs_prediction, torch.Tensor) else exp.pbs_prediction
+            memory_data.append({
+                'pbs_prediction': pbs_pred_cpu,
+                'ground_truth': exp.ground_truth.value,  # Save enum value
+                'position': exp.position,
+                'game_phase': exp.game_phase,
+                'turn_count': exp.turn_count
+            })
+        checkpoint['pbs_evaluator_memory'] = memory_data
         
         torch.save(checkpoint, filepath)
         
     def load_model(self, filepath: str):
-        """Load a trained model including PBS models"""
+        """Load the DQN model only (without PBS components)"""
         checkpoint = torch.load(filepath, map_location=self.device)
         self.q_network.load_state_dict(checkpoint['q_network_state_dict'])
         self.target_network.load_state_dict(checkpoint['target_network_state_dict'])
@@ -592,85 +641,75 @@ class DQNAgent:
         self.epsilon = checkpoint['epsilon']
         # Load step_count if available (for backward compatibility)
         self.step_count = checkpoint.get('step_count', 0)
+    
+    def load_aaren_model(self, filepath: str):
+        """Load the AAREN-RNN model separately"""
+        if not self.pbs or not hasattr(self.pbs, 'aaren_model'):
+            raise ValueError(f"AAREN model not available for {self.name}")
         
-        # Load PBS models if they exist in checkpoint
-        if self.pbs:
-            # Load Aaren model (preferred, backward compatible with LSTM)
-            if 'pbs_aaren_state_dict' in checkpoint and hasattr(self.pbs, 'aaren_model'):
-                try:
-                    self.pbs.aaren_model.load_state_dict(checkpoint['pbs_aaren_state_dict'])
-                    if 'pbs_aaren_optimizer_state_dict' in checkpoint:
-                        self.pbs.aaren_optimizer.load_state_dict(checkpoint['pbs_aaren_optimizer_state_dict'])
-                    print(f"✅ Loaded PBS Aaren model for {self.name}")
-                except Exception as e:
-                    print(f"⚠️  Warning: Could not load PBS Aaren model for {self.name}: {e}")
-            elif 'pbs_lstm_state_dict' in checkpoint:
-                # Try to load as Aaren (backward compatibility)
-                if hasattr(self.pbs, 'aaren_model'):
-                    try:
-                        self.pbs.aaren_model.load_state_dict(checkpoint['pbs_lstm_state_dict'])
-                        if 'pbs_lstm_optimizer_state_dict' in checkpoint:
-                            self.pbs.aaren_optimizer.load_state_dict(checkpoint['pbs_lstm_optimizer_state_dict'])
-                        print(f"✅ Loaded PBS Aaren model (from LSTM checkpoint) for {self.name}")
-                    except Exception as e:
-                        print(f"⚠️  Warning: Could not load PBS Aaren model from LSTM checkpoint for {self.name}: {e}")
-                # Legacy LSTM support
-                elif hasattr(self.pbs, 'lstm_model'):
-                    try:
-                        self.pbs.lstm_model.load_state_dict(checkpoint['pbs_lstm_state_dict'])
-                        if 'pbs_lstm_optimizer_state_dict' in checkpoint:
-                            self.pbs.lstm_optimizer.load_state_dict(checkpoint['pbs_lstm_optimizer_state_dict'])
-                        print(f"✅ Loaded PBS LSTM model for {self.name}")
-                    except Exception as e:
-                        print(f"⚠️  Warning: Could not load PBS LSTM model for {self.name}: {e}")
+        checkpoint = torch.load(filepath, map_location=self.device)
+        
+        # Try AAREN keys first, then fall back to LSTM keys for backward compatibility
+        if 'pbs_aaren_state_dict' in checkpoint:
+            self.pbs.aaren_model.load_state_dict(checkpoint['pbs_aaren_state_dict'])
+            if 'pbs_aaren_optimizer_state_dict' in checkpoint:
+                self.pbs.aaren_optimizer.load_state_dict(checkpoint['pbs_aaren_optimizer_state_dict'])
+            print(f"✅ Loaded PBS AAREN model for {self.name}")
+        elif 'pbs_lstm_state_dict' in checkpoint:
+            # Backward compatibility: Load old LSTM checkpoints as AAREN
+            self.pbs.aaren_model.load_state_dict(checkpoint['pbs_lstm_state_dict'])
+            if 'pbs_lstm_optimizer_state_dict' in checkpoint:
+                self.pbs.aaren_optimizer.load_state_dict(checkpoint['pbs_lstm_optimizer_state_dict'])
+            print(f"✅ Loaded PBS AAREN model (migrated from old LSTM checkpoint) for {self.name}")
+        else:
+            raise KeyError(f"No AAREN/LSTM state dict found in {filepath}")
+    
+    def load_pbs_evaluator(self, filepath: str):
+        """Load the PBS Evaluator model separately"""
+        if not self.pbs or self.pbs.evaluator is None:
+            raise ValueError(f"PBS Evaluator not available for {self.name}")
+        
+        checkpoint = torch.load(filepath, map_location=self.device)
+        
+        self.pbs.evaluator.evaluator_network.load_state_dict(checkpoint['pbs_evaluator_state_dict'])
+        self.pbs.evaluator.target_network.load_state_dict(checkpoint['pbs_evaluator_target_state_dict'])
+        if 'pbs_evaluator_optimizer_state_dict' in checkpoint:
+            self.pbs.evaluator.optimizer.load_state_dict(checkpoint['pbs_evaluator_optimizer_state_dict'])
+        self.pbs.evaluator.update_target_network()
+        
+        # Load experience buffer if available
+        if 'pbs_evaluator_memory' in checkpoint:
+            from .pbs_evaluator import PBSEvaluationExperience
+            from .piece import PieceType
             
-            # Load PBS evaluator if available (including experience buffer)
-            if 'pbs_evaluator_state_dict' in checkpoint and self.pbs.evaluator is not None:
-                try:
-                    self.pbs.evaluator.evaluator_network.load_state_dict(checkpoint['pbs_evaluator_state_dict'])
-                    self.pbs.evaluator.target_network.load_state_dict(checkpoint['pbs_evaluator_target_state_dict'])
-                    if 'pbs_evaluator_optimizer_state_dict' in checkpoint:
-                        self.pbs.evaluator.optimizer.load_state_dict(checkpoint['pbs_evaluator_optimizer_state_dict'])
-                    self.pbs.evaluator.update_target_network()
-                    
-                    # Load experience buffer if available
-                    if 'pbs_evaluator_memory' in checkpoint:
-                        from .pbs_evaluator import PBSEvaluationExperience
-                        from .piece import PieceType
-                        
-                        self.pbs.evaluator.memory.clear()
-                        for mem_data in checkpoint['pbs_evaluator_memory']:
-                            # Convert back to PBSEvaluationExperience
-                            pbs_pred = mem_data['pbs_prediction']
-                            if isinstance(pbs_pred, torch.Tensor):
-                                pbs_pred = pbs_pred.to(self.pbs.evaluator.device)
-                            else:
-                                pbs_pred = torch.tensor(pbs_pred, device=self.pbs.evaluator.device)
-                            
-                            # Convert ground truth value back to PieceType
-                            ground_truth = PieceType(mem_data['ground_truth'])
-                            
-                            experience = PBSEvaluationExperience(
-                                pbs_prediction=pbs_pred,
-                                ground_truth=ground_truth,
-                                position=tuple(mem_data['position']),
-                                game_phase=mem_data['game_phase'],
-                                turn_count=mem_data['turn_count']
-                            )
-                            self.pbs.evaluator.memory.append(experience)
-                        
-                        print(f"✅ Loaded PBS evaluator model for {self.name} with {len(self.pbs.evaluator.memory)} experiences")
-                    else:
-                        print(f"✅ Loaded PBS evaluator model for {self.name} (no experience buffer found)")
-                    
-                    # Load training losses if available
-                    if 'pbs_evaluator_training_losses' in checkpoint:
-                        self.pbs.evaluator.training_losses = checkpoint['pbs_evaluator_training_losses']
-                    
-                except Exception as e:
-                    print(f"⚠️  Warning: Could not load PBS evaluator model for {self.name}: {e}")
-                    import traceback
-                    traceback.print_exc()
+            self.pbs.evaluator.memory.clear()
+            for mem_data in checkpoint['pbs_evaluator_memory']:
+                # Convert back to PBSEvaluationExperience
+                pbs_pred = mem_data['pbs_prediction']
+                if isinstance(pbs_pred, torch.Tensor):
+                    pbs_pred = pbs_pred.to(self.pbs.evaluator.device)
+                else:
+                    pbs_pred = torch.tensor(pbs_pred, device=self.pbs.evaluator.device)
+                
+                # Convert ground truth value back to PieceType
+                ground_truth = PieceType(mem_data['ground_truth'])
+                
+                experience = PBSEvaluationExperience(
+                    pbs_prediction=pbs_pred,
+                    ground_truth=ground_truth,
+                    position=tuple(mem_data['position']),
+                    game_phase=mem_data['game_phase'],
+                    turn_count=mem_data['turn_count']
+                )
+                self.pbs.evaluator.memory.append(experience)
+            
+            print(f"✅ Loaded PBS evaluator model for {self.name} with {len(self.pbs.evaluator.memory)} experiences")
+        else:
+            print(f"✅ Loaded PBS evaluator model for {self.name} (no experience buffer found)")
+        
+        # Load training losses if available
+        if 'pbs_evaluator_training_losses' in checkpoint:
+            self.pbs.evaluator.training_losses = checkpoint['pbs_evaluator_training_losses']
         
     def get_state_representation(self, game_state) -> torch.Tensor:
         """

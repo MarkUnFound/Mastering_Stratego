@@ -7,7 +7,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
-import random
 from typing import List, Tuple
 
 # Piece rank constants (matching stratego.py)
@@ -53,53 +52,49 @@ class SetupNetwork(nn.Module):
 class StrategicSetupAgent:
     """
     Agent that creates strategic piece placements for Stratego
-    Uses heuristics and learned strategies
+    Uses trained neural network model (setup_agent_final.pth)
     """
     
-    def __init__(self, player_id: int, model_path: str = None, device=None):
+    def __init__(self, player_id: int, model_path: str = "setup_agent_final.pth", device=None):
         """
         Initialize setup agent
         
         Args:
             player_id: Player ID (1 or 2)
-            model_path: Path to trained model (optional)
+            model_path: Path to trained model (default: setup_agent_final.pth)
             device: PyTorch device
+            
+        Raises:
+            FileNotFoundError: If model file is not found
+            Exception: If model loading fails
         """
         self.player_id = player_id
         self.device = device if device else torch.device('cpu')
         
-        # Try to load trained model
-        self.use_model = False
-        if model_path:
-            try:
-                self.model = SetupNetwork(400, 512, 400).to(self.device)
-                checkpoint = torch.load(model_path, map_location=self.device)
-                if 'q_network' in checkpoint:
-                    self.model.load_state_dict(checkpoint['q_network'])
-                else:
-                    self.model.load_state_dict(checkpoint)
-                self.model.eval()
-                self.use_model = True
-                print(f"Loaded setup model from {model_path}")
-            except Exception as e:
-                print(f"Could not load setup model: {e}")
-                print("Using heuristic-based setup instead")
-                self.use_model = False
+        # Load trained model (required)
+        self.model = SetupNetwork(400, 512, 400).to(self.device)
+        checkpoint = torch.load(model_path, map_location=self.device)
+        if 'q_network' in checkpoint:
+            self.model.load_state_dict(checkpoint['q_network'])
+        else:
+            self.model.load_state_dict(checkpoint)
+        self.model.eval()
+        print(f"Loaded setup model from {model_path}")
     
     def create_setup(self, board) -> List[Tuple]:
         """
-        Create strategic piece placement
+        Create strategic piece placement using trained neural network
         
         Args:
             board: Board object
             
         Returns:
             List of (position, piece) placements
+            
+        Raises:
+            ValueError: If board configuration is invalid
         """
-        if self.use_model:
-            return self._create_learned_setup(board)
-        else:
-            return self._create_heuristic_setup(board)
+        return self._create_learned_setup(board)
     
     def _create_learned_setup(self, board) -> List[Tuple]:
         """
@@ -110,6 +105,9 @@ class StrategicSetupAgent:
             
         Returns:
             List of (position, piece) placements
+            
+        Raises:
+            ValueError: If board configuration is invalid (not exactly 40 positions or pieces)
         """
         # Get available positions
         if self.player_id == 1:
@@ -125,9 +123,12 @@ class StrategicSetupAgent:
             for _ in range(count):
                 pieces.append(rank)
         
-        # If model fails or not enough positions, fall back to heuristic
+        # Validate board configuration
         if len(positions) != 40 or len(pieces) != 40:
-            return self._create_heuristic_setup(board)
+            raise ValueError(
+                f"Invalid board configuration: expected 40 positions and 40 pieces, "
+                f"got {len(positions)} positions and {len(pieces)} pieces"
+            )
         
         # Use greedy placement with model predictions
         placements = []
@@ -191,11 +192,12 @@ class StrategicSetupAgent:
                     position_scores[pos] = 0.0
             
             # Select best position based on Q-value (greedy)
-            if position_scores:
-                best_position = max(position_scores.keys(), key=lambda p: position_scores[p])
-            else:
-                # Fallback to random if mapping fails
-                best_position = random.choice(remaining_positions)
+            if not position_scores:
+                raise ValueError(
+                    f"Failed to map positions to Q-values. Available positions: {len(remaining_positions)}, "
+                    f"Position mapping size: {len(pos_to_index)}"
+                )
+            best_position = max(position_scores.keys(), key=lambda p: position_scores[p])
             
             # Place piece and remove from available
             remaining_positions.remove(best_position)
@@ -271,142 +273,6 @@ class StrategicSetupAgent:
         features = features[:400]
         
         return features
-    
-    def _create_heuristic_setup(self, board) -> List[Tuple]:
-        """
-        Create setup using strategic heuristics
-        
-        Strategy:
-        - Flag in back corner with Bomb protection
-        - High-value pieces (Marshal, General) near flag
-        - Bombs around flag and in chokepoints
-        - Scouts on flanks for mobility
-        - Miners scattered (for bomb defusal)
-        - Aggressive pieces (Captains, Lieutenants) in front
-        
-        Args:
-            board: Board object
-            
-        Returns:
-            List of (position, piece) placements
-        """
-        placements = []
-        
-        # Determine player's territory
-        if self.player_id == 1:
-            rows = [6, 7, 8, 9]  # Bottom rows
-            back_row = 9
-            mid_back = 8
-            mid_front = 7
-            front_row = 6
-        else:
-            rows = [0, 1, 2, 3]  # Top rows
-            back_row = 0
-            mid_back = 1
-            mid_front = 2
-            front_row = 3
-        
-        # Get available positions by row
-        positions_by_row = {row: [] for row in rows}
-        for r in rows:
-            for c in range(10):
-                if not board.is_lake(r, c):
-                    positions_by_row[r].append(c)
-        
-        # Create pieces categorized by role
-        high_value = [10, 9]  # Marshal, General
-        bombs = [0] * 6
-        flag = [-1]
-        defensive = [8, 8, 7, 7, 7]  # Colonels, Majors
-        miners = [3] * 5
-        scouts = [2] * 8
-        attackers = [6, 6, 6, 6, 5, 5, 5, 5, 4, 4, 4, 4]  # Captains, Lieutenants, Sergeants
-        spy = [1]
-        
-        used_positions = set()
-        
-        def place_piece(rank, row, col_preference=None):
-            """Helper to place a piece"""
-            if col_preference is not None and col_preference in positions_by_row[row] and (row, col_preference) not in used_positions:
-                pos = (row, col_preference)
-            else:
-                # Find first available position in row
-                available = [c for c in positions_by_row[row] if (row, c) not in used_positions]
-                if not available:
-                    # Try other rows
-                    for r in rows:
-                        available = [c for c in positions_by_row[r] if (r, c) not in used_positions]
-                        if available:
-                            pos = (r, random.choice(available))
-                            break
-                    else:
-                        return False
-                else:
-                    pos = (row, random.choice(available))
-            
-            used_positions.add(pos)
-            placements.append((pos, rank))
-            return True
-        
-        # 1. Place Flag in back corner
-        flag_col = random.choice([0, 1, 8, 9])  # Corner column
-        place_piece(flag[0], back_row, flag_col)
-        
-        # 2. Place Bombs around flag and strategic positions
-        # Bombs next to flag
-        bomb_positions = []
-        if flag_col <= 1:
-            bomb_positions = [flag_col + 1, flag_col, flag_col]
-        else:
-            bomb_positions = [flag_col - 1, flag_col, flag_col]
-        
-        for i, bomb in enumerate(bombs[:3]):
-            if i < len(bomb_positions):
-                place_piece(bomb, back_row, bomb_positions[i])
-            else:
-                place_piece(bomb, back_row)
-        
-        # Remaining bombs in mid-back row
-        for bomb in bombs[3:]:
-            place_piece(bomb, mid_back)
-        
-        # 3. Place high-value pieces near flag
-        for piece in high_value:
-            place_piece(piece, back_row)
-        
-        # 4. Place defensive pieces in back rows
-        for piece in defensive:
-            place_piece(piece, mid_back)
-        
-        # 5. Place Spy in back for protection
-        place_piece(spy[0], mid_back)
-        
-        # 6. Place Miners scattered (bomb defusal capability)
-        for i, miner in enumerate(miners):
-            if i < 2:
-                place_piece(miner, mid_front)
-            else:
-                place_piece(miner, front_row)
-        
-        # 7. Place Scouts on flanks for mobility
-        for i, scout in enumerate(scouts):
-            if i < 4:
-                # Flanks in front row
-                if i % 2 == 0:
-                    place_piece(scout, front_row, i // 2)
-                else:
-                    place_piece(scout, front_row, 9 - i // 2)
-            else:
-                place_piece(scout, mid_front)
-        
-        # 8. Place attackers in front rows
-        for piece in attackers:
-            if len([p for p in placements if p[0][0] == front_row]) < 8:
-                place_piece(piece, front_row)
-            else:
-                place_piece(piece, mid_front)
-        
-        return placements
     
     def apply_setup_to_board(self, board, Piece):
         """
