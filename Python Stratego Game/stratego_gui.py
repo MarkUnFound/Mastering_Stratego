@@ -988,7 +988,7 @@ while running:
         
         # Subtitle with proper spacing below title
         subtitle_y = title_y + title_font_size + 20  # Increased spacing from 10 to 20, and account for full title height
-        draw_text("Intelligent Strategic Gameplay", center_x, subtitle_y, get_font_size(32), DARK_GREY)
+        #draw_text("Intelligent Strategic Gameplay", center_x, subtitle_y, get_font_size(32), DARK_GREY)
         
         # Menu buttons with spacing - ensure adequate separation
         button_width = int(menu_area_width * 0.35)
