@@ -12,7 +12,9 @@ import math
 from collections import deque, namedtuple
 from typing import List, Tuple, Optional, Dict
 from piece import PieceType
-from probabilistic_belief_state import ProbabilisticBeliefState
+from probabilistic_belief_state import ProbabilisticBeliefState, PieceActionAaren, PBS_EVALUATOR_AVAILABLE
+if PBS_EVALUATOR_AVAILABLE:
+    from pbs_evaluator import PBSEvaluator
 from critic import ExploitabilityCritic
 
 # Define a named tuple for experiences
@@ -60,7 +62,7 @@ class DQNAgent:
                  epsilon: float = 1.0, epsilon_min: float = 0.1, 
                  epsilon_decay: float = 0.001, 
                  buffer_size: int = 10000, batch_size: int = 32,
-                 use_pbs: bool = True):
+                 use_pbs: bool = True, num_envs: int = 1):
         """
         Initialize the DQN agent
         
@@ -92,17 +94,55 @@ class DQNAgent:
         self.use_pbs = use_pbs
         
         # Probabilistic Belief State
+        self.num_envs = num_envs
+        
+        # Probabilistic Belief State
+        self.pbs = None
+        self.pbs_instances = []
+        
         if self.use_pbs:
-            self.pbs = ProbabilisticBeliefState(player_id, device)
-        else:
-            self.pbs = None
+            if num_envs > 1:
+                # Create shared models for parallel environments
+                # AAREN model
+                self.shared_aaren = PieceActionAaren(
+                    input_size=24,
+                    hidden_size=64,
+                    num_layers=3,
+                    output_size=12, # NUM_PIECE_TYPES
+                    device=device
+                ).to(device)
+                self.shared_aaren_optimizer = optim.AdamW(self.shared_aaren.parameters(), lr=0.001, weight_decay=0.01)
+                
+                # PBS Evaluator
+                self.shared_evaluator = None
+                if PBS_EVALUATOR_AVAILABLE:
+                    self.shared_evaluator = PBSEvaluator(device=device)
+                
+                # Create PBS instances sharing the models
+                for _ in range(num_envs):
+                    pbs_instance = ProbabilisticBeliefState(
+                        player_id, device, 
+                        shared_aaren_model=self.shared_aaren,
+                        shared_evaluator=self.shared_evaluator
+                    )
+                    # Ensure shared optimizer is accessible for saving/training
+                    pbs_instance.aaren_optimizer = self.shared_aaren_optimizer
+                    self.pbs_instances.append(pbs_instance)
+                
+                # Set self.pbs to the first instance for backward compatibility
+                self.pbs = self.pbs_instances[0]
+            else:
+                # Single environment - standard initialization
+                self.pbs = ProbabilisticBeliefState(player_id, device)
+                self.pbs_instances = [self.pbs]
         
         # Uncertainty-driven exploration parameters
         self.uncertainty_exploration_multiplier = 0.5  # How much uncertainty affects exploration
         self.uncertainty_penalty_scale = 0.3  # Penalty for uncertain actions
         
         # Action-PBS buffer for tracking Q-values with PBS states
-        self.action_pbs_buffer = deque(maxlen=50)  # Track PBS state for actions
+        # Keyed by env_idx to ensure parallel safety
+        self.action_pbs_buffer = {i: deque(maxlen=50) for i in range(num_envs)}
         
         # Performance monitoring
         self.pbs_dqn_alignment_history = deque(maxlen=100)  # Track alignment between PBS and DQN
@@ -135,6 +175,8 @@ class DQNAgent:
         
         # Track policy losses
         self.policy_losses = []
+        self.q_values_history = []
+        self.entropy_history = []
         
         # Loss smoothing (exponential moving average)
         self.smoothed_loss = None
@@ -190,6 +232,8 @@ class DQNAgent:
         self.memory.clear()
         # Clear policy losses
         self.policy_losses = []
+        self.q_values_history = []
+        self.entropy_history = []
         # Reset smoothed loss
         self.smoothed_loss = None
         # Reset loss history for LR adjustment
@@ -202,9 +246,14 @@ class DQNAgent:
         self.best_avg_reward = float('-inf')
         # Reset PBS
         if self.pbs:
-            self.pbs.reset()
+            if self.num_envs > 1:
+                for pbs in self.pbs_instances:
+                    pbs.reset()
+            else:
+                self.pbs.reset()
         # Clear action-PBS buffer
-        self.action_pbs_buffer.clear()
+        for i in range(self.num_envs):
+            self.action_pbs_buffer[i].clear()
         if hasattr(self, '_action_q_values'):
             self._action_q_values.clear()
         # Clear alignment history
@@ -360,7 +409,8 @@ class DQNAgent:
         
         # Store action-PBS state for feedback
         if self.pbs and game_state is not None:
-            self.store_action_pbs_state(best_action, base_q_values, uncertainty_map, game_state)
+            # Default to env_idx 0 for single action
+            self.store_action_pbs_state(best_action, base_q_values, uncertainty_map, game_state, env_idx=0)
                 
         return best_action if best_action is not None else random.choice(valid_moves)
         
@@ -406,9 +456,16 @@ class DQNAgent:
             penalty = 0.05 * action_probs
             avg_penalty = penalty.mean().item()
             
+            # Calculate entropy for metrics
+            # Entropy = -sum(p * log(p))
+            entropy = (-probs * torch.log(probs + 1e-10)).sum(dim=1).mean().item()
+            
         # --- 3. Train Agent with Penalized Rewards ---
         # Current Q values
         current_q_values = self.q_network(states).gather(1, actions.unsqueeze(1))
+        
+        # Calculate average Q-value for metrics
+        avg_q_value = current_q_values.mean().item()
         
         # Next Q values from target network
         with torch.no_grad():
@@ -444,6 +501,15 @@ class DQNAgent:
         if not hasattr(self, 'penalty_history'):
             self.penalty_history = []
         self.penalty_history.append(avg_penalty)
+        
+        # Track new metrics
+        if not hasattr(self, 'q_values_history'):
+            self.q_values_history = []
+        self.q_values_history.append(avg_q_value)
+        
+        if not hasattr(self, 'entropy_history'):
+            self.entropy_history = []
+        self.entropy_history.append(entropy)
         
         # Update smoothed loss (exponential moving average)
         if self.smoothed_loss is None:
@@ -561,6 +627,20 @@ class DQNAgent:
             return 0.0
         recent_penalties = self.penalty_history[-window:]
         return sum(recent_penalties) / len(recent_penalties)
+    
+    def get_average_q_value(self, window: int = 100) -> float:
+        """Get average Q-value over the last N training steps"""
+        if not hasattr(self, 'q_values_history') or not self.q_values_history:
+            return 0.0
+        recent_q = self.q_values_history[-window:]
+        return sum(recent_q) / len(recent_q)
+        
+    def get_average_entropy(self, window: int = 100) -> float:
+        """Get average action entropy over the last N training steps"""
+        if not hasattr(self, 'entropy_history') or not self.entropy_history:
+            return 0.0
+        recent_entropy = self.entropy_history[-window:]
+        return sum(recent_entropy) / len(recent_entropy)
     
     def get_current_learning_rate(self) -> float:
         """Get the current learning rate"""
@@ -739,7 +819,7 @@ class DQNAgent:
         if 'pbs_evaluator_training_losses' in checkpoint:
             self.pbs.evaluator.training_losses = checkpoint['pbs_evaluator_training_losses']
         
-    def get_state_representation(self, game_state) -> torch.Tensor:
+    def get_state_representation(self, game_state, pbs_instance=None) -> torch.Tensor:
         """
         Convert game state to neural network input - returns GPU tensor.
         
@@ -749,9 +829,12 @@ class DQNAgent:
         If PBS is enabled, the state is enhanced with belief probabilities.
         Returns a torch.Tensor on the GPU to avoid CPU-GPU transfers.
         """
+        # Use provided PBS instance or default self.pbs
+        pbs = pbs_instance if pbs_instance else self.pbs
+        
         # Step 1: PBS gets the value and creates possible values with confidence scores
-        if self.pbs and hasattr(game_state, 'board'):
-            enhanced_state = self.pbs.get_belief_enhanced_state(game_state)
+        if pbs and hasattr(game_state, 'board'):
+            enhanced_state = pbs.get_belief_enhanced_state(game_state)
             if enhanced_state is not None:
                 # Keep on GPU
                 visible_board = enhanced_state
@@ -793,6 +876,124 @@ class DQNAgent:
             state = visible_board
             
         return state
+
+    def get_batch_state_representation(self, states, game_states=None) -> torch.Tensor:
+        """
+        Convert a batch of game states to a batch tensor.
+        """
+        tensor_list = []
+        for i, state in enumerate(states):
+            # Use game_states[i] if available for PBS, otherwise use state
+            gs = game_states[i] if game_states else state
+            # Use the corresponding PBS instance
+            pbs_inst = self.pbs_instances[i] if self.pbs_instances and i < len(self.pbs_instances) else self.pbs
+            
+            tensor = self.get_state_representation(gs, pbs_instance=pbs_inst)
+            tensor_list.append(tensor)
+        
+        return torch.stack(tensor_list)
+
+    def act_batch(self, states, valid_moves_list, game_states=None) -> List[Optional[Tuple[Tuple[int, int], Tuple[int, int]]]]:
+        """
+        Choose actions for a batch of states.
+        """
+        batch_size = len(states)
+        actions = [None] * batch_size
+        
+        # 1. Get batch state representation
+        state_tensor = self.get_batch_state_representation(states, game_states)
+        
+        # 2. Get uncertainty maps (if PBS)
+        uncertainty_maps = []
+        if self.pbs_instances and game_states:
+            for i, gs in enumerate(game_states):
+                if gs:
+                    uncertainty_maps.append(self.pbs_instances[i].get_uncertainty_map(gs))
+                else:
+                    uncertainty_maps.append({})
+        else:
+            uncertainty_maps = [{}] * batch_size
+            
+        # 3. Network forward pass
+        self.q_network.eval()
+        with torch.no_grad():
+            base_q_values_batch = self.q_network(state_tensor)
+        self.q_network.train()
+        
+        # 4. Process each env
+        for i in range(batch_size):
+            valid_moves = valid_moves_list[i]
+            if not valid_moves:
+                continue
+                
+            base_q_values = base_q_values_batch[i:i+1] # Keep batch dim (1, action_size)
+            uncertainty_map = uncertainty_maps[i]
+            
+            # Calculate uncertainty aware Q-values
+            q_values = self.calculate_uncertainty_aware_q_values(
+                base_q_values, valid_moves, uncertainty_map
+            )
+            
+            # Epsilon-greedy
+            avg_uncertainty = self.get_average_uncertainty(valid_moves, uncertainty_map)
+            adjusted_epsilon = self.epsilon + (avg_uncertainty * self.uncertainty_exploration_multiplier)
+            adjusted_epsilon = min(1.0, adjusted_epsilon)
+            
+            if torch.rand(1, device=self.device, dtype=torch.float32).item() <= adjusted_epsilon:
+                actions[i] = random.choice(valid_moves)
+            else:
+                # Exploitation
+                action_indices = torch.tensor(
+                    [self._move_to_action_index(move) for move in valid_moves],
+                    device=self.device,
+                    dtype=torch.long
+                )
+                valid_q_values = q_values[0, action_indices]
+                
+                exploration_bonuses = torch.zeros(len(valid_moves), device=self.device)
+                for j, move in enumerate(valid_moves):
+                    uncertainty = self.get_move_uncertainty(move, uncertainty_map)
+                    exploration_bonuses[j] = uncertainty * self.uncertainty_exploration_multiplier
+                
+                modified_q_values = valid_q_values + exploration_bonuses
+                best_idx = torch.argmax(modified_q_values).item()
+                actions[i] = valid_moves[best_idx]
+                
+                # Store action-PBS state for feedback (only if using PBS)
+                if self.pbs_instances and game_states and game_states[i]:
+                    self.store_action_pbs_state(actions[i], base_q_values, uncertainty_map, game_states[i], env_idx=i)
+        
+        return actions
+
+    def update_pbs_batch(self, actions, game_states, acting_player):
+        """Update PBS for a batch of actions."""
+        if not self.pbs_instances:
+            return
+            
+        for i, (action, gs) in enumerate(zip(actions, game_states)):
+            if action is not None and gs is not None:
+                # Use the corresponding PBS instance
+                if i < len(self.pbs_instances):
+                    # Retrieve Q-value feedback if available
+                    action_q_value = None
+                    if i in self.action_pbs_buffer:
+                        for stored in self.action_pbs_buffer[i]:
+                            if stored['action'] == action:
+                                action_q_value = stored['q_value']
+                                break
+                    
+                    # Update PBS with action and Q-value
+                    self.pbs_instances[i].update_from_action(action, gs, acting_player, q_value=action_q_value)
+
+    def update_pbs_from_reveal_batch(self, reveals_list, game_phase='middle', turn_count=0):
+        """Update PBS for a batch of reveals."""
+        if not self.pbs_instances:
+            return
+            
+        for i, reveals in enumerate(reveals_list):
+            if reveals and i < len(self.pbs_instances):
+                for pos, piece_type in reveals:
+                    self.pbs_instances[i].update_from_reveal(pos, piece_type, game_phase=game_phase, turn_count=turn_count)
     
     def calculate_uncertainty_aware_q_values(self, base_q_values: torch.Tensor,
                                              valid_moves: List[Tuple[Tuple[int, int], Tuple[int, int]]],
@@ -884,7 +1085,7 @@ class DQNAgent:
     
     def store_action_pbs_state(self, action: Tuple[Tuple[int, int], Tuple[int, int]],
                                q_values: torch.Tensor, uncertainty_map: Dict[Tuple[int, int], float],
-                               game_state):
+                               game_state, env_idx: int = 0):
         """
         Store action with PBS state and Q-values for feedback learning.
         
@@ -893,6 +1094,7 @@ class DQNAgent:
             q_values: Q-values from network
             uncertainty_map: Uncertainty map
             game_state: Current game state
+            env_idx: Environment index
         """
         action_idx = self._move_to_action_index(action)
         action_q_value = q_values[0, action_idx].item()
@@ -900,7 +1102,10 @@ class DQNAgent:
         # Get uncertainty for this action
         action_uncertainty = self.get_move_uncertainty(action, uncertainty_map)
         
-        self.action_pbs_buffer.append({
+        if env_idx not in self.action_pbs_buffer:
+            self.action_pbs_buffer[env_idx] = deque(maxlen=50)
+            
+        self.action_pbs_buffer[env_idx].append({
             'action': action,
             'q_value': action_q_value,
             'uncertainty': action_uncertainty,
@@ -957,35 +1162,32 @@ class DQNAgent:
         # Adjust scale based on typical Q-value range
         return 1.0 / (1.0 + math.exp(-q_value / 10.0))
     
-    def update_pbs_from_action(self, action: Tuple[Tuple[int, int], Tuple[int, int]], 
-                              game_state, acting_player: int):
+    def train_pbs_evaluator(self, epochs: int = 1) -> Optional[float]:
         """
-        Update PBS from an action taken.
-        Enhanced with Q-value feedback from DQN.
+        Train the PBS Evaluator if available.
+        Handles both single and parallel environments.
         
         Args:
-            action: Action tuple ((from_row, from_col), (to_row, to_col))
-            game_state: Current game state
-            acting_player: Player ID who took the action
+            epochs: Number of training epochs
+            
+        Returns:
+            Average loss value or None
         """
-        if self.pbs:
-            # Get Q-value feedback if available
-            action_q_value = None
-            for stored in self.action_pbs_buffer:
-                if stored['action'] == action:
-                    action_q_value = stored['q_value']
-                    break
-            
-            # Update PBS with action
-            self.pbs.update_from_action(action, game_state, acting_player)
-            
-            # Store Q-value for PBS evaluator training (if this is opponent's action)
-            if acting_player != self.player_id and action_q_value is not None:
-                # This will be used when the piece is revealed
-                # Store in a way that can be retrieved later
-                if not hasattr(self, '_action_q_values'):
-                    self._action_q_values = {}
-                self._action_q_values[action] = action_q_value
+        if self.pbs is None:
+            return None
+        
+        # Train separate PBS instances if using parallel envs
+        if self.num_envs > 1 and self.pbs_instances:
+            total_loss = 0.0
+            count = 0
+            for pbs in self.pbs_instances:
+                loss = pbs.train_evaluator(epochs=epochs)
+                if loss is not None:
+                    total_loss += loss
+                    count += 1
+            return total_loss / count if count > 0 else None
+        else:
+            return self.pbs.train_evaluator(epochs=epochs)
     
     def update_performance_metrics(self, pbs_accuracy: Optional[float] = None,
                                   dqn_loss: Optional[float] = None,

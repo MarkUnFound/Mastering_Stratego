@@ -289,7 +289,9 @@ class PieceActionAaren(nn.Module):
 class ProbabilisticBeliefState:
     """Probabilistic belief state that infers piece values from actions."""
     
-    def __init__(self, player_id: int, device, aaren_hidden_size: int = 64):
+    def __init__(self, player_id: int, device, aaren_hidden_size: int = 64, 
+                 shared_aaren_model: Optional[nn.Module] = None,
+                 shared_evaluator: Optional[object] = None):
         """
         Initialize the Probabilistic Belief State.
         
@@ -297,6 +299,8 @@ class ProbabilisticBeliefState:
             player_id: Player ID (1 or -1)
             device: PyTorch device
             aaren_hidden_size: Hidden size for Aaren network
+            shared_aaren_model: Optional shared AAREN model (for parallel envs)
+            shared_evaluator: Optional shared PBS evaluator (for parallel envs)
         """
         self.player_id = player_id
         self.device = device
@@ -337,16 +341,20 @@ class ProbabilisticBeliefState:
         self.piece_coordination: Dict[Tuple[int, int], List[Tuple[int, int]]] = defaultdict(list)
         
         # AAREN model for learning action patterns
-        # Expanded input size for enhanced features (8 -> 24)
-        self.aaren_model = PieceActionAaren(
-            input_size=24,  # Enhanced from 8 to 24 features
-            hidden_size=aaren_hidden_size,
-            num_layers=3,  # Increased from 2 to 3 for better capacity
-            output_size=NUM_PIECE_TYPES,
-            device=device
-        ).to(device)
-        
-        self.aaren_optimizer = torch.optim.AdamW(self.aaren_model.parameters(), lr=0.001, weight_decay=0.01)
+        if shared_aaren_model is not None:
+            self.aaren_model = shared_aaren_model
+            # Optimizer should be managed externally if model is shared
+            self.aaren_optimizer = None 
+        else:
+            # Expanded input size for enhanced features (8 -> 24)
+            self.aaren_model = PieceActionAaren(
+                input_size=24,  # Enhanced from 8 to 24 features
+                hidden_size=aaren_hidden_size,
+                num_layers=3,  # Increased from 2 to 3 for better capacity
+                output_size=NUM_PIECE_TYPES,
+                device=device
+            ).to(device)
+            self.aaren_optimizer = torch.optim.AdamW(self.aaren_model.parameters(), lr=0.001, weight_decay=0.01)
         
         # Track Aaren states for sequential inference (per position)
         # Key: (row, col), Value: List of states (one per layer)
@@ -360,9 +368,12 @@ class ProbabilisticBeliefState:
         self._aaren_training_positions: Dict[Tuple[int, int], Tuple[int, int]] = {}
         
         # PBS evaluator (optional, for RL-based evaluation)
-        self.evaluator = None
-        if PBS_EVALUATOR_AVAILABLE:
-            self.evaluator = PBSEvaluator(device=device)
+        if shared_evaluator is not None:
+            self.evaluator = shared_evaluator
+        else:
+            self.evaluator = None
+            if PBS_EVALUATOR_AVAILABLE:
+                self.evaluator = PBSEvaluator(device=device)
         
         # Active learning: track uncertain positions that need more observation
         self.uncertain_positions: set = set()
@@ -564,7 +575,7 @@ class ProbabilisticBeliefState:
         return features
     
     def update_from_action(self, action: Tuple[Tuple[int, int], Tuple[int, int]], 
-                          game_state, acting_player: int):
+                          game_state, acting_player: int, q_value: Optional[float] = None):
         """
         Update belief state based on an action.
         
@@ -572,6 +583,7 @@ class ProbabilisticBeliefState:
             action: The action taken ((from_pos), (to_pos))
             game_state: Current game state
             acting_player: Player who took the action
+            q_value: Q-value of the action (optional, for evaluator feedback)
         """
         (r_from, c_from), (r_to, c_to) = action
         
@@ -616,14 +628,20 @@ class ProbabilisticBeliefState:
                     pos = (r_from, c_from)
                 else:
                     return
-            else:
-                return
         else:
             return
         
         # Track observation time if first time seeing this piece
         if pos not in self.piece_observation_times:
             self.piece_observation_times[pos] = self.turn_count
+            
+        # Store Q-value if provided (for later evaluator feedback)
+        if q_value is not None:
+            if not hasattr(self, 'piece_q_value_history'):
+                self.piece_q_value_history = {}
+            if pos not in self.piece_q_value_history:
+                self.piece_q_value_history[pos] = []
+            self.piece_q_value_history[pos].append(q_value)
         
         # Initialize beliefs with position-based priors if not already set
         if pos not in self.belief_distributions or len(self.belief_distributions[pos]) == 0:
@@ -686,267 +704,9 @@ class ProbabilisticBeliefState:
             if (r_from, c_from) in self.belief_distributions:
                 # Store the old position's beliefs temporarily
                 old_beliefs = self.belief_distributions.get((r_from, c_from), {})
-                old_history = self.piece_action_history.get((r_from, c_from), deque())
-                
-                # If the piece moved (not a battle), transfer beliefs to new position
-                # This is a simplification - in reality, we'd need to check
-                # if the move was successful and the piece is still unknown
-                # For now, we'll keep tracking at the old position until we confirm
-                # the piece moved to the new position in the next state update
-    
-    def _apply_rule_based_inference(self, pos: Tuple[int, int], 
-                                   action: Tuple[Tuple[int, int], Tuple[int, int]]):
-        """
-        Apply rule-based inference to update beliefs.
-        
-        Rules:
-        - Moving more than 1 tile = Scout
-        - Not moving = Flag or Bomb
-        - Aggressive behavior = High value piece
-        """
-        (r_from, c_from), (r_to, c_to) = action
-        distance = max(abs(r_to - r_from), abs(c_to - c_from))
-        
-        # Get current beliefs
-        beliefs = self.belief_distributions[pos]
-        
-        # Rule 1: Multi-tile move = Scout
-        if distance > 1:
-            # Strong evidence for Scout (ensure Python float)
-            beliefs[PieceType.SCOUT] = float(min(0.9, float(beliefs[PieceType.SCOUT]) + 0.3))
-            # Reduce probability for non-moving pieces (ensure Python float)
-            beliefs[PieceType.FLAG] = float(beliefs[PieceType.FLAG] * 0.5)
-            beliefs[PieceType.BOMB] = float(beliefs[PieceType.BOMB] * 0.5)
-            # Normalize (ensure all values are Python floats)
-            total = float(sum(beliefs.values()))
-            if total > 0:
-                for pt in PieceType:
-                    beliefs[pt] = float(beliefs[pt] / total)
-        
-        # Rule 2: Single tile move = Not Scout, Flag, or Bomb
-        elif distance == 1:
-            # Reduce Scout probability (ensure Python float)
-            beliefs[PieceType.SCOUT] = float(beliefs[PieceType.SCOUT] * 0.3)
-            beliefs[PieceType.FLAG] = float(beliefs[PieceType.FLAG] * 0.5)
-            beliefs[PieceType.BOMB] = float(beliefs[PieceType.BOMB] * 0.5)
-            # Normalize (ensure all values are Python floats)
-            total = float(sum(beliefs.values()))
-            if total > 0:
-                for pt in PieceType:
-                    beliefs[pt] = float(beliefs[pt] / total)
-    
-    def _initialize_position_priors(self, pos: Tuple[int, int]):
-        """
-        Initialize beliefs with position-based priors.
-        
-        Back rows more likely to have flag/bombs.
-        Front rows more likely to have scouts/aggressive pieces.
-        """
-        r, c = pos
-        beliefs = self.belief_distributions[pos]
-        
-        # Reset to position-based priors
-        sorted_piece_types = sorted(PieceType, key=lambda pt: pt.value)
-        
-        # Determine if back row or front row
-        if self.player_id == 1:
-            # Tracking opponent (player -1), back rows are 0-1, front rows are 2-3
-            is_back_row = r <= 1
-            is_front_row = r >= 2
-        else:
-            # Tracking opponent (player 1), back rows are 8-9, front rows are 6-7
-            is_back_row = r >= 8
-            is_front_row = r <= 7
-        
-        # Set priors based on position
-        for pt in sorted_piece_types:
-            if is_back_row:
-                # Back rows: higher probability for flag, bombs, defensive pieces
-                if pt == PieceType.FLAG:
-                    beliefs[pt] = 0.15
-                elif pt == PieceType.BOMB:
-                    beliefs[pt] = 0.20
-                elif pt in [PieceType.MARSHAL, PieceType.GENERAL, PieceType.COLONEL]:
-                    beliefs[pt] = 0.10
-                else:
-                    beliefs[pt] = 0.05 / (NUM_PIECE_TYPES - 5)
-            elif is_front_row:
-                # Front rows: higher probability for scouts, aggressive pieces
-                if pt == PieceType.SCOUT:
-                    beliefs[pt] = 0.25
-                elif pt in [PieceType.MINER, PieceType.SERGEANT, PieceType.LIEUTENANT]:
-                    beliefs[pt] = 0.12
-                elif pt == PieceType.FLAG:
-                    beliefs[pt] = 0.02  # Very unlikely in front
-                elif pt == PieceType.BOMB:
-                    beliefs[pt] = 0.05
-                else:
-                    beliefs[pt] = 0.05 / (NUM_PIECE_TYPES - 5)
-            else:
-                # Middle rows: uniform distribution
-                beliefs[pt] = 1.0 / NUM_PIECE_TYPES
-        
-        # Normalize
-        total = sum(beliefs.values())
-        if total > 0:
-            for pt in sorted_piece_types:
-                beliefs[pt] = float(beliefs[pt] / total)
-    
-    def _apply_behavioral_patterns(self, pos: Tuple[int, int], 
-                                   action: Tuple[Tuple[int, int], Tuple[int, int]],
-                                   game_state):
-        """
-        Apply behavioral pattern recognition to update beliefs.
-        
-        Recognizes:
-        - Aggressive behavior patterns (high-value pieces)
-        - Defensive behavior patterns (flag protection)
-        - Scouting patterns (scout behavior)
-        - Bait patterns (low-value pieces used as bait)
-        """
-        (r_from, c_from), (r_to, c_to) = action
-        distance = max(abs(r_to - r_from), abs(c_to - c_from))
-        beliefs = self.belief_distributions[pos]
-        
-        # Pattern 1: Aggressive behavior (attacking, moving forward)
-        # Check if attacking or moving aggressively toward enemy
-        is_attack = distance > 0 and (r_to, c_to) != (r_from, c_from)
-        if is_attack:
-            # Aggressive behavior suggests higher value pieces
-            for pt in [PieceType.MARSHAL, PieceType.GENERAL, PieceType.COLONEL, PieceType.MAJOR]:
-                beliefs[pt] = float(min(0.8, float(beliefs[pt]) * 1.2))
-        
-        # Pattern 2: Defensive behavior (staying near back, not moving)
-        if distance == 0 or (r_from >= 6 if self.player_id == 1 else r_from <= 3):
-            # Defensive behavior suggests flag, bombs, or high-value defensive pieces
-            beliefs[PieceType.FLAG] = float(min(0.6, float(beliefs[PieceType.FLAG]) * 1.3))
-            beliefs[PieceType.BOMB] = float(min(0.7, float(beliefs[PieceType.BOMB]) * 1.2))
-        
-        # Pattern 3: Scouting behavior (long moves, revealing enemies)
-        if distance > 3:
-            # Very long moves strongly suggest scout
-            beliefs[PieceType.SCOUT] = float(min(0.95, float(beliefs[PieceType.SCOUT]) * 1.5))
-        
-        # Normalize
-        total = sum(beliefs.values())
-        if total > 0:
-            for pt in PieceType:
-                beliefs[pt] = float(beliefs[pt] / total)
-    
-    def _apply_piece_count_constraints(self, pos: Tuple[int, int]):
-        """
-        Apply piece count constraints to beliefs.
-        
-        If all pieces of a type are revealed, set probability to 0.
-        Adjust probabilities based on remaining piece counts.
-        """
-        beliefs = self.belief_distributions[pos]
-        
-        # Check each piece type
-        for pt in PieceType:
-            total_count = self.total_piece_counts.get(pt, 0)
-            revealed_count = self.revealed_piece_counts.get(pt, 0)
-            remaining = total_count - revealed_count
-            
-            if remaining <= 0:
-                # All pieces of this type are revealed, set probability to 0
-                beliefs[pt] = 0.0
-            elif remaining < total_count * 0.3:
-                # Most pieces revealed, reduce probability
-                beliefs[pt] = float(beliefs[pt] * 0.5)
-        
-        # Normalize after constraints
-        total = sum(beliefs.values())
-        if total > 0:
-            for pt in PieceType:
-                beliefs[pt] = float(beliefs[pt] / total)
-        else:
-            # If all probabilities are 0, reset to uniform
-            for pt in PieceType:
-                beliefs[pt] = 1.0 / NUM_PIECE_TYPES
-    
-    def _apply_aaren_inference(self, pos: Tuple[int, int]):
-        """
-        Apply Aaren-based inference to update beliefs from action sequence.
-        
-        Uses sequential inference mode for O(1) per-timestep updates.
-        """
-        if pos not in self.piece_action_history:
-            return
-        
-        action_sequence = list(self.piece_action_history[pos])
-        if len(action_sequence) < 1:
-            return
-        
-        # Get the most recent action (for sequential update)
-        latest_action = action_sequence[-1]
-        action_tensor = torch.tensor(latest_action, device=self.device).unsqueeze(0)  # (1, 24)
-        
-        # Get previous Aaren states for this position (if any)
-        prev_states = self.aaren_states.get(pos, None)
-        
-        # Sequential inference update (O(1) per timestep)
-        self.aaren_model.eval()
-        with torch.no_grad():
-            predictions, new_states = self.aaren_model.forward_sequential(
-                action_tensor,  # (1, 8) - forward_sequential handles both 2D and 3D
-                prev_states
-            )
-        
-        # Store updated states for next inference
-        self.aaren_states[pos] = new_states
-        
-        # Keep predictions on GPU and work with tensors (minimize CPU transfer)
-        # Aaren outputs probabilities for each piece type index
-        pred_probs_tensor = predictions[0]  # Keep on GPU: (NUM_PIECE_TYPES,)
-        
-        # Map indices to PieceType - use sorted order to match default distribution
-        # CRITICAL: Use sorted PieceType to ensure consistent mapping
-        piece_types = sorted(PieceType, key=lambda pt: pt.value)
-        beliefs = self.belief_distributions[pos]
-        
-        # Combine Aaren predictions with existing beliefs (weighted average)
-        # Work on GPU tensor first, then convert to CPU only for final storage
-        # Use evaluator feedback to adjust alpha (confidence in Aaren predictions)
-        base_alpha = 0.3  # Base weight for Aaren predictions
-        alpha = base_alpha
-        
-        # Get evaluator feedback to adjust belief update confidence
-        if self.evaluator is not None and pos in self.belief_distributions:
-            feedback = self.get_evaluator_feedback(pos)
-            if feedback:
-                quality_score = feedback.get('quality_score', 0.0)
-                # Adjust alpha based on evaluator confidence:
-                # High quality score -> trust Aaren more (higher alpha)
-                # Low quality score -> trust Aaren less (lower alpha)
-                quality_normalized = 1.0 / (1.0 + math.exp(-quality_score / 10.0))
-                # Alpha ranges from 0.1 (low confidence) to 0.5 (high confidence)
-                alpha = 0.1 + 0.4 * quality_normalized
-        
-        # Cache alpha values to avoid repeated tensor creation
-        # Convert to float first, then create tensor once
-        alpha_float = float(alpha)
-        alpha_tensor = torch.tensor(alpha_float, device=self.device, dtype=torch.float32)
-        one_minus_alpha = torch.tensor(1.0 - alpha_float, device=self.device, dtype=torch.float32)
-        
-        # Convert existing beliefs to tensor on GPU for batch operations
-        existing_beliefs_tensor = torch.zeros(len(piece_types), device=self.device, dtype=torch.float32)
-        for i, piece_type in enumerate(piece_types):
-            existing_beliefs_tensor[i] = float(beliefs[piece_type])
-        
-        # Batch update on GPU: new_belief = (1-alpha) * old + alpha * pred
-        new_beliefs_tensor = one_minus_alpha * existing_beliefs_tensor + alpha_tensor * pred_probs_tensor[:len(piece_types)]
-        
-        # Normalize on GPU
-        total = new_beliefs_tensor.sum()
-        if total > 0:
-            new_beliefs_tensor = new_beliefs_tensor / total
-        
-        # Convert to CPU only once for final storage (minimize transfers)
-        new_beliefs_cpu = new_beliefs_tensor.cpu().numpy()
-        for i, piece_type in enumerate(piece_types):
-            beliefs[piece_type] = float(new_beliefs_cpu[i])
-    
+                # We don't move beliefs here because the move might fail or be a battle
+                # The environment update will handle the actual move
+                pass
     def update_from_reveal(self, pos: Tuple[int, int], piece_type: PieceType, 
                           game_phase: str = 'middle', turn_count: int = 0):
         """
@@ -971,13 +731,19 @@ class ProbabilisticBeliefState:
                     # Use the most recent action features
                     action_features = self.piece_action_history[pos][-1]
                 
+                # Get Q-value if available
+                q_value = None
+                if hasattr(self, 'piece_q_value_history') and pos in self.piece_q_value_history and len(self.piece_q_value_history[pos]) > 0:
+                    q_value = self.piece_q_value_history[pos][-1]
+                
                 self.evaluator.remember(
                     pbs_prediction=pbs_prediction,
                     ground_truth=piece_type,
                     position=pos,
                     game_phase=game_phase,
                     turn_count=turn_count,
-                    action_features=action_features
+                    action_features=action_features,
+                    q_value=q_value
                 )
                 # Get evaluator feedback for AAREN training
                 evaluator_feedback = self.get_evaluator_feedback(pos, ground_truth=piece_type)
@@ -1225,6 +991,161 @@ class ProbabilisticBeliefState:
                     return float(normalized_entropy)
         return 1.0  # No beliefs = maximum uncertainty
     
+    def _initialize_position_priors(self, pos: Tuple[int, int]):
+        """
+        Initialize beliefs for a new position with priors.
+        """
+        r, c = pos
+        beliefs = {}
+        
+        # Heuristic priors based on position
+        # Back rows (0-2 or 7-9) more likely to have Flag/Bombs
+        is_back_row = (r <= 2) if self.player_id == -1 else (r >= 7)
+        
+        for piece_type in PieceType:
+            prob = 1.0 / len(PieceType)  # Uniform prior
+            
+            # Adjust for back row
+            if is_back_row:
+                if piece_type in [PieceType.FLAG, PieceType.BOMB]:
+                    prob *= 2.0
+                elif piece_type == PieceType.SCOUT:
+                    prob *= 0.5
+            
+            beliefs[piece_type] = prob
+        
+        # Normalize
+        total = sum(beliefs.values())
+        for pt in beliefs:
+            beliefs[pt] /= total
+            
+        self.belief_distributions[pos] = beliefs
+
+    def _apply_rule_based_inference(self, pos: Tuple[int, int], 
+                                   action: Tuple[Tuple[int, int], Tuple[int, int]]):
+        """
+        Apply hard rules to update beliefs.
+        """
+        (r_from, c_from), (r_to, c_to) = action
+        dist = abs(r_to - r_from) + abs(c_to - c_from)
+        
+        # Rule 1: If piece moves > 1 square, it MUST be a Scout (2)
+        if dist > 1:
+            self.belief_distributions[pos] = {
+                pt: 1.0 if pt == PieceType.SCOUT else 0.0 for pt in PieceType
+            }
+            return
+
+        # Rule 2: Bombs and Flags cannot move
+        # If it moved, probability of Bomb/Flag is 0
+        if dist > 0:
+            beliefs = self.belief_distributions[pos]
+            beliefs[PieceType.BOMB] = 0.0
+            beliefs[PieceType.FLAG] = 0.0
+            
+            # Renormalize
+            total = sum(beliefs.values())
+            if total > 0:
+                for pt in beliefs:
+                    beliefs[pt] /= total
+            else:
+                # Fallback if all became 0 (shouldn't happen if logic is sound)
+                self._initialize_position_priors(pos)
+
+    def _apply_behavioral_patterns(self, pos: Tuple[int, int], 
+                                   action: Tuple[Tuple[int, int], Tuple[int, int]],
+                                   game_state):
+        """
+        Apply soft behavioral patterns to update beliefs.
+        """
+        (r_from, c_from), (r_to, c_to) = action
+        beliefs = self.belief_distributions[pos]
+        
+        # Pattern 1: Aggressive moves (towards enemy side) suggest higher rank
+        # Agent 1 starts top (0-3), moves down (increasing r)
+        # Agent 2 starts bottom (6-9), moves up (decreasing r)
+        is_advance = (r_to > r_from) if self.player_id == 1 else (r_to < r_from)
+        
+        if is_advance:
+            # Slightly increase probability of higher ranks (Miner, General, Marshal)
+            for pt in [PieceType.MINER, PieceType.GENERAL, PieceType.MARSHAL]:
+                if pt in beliefs:
+                    beliefs[pt] *= 1.2
+        
+        # Renormalize
+        total = sum(beliefs.values())
+        if total > 0:
+            for pt in beliefs:
+                beliefs[pt] /= total
+
+    def _apply_piece_count_constraints(self, pos: Tuple[int, int]):
+        """
+        Constrain beliefs based on known remaining pieces.
+        """
+        # This is computationally expensive to do exactly, so we use a simplified approach
+        # If we know all pieces of type X are revealed, prob(X) = 0
+        
+        # Count revealed pieces
+        revealed_counts = self.revealed_piece_counts.copy()
+        
+        # Max counts per piece type (standard Stratego)
+        # Use self.total_piece_counts instead of importing
+        
+        beliefs = self.belief_distributions[pos]
+        for pt in PieceType:
+            if revealed_counts.get(pt, 0) >= self.total_piece_counts.get(pt, 0):
+                beliefs[pt] = 0.0
+        
+        # Renormalize
+        total = sum(beliefs.values())
+        if total > 0:
+            for pt in beliefs:
+                beliefs[pt] /= total
+
+    def _apply_aaren_inference(self, pos: Tuple[int, int]):
+        """
+        Apply AAREN model inference to update beliefs.
+        """
+        if self.aaren_model is None:
+            return
+            
+        # Convert deque to list for slicing
+        history = list(self.piece_action_history.get(pos, []))
+        if not history:
+            return
+            
+        # Prepare input
+        # Take last N actions (up to sequence length)
+        seq_len = min(len(history), 10)
+        sequence = history[-seq_len:]
+        
+        # Convert to tensor
+        seq_tensor = torch.tensor(np.array(sequence), dtype=torch.float32, device=self.device).unsqueeze(0) # (1, seq_len, features)
+        
+        # Inference
+        with torch.no_grad():
+            logits = self.aaren_model(seq_tensor) # (1, num_classes)
+            probs = torch.softmax(logits, dim=1).squeeze(0) # (num_classes)
+            
+        # Update beliefs (weighted average with current beliefs)
+        # We trust AAREN more as sequence grows
+        aaren_weight = min(0.8, len(history) * 0.1)
+        current_weight = 1.0 - aaren_weight
+        
+        beliefs = self.belief_distributions[pos]
+        piece_types = list(PieceType)
+        
+        for i, pt in enumerate(piece_types):
+            aaren_prob = probs[i].item()
+            current_prob = beliefs.get(pt, 0.0)
+            beliefs[pt] = current_weight * current_prob + aaren_weight * aaren_prob
+            
+        # Renormalize
+        total = sum(beliefs.values())
+        if total > 0:
+            for pt in beliefs:
+                beliefs[pt] /= total
+
     def _update_piece_coordination(self, pos: Tuple[int, int],
                                    action: Tuple[Tuple[int, int], Tuple[int, int]],
                                    game_state):

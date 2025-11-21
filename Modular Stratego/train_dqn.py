@@ -20,15 +20,17 @@ import copy
 import traceback
 import json
 from typing import List, Tuple, Optional
+from tqdm import tqdm
 
 # Add the parent directory to sys.path to enable imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from environment import StrategoEnvironment
+from parallel_environment import ParallelStrategoEnvironment
 from dqn_agent import DQNAgent
 from setup_agent import SetupAgent
 from game_state import GameState
-from training_visualizer import plot_training_progress, create_training_gif, create_episode_gif, plot_setup_agent_progress, plot_pbs_evaluator_progress
+from training_visualizer import plot_training_progress, create_training_gif, create_episode_gif, plot_setup_agent_progress, plot_pbs_evaluator_progress, plot_additional_metrics
 from pbs_visualizer import visualize_pbs_state, create_pbs_gif
 from piece import PieceType, PIECE_RANKS
 from board import LAKE_SQUARE
@@ -40,6 +42,28 @@ try:
 except ImportError:
     RESET_AVAILABLE = False
 
+
+# Hyperparameters
+NUM_ENVS = 16  # Number of parallel environments
+BATCH_SIZE = 32
+GAMMA = 0.99
+EPSILON_START = 1.0
+EPSILON_MIN = 0.1
+EPSILON_DECAY = 0.99995  # Slower decay for longer training
+TARGET_UPDATE = 1000
+MEMORY_SIZE = 100000
+LEARNING_RATE = 0.0001
+NUM_EPISODES = 10000  # Total episodes to train
+SAVE_INTERVAL = 50   # Save model every N episodes
+EVAL_INTERVAL = 100  # Evaluate every N episodes
+PREFETCH_QUEUE_SIZE = 4 # Size of the prefetch queue
+REPLAY_UPDATE_INTERVAL = 8 # Train every N steps
+REPLAY_UPDATES_PER_STEP = 1 # Updates per training step
+TARGET_UPDATE_INTERVAL = 1000 # Update target network every N steps
+
+# Visualization settings
+GENERATE_GIFS = False # Whether to generate GIFs of games
+GIF_INTERVAL = 100   # Generate GIF every N episodes (reduced frequency)
 
 class ReplayPrefetcher:
     """Background prefetcher that samples replay batches asynchronously."""
@@ -95,7 +119,9 @@ def _save_training_history(model_save_path: str,
                           pbs_evaluator1_losses: List[float],
                           pbs_evaluator2_losses: List[float],
                           pbs_evaluator1_buffer_sizes: List[int],
-                          pbs_evaluator2_buffer_sizes: List[int]):
+                          pbs_evaluator2_buffer_sizes: List[int],
+                          avg_q_history: dict,
+                          entropy_history: dict):
     """Save training history to JSON file for continuity across training sessions"""
     history_file = os.path.join(model_save_path, "training_history.json")
     try:
@@ -112,13 +138,79 @@ def _save_training_history(model_save_path: str,
             'pbs_evaluator1_losses': pbs_evaluator1_losses,
             'pbs_evaluator2_losses': pbs_evaluator2_losses,
             'pbs_evaluator1_buffer_sizes': pbs_evaluator1_buffer_sizes,
-            'pbs_evaluator2_buffer_sizes': pbs_evaluator2_buffer_sizes
+            'pbs_evaluator1_buffer_sizes': pbs_evaluator1_buffer_sizes,
+            'pbs_evaluator2_buffer_sizes': pbs_evaluator2_buffer_sizes,
+            'avg_q_history': avg_q_history,
+            'entropy_history': entropy_history
         }
         with open(history_file, 'w') as f:
             json.dump(history_data, f, indent=2)
     except Exception as e:
         print(f"⚠️  Could not save training history: {e}")
 
+
+def calculate_setup_agent_reward(placement: List[Tuple[PieceType, Tuple[int, int]]], 
+                                 player_id: int, winner: int, move_count: int) -> float:
+    """
+    Calculate reward for a setup agent based on game outcome and placement quality.
+    
+    Args:
+        placement: List of (piece_type, position) tuples
+        player_id: 1 or -1
+        winner: 1, -1, or 0 (draw)
+        move_count: Number of moves in the game
+        
+    Returns:
+        Reward value (higher is better)
+    """
+    # Base reward from game outcome
+    if winner == player_id:
+        base_reward = 10.0
+    elif winner == -player_id:
+        base_reward = -10.0
+    else:
+        base_reward = 0.0
+    
+    # Bonus/penalty for game length
+    # Winning quickly or losing slowly is better
+    if winner == player_id:
+        # Win bonus: faster wins are better (max 50 moves as reference)
+        length_bonus = max(0, (50 - move_count) / 50.0) * 5.0
+    elif winner == -player_id:
+        # Loss penalty: longer games mean better defense (max 100 moves)
+        length_bonus = max(0, move_count / 100.0) * 3.0
+    else:
+        length_bonus = 0.0
+    
+    # Evaluate placement quality
+    quality_bonus = 0.0
+    
+    # Find flag position
+    flag_pos = None
+    bomb_positions = []
+    for piece, pos in placement:
+        if piece == PieceType.FLAG:
+            flag_pos = pos
+        elif piece == PieceType.BOMB:
+            bomb_positions.append(pos)
+    
+    if flag_pos:
+        # Reward flag protection (surrounded by bombs)
+        adjacent_positions = [
+            (flag_pos[0]-1, flag_pos[1]), (flag_pos[0]+1, flag_pos[1]),
+            (flag_pos[0], flag_pos[1]-1), (flag_pos[0], flag_pos[1]+1)
+        ]
+        protected_count = sum(1 for pos in adjacent_positions if pos in bomb_positions)
+        quality_bonus += protected_count * 0.5
+        
+        # Reward flag being in back row (safer)
+        if player_id == 1 and flag_pos[0] == 9:  # Player 1 back row
+            quality_bonus += 1.0
+        elif player_id == -1 and flag_pos[0] == 0:  # Player 2 back row
+            quality_bonus += 1.0
+    
+    total_reward = base_reward + length_bonus + quality_bonus
+    return total_reward
 
 def _load_training_history(model_save_path: str) -> dict:
     """Load training history from JSON file if it exists"""
@@ -884,7 +976,9 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
         print(f"📊 Starting total steps counter from 0")
     
     # Create environment
-    env = StrategoEnvironment(device=device)
+    # Create environment
+    # env = StrategoEnvironment(device=device)
+    env = ParallelStrategoEnvironment(num_envs=NUM_ENVS)
     
     # Create model save directory
     if not os.path.exists(model_save_path):
@@ -894,8 +988,8 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
     loaded_history = _load_training_history(model_save_path)
     
     # Create game-playing agents (with increased learning rate for CNN)
-    agent1 = DQNAgent(player_id=1, device=device, lr=0.0001, batch_size=TRAINING_BATCH_SIZE)
-    agent2 = DQNAgent(player_id=-1, device=device, lr=0.0001, batch_size=TRAINING_BATCH_SIZE)
+    agent1 = DQNAgent(player_id=1, device=device, lr=0.0001, batch_size=TRAINING_BATCH_SIZE, num_envs=NUM_ENVS)
+    agent2 = DQNAgent(player_id=-1, device=device, lr=0.0001, batch_size=TRAINING_BATCH_SIZE, num_envs=NUM_ENVS)
     
     # Try to load the most recent saved models (separate files)
     try:
@@ -949,66 +1043,78 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
         
         # Load DQN models if found
         if agent1_dqn_path and os.path.exists(agent1_dqn_path):
-            agent1.load_model(agent1_dqn_path)
-            print(f"✅ Loaded Agent 1 DQN model from: {agent1_dqn_path}")
-            
-            # Check if old combined format has PBS components and load them
             try:
-                checkpoint = torch.load(agent1_dqn_path, map_location=device)
-                if 'pbs_aaren_state_dict' in checkpoint or 'pbs_lstm_state_dict' in checkpoint:
-                    # Old combined format - try to load AAREN from it
-                    if 'pbs_aaren_state_dict' in checkpoint:
-                        agent1.pbs.aaren_model.load_state_dict(checkpoint['pbs_aaren_state_dict'])
-                        if 'pbs_aaren_optimizer_state_dict' in checkpoint:
-                            agent1.pbs.aaren_optimizer.load_state_dict(checkpoint['pbs_aaren_optimizer_state_dict'])
-                        print(f"✅ Loaded Agent 1 AAREN from combined checkpoint")
-                    elif 'pbs_lstm_state_dict' in checkpoint:
-                        agent1.pbs.aaren_model.load_state_dict(checkpoint['pbs_lstm_state_dict'])
-                        if 'pbs_lstm_optimizer_state_dict' in checkpoint:
-                            agent1.pbs.aaren_optimizer.load_state_dict(checkpoint['pbs_lstm_optimizer_state_dict'])
-                        print(f"✅ Loaded Agent 1 AAREN (from LSTM) from combined checkpoint")
-                
-                if 'pbs_evaluator_state_dict' in checkpoint and agent1.pbs.evaluator is not None:
-                    agent1.pbs.evaluator.evaluator_network.load_state_dict(checkpoint['pbs_evaluator_state_dict'])
-                    agent1.pbs.evaluator.target_network.load_state_dict(checkpoint['pbs_evaluator_target_state_dict'])
-                    if 'pbs_evaluator_optimizer_state_dict' in checkpoint:
-                        agent1.pbs.evaluator.optimizer.load_state_dict(checkpoint['pbs_evaluator_optimizer_state_dict'])
-                    agent1.pbs.evaluator.update_target_network()
-                    print(f"✅ Loaded Agent 1 PBS Evaluator from combined checkpoint")
+                agent1.load_model(agent1_dqn_path)
+                print(f"✅ Loaded Agent 1 DQN model from: {agent1_dqn_path}")
             except Exception as e:
-                # Not a combined checkpoint or error loading PBS components - that's okay
-                pass
+                print(f"⚠️  Could not load Agent 1 DQN model from {agent1_dqn_path}: {e}")
+                print(f"   File may be corrupted. Starting with fresh Agent 1.")
+                agent1_dqn_path = None  # Mark as failed so we don't try to load PBS components
+            
+            # Check if old combined format has PBS components and load them (only if DQN loaded successfully)
+            if agent1_dqn_path:
+                try:
+                    checkpoint = torch.load(agent1_dqn_path, map_location=device)
+                    if 'pbs_aaren_state_dict' in checkpoint or 'pbs_lstm_state_dict' in checkpoint:
+                        # Old combined format - try to load AAREN from it
+                        if 'pbs_aaren_state_dict' in checkpoint:
+                            agent1.pbs.aaren_model.load_state_dict(checkpoint['pbs_aaren_state_dict'])
+                            if 'pbs_aaren_optimizer_state_dict' in checkpoint:
+                                agent1.pbs.aaren_optimizer.load_state_dict(checkpoint['pbs_aaren_optimizer_state_dict'])
+                            print(f"✅ Loaded Agent 1 AAREN from combined checkpoint")
+                        elif 'pbs_lstm_state_dict' in checkpoint:
+                            agent1.pbs.aaren_model.load_state_dict(checkpoint['pbs_lstm_state_dict'])
+                            if 'pbs_lstm_optimizer_state_dict' in checkpoint:
+                                agent1.pbs.aaren_optimizer.load_state_dict(checkpoint['pbs_lstm_optimizer_state_dict'])
+                            print(f"✅ Loaded Agent 1 AAREN (from LSTM) from combined checkpoint")
+                    
+                    if 'pbs_evaluator_state_dict' in checkpoint and agent1.pbs.evaluator is not None:
+                        agent1.pbs.evaluator.evaluator_network.load_state_dict(checkpoint['pbs_evaluator_state_dict'])
+                        agent1.pbs.evaluator.target_network.load_state_dict(checkpoint['pbs_evaluator_target_state_dict'])
+                        if 'pbs_evaluator_optimizer_state_dict' in checkpoint:
+                            agent1.pbs.evaluator.optimizer.load_state_dict(checkpoint['pbs_evaluator_optimizer_state_dict'])
+                        agent1.pbs.evaluator.update_target_network()
+                        print(f"✅ Loaded Agent 1 PBS Evaluator from combined checkpoint")
+                except Exception as e:
+                    # Not a combined checkpoint or error loading PBS components - that's okay
+                    pass
         
         if agent2_dqn_path and os.path.exists(agent2_dqn_path):
-            agent2.load_model(agent2_dqn_path)
-            print(f"✅ Loaded Agent 2 DQN model from: {agent2_dqn_path}")
-            
-            # Check if old combined format has PBS components and load them
             try:
-                checkpoint = torch.load(agent2_dqn_path, map_location=device)
-                if 'pbs_aaren_state_dict' in checkpoint or 'pbs_lstm_state_dict' in checkpoint:
-                    # Old combined format - try to load AAREN from it
-                    if 'pbs_aaren_state_dict' in checkpoint:
-                        agent2.pbs.aaren_model.load_state_dict(checkpoint['pbs_aaren_state_dict'])
-                        if 'pbs_aaren_optimizer_state_dict' in checkpoint:
-                            agent2.pbs.aaren_optimizer.load_state_dict(checkpoint['pbs_aaren_optimizer_state_dict'])
-                        print(f"✅ Loaded Agent 2 AAREN from combined checkpoint")
-                    elif 'pbs_lstm_state_dict' in checkpoint:
-                        agent2.pbs.aaren_model.load_state_dict(checkpoint['pbs_lstm_state_dict'])
-                        if 'pbs_lstm_optimizer_state_dict' in checkpoint:
-                            agent2.pbs.aaren_optimizer.load_state_dict(checkpoint['pbs_lstm_optimizer_state_dict'])
-                        print(f"✅ Loaded Agent 2 AAREN (from LSTM) from combined checkpoint")
-                
-                if 'pbs_evaluator_state_dict' in checkpoint and agent2.pbs.evaluator is not None:
-                    agent2.pbs.evaluator.evaluator_network.load_state_dict(checkpoint['pbs_evaluator_state_dict'])
-                    agent2.pbs.evaluator.target_network.load_state_dict(checkpoint['pbs_evaluator_target_state_dict'])
-                    if 'pbs_evaluator_optimizer_state_dict' in checkpoint:
-                        agent2.pbs.evaluator.optimizer.load_state_dict(checkpoint['pbs_evaluator_optimizer_state_dict'])
-                    agent2.pbs.evaluator.update_target_network()
-                    print(f"✅ Loaded Agent 2 PBS Evaluator from combined checkpoint")
+                agent2.load_model(agent2_dqn_path)
+                print(f"✅ Loaded Agent 2 DQN model from: {agent2_dqn_path}")
             except Exception as e:
-                # Not a combined checkpoint or error loading PBS components - that's okay
-                pass
+                print(f"⚠️  Could not load Agent 2 DQN model from {agent2_dqn_path}: {e}")
+                print(f"   File may be corrupted. Starting with fresh Agent 2.")
+                agent2_dqn_path = None  # Mark as failed so we don't try to load PBS components
+            
+            # Check if old combined format has PBS components and load them (only if DQN loaded successfully)
+            if agent2_dqn_path:
+                try:
+                    checkpoint = torch.load(agent2_dqn_path, map_location=device)
+                    if 'pbs_aaren_state_dict' in checkpoint or 'pbs_lstm_state_dict' in checkpoint:
+                        # Old combined format - try to load AAREN from it
+                        if 'pbs_aaren_state_dict' in checkpoint:
+                            agent2.pbs.aaren_model.load_state_dict(checkpoint['pbs_aaren_state_dict'])
+                            if 'pbs_aaren_optimizer_state_dict' in checkpoint:
+                                agent2.pbs.aaren_optimizer.load_state_dict(checkpoint['pbs_aaren_optimizer_state_dict'])
+                            print(f"✅ Loaded Agent 2 AAREN from combined checkpoint")
+                        elif 'pbs_lstm_state_dict' in checkpoint:
+                            agent2.pbs.aaren_model.load_state_dict(checkpoint['pbs_lstm_state_dict'])
+                            if 'pbs_lstm_optimizer_state_dict' in checkpoint:
+                                agent2.pbs.aaren_optimizer.load_state_dict(checkpoint['pbs_lstm_optimizer_state_dict'])
+                            print(f"✅ Loaded Agent 2 AAREN (from LSTM) from combined checkpoint")
+                    
+                    if 'pbs_evaluator_state_dict' in checkpoint and agent2.pbs.evaluator is not None:
+                        agent2.pbs.evaluator.evaluator_network.load_state_dict(checkpoint['pbs_evaluator_state_dict'])
+                        agent2.pbs.evaluator.target_network.load_state_dict(checkpoint['pbs_evaluator_target_state_dict'])
+                        if 'pbs_evaluator_optimizer_state_dict' in checkpoint:
+                            agent2.pbs.evaluator.optimizer.load_state_dict(checkpoint['pbs_evaluator_optimizer_state_dict'])
+                        agent2.pbs.evaluator.update_target_network()
+                        print(f"✅ Loaded Agent 2 PBS Evaluator from combined checkpoint")
+                except Exception as e:
+                    # Not a combined checkpoint or error loading PBS components - that's okay
+                    pass
         
         # Load AAREN models if found (separate files)
         agent1_aaren_files = glob.glob(os.path.join(model_save_path, "agent1_aaren_episode_*.pth"))
@@ -1156,7 +1262,10 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
         pbs_evaluator1_losses = loaded_history.get('pbs_evaluator1_losses', [])
         pbs_evaluator2_losses = loaded_history.get('pbs_evaluator2_losses', [])
         pbs_evaluator1_buffer_sizes = loaded_history.get('pbs_evaluator1_buffer_sizes', [])
+        pbs_evaluator1_buffer_sizes = loaded_history.get('pbs_evaluator1_buffer_sizes', [])
         pbs_evaluator2_buffer_sizes = loaded_history.get('pbs_evaluator2_buffer_sizes', [])
+        avg_q_history = loaded_history.get('avg_q_history', {'agent1': [], 'agent2': []})
+        entropy_history = loaded_history.get('entropy_history', {'agent1': [], 'agent2': []})
         
         # Initialize win counters from loaded history (use last values for continuity)
         if wins_history and len(wins_history.get('agent1', [])) > 0:
@@ -1213,11 +1322,20 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                 epsilon_history[key] = pad_list(epsilon_history[key], target_length, 1.0)
             for key in policy_loss_history:
                 policy_loss_history[key] = pad_list(policy_loss_history[key], target_length, 0.0)
+            for key in avg_q_history:
+                avg_q_history[key] = pad_list(avg_q_history[key], target_length, 0.0)
+            for key in entropy_history:
+                entropy_history[key] = pad_list(entropy_history[key], target_length, 0.0)
         
         print(f"📈 Continuing training history from previous session")
         print(f"   Last episode: {episode_history[-1] if episode_history else 0}")
         print(f"   Wins (Agent1/Agent2/Draws): {wins_agent1}/{wins_agent2}/{draws}")
         print(f"   Win Counts Initialized to: Agent1={wins_agent1}, Agent2={wins_agent2}")
+        
+        # Sync total_episodes with history if needed
+        if episode_history and episode_history[-1] > total_episodes:
+            print(f"⚠️  Total episodes counter ({total_episodes}) is behind history ({episode_history[-1]}). Syncing...")
+            total_episodes = episode_history[-1]
     else:
         episode_history = []
         rewards_history = {'agent1': [], 'agent2': []}
@@ -1231,7 +1349,10 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
         pbs_evaluator1_losses = []
         pbs_evaluator2_losses = []
         pbs_evaluator1_buffer_sizes = []
+        pbs_evaluator1_buffer_sizes = []
         pbs_evaluator2_buffer_sizes = []
+        avg_q_history = {'agent1': [], 'agent2': []}
+        entropy_history = {'agent1': [], 'agent2': []}
         
         # Initialize win counters to 0 for fresh start
         wins_agent1 = 0
@@ -1242,904 +1363,563 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
         
         print(f"📈 Starting fresh training history")
     
-    agent1_prefetcher = ReplayPrefetcher(agent1, max_queue_size=PREFETCH_QUEUE_SIZE)
-    agent2_prefetcher = ReplayPrefetcher(agent2, max_queue_size=PREFETCH_QUEUE_SIZE)
-    prefetchers = [agent1_prefetcher, agent2_prefetcher]
+    # Initialize loss lists (transient for current run)
+    agent1_losses = []
+    agent2_losses = []
+    
+    # agent1_prefetcher = ReplayPrefetcher(agent1, max_queue_size=PREFETCH_QUEUE_SIZE)
+    # agent2_prefetcher = ReplayPrefetcher(agent2, max_queue_size=PREFETCH_QUEUE_SIZE)
+    # prefetchers = [agent1_prefetcher, agent2_prefetcher]
+    prefetchers = []
     
     print(f"Starting DQN training for {num_episodes} episodes...")
     print(f"Total Episodes (all runs): {total_episodes}")
     print(f"Total Steps (all runs): {total_steps}")
     print("=" * 60)
     
-    def reset_agents():
-        """Reset both agents"""
-        if RESET_AVAILABLE:
-            reset_existing_agents(agent1, agent2)
-        else:
-            agent1.reset()
-            agent2.reset()
-            print("Agents reset successfully.")
+    # Initialize parallel environment
+    # env is already initialized as ParallelStrategoEnvironment
     
-    for episode in range(num_episodes):
-        # Setup pieces using setup agents if enabled
-        p1_placement = None
-        p2_placement = None
-        p1_pieces = None
-        p2_pieces = None
-        p1_positions = None
-        p2_positions = None
+    # Reset all environments initially
+    print("Resetting all environments...")
+    
+    p1_placements = []
+    p2_placements = []
+    
+    if use_setup_agents and setup_agent1 and setup_agent2:
+        # Generate placements for all envs
+        # Note: This is sequential, could be parallelized but happens only at start/reset
+        for i in range(NUM_ENVS):
+            # ParallelEnv doesn't expose _generate_pieces easily. 
+            # We can just use random placement if setup agent fails or just let env reset randomly first?
+            # Actually, we can just pass None and let env random reset, then use setup agents for subsequent resets.
+            p1_placements.append(None)
+            p2_placements.append(None)
+    
+    states_tuple, rewards, dones, infos, valid_moves_tuple = env.reset()
+    # Convert tuples to lists for mutability
+    states = list(states_tuple)
+    valid_moves = list(valid_moves_tuple)
+    
+    # Track episode stats
+    episode_rewards_agent1 = [0.0] * NUM_ENVS
+    episode_rewards_agent2 = [0.0] * NUM_ENVS
+    episode_moves = [0] * NUM_ENVS
+    
+    # Track pending resets
+    pending_resets = [False] * NUM_ENVS
+    
+    # Track setup agent placements for reward calculation
+    placement_memory = {}  # env_index -> {'p1_placement': ..., 'p2_placement': ..., 'episode_start': ...}
+    
+    # Main training loop
+    target_total_episodes = total_episodes + num_episodes
+    pbar = tqdm(total=num_episodes, desc="Training Episodes")
+    
+    # Track completed episodes in this run
+    completed_episodes = 0
+    
+    # Track last saved episode to prevent saving multiple times for the same episode
+    last_saved_episode = total_episodes - (total_episodes % save_interval) if total_episodes > 0 else -save_interval
+    
+    # Track last plotted episode to prevent duplicate plot generation in parallel training
+    last_plotted_episode = -50  # Initialize to -50 so first plot at episode 50 works
+    
+    def save_checkpoint(episode_num, is_final=False):
+        """Helper function to save all models"""
+        suffix = "final" if is_final else f"episode_{episode_num}"
+        print(f"\n💾 Saving models (Episode {episode_num}, Final={is_final})...")
         
-        if use_setup_agents and setup_agent1 and setup_agent2:
-            # Generate pieces
-            p1_pieces = env._generate_pieces()
-            p2_pieces = env._generate_pieces()
-            p1_positions = env._get_p1_positions()
-            p2_positions = env._get_p2_positions()
+        os.makedirs(model_save_path, exist_ok=True)
+        
+        try:
+            # Save DQN models
+            agent1.save_model(f"{model_save_path}/agent1_dqn_{suffix}.pth")
+            agent2.save_model(f"{model_save_path}/agent2_dqn_{suffix}.pth")
             
-            # Use setup agents to place pieces
-            p1_placement = setup_agent1.place_pieces(p1_pieces, p1_positions)
-            p2_placement = setup_agent2.place_pieces(p2_pieces, p2_positions)
-        
-        # Reset environment with custom placements
-        env.reset(p1_placement=p1_placement, p2_placement=p2_placement)
-        game_state = env._get_game_state()
-        done = False
-        move_count = 0
-        max_moves = 1000 # Prevent infinite games
-        
-        # Track if this is a winning game (for GIF generation)
-        is_winning_game = False
-        
-        # Track PBS states for GIF creation
-        # Only track for winning games (up to 5 total)
-        is_episode_1 = (episode == 0)
-        should_track_pbs = generate_gifs and (winning_game_pbs_gif_count < 5)
-        episode_pbs_states = [] if should_track_pbs else None  # Only track if needed
-        
-        # Track actual game board states for GIF creation (non-PBS)
-        # Track for first winning game (not episode 1, as episode 1 is already tracked for PBS)
-        should_track_game = generate_gifs and (not winning_game_gif_created and not is_episode_1)
-        episode_game_states = [] if should_track_game else None  # Track actual board states
-        
-        # Track PBS captures for episode 1 and checkpoint episodes (multiples of 50)
-        # Capture PBS at setup, move 50, and end of game for episode 1 and episodes 50, 100, 150, etc.
-        # Use total_episodes + 1 for continuity across training sessions
-        episode_number = total_episodes + 1
-        is_checkpoint_episode = episode_number % 50 == 0
-        is_first_episode_of_cycle = episode_number % 50 == 1
-        captured_move_50_pbs = False  # Track if we've captured PBS at move 50
-        
-        # Create PBS visualization for episode 1 and checkpoint episodes (50, 100, 150, etc.)
-        # Episode 1 gets all three snapshots: setup, move_50, and end
-        # Subsequent checkpoints only get them if is_checkpoint_episode is True
-        if episode_number == 1 or is_checkpoint_episode:
+            # Save AAREN models
             try:
-                current_actual_board = env.board.actual_board if hasattr(env, 'board') and hasattr(env.board, 'actual_board') else None
-                visible_board_p1 = env.board.get_visible_board(1) if hasattr(env, 'board') and hasattr(env.board, 'get_visible_board') else None
-                visible_board_p2 = env.board.get_visible_board(-1) if hasattr(env, 'board') and hasattr(env.board, 'get_visible_board') else None
-                agent1_pbs = agent1.pbs if hasattr(agent1, 'pbs') else None
-                agent2_pbs = agent2.pbs if hasattr(agent2, 'pbs') else None
-                
-                if current_actual_board is not None:
-                    # Use total_episodes + 1 for numbering to maintain continuity across sessions
-                    pbs_setup_save_path = f"{model_save_path}/pbs_visualization_episode_{episode_number}_setup.png"
-                    visualize_pbs_state(
-                        current_actual_board,
-                        agent1_pbs,
-                        agent2_pbs,
-                        episode_number,
-                        pbs_setup_save_path,
-                        visible_board_p1,
-                        visible_board_p2
-                    )
-                    print(f"🎯 PBS visualization after setup for episode {episode_number}: {pbs_setup_save_path}")
+                agent1.save_aaren_model(f"{model_save_path}/agent1_aaren_{suffix}.pth")
+                agent2.save_aaren_model(f"{model_save_path}/agent2_aaren_{suffix}.pth")
             except Exception as e:
-                print(f"⚠️  Error scheduling PBS visualization after setup for episode {episode_number}: {e}")
-                traceback.print_exc()
-        
-        # Episode rewards
-        episode_reward_agent1 = 0
-        episode_reward_agent2 = 0
-        
-        # Get initial state representations (GPU tensors)
-        state1 = agent1.get_state_representation(game_state)
-        state2 = agent2.get_state_representation(game_state)
-        
-        # Capture initial PBS state at setup (for winning games)
-        if generate_gifs and should_track_pbs:
+                print(f"⚠️  Warning: Could not save AAREN models: {e}")
+                
+            # Save PBS Evaluator models
             try:
-                current_actual_board = env.board.actual_board if hasattr(env, 'board') and hasattr(env.board, 'actual_board') else None
-                visible_board_p1 = env.board.get_visible_board(1) if hasattr(env, 'board') and hasattr(env.board, 'get_visible_board') else None
-                visible_board_p2 = env.board.get_visible_board(-1) if hasattr(env, 'board') and hasattr(env.board, 'get_visible_board') else None
-                agent1_pbs = agent1.pbs if hasattr(agent1, 'pbs') else None
-                agent2_pbs = agent2.pbs if hasattr(agent2, 'pbs') else None
-                
-                if current_actual_board is not None:
-                    # Clone tensors to avoid reference issues
-                    cloned_actual = current_actual_board.clone() if hasattr(current_actual_board, 'clone') else current_actual_board
-                    cloned_visible_p1 = visible_board_p1.clone() if visible_board_p1 is not None and hasattr(visible_board_p1, 'clone') else visible_board_p1
-                    cloned_visible_p2 = visible_board_p2.clone() if visible_board_p2 is not None and hasattr(visible_board_p2, 'clone') else visible_board_p2
-                    
-                    episode_pbs_states.append({
-                        'actual_board': cloned_actual,
-                        'agent1_pbs': agent1_pbs,
-                        'agent2_pbs': agent2_pbs,
-                        'move_num': 0,  # Setup state
-                        'visible_board_p1': cloned_visible_p1,
-                        'visible_board_p2': cloned_visible_p2
-                    })
+                agent1.save_pbs_evaluator(f"{model_save_path}/agent1_pbs_evaluator_{suffix}.pth")
+                agent2.save_pbs_evaluator(f"{model_save_path}/agent2_pbs_evaluator_{suffix}.pth")
             except Exception as e:
-                # Silently skip if PBS capture fails (don't interrupt game)
-                pass
-        
-        # Capture initial game board state at setup (for winning games, non-PBS)
-        if should_track_game:
-            try:
-                current_actual_board = env.board.actual_board if hasattr(env, 'board') and hasattr(env.board, 'actual_board') else None
+                print(f"⚠️  Warning: Could not save PBS Evaluator models: {e}")
                 
-                if current_actual_board is not None:
-                    # Clone tensor to avoid reference issues
-                    cloned_actual = current_actual_board.clone() if hasattr(current_actual_board, 'clone') else current_actual_board
-                    
-                    episode_game_states.append({
-                        'board': cloned_actual,
-                        'move_num': 0,  # Setup state
-                        'last_move': None
-                    })
-            except Exception as e:
-                # Silently skip if game state capture fails (don't interrupt game)
-                pass
-        
-        while not done and move_count < max_moves:
-            # Determine current player and agent
-            current_agent = agent1 if env.current_player == 1 else agent2
-            current_state = state1 if env.current_player == 1 else state2
-            
-            # Get valid moves
-            valid_moves = env.get_valid_moves()
-            
-            if not valid_moves:
-                # No valid moves, game ends
-                done = True
-                break
+            # Save setup agents
+            if use_setup_agents and setup_agent1 and setup_agent2:
+                setup_agent1.save_model(f"{model_save_path}/setup_agent1_{suffix}.pth")
+                setup_agent2.save_model(f"{model_save_path}/setup_agent2_{suffix}.pth")
                 
-            # Agent selects action (PBS-enhanced if enabled)
-            # PBS first gets the value and creates possible values with confidence scores
-            # Then DQN calculates Q-value
-            action = current_agent.act(current_state, valid_moves, game_state=game_state)
+            print(f"✅ Models saved successfully.")
             
-            if action is None:
-                # Invalid action, game ends
-                done = True
-                break
-            
-            # Update PBS from action (before executing, to track opponent's pieces)
-            # Update both agents' PBS to track opponent actions
-            if env.current_player == 1:
-                agent2.update_pbs_from_action(action, game_state, acting_player=1)
-            else:
-                agent1.update_pbs_from_action(action, game_state, acting_player=-1)
-                
-            # Execute action (action is guaranteed to be valid from get_valid_moves)
-            next_game_state, reward, done, info = env.step(action)
-            
-            # Track PBS states every move for winning games (to create PBS GIF)
-            # Capture every move to show complete game progression
-            if generate_gifs and should_track_pbs:  # Capture every move
-                try:
-                    current_actual_board = env.board.actual_board if hasattr(env, 'board') and hasattr(env.board, 'actual_board') else None
-                    visible_board_p1 = env.board.get_visible_board(1) if hasattr(env, 'board') and hasattr(env.board, 'get_visible_board') else None
-                    visible_board_p2 = env.board.get_visible_board(-1) if hasattr(env, 'board') and hasattr(env.board, 'get_visible_board') else None
-                    agent1_pbs = agent1.pbs if hasattr(agent1, 'pbs') else None
-                    agent2_pbs = agent2.pbs if hasattr(agent2, 'pbs') else None
-                    
-                    if current_actual_board is not None:
-                        # Clone tensors to avoid reference issues
-                        cloned_actual = current_actual_board.clone() if hasattr(current_actual_board, 'clone') else current_actual_board
-                        cloned_visible_p1 = visible_board_p1.clone() if visible_board_p1 is not None and hasattr(visible_board_p1, 'clone') else visible_board_p1
-                        cloned_visible_p2 = visible_board_p2.clone() if visible_board_p2 is not None and hasattr(visible_board_p2, 'clone') else visible_board_p2
-                        
-                        episode_pbs_states.append({
-                            'actual_board': cloned_actual,
-                            'agent1_pbs': agent1_pbs,
-                            'agent2_pbs': agent2_pbs,
-                            'move_num': move_count + 1,
-                            'visible_board_p1': cloned_visible_p1,
-                            'visible_board_p2': cloned_visible_p2
-                        })
-                except Exception as e:
-                    # Silently skip if PBS capture fails (don't interrupt game)
-                    pass
-            
-            # Track actual game board states every move for winning games (to create non-PBS game GIF)
-            if should_track_game:  # Track for first winning game
-                try:
-                    current_actual_board = env.board.actual_board if hasattr(env, 'board') and hasattr(env.board, 'actual_board') else None
-                    
-                    if current_actual_board is not None:
-                        # Clone tensor to avoid reference issues
-                        cloned_actual = current_actual_board.clone() if hasattr(current_actual_board, 'clone') else current_actual_board
-                        
-                        # Get last move for visualization
-                        last_move = None
-                        if move_count > 0 and hasattr(env, 'last_action') and env.last_action:
-                            last_move = env.last_action  # Should be ((from_r, from_c), (to_r, to_c))
-                        
-                        episode_game_states.append({
-                            'board': cloned_actual,
-                            'move_num': move_count + 1,
-                            'last_move': last_move
-                        })
-                except Exception as e:
-                    # Silently skip if game state capture fails (don't interrupt game)
-                    pass
-            
-            # Determine game phase for PBS evaluator data collection
-            # Early game: turns 0-50, Middle game: turns 51-200, End game: turns 201+
-            game_phase = 'early'
-            if move_count > 200:
-                game_phase = 'end'
-            elif move_count > 50:
-                game_phase = 'middle'
-            
-            # Check if pieces were revealed in the battle
-            if hasattr(env, 'revealed_pieces_p1') and hasattr(env, 'revealed_pieces_p2'):
-                # Update agent1's PBS with revealed pieces (only if PBS exists)
-                if hasattr(agent1, 'pbs') and agent1.pbs:
-                    for pos, piece_value in env.revealed_pieces_p1.items():
-                        if pos not in agent1.pbs.revealed_pieces:
-                            piece_type = PieceType(abs(piece_value))
-                            agent1.update_pbs_from_reveal(pos, piece_type, game_phase=game_phase, turn_count=move_count)
-                # Update agent2's PBS with revealed pieces (only if PBS exists)
-                if hasattr(agent2, 'pbs') and agent2.pbs:
-                    for pos, piece_value in env.revealed_pieces_p2.items():
-                        if pos not in agent2.pbs.revealed_pieces:
-                            piece_type = PieceType(abs(piece_value))
-                            agent2.update_pbs_from_reveal(pos, piece_type, game_phase=game_phase, turn_count=move_count)
-            
-            # Get next state representation (returns GPU tensor)
-            next_state = current_agent.get_state_representation(next_game_state)
-            
-            # Store experience (only for valid moves) - tensors stay on GPU
-            current_agent.remember(current_state, 
-                                 current_agent._move_to_action_index(action),
-                                 reward,
-                                 next_state,
-                                 done)
-            
-            # Accumulate rewards
-            if env.current_player == 1:
-                episode_reward_agent1 += reward
-            else:
-                episode_reward_agent2 += reward
-                
-            # Update states
-            if env.current_player == 1:
-                state1 = next_state
-            else:
-                state2 = next_state
-                
-            move_count += 1  # Only increment for valid moves
-            
-            # Capture PBS at move 50 for episode 1 and checkpoint episodes (50, 100, 150, etc.)
-            if (episode_number == 1 or is_checkpoint_episode) and move_count == 50 and not done and not captured_move_50_pbs:
-                try:
-                    # Use EXACTLY the same logic as setup visualization for consistency
-                    current_actual_board = env.board.actual_board if hasattr(env, 'board') and hasattr(env.board, 'actual_board') else None
-                    visible_board_p1 = env.board.get_visible_board(1) if hasattr(env, 'board') and hasattr(env.board, 'get_visible_board') else None
-                    visible_board_p2 = env.board.get_visible_board(-1) if hasattr(env, 'board') and hasattr(env.board, 'get_visible_board') else None
-                    agent1_pbs = agent1.pbs if hasattr(agent1, 'pbs') else None
-                    agent2_pbs = agent2.pbs if hasattr(agent2, 'pbs') else None
-                    
-                    if current_actual_board is not None:
-                        # Use total_episodes + 1 for numbering to maintain continuity across sessions
-                        pbs_save_path = f"{model_save_path}/pbs_visualization_episode_{episode_number}_move_50.png"
-                        visualize_pbs_state(
-                            current_actual_board,
-                            agent1_pbs,
-                            agent2_pbs,
-                            episode_number,
-                            pbs_save_path,
-                            visible_board_p1,
-                            visible_board_p2
-                        )
-                        print(f"🎯 PBS visualization at move 50 of episode {episode_number}: {pbs_save_path}")
-                        captured_move_50_pbs = True
-                except Exception as e:
-                    print(f"⚠️  Error scheduling PBS visualization at move 50 of episode {episode_number}: {e}")
-                    traceback.print_exc()
-            
-            # Batched training updates to maximize GPU utilization
-            if move_count % REPLAY_UPDATE_INTERVAL == 0:
-                for _ in range(REPLAY_UPDATES_PER_STEP):
-                    agent1.replay(batch=agent1_prefetcher.get_batch())
-                    agent2.replay(batch=agent2_prefetcher.get_batch())
-            
-            # Update target networks periodically
-            if move_count % TARGET_UPDATE_INTERVAL == 0:
-                agent1.update_target_network()
-                agent2.update_target_network()
-                if move_count > 0:
-                    print(f"🔄 Updated target networks at episode {episode+1}, step {move_count}")
-                
-        # Post-episode training burst to use prefetched batches
-        for _ in range(REPLAY_UPDATES_PER_STEP):
-            agent1.replay(batch=agent1_prefetcher.get_batch())
-            agent2.replay(batch=agent2_prefetcher.get_batch())
-        
-        if (episode + 1) % 10 == 0:
-            avg_loss1 = agent1.get_average_policy_loss(10)
-            avg_loss2 = agent2.get_average_policy_loss(10)
-            
-            # Reset if loss explodes
-            if avg_loss1 > 1000 or avg_loss2 > 1000:
-                print(f"⚠️ Loss explosion detected after episode {episode + 1}! Resetting agents...")
-                print(f"   Agent 1 loss: {avg_loss1:.2f}, Agent 2 loss: {avg_loss2:.2f}")
-                reset_agents()
-                # Try to reload last good checkpoint if available
-                try:
-                    checkpoint_episode = max(0, total_episodes - 100)
-                    agent1_checkpoint = f"{model_save_path}/agent1_episode_{checkpoint_episode}.pth"
-                    agent2_checkpoint = f"{model_save_path}/agent2_episode_{checkpoint_episode}.pth"
-                    if os.path.exists(agent1_checkpoint):
-                        agent1.load_model(agent1_checkpoint)
-                        print(f"   Reloaded Agent 1 from checkpoint {checkpoint_episode}")
-                    if os.path.exists(agent2_checkpoint):
-                        agent2.load_model(agent2_checkpoint)
-                        print(f"   Reloaded Agent 2 from checkpoint {checkpoint_episode}")
-                except Exception as e:
-                    print(f"   Could not reload checkpoint: {e}")
-        
-        # Game finished - get final game state for PBS visualization
-        # Use the last game state (next_game_state from the loop, or get it from env)
-        final_game_state = next_game_state if 'next_game_state' in locals() else env._get_game_state()
-        actual_board = env.board.actual_board if hasattr(env, 'board') and hasattr(env.board, 'actual_board') else None
-        
-        # Only collect for positions that actually have beliefs (avoid full board scan)
-        if actual_board is not None and move_count > 50:  # Only collect if game progressed past early phase
-            # Collect data for agent1's PBS (opponent pieces are player -1)
-            if agent1.pbs and agent1.pbs.evaluator and agent1.pbs.belief_distributions:
-                # Only check positions that have beliefs (much faster than scanning entire board)
-                positions_to_check = [pos for pos in agent1.pbs.belief_distributions.keys() 
-                                     if 0 <= pos[0] < 10 and 0 <= pos[1] < 10 and pos not in agent1.pbs.revealed_pieces]
-                if positions_to_check:
-                    # Batch extract values (faster than individual .item() calls)
-                    for pos in positions_to_check:
-                        r, c = pos
-                        piece_value = int(actual_board[r, c].item())
-                        # Check if this is an opponent piece (negative for player 1)
-                        if piece_value < 0 and piece_value != LAKE_SQUARE:  # Not empty or lake
-                            piece_type = PieceType(abs(piece_value))
-                            agent1.pbs.update_from_reveal(pos, piece_type, game_phase='end', turn_count=move_count)
-            
-            # Collect data for agent2's PBS (opponent pieces are player 1)
-            if agent2.pbs and agent2.pbs.evaluator and agent2.pbs.belief_distributions:
-                # Only check positions that have beliefs (much faster than scanning entire board)
-                positions_to_check = [pos for pos in agent2.pbs.belief_distributions.keys() 
-                                     if 0 <= pos[0] < 10 and 0 <= pos[1] < 10 and pos not in agent2.pbs.revealed_pieces]
-                if positions_to_check:
-                    for pos in positions_to_check:
-                        r, c = pos
-                        piece_value = int(actual_board[r, c].item())
-                        # Check if this is an opponent piece (positive for player -1)
-                        if piece_value > 0:
-                            piece_type = PieceType(abs(piece_value))
-                            agent2.pbs.update_from_reveal(pos, piece_type, game_phase='end', turn_count=move_count)
-        
-        # Get winner from the final state or environment
-        winner = final_game_state.winner if hasattr(final_game_state, 'winner') else (env.winner if hasattr(env, 'winner') else None)
-        
-        # Capture final PBS state for winning games (to include in GIF)
-        if generate_gifs and should_track_pbs and (winner == 1 or winner == -1):
-            try:
-                current_actual_board = env.board.actual_board if hasattr(env, 'board') and hasattr(env.board, 'actual_board') else None
-                visible_board_p1 = env.board.get_visible_board(1) if hasattr(env, 'board') and hasattr(env.board, 'get_visible_board') else None
-                visible_board_p2 = env.board.get_visible_board(-1) if hasattr(env, 'board') and hasattr(env.board, 'get_visible_board') else None
-                agent1_pbs = agent1.pbs if hasattr(agent1, 'pbs') else None
-                agent2_pbs = agent2.pbs if hasattr(agent2, 'pbs') else None
-                
-                if current_actual_board is not None:
-                    # Clone tensors to avoid reference issues
-                    cloned_actual = current_actual_board.clone() if hasattr(current_actual_board, 'clone') else current_actual_board
-                    cloned_visible_p1 = visible_board_p1.clone() if visible_board_p1 is not None and hasattr(visible_board_p1, 'clone') else visible_board_p1
-                    cloned_visible_p2 = visible_board_p2.clone() if visible_board_p2 is not None and hasattr(visible_board_p2, 'clone') else visible_board_p2
-                    
-                    episode_pbs_states.append({
-                        'actual_board': cloned_actual,
-                        'agent1_pbs': agent1_pbs,
-                        'agent2_pbs': agent2_pbs,
-                        'move_num': move_count,
-                        'visible_board_p1': cloned_visible_p1,
-                        'visible_board_p2': cloned_visible_p2
-                    })
-            except Exception as e:
-                # Silently skip if PBS capture fails (don't interrupt game)
-                pass
-        
-        # Capture final game board state for winning games (non-PBS)
-        if should_track_game and (winner == 1 or winner == -1):
-            try:
-                current_actual_board = env.board.actual_board if hasattr(env, 'board') and hasattr(env.board, 'actual_board') else None
-                
-                if current_actual_board is not None:
-                    # Clone tensor to avoid reference issues
-                    cloned_actual = current_actual_board.clone() if hasattr(current_actual_board, 'clone') else current_actual_board
-                    
-                    # Get last move for visualization
-                    last_move = None
-                    if move_count > 0 and hasattr(env, 'last_action') and env.last_action:
-                        last_move = env.last_action
-                    
-                    episode_game_states.append({
-                        'board': cloned_actual,
-                        'move_num': move_count,
-                        'last_move': last_move
-                    })
-            except Exception as e:
-                # Silently skip if game state capture fails (don't interrupt game)
-                pass
-        
-        if winner == 1:
-            wins_agent1 += 1
-            is_winning_game = True
-            # Give positive reward to winner, negative to loser (increased for more aggressive play)
-            agent1.remember(state1, agent1._move_to_action_index(action), 30.0, next_state, True)
-            agent2.remember(state2, agent2._move_to_action_index(action), -30.0, next_state, True)
-            
-            # Reward setup agent with enhanced reward calculation
-            if use_setup_agents and setup_agent1 and p1_placement is not None:
-                setup_reward = calculate_setup_agent_reward(
-                    p1_placement, player_id=1, winner=winner, move_count=move_count
-                )
-                setup_agent1.finish_episode(setup_reward)
-                # Train setup agent
-                setup_agent1.replay()
-        elif winner == -1:
-            wins_agent2 += 1
-            is_winning_game = True
-            # Give positive reward to winner, negative to loser (increased for more aggressive play)
-            agent2.remember(state2, agent2._move_to_action_index(action), 30.0, next_state, True)
-            agent1.remember(state1, agent1._move_to_action_index(action), -30.0, next_state, True)
-            
-            # Reward setup agent with enhanced reward calculation
-            if use_setup_agents and setup_agent2 and p2_placement is not None:
-                setup_reward = calculate_setup_agent_reward(
-                    p2_placement, player_id=-1, winner=winner, move_count=move_count
-                )
-                setup_agent2.finish_episode(setup_reward)
-                # Train setup agent
-                setup_agent2.replay()
-        else:
-            draws += 1
-            # CHANGED: Penalize draws to encourage decisive play
-            agent1.remember(state1, agent1._move_to_action_index(action), -5.0, next_state, True)
-            agent2.remember(state2, agent2._move_to_action_index(action), -5.0, next_state, True)
-            
-            # Reward setup agents for draw (with enhanced reward calculation)
-            if use_setup_agents and setup_agent1 and p1_placement is not None:
-                setup_reward = calculate_setup_agent_reward(
-                    p1_placement, player_id=1, winner=None, move_count=move_count
-                )
-                setup_agent1.finish_episode(setup_reward)
-                setup_agent1.replay()
-            
-            if use_setup_agents and setup_agent2 and p2_placement is not None:
-                setup_reward = calculate_setup_agent_reward(
-                    p2_placement, player_id=-1, winner=None, move_count=move_count
-                )
-                setup_agent2.finish_episode(setup_reward)
-                setup_agent2.replay()
-        
-        # Create PBS visualization GIF for winning games (up to 5 total)
-        if generate_gifs and is_winning_game and winning_game_pbs_gif_count < 5 and episode_pbs_states:
-            winning_game_pbs_gif_count += 1
-            pbs_gif_path = f"{model_save_path}/pbs_visualization_win_{total_episodes}.gif"
-            print(f"🎬 Creating PBS GIF for winning game #{winning_game_pbs_gif_count} at episode {episode + 1} with 750ms per frame...")
-            create_pbs_gif(
-                episode_pbs_states,
-                episode + 1,
-                pbs_gif_path,
-                frame_duration=750  # 750ms per frame as requested
-            )
-            print(f"✅ PBS GIF created for winning game #{winning_game_pbs_gif_count} at episode {episode + 1}")
-        
-        # Create actual game board GIF for first winning game (non-PBS)
-        if generate_gifs and is_winning_game and not winning_game_gif_created:
-            if is_episode_1:
-                # Episode 1 won - mark that we'll skip this and wait for next winning game
-                # Don't create winning game GIF for episode 1, already created episode 1 GIF
-                pass
-            elif episode_game_states:
-                # First winning game after episode 1 - create actual game board GIF
-                game_gif_path = f"{model_save_path}/game_visualization_win_{total_episodes}.gif"
-                print(f"🎬 Creating game board GIF for winning game at episode {episode + 1} with 750ms per frame...")
-                create_episode_gif(
-                    episode_game_states,
-                    episode + 1,
-                    game_gif_path,
-                    frame_duration=750  # 750ms per frame
-                )
-                print(f"✅ Game board GIF created for winning game at episode {episode + 1}")
-                winning_game_gif_created = True
-        
-        # Clear PBS states to save memory
-        if generate_gifs and episode_pbs_states is not None:
-            episode_pbs_states = []
-        
-        # Clear game states to save memory
-        if generate_gifs and episode_game_states is not None:
-            episode_game_states = []
-        
-        # Capture PBS at end for episode 1 and checkpoint episodes (50, 100, 150, etc.)
-        if episode_number == 1 or is_checkpoint_episode:
-            try:
-                # Use EXACTLY the same logic as setup visualization for consistency
-                current_actual_board = env.board.actual_board if hasattr(env, 'board') and hasattr(env.board, 'actual_board') else None
-                visible_board_p1 = env.board.get_visible_board(1) if hasattr(env, 'board') and hasattr(env.board, 'get_visible_board') else None
-                visible_board_p2 = env.board.get_visible_board(-1) if hasattr(env, 'board') and hasattr(env.board, 'get_visible_board') else None
-                agent1_pbs = agent1.pbs if hasattr(agent1, 'pbs') else None
-                agent2_pbs = agent2.pbs if hasattr(agent2, 'pbs') else None
-                
-                if current_actual_board is not None:
-                    # Use total_episodes + 1 for numbering to maintain continuity across sessions
-                    pbs_save_path = f"{model_save_path}/pbs_visualization_episode_{episode_number}_end.png"
-                    visualize_pbs_state(
-                        current_actual_board,
-                        agent1_pbs,
-                        agent2_pbs,
-                        episode_number,
-                        pbs_save_path,
-                        visible_board_p1,
-                        visible_board_p2
-                    )
-                    print(f"🎯 PBS visualization at end of episode {episode_number} (move {move_count}): {pbs_save_path}")
-            except Exception as e:
-                print(f"⚠️  Error scheduling PBS visualization at end of episode {episode_number}: {e}")
-                traceback.print_exc()
-        
-            
-        # Update target networks periodically
-        if episode % 10 == 0:
-            agent1.update_target_network()
-            agent2.update_target_network()
-        
-        # Train PBS evaluators periodically (only if they have collected data)
-        if episode % 20 == 0 and episode > 0:
-            # Train evaluators on collected data
-            evaluator1_loss = None
-            evaluator2_loss = None
-            if agent1.pbs and agent1.pbs.evaluator:
-                evaluator1_loss = agent1.pbs.train_evaluator(epochs=2)
-                if evaluator1_loss is not None and episode % 100 == 0:
-                    print(f"  PBS Evaluator 1 Loss: {evaluator1_loss:.4f}")
-            if agent2.pbs and agent2.pbs.evaluator:
-                evaluator2_loss = agent2.pbs.train_evaluator(epochs=2)
-                if evaluator2_loss is not None and episode % 100 == 0:
-                    print(f"  PBS Evaluator 2 Loss: {evaluator2_loss:.4f}")
-            
-            # Update target networks for evaluators
-            if agent1.pbs and agent1.pbs.evaluator:
-                agent1.pbs.evaluator.update_target_network()
-            if agent2.pbs and agent2.pbs.evaluator:
-                agent2.pbs.evaluator.update_target_network()
-            
-            # Track PBS evaluator metrics
-            pbs_evaluator1_losses.append(evaluator1_loss)
-            pbs_evaluator2_losses.append(evaluator2_loss)
-            pbs_evaluator1_buffer_sizes.append(
-                len(agent1.pbs.evaluator.memory) if agent1.pbs and agent1.pbs.evaluator else 0
-            )
-            pbs_evaluator2_buffer_sizes.append(
-                len(agent2.pbs.evaluator.memory) if agent2.pbs and agent2.pbs.evaluator else 0
-            )
-        else:
-            # Track metrics even when not training (to keep lists aligned)
-            pbs_evaluator1_losses.append(None)
-            pbs_evaluator2_losses.append(None)
-            pbs_evaluator1_buffer_sizes.append(
-                len(agent1.pbs.evaluator.memory) if agent1.pbs and agent1.pbs.evaluator else 0
-            )
-            pbs_evaluator2_buffer_sizes.append(
-                len(agent2.pbs.evaluator.memory) if agent2.pbs and agent2.pbs.evaluator else 0
-            )
-            
-        # Update persistent counters (survive across agent resets)
-        total_episodes += 1
-        
-        # Update total steps by adding moves from this episode
-        # move_count tracks the number of moves in this episode
-        # This is more reliable than using agent.step_count which resets
-        total_steps += move_count
-        
-        # Update epsilon based on total_steps (not agent's step_count which resets)
-        # This ensures epsilon decay continues even after agent resets
-        epsilon_decay_interval = 500_000  # Same as agent's epsilon_decay_interval
-        # Epsilon decay is now handled internally by the agent (with minimum epsilon for exploration)
-        # No need to manually set epsilon here - the agent manages it with adaptive adjustments
-        
-        # Store episode rewards
-        total_rewards_agent1.append(episode_reward_agent1)
-        total_rewards_agent2.append(episode_reward_agent2)
-        
-        # Update adaptive epsilon based on episode performance
-        if hasattr(agent1, 'update_episode_reward'):
-            agent1.update_episode_reward(episode_reward_agent1)
-        if hasattr(agent2, 'update_episode_reward'):
-            agent2.update_episode_reward(episode_reward_agent2)
-        
-        # Update history for plotting every episode (discrete points)
-        # Use total_episodes for continuity across training sessions
-        episode_history.append(total_episodes)
-        rewards_history['agent1'].append(episode_reward_agent1)  # Store individual episode reward
-        rewards_history['agent2'].append(episode_reward_agent2)  # Store individual episode reward
-        wins_history['agent1'].append(wins_agent1)
-        wins_history['agent2'].append(wins_agent2)
-        wins_history['draws'].append(draws)
-        epsilon_history['agent1'].append(agent1.epsilon)
-        epsilon_history['agent2'].append(agent2.epsilon)
-        
-        # Add policy loss to history (get current average)
-        avg_loss1 = agent1.get_average_policy_loss(100) if hasattr(agent1, 'get_average_policy_loss') else 0.0
-        avg_loss2 = agent2.get_average_policy_loss(100) if hasattr(agent2, 'get_average_policy_loss') else 0.0
-        policy_loss_history['agent1'].append(avg_loss1)
-        policy_loss_history['agent2'].append(avg_loss2)
-        
-        # Track setup agent rewards and losses (ensure both lists stay same length as episode_history)
-        if use_setup_agents and setup_agent1:
-            if len(setup_agent1.episode_rewards) > 0:
-                setup_agent1_rewards.append(setup_agent1.episode_rewards[-1])
-            else:
-                # Append last known reward or 0.0 if no rewards yet
-                last_reward = setup_agent1_rewards[-1] if len(setup_agent1_rewards) > 0 else 0.0
-                setup_agent1_rewards.append(last_reward)
-            avg_setup_loss1 = setup_agent1.get_average_policy_loss(100) if hasattr(setup_agent1, 'get_average_policy_loss') else 0.0
-            setup_agent1_losses.append(avg_setup_loss1)
-        elif use_setup_agents:
-            # Setup agent 1 not available, append 0.0 to keep lists aligned
-            setup_agent1_rewards.append(0.0)
-            setup_agent1_losses.append(0.0)
-        
-        if use_setup_agents and setup_agent2:
-            if len(setup_agent2.episode_rewards) > 0:
-                setup_agent2_rewards.append(setup_agent2.episode_rewards[-1])
-            else:
-                # Append last known reward or 0.0 if no rewards yet
-                last_reward = setup_agent2_rewards[-1] if len(setup_agent2_rewards) > 0 else 0.0
-                setup_agent2_rewards.append(last_reward)
-            avg_setup_loss2 = setup_agent2.get_average_policy_loss(100) if hasattr(setup_agent2, 'get_average_policy_loss') else 0.0
-            setup_agent2_losses.append(avg_setup_loss2)
-        elif use_setup_agents:
-            # Setup agent 2 not available, append 0.0 to keep lists aligned
-            setup_agent2_rewards.append(0.0)
-            setup_agent2_losses.append(0.0)
-        
-        # Print progress
-        if (episode + 1) % 50 == 0:
-            avg_reward1 = np.mean(total_rewards_agent1[-50:]) if total_rewards_agent1 else 0
-            avg_reward2 = np.mean(total_rewards_agent2[-50:]) if total_rewards_agent2 else 0
-            print(f"Episode {episode + 1}/{num_episodes} (Total: {total_episodes})")
-            print(f"  Total Steps: {total_steps:,}")
-            print(f"  Agent 1 wins: {wins_agent1}, Agent 2 wins: {wins_agent2}, Draws: {draws}")
-            print(f"  Avg Reward Agent 1 (last 50): {avg_reward1:.2f}")
-            print(f"  Avg Reward Agent 2 (last 50): {avg_reward2:.2f}")
-            print(f"  Avg Policy Loss Agent 1 (last 100): {avg_loss1:.4f}")
-            print(f"  Avg Policy Loss Agent 2 (last 100): {avg_loss2:.4f}")
-            # Show detailed loss statistics if available
-            if hasattr(agent1, 'get_policy_loss_stats'):
-                stats1 = agent1.get_policy_loss_stats(100)
-                stats2 = agent2.get_policy_loss_stats(100)
-                print(f"  Loss Stats Agent 1: min={stats1['min']:.2f}, max={stats1['max']:.2f}, median={stats1['median']:.2f}, std={stats1['std']:.2f}")
-                print(f"  Loss Stats Agent 2: min={stats2['min']:.2f}, max={stats2['max']:.2f}, median={stats2['median']:.2f}, std={stats2['std']:.2f}")
-            # Show smoothed loss if available
-            if hasattr(agent1, 'get_smoothed_loss'):
-                smoothed1 = agent1.get_smoothed_loss()
-                smoothed2 = agent2.get_smoothed_loss()
-                print(f"  Smoothed Loss Agent 1: {smoothed1:.4f}, Agent 2: {smoothed2:.4f}")
-            
-            # Show critic metrics if available
-            if hasattr(agent1, 'get_average_critic_loss'):
-                critic_loss1 = agent1.get_average_critic_loss(100)
-                critic_loss2 = agent2.get_average_critic_loss(100)
-                penalty1 = agent1.get_average_penalty(100)
-                penalty2 = agent2.get_average_penalty(100)
-                print(f"  Critic Loss Agent 1: {critic_loss1:.4f}, Agent 2: {critic_loss2:.4f}")
-                print(f"  Avg Penalty Agent 1: {penalty1:.4f}, Agent 2: {penalty2:.4f}")
-                
-            print(f"  Epsilon Agent 1: {agent1.epsilon:.3f}, Epsilon Agent 2: {agent2.epsilon:.3f}")
-            # Show learning rates if available (with more precision and change tracking)
-            if hasattr(agent1, 'get_current_learning_rate'):
-                lr1 = agent1.get_current_learning_rate()
-                lr2 = agent2.get_current_learning_rate()
-                # Show if LR has changed from initial
-                lr1_change = ((lr1 - agent1.initial_lr) / agent1.initial_lr * 100) if hasattr(agent1, 'initial_lr') else 0
-                lr2_change = ((lr2 - agent2.initial_lr) / agent2.initial_lr * 100) if hasattr(agent2, 'initial_lr') else 0
-                print(f"  Learning Rate Agent 1: {lr1:.8f} ({lr1_change:+.1f}%), Agent 2: {lr2:.8f} ({lr2_change:+.1f}%)")
-            print("-" * 60)
-            
-            # Reset agents if average reward is too large
-            if abs(avg_reward1) > 500 or abs(avg_reward2) > 500:
-                print("Average reward too large, resetting agents...")
-                reset_agents()
-                # Do NOT reset statistics - keep cumulative counts
-                # wins_agent1 = 0
-                # wins_agent2 = 0
-                # draws = 0
-                # total_rewards_agent1 = []
-                # total_rewards_agent2 = []
-                
-                # Do NOT reset history for plotting - keep continuity
-                # current_session_start = len(episode_history)
-                # episode_history = episode_history[:current_session_start]
+        except Exception as e:
+            print(f"⚠️  Error saving models: {e}")
+            traceback.print_exc()
 
-
-
-            
-            if (episode + 1) % 100 == 0:
-                _save_counters(
-                    total_episodes_file,
-                    total_steps_file,
-                    total_episodes,
-                    total_steps
-                )
-                # Also save training history for continuity
-                _save_training_history(
-                    model_save_path,
-                    episode_history,
-                    rewards_history,
-                    wins_history,
-                    epsilon_history,
-                    policy_loss_history,
-                    setup_agent1_rewards,
-                    setup_agent2_rewards,
-                    setup_agent1_losses,
-                    setup_agent2_losses,
-                    pbs_evaluator1_losses,
-                    pbs_evaluator2_losses,
-                    pbs_evaluator1_buffer_sizes,
-                    pbs_evaluator2_buffer_sizes
-                )
-            
-            # Save chart every 50 episodes (only if we have data)
-            if len(episode_history) > 0:
-                # Save main DQN training progress (separate from setup agent progress)
-                plot_training_progress(
-                    episode_history,
-                    rewards_history,
-                    wins_history,
-                    policy_loss_history,
-                    save_path=f"{model_save_path}/training_progress_episode_{total_episodes}.png",
-                    total_episodes=total_episodes,
-                    total_steps=total_steps
-                )
-                print(f"📈 Training progress graph saved: {model_save_path}/training_progress_episode_{total_episodes}.png")
-                
-                # Save setup agent progress chart (separate PNG file, independent from main DQN plot)
-                if use_setup_agents and setup_agent1 and setup_agent2:
-                    # Only plot if we have data (rewards lists are not empty)
-                    if setup_agent1_rewards and setup_agent2_rewards and len(setup_agent1_rewards) > 0 and len(setup_agent2_rewards) > 0:
-                        plot_setup_agent_progress(
-                            episode_history,
-                            setup_agent1_rewards,
-                            setup_agent2_rewards,
-                            setup_agent1_losses,
-                            setup_agent2_losses,
-                            save_path=f"{model_save_path}/setup_agent_progress_episode_{total_episodes}.png"
-                        )
-                        print(f"📊 Setup agent progress graph saved: {model_save_path}/setup_agent_progress_episode_{total_episodes}.png")
+    try:
+        while completed_episodes < num_episodes:
+            # 1. Determine actions for active environments
+            actions_list = [None] * NUM_ENVS
+        
+            # Identify which agent acts in which env
+            agent1_indices = []
+            agent2_indices = []
+        
+            for i in range(NUM_ENVS):
+                if not pending_resets[i]:
+                    if states[i].current_player == 1:
+                        agent1_indices.append(i)
                     else:
-                        # Create placeholder plot if no data yet
-                        plot_setup_agent_progress(
-                            episode_history,
-                            setup_agent1_rewards,
-                            setup_agent2_rewards,
-                            setup_agent1_losses,
-                            setup_agent2_losses,
-                            save_path=f"{model_save_path}/setup_agent_progress_episode_{total_episodes}.png"
-                        )
+                        agent2_indices.append(i)
+        
+            # Get actions for Agent 1
+            if agent1_indices:
+                batch_states = [states[i] for i in agent1_indices]
+                batch_valid_moves = [valid_moves[i] for i in agent1_indices]
+                # Pass game_states as states (since states are GameState objects)
+                batch_actions = agent1.act_batch(batch_states, batch_valid_moves, game_states=batch_states)
+                for idx, action in zip(agent1_indices, batch_actions):
+                    actions_list[idx] = action
                 
-                # Save PBS evaluator progress chart (separate PNG file)
-                plot_pbs_evaluator_progress(
-                    episode_history,
-                    pbs_evaluator1_losses,
-                    pbs_evaluator2_losses,
-                    pbs_evaluator1_buffer_sizes,
-                    pbs_evaluator2_buffer_sizes,
-                    save_path=f"{model_save_path}/pbs_evaluator_progress_episode_{total_episodes}.png",
-                    total_episodes=total_episodes
-                )
-                print(f"📊 PBS evaluator progress graph saved: {model_save_path}/pbs_evaluator_progress_episode_{total_episodes}.png")
-            else:
-                print(f"⚠️  Skipping progress plots - no episode history yet (agents were reset)")
-            
-        # Save models periodically (keep at save_interval)
-        if (episode + 1) % save_interval == 0:
-            # Create model save directory if it doesn't exist
-            os.makedirs(model_save_path, exist_ok=True)
-            try:
-                # Save DQN models separately
-                agent1_dqn_path = f"{model_save_path}/agent1_dqn_episode_{total_episodes}.pth"
-                agent2_dqn_path = f"{model_save_path}/agent2_dqn_episode_{total_episodes}.pth"
-                agent1.save_model(agent1_dqn_path)
-                agent2.save_model(agent2_dqn_path)
-                
-                # Save AAREN models separately
-                agent1_aaren_path = f"{model_save_path}/agent1_aaren_episode_{total_episodes}.pth"
-                agent2_aaren_path = f"{model_save_path}/agent2_aaren_episode_{total_episodes}.pth"
-                try:
-                    agent1.save_aaren_model(agent1_aaren_path)
-                    agent2.save_aaren_model(agent2_aaren_path)
-                except Exception as e:
-                    print(f"⚠️  Warning: Could not save AAREN models: {e}")
-                
-                # Save PBS Evaluator models separately
-                agent1_evaluator_path = f"{model_save_path}/agent1_pbs_evaluator_episode_{total_episodes}.pth"
-                agent2_evaluator_path = f"{model_save_path}/agent2_pbs_evaluator_episode_{total_episodes}.pth"
-                try:
-                    agent1.save_pbs_evaluator(agent1_evaluator_path)
-                    agent2.save_pbs_evaluator(agent2_evaluator_path)
-                except Exception as e:
-                    print(f"⚠️  Warning: Could not save PBS Evaluator models: {e}")
-                
-                # Save setup agents if they exist
-                if use_setup_agents and setup_agent1 and setup_agent2:
-                    setup_agent1_path = f"{model_save_path}/setup_agent1_episode_{total_episodes}.pth"
-                    setup_agent2_path = f"{model_save_path}/setup_agent2_episode_{total_episodes}.pth"
-                    setup_agent1.save_model(setup_agent1_path)
-                    setup_agent2.save_model(setup_agent2_path)
-                
-                # Verify files were created
-                if os.path.exists(agent1_dqn_path) and os.path.exists(agent2_dqn_path):
-                    print(f"💾 Models saved at episode {episode + 1}:")
-                    print(f"   - {agent1_dqn_path} (DQN only)")
-                    print(f"   - {agent2_dqn_path} (DQN only)")
-                    if os.path.exists(agent1_aaren_path):
-                        print(f"   - {agent1_aaren_path} (AAREN-RNN)")
-                    if os.path.exists(agent2_aaren_path):
-                        print(f"   - {agent2_aaren_path} (AAREN-RNN)")
-                    if os.path.exists(agent1_evaluator_path):
-                        print(f"   - {agent1_evaluator_path} (PBS Evaluator)")
-                    if os.path.exists(agent2_evaluator_path):
-                        print(f"   - {agent2_evaluator_path} (PBS Evaluator)")
+            # Get actions for Agent 2
+            if agent2_indices:
+                batch_states = [states[i] for i in agent2_indices]
+                batch_valid_moves = [valid_moves[i] for i in agent2_indices]
+                batch_actions = agent2.act_batch(batch_states, batch_valid_moves, game_states=batch_states)
+                for idx, action in zip(agent2_indices, batch_actions):
+                    actions_list[idx] = action
+        
+            # 2. Update PBS (Cross-update: Agent 1's action updates Agent 2's PBS)
+            if agent1_indices:
+                 update_actions = [actions_list[i] for i in agent1_indices]
+                 update_states = [states[i] for i in agent1_indices]
+                 agent2.update_pbs_batch(update_actions, update_states, acting_player=1)
+             
+            if agent2_indices:
+                 update_actions = [actions_list[i] for i in agent2_indices]
+                 update_states = [states[i] for i in agent2_indices]
+                 agent1.update_pbs_batch(update_actions, update_states, acting_player=-1)
+             
+            # 3. Prepare commands (Actions or Resets)
+            commands = []
+            for i in range(NUM_ENVS):
+                if pending_resets[i]:
+                    # Generate placement for reset
+                    p1_place = None
+                    p2_place = None
                     if use_setup_agents and setup_agent1 and setup_agent2:
-                        print(f"   - {setup_agent1_path} (Setup Agent NN)")
-                        print(f"   - {setup_agent2_path} (Setup Agent NN)")
+                        # Generate pieces list (standard Stratego composition)
+                        pieces_p1 = [PieceType.FLAG, PieceType.SPY] + [PieceType.BOMB]*6 + [PieceType.MARSHAL] + \
+                                   [PieceType.GENERAL] + [PieceType.COLONEL]*2 + [PieceType.MAJOR]*3 + \
+                                   [PieceType.CAPTAIN]*4 + [PieceType.LIEUTENANT]*4 + [PieceType.SERGEANT]*4 + \
+                                   [PieceType.MINER]*5 + [PieceType.SCOUT]*8
+                        pieces_p2 = pieces_p1.copy()  # Same composition for both players
+                    
+                        # Get available positions for each player
+                        # Player 1: rows 6-9, Player 2: rows 0-3 (excluding lakes)
+                        lakes = [(4,2), (4,3), (5,2), (5,3), (4,6), (4,7), (5,6), (5,7)]
+                        available_p1 = [(r, c) for r in range(6, 10) for c in range(10) if (r, c) not in lakes]
+                        available_p2 = [(r, c) for r in range(0, 4) for c in range(10) if (r, c) not in lakes]
+                    
+                        # Use setup agents to place pieces
+                        p1_place = setup_agent1.place_pieces(pieces_p1, available_p1)
+                        p2_place = setup_agent2.place_pieces(pieces_p2, available_p2)
+                    
+                        # Store placements for later reward calculation
+                        placement_memory[i] = {
+                            'p1_placement': p1_place,
+                            'p2_placement': p2_place,
+                            'episode_start': total_episodes
+                        }
+                    
+                    commands.append(('reset', {'p1_placement': p1_place, 'p2_placement': p2_place}))
                 else:
-                    print(f"⚠️  Warning: Model files may not have been created at episode {episode + 1}")
-            except Exception as e:
-                print(f"⚠️  Error saving models at episode {episode + 1}: {e}")
-                traceback.print_exc()
+                    commands.append(actions_list[i])
+                
+            # 4. Step environment
+            next_states_tuple, step_rewards, step_dones, step_infos, next_valid_moves_tuple = env.step(commands)
+            # Convert tuples to lists for mutability
+            next_states = list(next_states_tuple)
+            next_valid_moves = list(next_valid_moves_tuple)
+        
+            # 5. Process results
+            for i in range(NUM_ENVS):
+                if pending_resets[i]:
+                    # Just reset, update state and continue
+                    states[i] = next_states[i] # New initial state
+                    valid_moves[i] = next_valid_moves[i]
+                    pending_resets[i] = False
+                    episode_rewards_agent1[i] = 0.0
+                    episode_rewards_agent2[i] = 0.0
+                    episode_moves[i] = 0
+                    continue
+                
+                # It was a step
+                action = actions_list[i]
+                if action is None: # Should not happen if logic is correct
+                    continue
+                
+                reward = step_rewards[i].item()
+                done = step_dones[i].item()
             
-    # Save final persistent counters
-    try:
-        with open(total_episodes_file, 'w') as f:
-            f.write(str(total_episodes))
-        with open(total_steps_file, 'w') as f:
-            f.write(str(total_steps))
-        print(f"💾 Saved persistent counters: {total_episodes} episodes, {total_steps:,} steps")
-    except Exception as e:
-        print(f"⚠️  Could not save persistent counters: {e}")
+                # Determine agents
+                player = states[i].current_player
+                current_agent = agent1 if player == 1 else agent2
+                opponent_agent = agent2 if player == 1 else agent1
+            
+                # Get next state representation for storage
+                # We need to convert GameState to tensor
+                # We can use the single-item method since we are iterating
+                # Or we could have batched this before loop.
+                # For simplicity/correctness, do it here.
+                state_tensor = current_agent.get_state_representation(states[i])
+                next_state_tensor = current_agent.get_state_representation(next_states[i])
+            
+                # Store experience
+                current_agent.remember(state_tensor, 
+                                     current_agent._move_to_action_index(action),
+                                     reward,
+                                     next_state_tensor,
+                                     done)
+            
+                # Update stats
+                if player == 1:
+                    episode_rewards_agent1[i] += reward
+                else:
+                    episode_rewards_agent2[i] += reward
+                episode_moves[i] += 1
+            
+                # Handle reveals (PBS)
+                # We need to check if pieces were revealed.
+                # ParallelEnv step info might contain reveals?
+                # We need to ensure ParallelEnv passes 'revealed_pieces' in info.
+                # Currently it returns info dict.
+                # We should check info[i].
+                if 'revealed_pieces_p1' in step_infos[i]:
+                     for pos, val in step_infos[i]['revealed_pieces_p1'].items():
+                         agent1.update_pbs_from_reveal_batch([[(pos, PieceType(abs(val)))]], game_phase='middle', turn_count=episode_moves[i])
+                if 'revealed_pieces_p2' in step_infos[i]:
+                     for pos, val in step_infos[i]['revealed_pieces_p2'].items():
+                         agent2.update_pbs_from_reveal_batch([[(pos, PieceType(abs(val)))]], game_phase='middle', turn_count=episode_moves[i])
+
+                # Handle Done
+                if done:
+                    pending_resets[i] = True
+                    completed_episodes += 1
+                    total_episodes += 1
+                    pbar.update(1)
+                
+                    # Update global stats
+                    total_rewards_agent1.append(episode_rewards_agent1[i])
+                    total_rewards_agent2.append(episode_rewards_agent2[i])
+                
+                    # Determine winner
+                    winner = step_infos[i].get('winner', 0)
+                    if winner == 1:
+                        wins_agent1 += 1
+                    elif winner == -1:
+                        wins_agent2 += 1
+                    else:
+                        draws += 1
+                
+                    # ============================================
+                    # CONTINUOUS METRIC TRACKING (EVERY EPISODE)
+                    # ============================================
+                    # Track metrics for every completed episode, not just when plotting
+                    episode_history.append(total_episodes)
+                
+                    # Record episode rewards
+                    rewards_history['agent1'].append(episode_rewards_agent1[i])
+                    rewards_history['agent2'].append(episode_rewards_agent2[i])
+                
+                    # Record cumulative win counts
+                    wins_history['agent1'].append(wins_agent1)
+                    wins_history['agent2'].append(wins_agent2)
+                    wins_history['draws'].append(draws)
+                
+                    # Record epsilon values
+                    epsilon_history['agent1'].append(agent1.epsilon)
+                    epsilon_history['agent2'].append(agent2.epsilon)
+                
+                    # Record recent average policy losses
+                    recent_window = 10  # Average over last 10 training steps
+                    avg_loss_agent1 = np.mean(agent1_losses[-recent_window:]) if len(agent1_losses) >= recent_window else (np.mean(agent1_losses) if agent1_losses else 0.0)
+                    avg_loss_agent2 = np.mean(agent2_losses[-recent_window:]) if len(agent2_losses) >= recent_window else (np.mean(agent2_losses) if agent2_losses else 0.0)
+                    policy_loss_history['agent1'].append(avg_loss_agent1)
+                    policy_loss_history['agent2'].append(avg_loss_agent2)
+                
+                    # Record PBS evaluator metrics
+                    pbs_eval_loss_1 = agent1.pbs.evaluator.get_average_loss() if agent1.pbs.evaluator else 0.0
+                    pbs_eval_loss_2 = agent2.pbs.evaluator.get_average_loss() if agent2.pbs.evaluator else 0.0
+                    pbs_evaluator1_losses.append(pbs_eval_loss_1)
+                    pbs_evaluator2_losses.append(pbs_eval_loss_2)
+                    pbs_evaluator1_buffer_sizes.append(len(agent1.pbs.evaluator.memory) if agent1.pbs.evaluator else 0)
+                    pbs_evaluator2_buffer_sizes.append(len(agent2.pbs.evaluator.memory) if agent2.pbs.evaluator else 0)
+                
+                    # Record Average Q-Value and Entropy
+                    avg_q_history['agent1'].append(agent1.get_average_q_value())
+                    avg_q_history['agent2'].append(agent2.get_average_q_value())
+                    entropy_history['agent1'].append(agent1.get_average_entropy())
+                    entropy_history['agent2'].append(agent2.get_average_entropy())
+                
+                    # ============================================
+                    # SETUP AGENT TRAINING
+                    # ============================================
+                    # Train setup agents if placements were generated by them
+                    if i in placement_memory and use_setup_agents and setup_agent1 and setup_agent2:
+                        # Calculate setup rewards based on game outcome
+                        setup_reward_1 = calculate_setup_agent_reward(
+                            placement_memory[i]['p1_placement'],
+                            player_id=1,
+                            winner=winner,
+                            move_count=episode_moves[i]
+                        )
+                        setup_reward_2 = calculate_setup_agent_reward(
+                            placement_memory[i]['p2_placement'],
+                            player_id=-1,
+                            winner=winner,
+                            move_count=episode_moves[i]
+                        )
+                    
+                        # Apply rewards to setup agent episode memory and store in replay buffer
+                        setup_agent1.finish_episode(setup_reward_1)
+                        setup_agent2.finish_episode(setup_reward_2)
+                    
+                        # Train setup agents
+                        setup_loss_1 = setup_agent1.replay()
+                        setup_loss_2 = setup_agent2.replay()
+                    
+                        # Track setup agent performance for plotting
+                        setup_agent1_rewards.append(setup_reward_1)
+                        setup_agent2_rewards.append(setup_reward_2)
+                        # Always append loss values (0 if training didn't happen)
+                        setup_agent1_losses.append(setup_loss_1 if setup_loss_1 is not None else 0.0)
+                        setup_agent2_losses.append(setup_loss_2 if setup_loss_2 is not None else 0.0)
+                    
+                        # Clean up placement memory after training
+                        del placement_memory[i]
+                    else:
+                        # No setup agent data for this episode - append placeholders to maintain length match
+                        if use_setup_agents:
+                            setup_agent1_rewards.append(0.0)
+                            setup_agent2_rewards.append(0.0)
+                            setup_agent1_losses.append(0.0)
+                            setup_agent2_losses.append(0.0)
+                
+                    # ============================================
+                    # GENERATE PLOTS EVERY 50 EPISODES
+                    # ============================================
+                    # Prevent duplicate plot generation in parallel environment by checking last_plotted_episode
+                    if total_episodes % 50 == 0 and total_episodes > last_plotted_episode:
+                        # Generate training progress plots
+                        try:
+                            if len(episode_history) > 0:
+                                # Plot DQN agent training progress
+                                plot_path = f"{model_save_path}/training_progress_episode_{total_episodes}.png"
+                                plot_training_progress(
+                                    episode_history,
+                                    rewards_history,
+                                    wins_history,
+                                    policy_loss_history,
+                                    plot_path,
+                                    total_episodes=total_episodes,
+                                    total_steps=total_steps
+                                )
+                                print(f"📊 Training progress plot saved: {plot_path}")
+                            
+                                # Plot setup agent progress (if using setup agents and have data)
+                                if use_setup_agents and len(setup_agent1_rewards) > 0:
+                                    setup_plot_path = f"{model_save_path}/setup_agent_progress_episode_{total_episodes}.png"
+                                    plot_setup_agent_progress(
+                                        episode_history,
+                                        setup_agent1_rewards,
+                                        setup_agent2_rewards,
+                                        setup_agent1_losses,
+                                        setup_agent2_losses,
+                                        setup_plot_path
+                                    )
+                                    print(f"📊 Setup agent progress plot saved: {setup_plot_path}")
+                            
+                                # Plot PBS evaluator progress
+                                if len(pbs_evaluator1_losses) > 0:
+                                    pbs_plot_path = f"{model_save_path}/pbs_evaluator_progress_episode_{total_episodes}.png"
+                                    plot_pbs_evaluator_progress(
+                                        episode_history,
+                                        pbs_evaluator1_losses,
+                                        pbs_evaluator2_losses,
+                                        pbs_evaluator1_buffer_sizes,
+                                        pbs_evaluator2_buffer_sizes,
+                                        pbs_plot_path,
+                                        total_episodes=total_episodes
+                                    )
+                                    print(f"📊 PBS evaluator progress plot saved: {pbs_plot_path}")
+                                
+                                # Plot additional metrics (Epsilon, Buffer Size, Q-Value, Entropy)
+                                additional_metrics_path = f"{model_save_path}/additional_metrics_episode_{total_episodes}.png"
+                                plot_additional_metrics(
+                                    episode_history,
+                                    epsilon_history,
+                                    {'agent1': pbs_evaluator1_buffer_sizes, 'agent2': pbs_evaluator2_buffer_sizes},
+                                    avg_q_history,
+                                    entropy_history,
+                                    additional_metrics_path
+                                )
+                                print(f"📊 Additional metrics plot saved: {additional_metrics_path}")
+                                
+                                # Update last_plotted_episode to prevent duplicate plotting
+                                last_plotted_episode = total_episodes
+                                
+                                # Save training history JSON for continuity
+                                try:
+                                    _save_training_history(
+                                        model_save_path,
+                                        episode_history,
+                                        rewards_history,
+                                        wins_history,
+                                        epsilon_history,
+                                        policy_loss_history,
+                                        setup_agent1_rewards,
+                                        setup_agent2_rewards,
+                                        setup_agent1_losses,
+                                        setup_agent2_losses,
+                                        pbs_evaluator1_losses,
+                                        pbs_evaluator2_losses,
+                                        pbs_evaluator1_buffer_sizes,
+                                        pbs_evaluator2_buffer_sizes,
+                                        avg_q_history,
+                                        entropy_history
+                                    )
+                                    print(f"💾 Training history JSON saved at episode {total_episodes}")
+                                except Exception as json_err:
+                                    print(f"⚠️  Could not save training history JSON: {json_err}")
+                        except Exception as e:
+                            print(f"⚠️  Warning: Could not generate plots at episode {total_episodes}: {e}")
+                            traceback.print_exc()
+                     
+                else:
+                    states[i] = next_states[i]
+                    valid_moves[i] = next_valid_moves[i]
+                
+            # 6. Train Agents (Batched)
+            # Train every REPLAY_UPDATE_INTERVAL steps
+            # Since we process NUM_ENVS steps per iteration, we train more frequently naturally
+            if total_steps % REPLAY_UPDATE_INTERVAL == 0:
+                 for _ in range(REPLAY_UPDATES_PER_STEP):
+                     loss1 = agent1.replay()
+                     if loss1 is not None:
+                         agent1_losses.append(loss1)
+                 
+                     loss2 = agent2.replay()
+                     if loss2 is not None:
+                         agent2_losses.append(loss2)
+                     
+                     # Train PBS Evaluator
+                     eval_loss1 = agent1.train_pbs_evaluator()
+                     if eval_loss1 is not None:
+                         pbs_evaluator1_losses.append(eval_loss1)
+                     
+                     eval_loss2 = agent2.train_pbs_evaluator()
+                     if eval_loss2 is not None:
+                         pbs_evaluator2_losses.append(eval_loss2)
+                 
+            # Update target networks
+            # Update every TARGET_UPDATE_INTERVAL steps
+            if total_steps % TARGET_UPDATE_INTERVAL == 0:
+                 agent1.update_target_network()
+                 agent2.update_target_network()
+             
+            total_steps += NUM_ENVS # Approx
+            
+            # Save models periodically (keep at save_interval)
+            # Only save when we cross a new save interval threshold
+            # Save models periodically (keep at save_interval)
+            # Only save when we cross a new save interval threshold
+            if total_episodes > 0 and total_episodes % save_interval == 0 and total_episodes > last_saved_episode:
+                save_checkpoint(total_episodes)
+                # Update last saved episode to prevent saving again
+                last_saved_episode = total_episodes
+            
+        # Save final persistent counters
+        try:
+            with open(total_episodes_file, 'w') as f:
+                f.write(str(total_episodes))
+            with open(total_steps_file, 'w') as f:
+                f.write(str(total_steps))
+            print(f"💾 Saved persistent counters: {total_episodes} episodes, {total_steps:,} steps")
+        except Exception as e:
+            print(f"⚠️  Could not save persistent counters: {e}")
     
-    # Save final training history for continuity
-    try:
-        _save_training_history(
-            model_save_path,
-            episode_history,
-            rewards_history,
-            wins_history,
-            epsilon_history,
-            policy_loss_history,
-            setup_agent1_rewards,
-            setup_agent2_rewards,
-            setup_agent1_losses,
-            setup_agent2_losses,
-            pbs_evaluator1_losses,
-            pbs_evaluator2_losses,
-            pbs_evaluator1_buffer_sizes,
-            pbs_evaluator2_buffer_sizes
-        )
-        print(f"💾 Saved final training history for continuity")
-    except Exception as e:
-        print(f"⚠️  Could not save final training history: {e}")
+        # Save final training history for continuity
+        try:
+            _save_training_history(
+                model_save_path,
+                episode_history,
+                rewards_history,
+                wins_history,
+                epsilon_history,
+                policy_loss_history,
+                setup_agent1_rewards,
+                setup_agent2_rewards,
+                setup_agent1_losses,
+                setup_agent2_losses,
+                pbs_evaluator1_losses,
+                pbs_evaluator2_losses,
+                pbs_evaluator1_buffer_sizes,
+                pbs_evaluator2_buffer_sizes,
+                avg_q_history,
+                entropy_history
+            )
+            print(f"💾 Saved final training history for continuity")
+        except Exception as e:
+            print(f"⚠️  Could not save final training history: {e}")
+    
+    except KeyboardInterrupt:
+        print("\n⏹️  Training interrupted by user! Saving current state...")
+        save_checkpoint(total_episodes)
+        raise
+
+    finally:
+        # Ensure history is saved even if interrupted
+        try:
+            _save_training_history(
+                model_save_path,
+                episode_history,
+                rewards_history,
+                wins_history,
+                epsilon_history,
+                policy_loss_history,
+                setup_agent1_rewards,
+                setup_agent2_rewards,
+                setup_agent1_losses,
+                setup_agent2_losses,
+                pbs_evaluator1_losses,
+                pbs_evaluator2_losses,
+                pbs_evaluator1_buffer_sizes,
+                pbs_evaluator2_buffer_sizes,
+                avg_q_history,
+                entropy_history
+            )
+            print(f"💾 Saved training history (finally block)")
+        except Exception as e:
+            print(f"⚠️  Could not save training history in finally block: {e}")
+            
+        print("Closing environment...")
+        try:
+            env.close()
+        except:
+            pass
+            
+        for prefetcher in prefetchers:
+            try:
+                prefetcher.stop()
+            except:
+                pass
     
     # Final training metrics
     print("\n" + "=" * 60)
@@ -2158,66 +1938,10 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
     os.makedirs(model_save_path, exist_ok=True)
     
     # Save final models (separate files)
-    try:
-        # Save final DQN models
-        agent1_dqn_final_path = f"{model_save_path}/agent1_dqn_final.pth"
-        agent2_dqn_final_path = f"{model_save_path}/agent2_dqn_final.pth"
-        agent1.save_model(agent1_dqn_final_path)
-        agent2.save_model(agent2_dqn_final_path)
-        
-        # Save final AAREN models
-        try:
-            agent1_aaren_final_path = f"{model_save_path}/agent1_aaren_final.pth"
-            agent2_aaren_final_path = f"{model_save_path}/agent2_aaren_final.pth"
-            agent1.save_aaren_model(agent1_aaren_final_path)
-            agent2.save_aaren_model(agent2_aaren_final_path)
-        except Exception as e:
-            print(f"⚠️  Warning: Could not save final AAREN models: {e}")
-        
-        # Save final PBS Evaluator models
-        try:
-            agent1_evaluator_final_path = f"{model_save_path}/agent1_pbs_evaluator_final.pth"
-            agent2_evaluator_final_path = f"{model_save_path}/agent2_pbs_evaluator_final.pth"
-            agent1.save_pbs_evaluator(agent1_evaluator_final_path)
-            agent2.save_pbs_evaluator(agent2_evaluator_final_path)
-        except Exception as e:
-            print(f"⚠️  Warning: Could not save final PBS Evaluator models: {e}")
-        
-        # Save final setup agents if they exist
-        if use_setup_agents and setup_agent1 and setup_agent2:
-            setup_agent1_final_path = f"{model_save_path}/setup_agent1_final.pth"
-            setup_agent2_final_path = f"{model_save_path}/setup_agent2_final.pth"
-            setup_agent1.save_model(setup_agent1_final_path)
-            setup_agent2.save_model(setup_agent2_final_path)
-        
-        # Verify files were created
-        if os.path.exists(agent1_dqn_final_path) and os.path.exists(agent2_dqn_final_path):
-            print(f"\n💾 Final models saved:")
-            print(f"   - {agent1_dqn_final_path} (DQN only)")
-            print(f"   - {agent2_dqn_final_path} (DQN only)")
-            if os.path.exists(agent1_aaren_final_path):
-                print(f"   - {agent1_aaren_final_path} (AAREN-RNN)")
-            if os.path.exists(agent2_aaren_final_path):
-                print(f"   - {agent2_aaren_final_path} (AAREN-RNN)")
-            if os.path.exists(agent1_evaluator_final_path):
-                print(f"   - {agent1_evaluator_final_path} (PBS Evaluator)")
-            if os.path.exists(agent2_evaluator_final_path):
-                print(f"   - {agent2_evaluator_final_path} (PBS Evaluator)")
-            if use_setup_agents and setup_agent1 and setup_agent2:
-                print(f"   - {setup_agent1_final_path} (Setup Agent NN)")
-                print(f"   - {setup_agent2_final_path} (Setup Agent NN)")
-        else:
-            print(f"\n⚠️  Warning: Final model files may not have been created")
-    except Exception as e:
-        print(f"\n⚠️  Error saving final models: {e}")
-        traceback.print_exc()
+    # Save final models (separate files)
+    save_checkpoint(total_episodes, is_final=True)
     
     # Training completed
-    print("Training environment closed")
-    
-    for prefetcher in prefetchers:
-        prefetcher.stop()
-    
     return agent1, agent2
 
 
@@ -2227,17 +1951,14 @@ def main():
     print("=" * 50)
     
     # Training parameters
-    num_episodes = 4000  # More than 500 as requested
-    save_interval = 100
     model_save_path = "dqn_models"
     use_setup_agents = True  # Enable setup agents for piece placement
-    generate_gifs = False  # Set to True to enable GIF generation for episode 1 and winning games
     
     try:
-        # Train agents with single environment
-        agent1, agent2 = train_dqn_agents(num_episodes, save_interval, model_save_path,
+        # Train agents with parallel environment
+        agent1, agent2 = train_dqn_agents(NUM_EPISODES, SAVE_INTERVAL, model_save_path,
                                           use_setup_agents=use_setup_agents,
-                                          generate_gifs=generate_gifs)
+                                          generate_gifs=GENERATE_GIFS)
         print("\n✅ Training completed successfully!")
         
     except KeyboardInterrupt:

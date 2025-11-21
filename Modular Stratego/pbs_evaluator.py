@@ -24,7 +24,8 @@ PBSEvaluationExperience = namedtuple('PBSEvaluationExperience', [
     'ground_truth',    # Actual piece type
     'position',        # Position tuple
     'game_phase',     # 'middle' or 'end'
-    'turn_count'      # Turn number
+    'turn_count',     # Turn number
+    'q_value'         # Q-value of the action leading to this state (optional)
 ])
 
 
@@ -269,7 +270,8 @@ class PBSEvaluator:
         self.target_network.load_state_dict(self.evaluator_network.state_dict())
     
     def compute_reward(self, pbs_prediction: Dict[PieceType, float], 
-                      ground_truth: PieceType, piece_value: Optional[int] = None) -> float:
+                      ground_truth: PieceType, piece_value: Optional[int] = None,
+                      q_value: Optional[float] = None) -> float:
         """
         Compute reward for a PBS prediction based on ground truth.
         
@@ -277,11 +279,13 @@ class PBSEvaluator:
         - Base reward: confidence in correct piece type
         - Value multiplier: higher value pieces get more reward/penalty
         - Distance penalty: predictions far from actual value get penalized
+        - Q-value bonus: if action had high Q-value (important move), amplify reward
         
         Args:
             pbs_prediction: Dictionary mapping PieceType to confidence
             ground_truth: Actual piece type
             piece_value: Optional piece value (rank) for weighting
+            q_value: Optional Q-value of the action
             
         Returns:
             Reward value (positive for good predictions, negative for bad)
@@ -330,12 +334,21 @@ class PBSEvaluator:
         )
         if max_wrong_confidence > 0.5:
             reward -= 3.0 * value_multiplier
+            
+        # Q-value adjustment: important moves (high Q-value) should have higher stakes
+        if q_value is not None:
+            # Normalize Q-value (assuming typical range -10 to 10)
+            # Sigmoid to get 0-1 importance factor
+            importance = 1.0 / (1.0 + math.exp(-abs(q_value) / 5.0))
+            # Amplify reward/penalty based on importance
+            reward *= (0.5 + importance)
         
         return reward
     
     def remember(self, pbs_prediction: Dict[PieceType, float], ground_truth: PieceType,
                 position: Tuple[int, int], game_phase: str, turn_count: int,
-                action_features: Optional[np.ndarray] = None):
+                action_features: Optional[np.ndarray] = None,
+                q_value: Optional[float] = None):
         """
         Store PBS evaluation experience.
         
@@ -346,6 +359,7 @@ class PBSEvaluator:
             game_phase: 'middle' or 'end'
             turn_count: Current turn number
             action_features: Optional action features for feature importance learning
+            q_value: Optional Q-value of the action
         """
         # Convert prediction dict to tensor
         piece_types = list(PieceType)
@@ -360,7 +374,8 @@ class PBSEvaluator:
             ground_truth=ground_truth,
             position=position,
             game_phase=game_phase,
-            turn_count=turn_count
+            turn_count=turn_count,
+            q_value=q_value
         )
         
         self.memory.append(experience)
@@ -373,7 +388,7 @@ class PBSEvaluator:
         # Store feature data for importance learning
         if action_features is not None:
             # Compute quality score for this prediction
-            quality_score = self.compute_reward(pbs_prediction, ground_truth)
+            quality_score = self.compute_reward(pbs_prediction, ground_truth, q_value=q_value)
             self.feature_training_data.append((action_features.copy(), quality_score))
     
     def train(self, epochs: int = 1, use_target_network: bool = True) -> Optional[float]:
@@ -431,7 +446,7 @@ class PBSEvaluator:
                         }
                     else:
                         prediction_dict = exp.pbs_prediction
-                    reward = self.compute_reward(prediction_dict, exp.ground_truth)
+                    reward = self.compute_reward(prediction_dict, exp.ground_truth, q_value=exp.q_value)
                     ground_truth_rewards.append(reward)
                 
                 ground_truth_rewards_tensor = torch.tensor(ground_truth_rewards, 
@@ -543,7 +558,8 @@ class PBSEvaluator:
                 'ground_truth': exp.ground_truth.value,  # Save enum value
                 'position': exp.position,
                 'game_phase': exp.game_phase,
-                'turn_count': exp.turn_count
+                'turn_count': exp.turn_count,
+                'q_value': exp.q_value
             })
         
         # Convert bias tracker to serializable format
@@ -637,7 +653,8 @@ class PBSEvaluator:
                     ground_truth=ground_truth,
                     position=tuple(mem_data['position']),
                     game_phase=mem_data['game_phase'],
-                    turn_count=mem_data['turn_count']
+                    turn_count=mem_data['turn_count'],
+                    q_value=mem_data.get('q_value')  # Handle backward compatibility
                 )
                 self.memory.append(experience)
             print(f"✅ Loaded {len(self.memory)} experiences into PBS evaluator buffer")

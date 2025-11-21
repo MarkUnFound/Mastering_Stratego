@@ -535,35 +535,6 @@ def plot_pbs_evaluator_progress(
         if window > 1:
             ma_losses_2 = []
             ma_episodes_2 = []
-            for i in range(window, len(valid_losses_2)):
-                ma_losses_2.append(np.mean(valid_losses_2[i-window:i]))
-                ma_episodes_2.append(valid_episodes_2[i])
-            if ma_episodes_2:
-                ax1.plot(ma_episodes_2, ma_losses_2, 'r-', linewidth=2.5, label='Evaluator 2 (Moving Avg)')
-        has_data = True
-    
-    ax1.set_xlabel('Episode', fontsize=12)
-    ax1.set_ylabel('Training Loss (MSE)', fontsize=12)
-    ax1.set_title('PBS Evaluator Training Loss (Raw & Smoothed)', fontsize=14, fontweight='bold')
-    if has_data:
-        ax1.legend(loc='upper right')
-    ax1.grid(True, alpha=0.3)
-    ax1.set_yscale('log')  # Log scale for better visualization
-    
-    # 2. Experience Buffer Size
-    ax2 = axes[1]
-    ax2.plot(episode_history, evaluator1_buffer_sizes, 'b-', label='Evaluator 1', linewidth=2, alpha=0.7)
-    ax2.plot(episode_history, evaluator2_buffer_sizes, 'r-', label='Evaluator 2', linewidth=2, alpha=0.7)
-    ax2.set_xlabel('Episode', fontsize=12)
-    ax2.set_ylabel('Experience Buffer Size', fontsize=12)
-    ax2.set_title('Experience Buffer Growth', fontsize=14, fontweight='bold')
-    ax2.legend(loc='lower right')
-    ax2.grid(True, alpha=0.3)
-    ax2.set_ylim(bottom=0)
-    
-    plt.tight_layout()
-    plt.savefig(save_path, dpi=150, bbox_inches='tight')
-    plt.close()
     
     print(f"📊 PBS Evaluator progress plot saved to {save_path}")
 
@@ -678,5 +649,88 @@ def plot_setup_agent_progress(
     except Exception as e:
         plt.close(fig)
         raise Exception(f"Error saving plot to {save_path}: {e}")
+    
+    plt.close(fig)
+
+
+def plot_additional_metrics(
+    episode_history: List[int],
+    epsilon_history: Dict[str, List[float]],
+    pbs_buffer_sizes: Dict[str, List[int]],
+    avg_q_history: Dict[str, List[float]],
+    entropy_history: Dict[str, List[float]],
+    save_path: str
+):
+    """
+    Plots and saves additional training metrics.
+    
+    Args:
+        episode_history: List of episode numbers.
+        epsilon_history: Dict containing lists of epsilon values.
+        pbs_buffer_sizes: Dict containing lists of PBS buffer sizes.
+        avg_q_history: Dict containing lists of average Q-values.
+        entropy_history: Dict containing lists of action entropy values.
+        save_path: Path to save the plot image.
+    """
+    # Validate input data
+    if not episode_history or len(episode_history) == 0:
+        return
+        
+    # Create figure with 2x2 subplots
+    fig, axs = plt.subplots(2, 2, figsize=(15, 12))
+    fig.suptitle('Additional Training Metrics', fontsize=16)
+    
+    # Plot 1: Epsilon
+    if epsilon_history and 'agent1' in epsilon_history:
+        axs[0, 0].plot(episode_history, epsilon_history['agent1'], label='Agent 1', color='blue', alpha=0.7)
+        axs[0, 0].plot(episode_history, epsilon_history['agent2'], label='Agent 2', color='red', alpha=0.7)
+    axs[0, 0].set_xlabel('Episodes')
+    axs[0, 0].set_ylabel('Epsilon')
+    axs[0, 0].set_title('Exploration Rate (Epsilon)')
+    axs[0, 0].legend()
+    axs[0, 0].grid(True, alpha=0.3)
+    
+    # Plot 2: PBS Buffer Size
+    if pbs_buffer_sizes and 'agent1' in pbs_buffer_sizes:
+        axs[0, 1].plot(episode_history, pbs_buffer_sizes['agent1'], label='Agent 1', color='blue', alpha=0.7)
+        axs[0, 1].plot(episode_history, pbs_buffer_sizes['agent2'], label='Agent 2', color='red', alpha=0.7)
+    axs[0, 1].set_xlabel('Episodes')
+    axs[0, 1].set_ylabel('Buffer Size')
+    axs[0, 1].set_title('PBS Experience Buffer Size')
+    axs[0, 1].legend()
+    axs[0, 1].grid(True, alpha=0.3)
+    
+    # Plot 3: Average Q-Value
+    if avg_q_history and 'agent1' in avg_q_history:
+        axs[1, 0].plot(episode_history, avg_q_history['agent1'], label='Agent 1', color='blue', alpha=0.7)
+        axs[1, 0].plot(episode_history, avg_q_history['agent2'], label='Agent 2', color='red', alpha=0.7)
+    axs[1, 0].set_xlabel('Episodes')
+    axs[1, 0].set_ylabel('Avg Q-Value')
+    axs[1, 0].set_title('Average Q-Value (Higher is Better) ↑')
+    axs[1, 0].legend()
+    axs[1, 0].grid(True, alpha=0.3)
+    
+    # Plot 4: Action Entropy
+    if entropy_history and 'agent1' in entropy_history:
+        axs[1, 1].plot(episode_history, entropy_history['agent1'], label='Agent 1', color='blue', alpha=0.7)
+        axs[1, 1].plot(episode_history, entropy_history['agent2'], label='Agent 2', color='red', alpha=0.7)
+    axs[1, 1].set_xlabel('Episodes')
+    axs[1, 1].set_ylabel('Entropy')
+    axs[1, 1].set_title('Action Entropy (Higher = More Exploration) ↑')
+    axs[1, 1].legend()
+    axs[1, 1].grid(True, alpha=0.3)
+    
+    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+    
+    # Ensure the directory exists
+    save_dir = os.path.dirname(save_path)
+    if save_dir:
+        os.makedirs(save_dir, exist_ok=True)
+    
+    # Save the figure
+    try:
+        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+    except Exception as e:
+        print(f"Error saving additional metrics plot: {e}")
     
     plt.close(fig)
