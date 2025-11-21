@@ -187,21 +187,11 @@ class DQNAgent:
         self.epsilon_decay_interval = 500_000  # Decay epsilon over 500,000 steps
         self.epsilon_min = max(epsilon_min, 0.01)  # Ensure minimum epsilon for continued exploration
         
-        # Learning rate scheduling with automatic adjustment
+        # Learning rate scheduling (simple exponential decay)
         self.initial_lr = lr
         self.lr_decay_factor = 0.5  # Reduce LR by half every 500k steps
         self.lr_decay_interval = 500_000
         self.min_lr = lr * 0.01  # Minimum learning rate (1% of initial)
-        
-        # Automatic learning rate adjustment based on loss trends
-        self.loss_history_for_lr = deque(maxlen=200)  # Track losses for LR adjustment
-        self.lr_adjustment_interval = 50  # Check every 50 training steps
-        self.lr_adjustment_threshold = 1.5  # Changed from 1.2 (less sensitive to spikes)
-        self.lr_reduction_factor = 0.5  # Reduce LR by half if needed
-        self.lr_increase_factor = 1.1  # Increase LR by 10% when loss is very low
-        self.lr_increase_threshold = 0.1  # If loss < 0.1, consider increasing LR
-        self.high_loss_threshold = 20.0  # Threshold for aggressive reduction (was 3.0)
-        self.critical_loss_threshold = 50.0  # Threshold for critical reduction (was 5.0)
         
         # Adaptive epsilon: increase if performance stagnates
         self.reward_history = deque(maxlen=1000)  # Track recent rewards
@@ -236,8 +226,6 @@ class DQNAgent:
         self.entropy_history = []
         # Reset smoothed loss
         self.smoothed_loss = None
-        # Reset loss history for LR adjustment
-        self.loss_history_for_lr = deque(maxlen=200)
         # Reset step counter
         self.step_count = 0
         # Reset adaptive epsilon tracking
@@ -517,60 +505,14 @@ class DQNAgent:
         else:
             self.smoothed_loss = self.loss_smoothing_factor * self.smoothed_loss + (1 - self.loss_smoothing_factor) * loss_value
         
-        # Track loss for automatic LR adjustment
-        self.loss_history_for_lr.append(loss_value)
-        
-        # Learning rate scheduling: reduce LR over time for fine-tuning
+        # Simple exponential learning rate decay
         lr_decay_steps = self.step_count // self.lr_decay_interval
-        base_lr = self.initial_lr * (self.lr_decay_factor ** lr_decay_steps)
-        base_lr = max(base_lr, self.min_lr)
+        current_lr = self.initial_lr * (self.lr_decay_factor ** lr_decay_steps)
+        current_lr = max(current_lr, self.min_lr)
         
-        # Automatic learning rate adjustment based on loss trends
-        current_lr = self.optimizer.param_groups[0]['lr']
-        
-        if len(self.loss_history_for_lr) >= self.lr_adjustment_interval:
-            recent_losses = list(self.loss_history_for_lr)[-self.lr_adjustment_interval:]
-            older_losses = list(self.loss_history_for_lr)[-self.lr_adjustment_interval * 2:-self.lr_adjustment_interval]
-            
-            if len(older_losses) > 0:
-                recent_avg = sum(recent_losses) / len(recent_losses)
-                older_avg = sum(older_losses) / len(older_losses)
-                
-                # If average loss is consistently very high, reduce LR
-                if recent_avg > self.high_loss_threshold:
-                    reduction_factor = 0.5 if recent_avg > self.critical_loss_threshold else 0.8
-                    new_lr = current_lr * reduction_factor
-                    new_lr = max(new_lr, self.min_lr)
-                    if new_lr < current_lr:
-                        for param_group in self.optimizer.param_groups:
-                            param_group['lr'] = new_lr
-                        print(f"📉 LR reduced to {new_lr:.2e} due to high loss ({recent_avg:.2f})")
-                # If loss increased significantly, reduce learning rate
-                elif older_avg > 0 and recent_avg > older_avg * self.lr_adjustment_threshold:
-                    new_lr = current_lr * self.lr_reduction_factor
-                    new_lr = max(new_lr, self.min_lr)
-                    if new_lr < current_lr:
-                        for param_group in self.optimizer.param_groups:
-                            param_group['lr'] = new_lr
-                # If loss is very low and stable, consider increasing LR slightly
-                elif recent_avg < self.lr_increase_threshold and recent_avg < older_avg * 0.9:
-                    new_lr = min(current_lr * self.lr_increase_factor, self.initial_lr)
-                    if new_lr > current_lr:
-                        for param_group in self.optimizer.param_groups:
-                            param_group['lr'] = new_lr
-                else:
-                    # Use base LR from time-based decay
-                    if abs(base_lr - current_lr) > 1e-8:
-                        for param_group in self.optimizer.param_groups:
-                            param_group['lr'] = base_lr
-            else:
-                if abs(base_lr - current_lr) > 1e-8:
-                    for param_group in self.optimizer.param_groups:
-                        param_group['lr'] = base_lr
-        else:
-            if abs(base_lr - current_lr) > 1e-8:
-                for param_group in self.optimizer.param_groups:
-                    param_group['lr'] = base_lr
+        # Update learning rate
+        for param_group in self.optimizer.param_groups:
+            param_group['lr'] = current_lr
         
         # Gradual epsilon decay
         if self.step_count < self.epsilon_decay_interval:
