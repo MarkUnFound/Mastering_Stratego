@@ -19,12 +19,15 @@ class SetupExperience(NamedTuple):
     next_state: torch.Tensor
     done: bool
 
-class ConvSetupDQN(nn.Module):
+class QVectorSetupDQN(nn.Module):
     """
-    Convolutional Deep Q-Network for Setup Agent
-    Matches the architecture of the main DQN agent's ConvDQN for consistency.
-    Input: (channels, 10, 10)
-    Output: 100 (Q-values for each board position)
+    Q-Vector Deep Q-Network for Setup Agent
+    
+    Architecture:
+    - Input: (3, 10, 10) - Board, Mask, Piece
+    - Output: Two heads (Q-Vector):
+        - Win Head: Q_win(s, a) - Probability of winning with this setup
+        - Leak Head: Q_leak(s, a) - Probability of information leakage (predictability)
     """
     def __init__(self, input_shape: Tuple[int, int, int] = (3, 10, 10), output_size: int = 100):
         """
@@ -32,25 +35,36 @@ class ConvSetupDQN(nn.Module):
             input_shape: Shape of input (channels, height, width)
             output_size: 100 (10x10 board positions)
         """
-        super(ConvSetupDQN, self).__init__()
+        super(QVectorSetupDQN, self).__init__()
         
         self.conv1 = nn.Conv2d(input_shape[0], 32, kernel_size=3, stride=1, padding=1)
+        self.bn1 = nn.BatchNorm2d(32)
         self.conv2 = nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1)
+        self.bn2 = nn.BatchNorm2d(64)
         
         # Calculate flattened size: 64 * 10 * 10 = 6400
         self.flatten_size = 64 * 10 * 10
         
-        self.fc1 = nn.Linear(self.flatten_size, 512)
-        self.fc2 = nn.Linear(512, output_size)
+        self.fc_shared = nn.Linear(self.flatten_size, 512)
+        
+        # Head 1: Win Probability
+        self.fc_win = nn.Linear(512, output_size)
+        
+        # Head 2: Information Leakage (Predictability)
+        self.fc_leak = nn.Linear(512, output_size)
         
     def forward(self, x):
         """Forward pass through the network"""
-        x = F.relu(self.conv1(x))
-        x = F.relu(self.conv2(x))
+        x = F.relu(self.bn1(self.conv1(x)))
+        x = F.relu(self.bn2(self.conv2(x)))
         x = x.view(x.size(0), -1)  # Flatten
-        x = F.relu(self.fc1(x))
-        x = self.fc2(x)
-        return x
+        x = F.relu(self.fc_shared(x))
+        
+        q_win = self.fc_win(x)
+        q_leak = self.fc_leak(x)
+        
+        # Stack to form Q-Vector: (batch, output_size, 2)
+        return torch.stack([q_win, q_leak], dim=2)
 
 
 class SetupAgent:
@@ -80,8 +94,8 @@ class SetupAgent:
         input_shape = (3, 10, 10)
         output_size = 100  # 100 positions (10x10 board)
         
-        self.q_network = ConvSetupDQN(input_shape, output_size).to(device)
-        self.target_network = ConvSetupDQN(input_shape, output_size).to(device)
+        self.q_network = QVectorSetupDQN(input_shape, output_size).to(device)
+        self.target_network = QVectorSetupDQN(input_shape, output_size).to(device)
         
         # Exploitability Critic
         self.critic = SetupExploitabilityCritic(input_shape=input_shape, output_size=output_size).to(device)
@@ -108,8 +122,8 @@ class SetupAgent:
         """Reset the setup agent"""
         input_shape = (3, 10, 10)
         output_size = 100
-        self.q_network = ConvSetupDQN(input_shape, output_size).to(self.device)
-        self.target_network = ConvSetupDQN(input_shape, output_size).to(self.device)
+        self.q_network = QVectorSetupDQN(input_shape, output_size).to(self.device)
+        self.target_network = QVectorSetupDQN(input_shape, output_size).to(self.device)
         
         self.critic = SetupExploitabilityCritic(input_shape=input_shape, output_size=output_size).to(self.device)
         self.critic_optimizer = optim.AdamW(self.critic.parameters(), lr=self.lr, weight_decay=0.01)
@@ -175,18 +189,27 @@ class SetupAgent:
                 position = random.choice(remaining_positions)
             else:
                 with torch.no_grad():
-                    q_values = self.q_network(state) # (1, 100)
-                    q_values = q_values.view(10, 10)
+                    # Output: (1, 100, 2) -> [Q_win, Q_leak]
+                    q_vectors = self.q_network(state)
+                    q_vectors = q_vectors.view(100, 2)
+                    
+                    q_win = q_vectors[:, 0].view(10, 10)
+                    q_leak = q_vectors[:, 1].view(10, 10)
+                    
+                    # Nash Strategy: Maximize Win - Leak
+                    # We want a setup that is robust (high win prob) and unpredictable (low leak prob)
+                    # Assuming Q_leak predicts predictability/exploitability
+                    nash_score = q_win - q_leak
                     
                     # Mask invalid positions
                     mask = torch.full((10, 10), -float('inf'), device=self.device)
                     for r, c in remaining_positions:
                         mask[r, c] = 0
                     
-                    masked_q_values = q_values + mask
+                    masked_scores = nash_score + mask
                     
                     # Select best position
-                    best_idx = torch.argmax(masked_q_values).item()
+                    best_idx = torch.argmax(masked_scores).item()
                     r, c = best_idx // 10, best_idx % 10
                     position = (r, c)
             
@@ -272,12 +295,39 @@ class SetupAgent:
             
         penalized_rewards = rewards - penalty
         
-        # --- Train Agent ---
-        current_q_values = self.q_network(states).gather(1, actions.unsqueeze(1))
-        next_q_values = self.target_network(next_states).max(1)[0].detach()
-        target_q_values = penalized_rewards + (self.gamma * next_q_values * ~dones)
+        # --- Train Agent (Dual-Phase) ---
+        # Current Q-Vectors
+        current_q_vectors = self.q_network(states) # (B, 100, 2)
         
-        loss = F.mse_loss(current_q_values.squeeze(), target_q_values)
+        # Gather Q-values for taken actions
+        current_q_values = current_q_vectors.gather(1, actions.unsqueeze(1).unsqueeze(2).expand(-1, -1, 2)).squeeze(1) # (B, 2)
+        current_q_win = current_q_values[:, 0]
+        current_q_leak = current_q_values[:, 1]
+        
+        # Next Q-Vectors
+        next_q_vectors = self.target_network(next_states).detach() # (B, 100, 2)
+        
+        # Nash selection for next state
+        next_scores = next_q_vectors[:, :, 0] - next_q_vectors[:, :, 1]
+        best_next_actions = next_scores.argmax(dim=1)
+        
+        next_q_values = next_q_vectors.gather(1, best_next_actions.unsqueeze(1).unsqueeze(2).expand(-1, -1, 2)).squeeze(1)
+        next_q_win = next_q_values[:, 0]
+        next_q_leak = next_q_values[:, 1]
+        
+        # Targets
+        # Win Head: Predicts reward (winning)
+        target_q_win = penalized_rewards + (self.gamma * next_q_win * ~dones)
+        
+        # Leak Head: Predicts penalty (exploitability)
+        # We want Q_leak to estimate the penalty
+        target_q_leak = penalty + (self.gamma * next_q_leak * ~dones)
+        
+        # Losses
+        loss_win = F.mse_loss(current_q_win, target_q_win)
+        loss_leak = F.mse_loss(current_q_leak, target_q_leak)
+        
+        loss = loss_win + loss_leak
         
         self.optimizer.zero_grad()
         loss.backward()

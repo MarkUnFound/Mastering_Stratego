@@ -1184,35 +1184,58 @@ class ProbabilisticBeliefState:
         Enhance game state with belief information.
         
         Returns:
-            Enhanced state tensor with belief probabilities
+            Enhanced state tensor with belief probabilities (13 channels):
+            - Channel 0: Visible board (normalized)
+            - Channel 1-12: Probability maps for each piece type
         """
         if not hasattr(game_state, 'board'):
             return None
         
         board = game_state.board
         if not isinstance(board, torch.Tensor):
-            return None
+            # Convert to tensor if needed
+            if isinstance(board, np.ndarray):
+                board = torch.from_numpy(board).float().to(self.device)
+            else:
+                return None
         
-        # Create belief-enhanced board
-        # For each position, add belief probabilities
-        enhanced_state = board.clone().float()
+        # Ensure board is on the correct device
+        if board.device != self.device:
+            board = board.to(self.device)
+            
+        # Channel 0: Visible board (normalized)
+        # Normalize piece values to [-1, 1] range roughly
+        normalized_board = board.clone().float() / 12.0
         
-        # Add belief layer: for each unknown enemy piece, add expected value
-        for r in range(board_size):
-            for c in range(board_size):
-                pos = (r, c)
-                piece_val = board[r, c].item()
+        # Initialize belief channels (12 piece types)
+        # Shape: (12, 10, 10)
+        belief_channels = torch.zeros((12, board_size, board_size), device=self.device)
+        
+        # Fill belief channels
+        # Iterate over all positions
+        # Note: This loop is a bit slow in Python, but necessary for sparse updates
+        # Optimization: We only need to update for unknown enemy pieces
+        
+        # Get all unknown enemy positions efficiently
+        # For Agent 1 (Player 1): Enemy pieces are negative
+        # For Agent 2 (Player -1): Enemy pieces are positive
+        # HIDDEN_PIECE is often -3 or similar constant, but here we rely on belief_distributions
+        
+        for pos, beliefs in self.belief_distributions.items():
+            r, c = pos
+            # Check if this position is still relevant (piece might have moved or been revealed)
+            # We trust belief_distributions is kept up to date by update_from_action/reveal
+            
+            # Fill the 12 channels with probabilities
+            # Sort piece types by value to ensure consistent channel ordering
+            sorted_types = sorted(PieceType, key=lambda pt: pt.value)
+            
+            for i, piece_type in enumerate(sorted_types):
+                prob = beliefs.get(piece_type, 0.0)
+                belief_channels[i, r, c] = prob
                 
-                # If it's an unknown enemy piece
-                if (self.player_id == 1 and piece_val < 0 and piece_val != -13) or \
-                   (self.player_id == -1 and piece_val > 0):
-                    if pos not in self.revealed_pieces:
-                        # Add expected value as additional information
-                        expected_val = float(self.get_expected_value(pos))
-                        # Store in a normalized form (0-1 range)
-                        # Calculate enhancement and assign as Python float (PyTorch accepts this)
-                        enhancement_value = float((expected_val / 12.0) * 0.1)
-                        enhanced_state[r, c] = float(piece_val) + enhancement_value
+        # Stack channels: (1, 10, 10) + (12, 10, 10) -> (13, 10, 10)
+        enhanced_state = torch.cat([normalized_board.unsqueeze(0), belief_channels], dim=0)
         
         return enhanced_state
     

@@ -21,36 +21,77 @@ from critic import ExploitabilityCritic
 Experience = namedtuple('Experience', ['state', 'action', 'reward', 'next_state', 'done'])
 
 
-class ConvDQN(nn.Module):
-    """Convolutional Deep Q-Network for Stratego"""
+class QVectorDQN(nn.Module):
+    """
+    Q-Vector Deep Q-Network for Stratego
     
-    def __init__(self, input_shape: Tuple[int, int, int] = (1, 10, 10), output_size: int = 1000):
+    Architecture:
+    - Input: Belief State (13 channels: 1 visible board + 12 belief maps)
+    - Encoder: CNN layers to extract spatial features
+    - Output: Two heads (Q-Vector):
+        - Agent Head: Q_agent(s, a) - Expected return for the agent
+        - Opponent Head: Q_opp(s, a) - Expected return for the opponent
+    """
+    
+    def __init__(self, input_shape: Tuple[int, int, int] = (13, 10, 10), output_size: int = 1000):
         """
-        Initialize the ConvDQN network
+        Initialize the QVectorDQN network
         
         Args:
             input_shape: Shape of input (channels, height, width)
             output_size: Size of output (number of possible actions)
         """
-        super(ConvDQN, self).__init__()
+        super(QVectorDQN, self).__init__()
         
-        self.conv1 = nn.Conv2d(input_shape[0], 32, kernel_size=3, stride=1, padding=1)
-        self.conv2 = nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1)
+        # Deeper CNN for richer belief state
+        self.conv1 = nn.Conv2d(input_shape[0], 64, kernel_size=3, stride=1, padding=1)
+        self.bn1 = nn.BatchNorm2d(64)
+        self.conv2 = nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1)
+        self.bn2 = nn.BatchNorm2d(128)
+        self.conv3 = nn.Conv2d(128, 128, kernel_size=3, stride=1, padding=1)
+        self.bn3 = nn.BatchNorm2d(128)
         
-        # Calculate flattened size: 64 * 10 * 10 = 6400
-        self.flatten_size = 64 * 10 * 10
+        # Calculate flattened size: 128 * 10 * 10 = 12800
+        self.flatten_size = 128 * 10 * 10
         
-        self.fc1 = nn.Linear(self.flatten_size, 512)
-        self.fc2 = nn.Linear(512, output_size)
+        # Shared dense layer
+        self.fc_shared = nn.Linear(self.flatten_size, 512)
+        
+        # Head 1: Agent's Q-values
+        self.fc_agent = nn.Sequential(
+            nn.Linear(512, 256),
+            nn.ReLU(),
+            nn.Linear(256, output_size)
+        )
+        
+        # Head 2: Opponent's Q-values (Modeled explicitly)
+        self.fc_opp = nn.Sequential(
+            nn.Linear(512, 256),
+            nn.ReLU(),
+            nn.Linear(256, output_size)
+        )
         
     def forward(self, x):
-        """Forward pass through the network"""
-        x = F.relu(self.conv1(x))
-        x = F.relu(self.conv2(x))
+        """
+        Forward pass through the network
+        
+        Returns:
+            q_vector: Tensor of shape (batch, output_size, 2)
+                      [..., 0] = Q_agent
+                      [..., 1] = Q_opp
+        """
+        x = F.relu(self.bn1(self.conv1(x)))
+        x = F.relu(self.bn2(self.conv2(x)))
+        x = F.relu(self.bn3(self.conv3(x)))
+        
         x = x.view(x.size(0), -1)  # Flatten
-        x = F.relu(self.fc1(x))
-        x = self.fc2(x)
-        return x
+        x = F.relu(self.fc_shared(x))
+        
+        q_agent = self.fc_agent(x)
+        q_opp = self.fc_opp(x)
+        
+        # Stack to form Q-Vector: (batch, actions, 2)
+        return torch.stack([q_agent, q_opp], dim=2)
 
 
 class DQNAgent:
@@ -154,8 +195,9 @@ class DQNAgent:
         
         # Neural networks (keep on GPU, no compilation for Windows compatibility)
         # Neural networks (keep on GPU, no compilation for Windows compatibility)
-        self.q_network = ConvDQN(output_size=action_size).to(device)
-        self.target_network = ConvDQN(output_size=action_size).to(device)
+        # Input shape: (13, 10, 10) - 1 visible board + 12 belief maps
+        self.q_network = QVectorDQN(input_shape=(13, 10, 10), output_size=action_size).to(device)
+        self.target_network = QVectorDQN(input_shape=(13, 10, 10), output_size=action_size).to(device)
         
         # Enable cuDNN benchmarking for faster convolutions (if using conv layers)
         if device.type == 'cuda':
@@ -165,7 +207,7 @@ class DQNAgent:
         self.optimizer = optim.AdamW(self.q_network.parameters(), lr=lr, weight_decay=0.01)
         
         # Exploitability Critic
-        self.critic = ExploitabilityCritic(input_shape=(1, 10, 10), output_size=action_size).to(device)
+        self.critic = ExploitabilityCritic(input_shape=(13, 10, 10), output_size=action_size).to(device)
         self.critic_optimizer = optim.AdamW(self.critic.parameters(), lr=lr, weight_decay=0.01)
         self.critic_loss_fn = nn.CrossEntropyLoss()
         self.critic_weight = 0.1  # Weight for predictability penalty
@@ -211,17 +253,23 @@ class DQNAgent:
         """Reset the DQN agent by reinitializing networks and optimizer"""
         # Reinitialize Q-network and target network
         # Reinitialize Q-network and target network
-        self.q_network = ConvDQN(output_size=self.action_size).to(self.device)
-        self.target_network = ConvDQN(output_size=self.action_size).to(self.device)
+        self.q_network = QVectorDQN(input_shape=(13, 10, 10), output_size=self.action_size).to(self.device)
+        self.target_network = QVectorDQN(input_shape=(13, 10, 10), output_size=self.action_size).to(self.device)
         
         # Reinitialize optimizer
         self.optimizer = optim.AdamW(self.q_network.parameters(), lr=self.lr, weight_decay=0.01)
+        
+        # Reinitialize Critic
+        self.critic = ExploitabilityCritic(input_shape=(13, 10, 10), output_size=self.action_size).to(self.device)
+        self.critic_optimizer = optim.AdamW(self.critic.parameters(), lr=self.lr, weight_decay=0.01)
         # Reset epsilon to initial value
         self.epsilon = 1.0
         # Clear memory
         self.memory.clear()
         # Clear policy losses
         self.policy_losses = []
+        self.agent_losses = []
+        self.opp_losses = []
         self.q_values_history = []
         self.entropy_history = []
         # Reset smoothed loss
@@ -334,7 +382,7 @@ class DQNAgent:
         if self.pbs and game_state is not None:
             uncertainty_map = self.pbs.get_uncertainty_map(game_state)
         
-        # Step 3: DQN calculates Q-value using PBS-enhanced state
+        # Step 3: DQN calculates Q-Vector using PBS-enhanced state
         # Ensure state is a GPU tensor
         if not isinstance(state, torch.Tensor):
             if isinstance(state, np.ndarray):
@@ -353,10 +401,25 @@ class DQNAgent:
             
         self.q_network.eval()
         with torch.no_grad():
-            base_q_values = self.q_network(state)
+            # Output: (batch, actions, 2) -> [Q_agent, Q_opp]
+            q_vectors = self.q_network(state)
+            
+            # Extract Agent and Opponent Q-values
+            q_agent = q_vectors[:, :, 0]
+            q_opp = q_vectors[:, :, 1]
+            
+            # Maximin Strategy: Maximize (Q_agent - Q_opp)
+            # We want to maximize our gain relative to the opponent's gain
+            # Or "Maximize worst case": If we assume opponent plays optimally to minimize our gain,
+            # but here we have explicit predictions.
+            # Let's use the relative advantage: Score = Q_agent - Q_opp
+            # This effectively treats the game as zero-sum for selection, but learns non-zero-sum dynamics.
+            base_q_values = q_agent - q_opp
+            
         self.q_network.train()
         
         # Step 4: Apply uncertainty-aware Q-value calculation
+        # We use the combined score as the "Q-value" for exploration logic
         q_values = self.calculate_uncertainty_aware_q_values(
             base_q_values, valid_moves, uncertainty_map
         )
@@ -448,26 +511,55 @@ class DQNAgent:
             # Entropy = -sum(p * log(p))
             entropy = (-probs * torch.log(probs + 1e-10)).sum(dim=1).mean().item()
             
-        # --- 3. Train Agent with Penalized Rewards ---
-        # Current Q values
-        current_q_values = self.q_network(states).gather(1, actions.unsqueeze(1))
+        # --- 3. Train Agent with Penalized Rewards (Dual-Phase) ---
+        # Current Q-Vectors
+        # Shape: (batch, actions, 2)
+        current_q_vectors = self.q_network(states)
         
-        # Calculate average Q-value for metrics
-        avg_q_value = current_q_values.mean().item()
+        # Gather Q-values for taken actions
+        # actions shape: (batch) -> unsqueeze -> (batch, 1) -> expand -> (batch, 1, 2)
+        # gather result: (batch, 1, 2) -> squeeze -> (batch, 2)
+        current_q_values = current_q_vectors.gather(1, actions.unsqueeze(1).unsqueeze(2).expand(-1, -1, 2)).squeeze(1)
         
-        # Next Q values from target network
+        current_q_agent = current_q_values[:, 0]
+        current_q_opp = current_q_values[:, 1]
+        
+        # Calculate average Q-value for metrics (Agent's perspective)
+        avg_q_value = current_q_agent.mean().item()
+        
+        # Next Q-Vectors from target network
         with torch.no_grad():
-            next_q_values = self.target_network(next_states).max(1)[0]
+            next_q_vectors = self.target_network(next_states)
+            # Maximin selection for next state:
+            # Select action that maximizes (Q_agent - Q_opp)
+            next_scores = next_q_vectors[:, :, 0] - next_q_vectors[:, :, 1]
+            best_next_actions = next_scores.argmax(dim=1)
+            
+            # Gather target Q-values for best actions
+            next_q_values = next_q_vectors.gather(1, best_next_actions.unsqueeze(1).unsqueeze(2).expand(-1, -1, 2)).squeeze(1)
+            
+            next_q_agent = next_q_values[:, 0]
+            next_q_opp = next_q_values[:, 1]
             
         # Penalize rewards: Reward - Penalty
         # This encourages the agent to choose actions that are less predictable
         penalized_rewards = rewards - penalty
         
-        # Calculate target Q-values
-        target_q_values = penalized_rewards + (self.gamma * next_q_values * ~dones)
+        # Calculate target Q-values for both heads
+        # Agent Head: Predicts my return
+        target_q_agent = penalized_rewards + (self.gamma * next_q_agent * ~dones)
         
-        # Compute loss
-        loss = F.smooth_l1_loss(current_q_values.squeeze(), target_q_values)
+        # Opponent Head: Predicts opponent's return (which is usually -reward in zero-sum)
+        # But we model it explicitly. If zero-sum, r_opp = -r_agent.
+        # Let's assume zero-sum rewards for now: r_opp = -penalized_rewards
+        target_q_opp = (-penalized_rewards) + (self.gamma * next_q_opp * ~dones)
+        
+        # Compute losses for both heads
+        loss_agent = F.smooth_l1_loss(current_q_agent, target_q_agent)
+        loss_opp = F.smooth_l1_loss(current_q_opp, target_q_opp)
+        
+        # Total loss
+        loss = loss_agent + loss_opp
         
         # Optimize Agent
         self.optimizer.zero_grad()
@@ -480,6 +572,8 @@ class DQNAgent:
         # Track policy loss (minimize CPU transfer - only get item() once)
         loss_value = loss.item()
         self.policy_losses.append(loss_value)
+        self.agent_losses.append(loss_agent.item())
+        self.opp_losses.append(loss_opp.item())
         
         # Track critic metrics
         if not hasattr(self, 'critic_losses'):
@@ -554,8 +648,20 @@ class DQNAgent:
             'median': sorted_losses[n // 2] if n > 0 else 0.0,
             'std': (sum((x - sum(recent_losses) / n) ** 2 for x in recent_losses) / n) ** 0.5 if n > 1 else 0.0
         }
+        
+        # Add separate stats for agent and opponent losses if available
+        if hasattr(self, 'agent_losses') and self.agent_losses:
+            recent_agent = self.agent_losses[-window:]
+            if recent_agent:
+                stats['avg_agent_loss'] = sum(recent_agent) / len(recent_agent)
+                
+        if hasattr(self, 'opp_losses') and self.opp_losses:
+            recent_opp = self.opp_losses[-window:]
+            if recent_opp:
+                stats['avg_opp_loss'] = sum(recent_opp) / len(recent_opp)
+                
         return stats
-    
+
     def get_average_critic_loss(self, window: int = 100) -> float:
         """Get average critic loss over the last N training steps"""
         if not hasattr(self, 'critic_losses') or not self.critic_losses:
@@ -763,61 +869,45 @@ class DQNAgent:
         
     def get_state_representation(self, game_state, pbs_instance=None) -> torch.Tensor:
         """
-        Convert game state to neural network input - returns GPU tensor.
-        
-        This method ensures that agents only use visible information.
-        The game_state.board already contains only the visible board for the current player.
-        
-        If PBS is enabled, the state is enhanced with belief probabilities.
-        Returns a torch.Tensor on the GPU to avoid CPU-GPU transfers.
+        Convert GameState to tensor for network input.
+        Uses PBS if available to get belief-enhanced state.
+        Returns: (C, H, W) tensor on GPU.
         """
-        # Use provided PBS instance or default self.pbs
         pbs = pbs_instance if pbs_instance else self.pbs
-        
-        # Step 1: PBS gets the value and creates possible values with confidence scores
         if pbs and hasattr(game_state, 'board'):
             enhanced_state = pbs.get_belief_enhanced_state(game_state)
             if enhanced_state is not None:
-                # Keep on GPU
-                visible_board = enhanced_state
-                if visible_board.device != self.device:
-                    visible_board = visible_board.to(self.device)
-            else:
-                # Fallback to regular state
-                visible_board = game_state.board
-                if isinstance(visible_board, torch.Tensor):
-                    if visible_board.device != self.device:
-                        visible_board = visible_board.to(self.device)
+                # Ensure it's on the correct device
+                if enhanced_state.device != self.device:
+                    enhanced_state = enhanced_state.to(self.device)
+                
+                # Ensure it's (13, 10, 10) - remove batch dim if present
+                if enhanced_state.dim() == 4:
+                    enhanced_state = enhanced_state.squeeze(0)
+                
+                return enhanced_state
+        
+        # Fallback to regular state (1 channel)
+        if hasattr(game_state, 'board'):
+            board = game_state.board
+            if not isinstance(board, torch.Tensor):
+                if isinstance(board, np.ndarray):
+                    board = torch.from_numpy(board).float()
                 else:
-                    visible_board = torch.tensor(visible_board, dtype=torch.float32, device=self.device)
-        else:
-            # Ensure we're only using the visible board information
-            if hasattr(game_state, 'board'):
-                # It's a game state object with visible board for current player
-                visible_board = game_state.board
-            else:
-                # It's already a board/array
-                visible_board = game_state
+                    # Create empty board if invalid
+                    board = torch.zeros((10, 10), dtype=torch.float32)
             
-            if isinstance(visible_board, torch.Tensor):
-                if visible_board.device != self.device:
-                    visible_board = visible_board.to(self.device)
-            else:
-                visible_board = torch.tensor(visible_board, dtype=torch.float32, device=self.device)
-        
-        # Ensure it's a tensor on GPU
-        if not isinstance(visible_board, torch.Tensor):
-            visible_board = torch.tensor(visible_board, dtype=torch.float32, device=self.device)
-        elif visible_board.device != self.device:
-            visible_board = visible_board.to(self.device)
-        
-        # Reshape to (1, 10, 10) if it's (10, 10) - Add channel dimension
-        if visible_board.dim() == 2:
-            state = visible_board.unsqueeze(0)
-        else:
-            state = visible_board
+            board = board.to(self.device).float()
             
-        return state
+            # Normalize
+            board = board / 12.0
+            
+            # Add channel dim: (1, 10, 10)
+            if board.dim() == 2:
+                return board.unsqueeze(0)
+            return board
+            
+        return torch.zeros((1, 10, 10), device=self.device)
 
     def get_batch_state_representation(self, states, game_states=None) -> torch.Tensor:
         """
