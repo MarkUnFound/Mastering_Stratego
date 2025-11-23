@@ -2,4 +2,7 @@
 History/
 dqn_models/
 setup_agent_models/
-Modular Stratego\__pycache__/
+
+# Ignore Python cache directories
+__pycache__/
+Modular Stratego/__pycache__/

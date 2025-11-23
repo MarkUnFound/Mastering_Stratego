@@ -101,7 +101,32 @@ class ParallelStrategoEnvironment:
                 # It's an action
                 remote.send(('step', cmd_data))
                 
-        results = [remote.recv() for remote in self.remotes]
+        results = []
+        for i, remote in enumerate(self.remotes):
+            try:
+                result = remote.recv()
+                results.append(result)
+            except (EOFError, BrokenPipeError) as e:
+                print(f"\n⚠️  Worker {i} pipe broken: {e}")
+                print(f"   This usually means a worker crashed. Restarting worker...")
+                # Close the broken process
+                self.ps[i].terminate()
+                self.ps[i].join(timeout=1)
+                # Create a new worker
+                ctx = mp.get_context('spawn')
+                parent_remote, work_remote = ctx.Pipe()
+                self.remotes = list(self.remotes)
+                self.remotes[i] = parent_remote
+                self.remotes = tuple(self.remotes)
+                p = ctx.Process(target=worker, args=(work_remote, parent_remote, i, self.device))
+                p.daemon = True
+                p.start()
+                self.ps[i] = p
+                work_remote.close()
+                # Send reset to new worker and get result
+                parent_remote.send(('reset', {}))
+                result = parent_remote.recv()
+                results.append(result)
         
         # Unzip results
         next_states, rewards, dones, infos, valid_moves = zip(*results)

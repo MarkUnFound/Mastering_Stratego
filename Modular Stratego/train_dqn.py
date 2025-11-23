@@ -44,8 +44,8 @@ except ImportError:
 
 
 # Hyperparameters
-NUM_ENVS = 16  # Number of parallel environments
-BATCH_SIZE = 32
+NUM_ENVS = 16  # Number of parallel environments (balanced for CPU/GPU)
+BATCH_SIZE = 128  # Large batch size to maximize GPU usage and amortize PER sampling cost
 GAMMA = 0.99
 EPSILON_START = 1.0
 EPSILON_MIN = 0.1
@@ -57,8 +57,8 @@ NUM_EPISODES = 10000  # Total episodes to train
 SAVE_INTERVAL = 50   # Save model every N episodes
 EVAL_INTERVAL = 100  # Evaluate every N episodes
 PREFETCH_QUEUE_SIZE = 4 # Size of the prefetch queue
-REPLAY_UPDATE_INTERVAL = 8 # Train every N steps
-REPLAY_UPDATES_PER_STEP = 1 # Updates per training step
+REPLAY_UPDATE_INTERVAL = 2 # Train every N steps (train very frequently)
+REPLAY_UPDATES_PER_STEP = 4 # Multiple gradient updates per training step (maximize GPU work)
 TARGET_UPDATE_INTERVAL = 1000 # Update target network every N steps
 
 # Visualization settings

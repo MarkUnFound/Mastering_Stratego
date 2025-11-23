@@ -183,10 +183,11 @@ class DQNAgent:
         self.critic = ExploitabilityCritic(input_shape=(1, 10, 10), output_size=action_size).to(device)
         self.critic_optimizer = optim.AdamW(self.critic.parameters(), lr=lr, weight_decay=0.01)
         self.critic_loss_fn = nn.CrossEntropyLoss()
-        self.critic_weight = 0.1  # Weight for predictability penalty
+        self.critic_weight = 0.05  # Increased weight for predictability penalty
+        self.entropy_bonus = 0.02  # Bonus for action diversity
         
-        # Experience replay - Prioritized
-        self.memory = PrioritizedReplayBuffer(buffer_size)
+        # Experience replay - Prioritized (GPU-accelerated)
+        self.memory = PrioritizedReplayBuffer(buffer_size, device=device)
         self.beta = 0.4  # Initial importance sampling weight
         self.beta_increment = 0.00001  # Increment per step
         
@@ -235,7 +236,7 @@ class DQNAgent:
         self.update_target_network()
         
         # Mixed Precision Training
-        self.scaler = torch.cuda.amp.GradScaler()
+        self.scaler = torch.amp.GradScaler('cuda')
         
     def reset(self):
         """Reset the DQN agent by reinitializing networks and optimizer"""
@@ -417,14 +418,20 @@ class DQNAgent:
         # Get Q-values for all valid moves at once (vectorized)
         valid_q_values = q_values[0, action_indices]
         
+        # Add entropy bonus: encourage exploring less-visited actions
+        # Calculate softmax over valid actions to get policy distribution
+        policy_probs = F.softmax(valid_q_values / 0.1, dim=0)  # Temperature 0.1
+        policy_entropy = -(policy_probs * torch.log(policy_probs + 1e-10)).sum()
+        entropy_bonus_per_action = self.entropy_bonus * policy_entropy / len(valid_moves)
+        
         # Add exploration bonus for uncertain positions
         exploration_bonuses = torch.zeros(len(valid_moves), device=self.device)
         for i, move in enumerate(valid_moves):
             uncertainty = self.get_move_uncertainty(move, uncertainty_map)
             exploration_bonuses[i] = uncertainty * self.uncertainty_exploration_multiplier
         
-        # Modified Q-values: Q + exploration_bonus
-        modified_q_values = valid_q_values + exploration_bonuses
+        # Modified Q-values: Q + exploration_bonus + entropy_bonus
+        modified_q_values = valid_q_values + exploration_bonuses + entropy_bonus_per_action
         
         # Choose action with highest modified Q-value
         best_idx = torch.argmax(modified_q_values).item()
@@ -473,7 +480,7 @@ class DQNAgent:
         
         # --- 1. Train Critic First ---
         # Predict action from state
-        with torch.cuda.amp.autocast():
+        with torch.amp.autocast('cuda'):
             critic_logits = self.critic(states)
             critic_loss = self.critic_loss_fn(critic_logits, actions)
         
@@ -491,8 +498,8 @@ class DQNAgent:
             # Get probability assigned to the taken action
             action_probs = probs.gather(1, actions.unsqueeze(1)).squeeze()
             # Penalty = critic_weight * probability (higher prob = higher penalty)
-            # Reduced weight to 0.01 to avoid overwhelming game rewards
-            penalty = 0.01 * action_probs
+            # Increased weight to make the agent less predictable
+            penalty = self.critic_weight * action_probs
             avg_penalty = penalty.mean().item()
             
             # Calculate entropy for metrics
@@ -500,7 +507,7 @@ class DQNAgent:
             entropy = (-probs * torch.log(probs + 1e-10)).sum(dim=1).mean().item()
             
         # --- 3. Train Agent with Penalized Rewards ---
-        with torch.cuda.amp.autocast():
+        with torch.amp.autocast('cuda'):
             # Current Q values
             current_q_values = self.q_network(states).gather(1, actions.unsqueeze(1))
         
