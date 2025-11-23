@@ -217,6 +217,8 @@ class DQNAgent:
         
         # Track policy losses
         self.policy_losses = []
+        self.agent_losses = []
+        self.opp_losses = []
         self.q_values_history = []
         self.entropy_history = []
         
@@ -949,7 +951,10 @@ class DQNAgent:
         # 3. Network forward pass
         self.q_network.eval()
         with torch.no_grad():
-            base_q_values_batch = self.q_network(state_tensor)
+            q_vectors_batch = self.q_network(state_tensor)
+            # Combine heads: Maximize (Q_agent - Q_opp)
+            # Output shape: (batch, action_size)
+            base_q_values_batch = q_vectors_batch[:, :, 0] - q_vectors_batch[:, :, 1]
         self.q_network.train()
         
         # 4. Process each env
@@ -987,6 +992,17 @@ class DQNAgent:
                     uncertainty = self.get_move_uncertainty(move, uncertainty_map)
                     exploration_bonuses[j] = uncertainty * self.uncertainty_exploration_multiplier
                 
+                # Ensure shapes match for addition
+                if valid_q_values.dim() > 1:
+                    valid_q_values = valid_q_values.squeeze()
+                
+                # If valid_q_values became a scalar (0-d tensor) because there was only 1 move, unsqueeze it back to 1D
+                if valid_q_values.dim() == 0:
+                    valid_q_values = valid_q_values.unsqueeze(0)
+                    
+                if exploration_bonuses.dim() > 1:
+                    exploration_bonuses = exploration_bonuses.squeeze()
+
                 modified_q_values = valid_q_values + exploration_bonuses
                 best_idx = torch.argmax(modified_q_values).item()
                 actions[i] = valid_moves[best_idx]

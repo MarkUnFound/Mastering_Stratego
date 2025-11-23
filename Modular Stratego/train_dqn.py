@@ -44,7 +44,7 @@ except ImportError:
 
 
 # Hyperparameters
-NUM_ENVS = 16  # Number of parallel environments
+NUM_ENVS = 4  # Number of parallel environments (reduced from 16 for faster iteration)
 BATCH_SIZE = 32
 GAMMA = 0.99
 EPSILON_START = 1.0
@@ -57,7 +57,7 @@ NUM_EPISODES = 10000  # Total episodes to train
 SAVE_INTERVAL = 50   # Save model every N episodes
 EVAL_INTERVAL = 100  # Evaluate every N episodes
 PREFETCH_QUEUE_SIZE = 4 # Size of the prefetch queue
-REPLAY_UPDATE_INTERVAL = 8 # Train every N steps
+REPLAY_UPDATE_INTERVAL = 16 # Train every N steps (reduced frequency for speed)
 REPLAY_UPDATES_PER_STEP = 1 # Updates per training step
 TARGET_UPDATE_INTERVAL = 1000 # Update target network every N steps
 
@@ -1366,6 +1366,10 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
     # Initialize loss lists (transient for current run)
     agent1_losses = []
     agent2_losses = []
+    agent1_losses_agent = []
+    agent1_losses_opp = []
+    agent2_losses_agent = []
+    agent2_losses_opp = []
     
     # agent1_prefetcher = ReplayPrefetcher(agent1, max_queue_size=PREFETCH_QUEUE_SIZE)
     # agent2_prefetcher = ReplayPrefetcher(agent2, max_queue_size=PREFETCH_QUEUE_SIZE)
@@ -1614,6 +1618,22 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                     completed_episodes += 1
                     total_episodes += 1
                     pbar.update(1)
+                    
+                    # Update progress bar with metrics
+                    postfix_metrics = {
+                        'win_rate': f"{wins_agent1/(wins_agent1+wins_agent2+draws):.2f}" if (wins_agent1+wins_agent2+draws) > 0 else "0.00",
+                        'epsilon': f"{agent1.epsilon:.2f}"
+                    }
+                    
+                    # Add loss metrics if available
+                    if agent1_losses:
+                        postfix_metrics['loss'] = f"{np.mean(agent1_losses[-10:]):.4f}"
+                    if agent1_losses_agent:
+                        postfix_metrics['L_agt'] = f"{np.mean(agent1_losses_agent[-10:]):.4f}"
+                    if agent1_losses_opp:
+                        postfix_metrics['L_opp'] = f"{np.mean(agent1_losses_opp[-10:]):.4f}"
+                        
+                    pbar.set_postfix(postfix_metrics)
                 
                     # Update global stats
                     total_rewards_agent1.append(episode_rewards_agent1[i])
@@ -1814,10 +1834,18 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                      loss1 = agent1.replay()
                      if loss1 is not None:
                          agent1_losses.append(loss1)
+                         if hasattr(agent1, 'agent_losses') and agent1.agent_losses:
+                             agent1_losses_agent.append(agent1.agent_losses[-1])
+                         if hasattr(agent1, 'opp_losses') and agent1.opp_losses:
+                             agent1_losses_opp.append(agent1.opp_losses[-1])
                  
                      loss2 = agent2.replay()
                      if loss2 is not None:
                          agent2_losses.append(loss2)
+                         if hasattr(agent2, 'agent_losses') and agent2.agent_losses:
+                             agent2_losses_agent.append(agent2.agent_losses[-1])
+                         if hasattr(agent2, 'opp_losses') and agent2.opp_losses:
+                             agent2_losses_opp.append(agent2.opp_losses[-1])
                      
                      # Train PBS Evaluator
                      eval_loss1 = agent1.train_pbs_evaluator()
