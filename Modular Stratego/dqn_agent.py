@@ -928,6 +928,9 @@ class DQNAgent:
             visible_board = torch.tensor(visible_board, dtype=torch.float32, device=self.device)
         elif visible_board.device != self.device:
             visible_board = visible_board.to(self.device)
+        else:
+            # CRITICAL: Clone to avoid modifying the environment's board tensor in-place
+            visible_board = visible_board.clone()
         
         # Reshape to (1, 10, 10) if it's (10, 10) - Add channel dimension
         if visible_board.dim() == 2:

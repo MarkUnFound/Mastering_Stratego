@@ -59,8 +59,20 @@ class PrioritizedReplayBuffer:
         # Get valid priorities (only up to current size)
         valid_priorities = self.priorities[:self.size]
         
+        # Check for NaNs or Infs in priorities
+        if torch.isnan(valid_priorities).any() or torch.isinf(valid_priorities).any():
+            # Replace NaNs/Infs with max priority or 1.0
+            valid_priorities = torch.nan_to_num(valid_priorities, nan=1.0, posinf=1.0, neginf=1.0)
+            # Update the stored priorities to fix the buffer
+            self.priorities[:self.size] = valid_priorities
+            
         # Normalize to probabilities (on GPU)
-        probabilities = valid_priorities / valid_priorities.sum()
+        sum_priorities = valid_priorities.sum()
+        if sum_priorities == 0:
+            # Handle case where all priorities are zero
+            probabilities = torch.ones_like(valid_priorities) / self.size
+        else:
+            probabilities = valid_priorities / sum_priorities
         
         # Sample indices using multinomial (GPU operation)
         indices = torch.multinomial(probabilities, batch_size, replacement=True)

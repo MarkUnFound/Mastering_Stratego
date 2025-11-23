@@ -7,7 +7,7 @@ from piece import PieceType
 BOARD_SIZE = 10
 EMPTY_SQUARE = 0
 LAKE_SQUARE = -13
-HIDDEN_PIECE = -3
+HIDDEN_PIECE = -20  # Changed from -3 to avoid ambiguity with Scout (value 3, or -3 for Agent 2)
 
 class Board:
     """Represents the game board with hidden information management."""

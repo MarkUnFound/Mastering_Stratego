@@ -42,6 +42,10 @@ try:
 except ImportError:
     RESET_AVAILABLE = False
 
+# Import random starting player utilities
+# This helps balance training by randomizing which agent goes first
+from random_starting_player import should_swap_players, swap_placements, get_batch_swap_decisions
+
 
 # Hyperparameters
 NUM_ENVS = 16  # Number of parallel environments (balanced for CPU/GPU)
