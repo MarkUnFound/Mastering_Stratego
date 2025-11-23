@@ -234,6 +234,9 @@ class DQNAgent:
         # Update target network
         self.update_target_network()
         
+        # Mixed Precision Training
+        self.scaler = torch.cuda.amp.GradScaler()
+        
     def reset(self):
         """Reset the DQN agent by reinitializing networks and optimizer"""
         # Reinitialize Q-network and target network
@@ -470,13 +473,16 @@ class DQNAgent:
         
         # --- 1. Train Critic First ---
         # Predict action from state
-        critic_logits = self.critic(states)
-        critic_loss = self.critic_loss_fn(critic_logits, actions)
+        with torch.cuda.amp.autocast():
+            critic_logits = self.critic(states)
+            critic_loss = self.critic_loss_fn(critic_logits, actions)
         
         self.critic_optimizer.zero_grad()
-        critic_loss.backward()
+        self.scaler.scale(critic_loss).backward()
+        self.scaler.unscale_(self.critic_optimizer)
         torch.nn.utils.clip_grad_norm_(self.critic.parameters(), max_norm=10.0)
-        self.critic_optimizer.step()
+        self.scaler.step(self.critic_optimizer)
+        self.scaler.update()
         
         # --- 2. Calculate Predictability Penalty ---
         # We use the updated critic to calculate the penalty
@@ -494,8 +500,9 @@ class DQNAgent:
             entropy = (-probs * torch.log(probs + 1e-10)).sum(dim=1).mean().item()
             
         # --- 3. Train Agent with Penalized Rewards ---
-        # Current Q values
-        current_q_values = self.q_network(states).gather(1, actions.unsqueeze(1))
+        with torch.cuda.amp.autocast():
+            # Current Q values
+            current_q_values = self.q_network(states).gather(1, actions.unsqueeze(1))
         
         # Calculate average Q-value for metrics
         avg_q_value = current_q_values.mean().item()
@@ -527,9 +534,11 @@ class DQNAgent:
         
         # Optimize Agent
         self.optimizer.zero_grad()
-        loss.backward()
+        self.scaler.scale(loss).backward()
+        self.scaler.unscale_(self.optimizer)
         torch.nn.utils.clip_grad_norm_(self.q_network.parameters(), max_norm=10.0)
-        self.optimizer.step()
+        self.scaler.step(self.optimizer)
+        self.scaler.update()
         
         # --- 4. Logging & Updates ---
         

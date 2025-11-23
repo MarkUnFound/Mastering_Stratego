@@ -1,4 +1,4 @@
-import multiprocessing as mp
+import torch.multiprocessing as mp
 import numpy as np
 import torch
 from environment import StrategoEnvironment
@@ -65,8 +65,9 @@ class ParallelStrategoEnvironment:
         """
         self.num_envs = num_envs
         self.device = device
-        self.remotes, self.work_remotes = zip(*[mp.Pipe() for _ in range(num_envs)])
-        self.ps = [mp.Process(target=worker, args=(work_remote, remote, i, device)) 
+        ctx = mp.get_context('spawn')
+        self.remotes, self.work_remotes = zip(*[ctx.Pipe() for _ in range(num_envs)])
+        self.ps = [ctx.Process(target=worker, args=(work_remote, remote, i, device)) 
                    for i, (work_remote, remote) in enumerate(zip(self.work_remotes, self.remotes))]
         
         for p in self.ps:
