@@ -51,7 +51,7 @@ EPSILON_START = 1.0
 EPSILON_MIN = 0.1
 EPSILON_DECAY = 0.99995  # Slower decay for longer training
 TARGET_UPDATE = 1000
-MEMORY_SIZE = 100000
+MEMORY_SIZE = 10000000
 LEARNING_RATE = 0.0001
 NUM_EPISODES = 10000  # Total episodes to train
 SAVE_INTERVAL = 50   # Save model every N episodes
@@ -988,8 +988,8 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
     loaded_history = _load_training_history(model_save_path)
     
     # Create game-playing agents (with increased learning rate for CNN)
-    agent1 = DQNAgent(player_id=1, device=device, lr=0.0001, batch_size=TRAINING_BATCH_SIZE, num_envs=NUM_ENVS)
-    agent2 = DQNAgent(player_id=-1, device=device, lr=0.0001, batch_size=TRAINING_BATCH_SIZE, num_envs=NUM_ENVS)
+    agent1 = DQNAgent(player_id=1, device=device, lr=0.0001, batch_size=TRAINING_BATCH_SIZE, num_envs=NUM_ENVS, buffer_size=MEMORY_SIZE)
+    agent2 = DQNAgent(player_id=-1, device=device, lr=0.0001, batch_size=TRAINING_BATCH_SIZE, num_envs=NUM_ENVS, buffer_size=MEMORY_SIZE)
     
     # Try to load the most recent saved models (separate files)
     try:
@@ -1185,6 +1185,16 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
         print("   Starting with fresh agents")
         traceback.print_exc()
     
+    
+    # Ensure learning rates are not too low (reset if decayed too much)
+    # This prevents agents from being "stuck" if the LR was crushed in a previous run
+    # CRITICAL FIX: Re-initialize optimizers completely to clear bad momentum/variance state
+    print("🧹 Re-initializing optimizers to clear potential 'stuck' states...")
+    for agent in [agent1, agent2]:
+        # Keep the weights, but get a fresh optimizer
+        agent.optimizer = torch.optim.AdamW(agent.q_network.parameters(), lr=0.0001, weight_decay=0.01)
+        print(f"   Re-initialized optimizer for {agent.name}")
+
     # Create setup agents (for piece placement)
     setup_agent1 = SetupAgent(player_id=1, device=device) if use_setup_agents else None
     setup_agent2 = SetupAgent(player_id=-1, device=device) if use_setup_agents else None
@@ -1827,6 +1837,17 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                      eval_loss2 = agent2.train_pbs_evaluator()
                      if eval_loss2 is not None:
                          pbs_evaluator2_losses.append(eval_loss2)
+                 
+                 # DEBUG: Print status every 100 training steps (approx 400 env steps)
+                 if (total_steps // REPLAY_UPDATE_INTERVAL) % 100 == 0:
+                     print(f"\n🔍 Diagnostics (Step {total_steps}):")
+                     print(f"  Agent 1: Mem={len(agent1.memory)}, Loss={agent1_losses[-1] if agent1_losses else 'N/A'}, LR={agent1.optimizer.param_groups[0]['lr']:.2e}")
+                     print(f"  Agent 2: Mem={len(agent2.memory)}, Loss={agent2_losses[-1] if agent2_losses else 'N/A'}, LR={agent2.optimizer.param_groups[0]['lr']:.2e}")
+                     if len(agent2.memory) < agent2.batch_size:
+                         print(f"  ⚠️ Agent 2 memory too low to train (< {agent2.batch_size})")
+                     if agent2_losses and agent2_losses[-1] == 0.0:
+                         print(f"  ⚠️ Agent 2 loss is exactly 0.0!")
+
                  
             # Update target networks
             # Update every TARGET_UPDATE_INTERVAL steps

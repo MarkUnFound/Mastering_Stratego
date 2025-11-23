@@ -16,6 +16,7 @@ from probabilistic_belief_state import ProbabilisticBeliefState, PieceActionAare
 if PBS_EVALUATOR_AVAILABLE:
     from pbs_evaluator import PBSEvaluator
 from critic import ExploitabilityCritic
+from prioritized_memory import PrioritizedReplayBuffer
 
 # Define a named tuple for experiences
 Experience = namedtuple('Experience', ['state', 'action', 'reward', 'next_state', 'done'])
@@ -40,17 +41,31 @@ class ConvDQN(nn.Module):
         # Calculate flattened size: 64 * 10 * 10 = 6400
         self.flatten_size = 64 * 10 * 10
         
-        self.fc1 = nn.Linear(self.flatten_size, 512)
-        self.fc2 = nn.Linear(512, output_size)
+        # Dueling Architecture
+        # Value stream: State -> Value V(s)
+        self.value_fc = nn.Linear(self.flatten_size, 512)
+        self.value_out = nn.Linear(512, 1)
+        
+        # Advantage stream: State -> Advantage A(s, a)
+        self.advantage_fc = nn.Linear(self.flatten_size, 512)
+        self.advantage_out = nn.Linear(512, output_size)
         
     def forward(self, x):
         """Forward pass through the network"""
         x = F.relu(self.conv1(x))
         x = F.relu(self.conv2(x))
         x = x.view(x.size(0), -1)  # Flatten
-        x = F.relu(self.fc1(x))
-        x = self.fc2(x)
-        return x
+        
+        # Value stream
+        val = F.relu(self.value_fc(x))
+        val = self.value_out(val)
+        
+        # Advantage stream
+        adv = F.relu(self.advantage_fc(x))
+        adv = self.advantage_out(adv)
+        
+        # Combine: Q(s, a) = V(s) + (A(s, a) - mean(A(s, a)))
+        return val + (adv - adv.mean(dim=1, keepdim=True))
 
 
 class DQNAgent:
@@ -170,8 +185,10 @@ class DQNAgent:
         self.critic_loss_fn = nn.CrossEntropyLoss()
         self.critic_weight = 0.1  # Weight for predictability penalty
         
-        # Experience replay - store tensors directly on GPU
-        self.memory = deque(maxlen=buffer_size)
+        # Experience replay - Prioritized
+        self.memory = PrioritizedReplayBuffer(buffer_size)
+        self.beta = 0.4  # Initial importance sampling weight
+        self.beta_increment = 0.00001  # Increment per step
         
         # Track policy losses
         self.policy_losses = []
@@ -200,8 +217,8 @@ class DQNAgent:
         self.lr_reduction_factor = 0.5  # Reduce LR by half if needed
         self.lr_increase_factor = 1.1  # Increase LR by 10% when loss is very low
         self.lr_increase_threshold = 0.1  # If loss < 0.1, consider increasing LR
-        self.high_loss_threshold = 20.0  # Threshold for aggressive reduction (was 3.0)
-        self.critical_loss_threshold = 50.0  # Threshold for critical reduction (was 5.0)
+        self.high_loss_threshold = 100.0  # Threshold for aggressive reduction (was 20.0)
+        self.critical_loss_threshold = 200.0  # Threshold for critical reduction (was 50.0)
         
         # Adaptive epsilon: increase if performance stagnates
         self.reward_history = deque(maxlen=1000)  # Track recent rewards
@@ -290,10 +307,12 @@ class DQNAgent:
         experience = Experience(state, action, reward, next_state, done)
         
         if abs(reward) > 5.0:  # Win/loss experiences
-            for _ in range(3):  # Triple-store important experiences
-                self.memory.append(experience)
+            # With PER, we don't strictly need triple storage as priority handles importance
+            # But we can give it a high initial error if we want to force priority
+            # For now, just add normally, PER will prioritize if TD error is high
+            self.memory.add(experience)
         else:
-            self.memory.append(experience)
+            self.memory.add(experience)
         
         # Increment step counter for epsilon decay
         self.step_count += 1
@@ -302,7 +321,8 @@ class DQNAgent:
         """Sample a batch from the replay buffer without performing an update."""
         if len(self.memory) < self.batch_size:
             return None
-        return random.sample(self.memory, self.batch_size)
+        batch, _, _ = self.memory.sample(self.batch_size, self.beta)
+        return batch
         
     def act(self, state, valid_moves: List[Tuple[Tuple[int, int], Tuple[int, int]]], 
             game_state=None) -> Tuple[Tuple[int, int], Tuple[int, int]]:
@@ -424,7 +444,19 @@ class DQNAgent:
         if batch is None:
             if len(self.memory) < self.batch_size:
                 return None
-            batch = random.sample(self.memory, self.batch_size)
+            # Sample with priorities
+            batch, idxs, is_weights = self.memory.sample(self.batch_size, self.beta)
+            
+            # Anneal beta
+            self.beta = min(1.0, self.beta + self.beta_increment)
+        else:
+            # If batch provided externally (e.g. prefetcher), we assume it's just the batch list
+            # This breaks PER update logic if prefetcher doesn't return idxs/weights
+            # For now, assume standard internal sampling if batch is None
+            # If using prefetcher, it needs to be updated to return (batch, idxs, weights)
+            # Fallback for external batch: uniform weights, no update
+            idxs = []
+            is_weights = np.ones(len(batch))
         
         # Stack states and next_states (already on GPU from remember())
         states = torch.stack([e.state for e in batch])
@@ -434,6 +466,7 @@ class DQNAgent:
         actions = torch.tensor([e.action for e in batch], dtype=torch.long, device=self.device)
         rewards = torch.tensor([e.reward for e in batch], dtype=torch.float32, device=self.device)
         dones = torch.tensor([e.done for e in batch], dtype=torch.bool, device=self.device)
+        weights = torch.tensor(is_weights, dtype=torch.float32, device=self.device)
         
         # --- 1. Train Critic First ---
         # Predict action from state
@@ -452,8 +485,8 @@ class DQNAgent:
             # Get probability assigned to the taken action
             action_probs = probs.gather(1, actions.unsqueeze(1)).squeeze()
             # Penalty = critic_weight * probability (higher prob = higher penalty)
-            # Reduced weight to 0.05 to avoid overwhelming game rewards
-            penalty = 0.05 * action_probs
+            # Reduced weight to 0.01 to avoid overwhelming game rewards
+            penalty = 0.01 * action_probs
             avg_penalty = penalty.mean().item()
             
             # Calculate entropy for metrics
@@ -468,8 +501,12 @@ class DQNAgent:
         avg_q_value = current_q_values.mean().item()
         
         # Next Q values from target network
+        # Double DQN: Use online network to select action, target network to evaluate it
         with torch.no_grad():
-            next_q_values = self.target_network(next_states).max(1)[0]
+            # Select best action using online network
+            next_state_actions = self.q_network(next_states).max(1)[1]
+            # Evaluate that action using target network
+            next_q_values = self.target_network(next_states).gather(1, next_state_actions.unsqueeze(1)).squeeze()
             
         # Penalize rewards: Reward - Penalty
         # This encourages the agent to choose actions that are less predictable
@@ -478,8 +515,15 @@ class DQNAgent:
         # Calculate target Q-values
         target_q_values = penalized_rewards + (self.gamma * next_q_values * ~dones)
         
-        # Compute loss
-        loss = F.smooth_l1_loss(current_q_values.squeeze(), target_q_values)
+        # Compute loss with importance sampling weights
+        # Smooth L1 loss per element (reduction='none')
+        loss_elementwise = F.smooth_l1_loss(current_q_values.squeeze(), target_q_values, reduction='none')
+        loss = (loss_elementwise * weights).mean()
+        
+        # Update priorities
+        if idxs:
+            td_errors = torch.abs(target_q_values - current_q_values.squeeze()).detach().cpu().numpy()
+            self.memory.update(idxs, td_errors)
         
         # Optimize Agent
         self.optimizer.zero_grad()

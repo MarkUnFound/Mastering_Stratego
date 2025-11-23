@@ -454,11 +454,13 @@ class ProbabilisticBeliefState:
         dist_from_center = np.sqrt((r_to - center_r)**2 + (c_to - center_c)**2) / 10.0
         
         if self.player_id == 1:
-            is_forward = 1.0 if r_to > r_from else 0.0
-            is_backward = 1.0 if r_to < r_from else 0.0
-        else:
+            # Player 1 is at bottom (rows 6-9), moves UP (decreasing r) to advance
             is_forward = 1.0 if r_to < r_from else 0.0
             is_backward = 1.0 if r_to > r_from else 0.0
+        else:
+            # Player 2 is at top (rows 0-3), moves DOWN (increasing r) to advance
+            is_forward = 1.0 if r_to > r_from else 0.0
+            is_backward = 1.0 if r_to < r_from else 0.0
         
         is_lateral = 1.0 if r_from == r_to or c_from == c_to else 0.0
         aggressiveness = is_attack * 0.5
@@ -1062,9 +1064,9 @@ class ProbabilisticBeliefState:
         beliefs = self.belief_distributions[pos]
         
         # Pattern 1: Aggressive moves (towards enemy side) suggest higher rank
-        # Agent 1 starts top (0-3), moves down (increasing r)
-        # Agent 2 starts bottom (6-9), moves up (decreasing r)
-        is_advance = (r_to > r_from) if self.player_id == 1 else (r_to < r_from)
+        # Agent 1 starts bottom (6-9), moves up (decreasing r)
+        # Agent 2 starts top (0-3), moves down (increasing r)
+        is_advance = (r_to < r_from) if self.player_id == 1 else (r_to > r_from)
         
         if is_advance:
             # Slightly increase probability of higher ranks (Miner, General, Marshal)
