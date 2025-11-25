@@ -15,8 +15,15 @@ import random
 import csv
 import os
 from stratego import Board, auto_setup, side_name, FILES, Piece
-from bot_logic import EnhancedBotLogic
-from setup_agent_integration import StrategicSetupAgent
+from kluss_adapter import KlussBot
+
+# ... (Existing imports)
+
+# Initialize Bot
+bot_logic = KlussBot(player_id=2) # Assuming Bot is P2
+
+# ... (Existing code)
+
 
 pygame.init()
 
@@ -43,7 +50,7 @@ game_state = "menu"
 message = "Welcome to Enhanced Stratego!"
 human_side = 1
 vs_bot = False
-bot_logic = None
+
 setup_agent = None
 move_history = []
 fullscreen = False  # Fullscreen mode flag
@@ -768,6 +775,36 @@ def choose_bot_move(board, owner):
 def bot_turn():
     global message, current_player, game_state
     draw_move_history()
+    
+    # Visualize Thinking (Q-Values)
+    if hasattr(bot_logic, 'last_q_values') and bot_logic.last_q_values:
+        # Draw arrows for top moves
+        dims = get_board_dimensions()
+        tile_size = dims['tile_size']
+        start_x = dims['board_start_x']
+        start_y = dims['board_start_y']
+        
+        for (src, dst), val in bot_logic.last_q_values:
+            r1, c1 = src
+            r2, c2 = dst
+            
+            x1 = start_x + c1 * tile_size + tile_size // 2
+            y1 = start_y + r1 * tile_size + tile_size // 2
+            x2 = start_x + c2 * tile_size + tile_size // 2
+            y2 = start_y + r2 * tile_size + tile_size // 2
+            
+            # Draw Arrow
+            pygame.draw.line(screen, (0, 255, 0), (x1, y1), (x2, y2), 4)
+            pygame.draw.circle(screen, (0, 255, 0), (x2, y2), 6)
+            
+            # Draw Value
+            font = pygame.font.SysFont('Arial', 16, bold=True)
+            text = font.render(f"{val:.2f}", True, (255, 255, 0))
+            screen.blit(text, (x2, y2))
+            
+        pygame.display.flip()
+        time.sleep(1.0) # Pause to show thinking
+
     time.sleep(0.5)
 
     move = choose_bot_move(board, current_player)
@@ -819,10 +856,6 @@ def bot_turn():
         else:
             lost_pieces_player2.append(attacker_copy)
 
-    # Update bot's PBS with opponent's revealed pieces (internal, not displayed)
-    if piece_before and piece_before.owner == human_side and bot_logic:
-        if piece_before.revealed:
-            bot_logic.pbs.update_from_reveal(dst, piece_before.rank)
 
     time.sleep(0.3)
 
@@ -882,10 +915,6 @@ def human_move(src, dst):
         else:
             lost_pieces_player2.append(attacker_copy)
     
-    # Update bot's PBS about human's move (internal, not displayed)
-    if vs_bot and bot_logic and piece_at_src and piece_at_src.owner == human_side:
-        if piece_at_src.revealed and current_player == human_side:
-            bot_logic.pbs.update_from_reveal(src, piece_at_src.rank)
     
     if winner:
         if vs_bot:
@@ -1016,21 +1045,13 @@ while running:
             auto_setup(board, human_side)
             
             try:
-                bot_logic = EnhancedBotLogic(agent_model_path, player_id=2)
+                bot_logic = KlussBot(player_id=2)
                 bot_logic.reset()
-                print("✓ Enhanced bot initialized with PBS")
+                print("✓ KlussBot initialized")
             except Exception as e:
-                print(f"Enhanced bot initialization failed: {e}")
-                print(f"Attempting fallback to basic BotLogic with model: {agent_model_path}")
-                if not os.path.exists(agent_model_path):
-                    print(f"❌ Error: Model file not found: {agent_model_path}")
-                    print("Please ensure the model file exists in one of these locations:")
-                    print("  - Python Stratego Game/dqn_agent_final.pth")
-                    print("  - Python Stratego Game/user_input_files/dqn_agent_final.pth")
-                    print("  - dqn_models/dqn_agent_final.pth")
-                    raise FileNotFoundError(f"Model file not found: {agent_model_path}")
-                from bot_logic import BotLogic
-                bot_logic = BotLogic(agent_model_path)
+                print(f"KlussBot initialization failed: {e}")
+                # Fallback to random bot or handle error
+                print("Falling back to random moves (if implemented in KlussBot fallback)")
             
             game_state = "setup"
             message = "Arrange your pieces. Click to select and move."

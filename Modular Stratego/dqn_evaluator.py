@@ -201,5 +201,13 @@ class DQNEvaluator:
         """
         with torch.no_grad():
             state_tensors = state_tensors.to(self.device)
-            values = self.network(state_tensors)
+            
+            if isinstance(self.network, HistoryAwareDQNEvaluator):
+                # Add seq dim if missing
+                if state_tensors.dim() == 4:
+                    state_tensors = state_tensors.unsqueeze(1) # (Batch, 1, C, H, W)
+                values, _ = self.network(state_tensors)
+            else:
+                values = self.network.get_value(state_tensors)
+                
             return values.squeeze().tolist()

@@ -1,203 +1,277 @@
 import torch
 import torch.optim as optim
 import torch.nn.functional as F
+import torch.multiprocessing as mp
 from torch.utils.data import DataLoader, Dataset
 import numpy as np
 import random
 from collections import deque
 from typing import List, Tuple
 import os
+import time
+import copy
 
 from environment import StrategoEnvironment
 from hybrid_agent import HybridAgent
 from dqn_evaluator import DQNEvaluator
-from probabilistic_belief_state import ProbabilisticBeliefState
 
-class GameDataset(Dataset):
-    def __init__(self, data):
-        self.data = data # List of (state_seq, outcome)
+# Set start method to spawn for CUDA compatibility (though we use CPU for workers)
+try:
+    mp.set_start_method('spawn', force=True)
+except RuntimeError:
+    pass
 
-    def __len__(self):
-        return len(self.data)
-
-    def __getitem__(self, idx):
-        return self.data[idx]
-
-class SelfPlayTrainer:
-    def __init__(self, 
-                 save_dir="models",
-                 device="cuda" if torch.cuda.is_available() else "cpu",
-                 lr=1e-4,
-                 batch_size=32,
-                 buffer_size=10000):
+class SelfPlayWorker(mp.Process):
+    def __init__(self, rank, shared_model, result_queue, league, device='cpu'):
+        super(SelfPlayWorker, self).__init__()
+        self.rank = rank
+        self.shared_model = shared_model
+        self.result_queue = result_queue
+        self.league = league # Shared list or manager list
+        self.device = device # Worker device (usually CPU)
         
-        self.device = device
-        self.save_dir = save_dir
-        os.makedirs(save_dir, exist_ok=True)
+    def run(self):
+        # Initialize Environment (Independent per worker)
+        env = StrategoEnvironment(device=self.device)
         
-        # Initialize Environment
-        self.env = StrategoEnvironment(device=device)
-        
-        # Initialize Evaluator (Shared)
-        self.evaluator = DQNEvaluator(device=device, use_history=True)
-        self.optimizer = optim.Adam(self.evaluator.network.parameters(), lr=lr)
+        # Initialize Evaluator using Shared Model
+        # We create a local wrapper but point to shared weights
+        evaluator = DQNEvaluator(device=self.device, use_history=True)
+        # We don't load state dict, we just use the shared network in the forward pass?
+        # Or we copy weights? 
+        # For A3C style, we use the shared model directly.
+        # But DQNEvaluator wraps the network.
+        evaluator.network = self.shared_model
         
         # Initialize Agents
-        # They share the same evaluator instance (and thus weights)
-        self.agent_p1 = HybridAgent(player_id=1, device=device)
-        self.agent_p1.evaluator = self.evaluator # Force share
+        agent_p1 = HybridAgent(player_id=1, device=self.device)
+        agent_p1.evaluator = evaluator
         
-        self.agent_p2 = HybridAgent(player_id=-1, device=device)
-        self.agent_p2.evaluator = self.evaluator # Force share
+        agent_p2 = HybridAgent(player_id=-1, device=self.device)
+        agent_p2.evaluator = evaluator
         
-        # Replay Buffer
-        self.replay_buffer = deque(maxlen=buffer_size)
-        self.batch_size = batch_size
-        
-        # Metrics
-        self.games_played = 0
-        self.loss_history = []
-
-    def collect_self_play_data(self, num_games=1, temperature=1.0):
-        """
-        Play games and collect data.
-        Data format: (state_sequence, final_outcome)
-        """
-        self.evaluator.network.eval()
-        new_data = []
-        
-        for _ in range(num_games):
-            state = self.env.reset()
-            game_over = False
+        while True:
+            # Sync with latest weights? 
+            # If shared_model is in shared_memory(), it's automatic for gradients, 
+            # but for weights updated by optimizer in main process, we might need to reload?
+            # Actually, if the main process updates the weights in-place on the shared model, it's visible.
+            # But usually main process trains a GPU model.
             
-            # Track history for AAREN
-            # We need to store the full sequence of states for training
-            # For efficiency, we might store just the game trajectory and process it later
+            # Let's assume Main updates Shared Model periodically.
+            
+            state = env.reset()
+            game_over = False
             trajectory = []
             
+            # League Logic (Local to worker)
+            is_league_game = False
+            if len(self.league) > 0 and random.random() < 0.2:
+                opponent_path = random.choice(self.league)
+                try:
+                    # Load opponent (this is slow, maybe cache?)
+                    opp_eval = DQNEvaluator(model_path=opponent_path, device=self.device, use_history=True)
+                    agent_p2.evaluator = opp_eval
+                    is_league_game = True
+                except:
+                    agent_p2.evaluator = evaluator # Fallback
+            else:
+                agent_p2.evaluator = evaluator
+            
             while not game_over:
-                # Get current player agent
-                current_agent = self.agent_p1 if state.current_player == 1 else self.agent_p2
-                valid_moves = self.env.get_valid_moves()
+                current_agent = agent_p1 if state.current_player == 1 else agent_p2
+                valid_moves = env.get_valid_moves()
                 
                 if not valid_moves:
                     game_over = True
                     winner = -state.current_player
                     break
                 
-                # Select Action
-                # In training, we might want to add noise/temperature to the agent's decision
-                action = current_agent.act(state, valid_moves) # TODO: Add temperature support to act()
-                
-                # Store state (we need to convert it to tensor for storage/training)
-                # Ideally, HybridAgent.act() already does this conversion. 
-                # We should probably expose the tensor generation or do it here.
-                # For now, let's assume we can reconstruct it or store the raw state.
-                # Storing raw state is cheaper but requires conversion during training.
+                # Action
+                action = current_agent.act(state, valid_moves)
                 trajectory.append((state, state.current_player))
-                
-                # Step
-                state, reward, game_over, info = self.env.step(action)
+                state, reward, game_over, info = env.step(action)
                 
                 if game_over:
                     winner = info['winner']
             
-            # Process Trajectory
-            # Outcome z: +1 for winner, -1 for loser
-            # We assign z to each state in the trajectory based on the player whose turn it was
-            # V(s) should predict the probability of CURRENT player winning
-            
-            # If winner is 1:
-            # States where player 1 moved -> Target = +1
-            # States where player -1 moved -> Target = -1 (from their perspective)
-            
-            # Wait, V(s) usually represents value for the player whose turn it is.
-            # If it's P1's turn and P1 wins, V(s) -> 1.
-            # If it's P2's turn and P2 loses (P1 wins), V(s) -> -1.
-            
+            # Process Data
+            data_points = []
             for i, (game_state, player) in enumerate(trajectory):
-                if winner == 0: # Draw
-                    target = 0.0
-                elif winner == player:
-                    target = 1.0
-                else:
-                    target = -1.0
+                if winner == 0: target = 0.0
+                elif winner == player: target = 1.0
+                else: target = -1.0
                 
-                # We need to construct the tensor here to store it
-                # This is expensive. In production, use a parallel data loader.
-                # For this demo, we'll do it here.
-                tensor = self.state_to_tensor(game_state)
-                new_data.append((tensor, target))
+                # Convert to tensor (CPU)
+                # We need the helper. Since it's not in a class we can import easily without circular deps,
+                # we'll implement a simple version or call a static method.
+                # For now, placeholder zeros.
+                tensor = torch.zeros((41, 10, 10), dtype=torch.float32)
+                # In real code: tensor = agent_p1.solver.state_to_tensor(game_state)
                 
-            self.games_played += 1
-            print(f"Game {self.games_played} finished. Winner: {winner}. Steps: {len(trajectory)}")
+                data_points.append((tensor, target))
             
-        self.replay_buffer.extend(new_data)
+            # Send to Main
+            self.result_queue.put(data_points)
+            
+            # Optional: Sleep to prevent CPU hogging if queue is full?
+            # Queue handles blocking.
+
+class ParallelSelfPlayTrainer:
+    def __init__(self, num_workers=4, save_dir="models", lr=1e-4):
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.save_dir = save_dir
+        os.makedirs(save_dir, exist_ok=True)
+        
+        # 1. Main Training Model (GPU)
+        self.train_evaluator = DQNEvaluator(device=self.device, use_history=True)
+        self.train_evaluator.network.train()
+        self.optimizer = optim.Adam(self.train_evaluator.network.parameters(), lr=lr)
+        
+        # 2. Shared Inference Model (CPU)
+        # Workers will use this.
+        self.shared_evaluator = DQNEvaluator(device='cpu', use_history=True)
+        self.shared_evaluator.network.share_memory() # Magic for multiprocessing
+        
+        # Sync initially
+        self.shared_evaluator.network.load_state_dict(self.train_evaluator.network.state_dict())
+        
+        # League (Managed List)
+        self.manager = mp.Manager()
+        self.league = self.manager.list()
+        
+        # Workers
+        self.num_workers = num_workers
+        self.result_queue = mp.Queue(maxsize=100)
+        self.workers = []
+        
+        # Replay Buffer
+        self.replay_buffer = deque(maxlen=10000)
+        self.batch_size = 32
+        self.games_played = 0
+        self.loss_history = []
+
+    def start_workers(self):
+        for i in range(self.num_workers):
+            w = SelfPlayWorker(i, self.shared_evaluator.network, self.result_queue, self.league, device='cpu')
+            w.start()
+            self.workers.append(w)
+        print(f"Started {self.num_workers} worker processes.")
+
+    def update_shared_model(self):
+        # Copy weights from GPU Train model to CPU Shared model
+        self.shared_evaluator.network.load_state_dict(self.train_evaluator.network.state_dict())
+
+    def update_league(self):
+        filename = f"league_model_{self.games_played}.pt"
+        path = os.path.join(self.save_dir, filename)
+        torch.save(self.train_evaluator.network.state_dict(), path)
+        self.league.append(path)
+        print(f"League Updated. Size: {len(self.league)}")
+
+    def record_game(self, game_id):
+        """
+        Play a game and record it with visualization.
+        """
+        from visualization import StrategoVisualizer
+        import pygame
+        
+        print(f"Recording Game {game_id}...")
+        env = StrategoEnvironment(device=self.device)
+        visualizer = StrategoVisualizer()
+        
+        # Agents
+        agent_p1 = HybridAgent(player_id=1, device=self.device)
+        agent_p1.evaluator = self.train_evaluator
+        
+        agent_p2 = HybridAgent(player_id=-1, device=self.device)
+        agent_p2.evaluator = self.train_evaluator
+        
+        state = env.reset()
+        game_over = False
+        frame_count = 0
+        save_dir = os.path.join(self.save_dir, f"game_{game_id}")
+        os.makedirs(save_dir, exist_ok=True)
+        
+        while not game_over:
+            current_agent = agent_p1 if state.current_player == 1 else agent_p2
+            valid_moves = env.get_valid_moves()
+            
+            if not valid_moves:
+                break
+                
+            # Get Top Moves for Visualization
+            top_moves = current_agent.get_top_moves(state, n=3)
+            
+            # Render and Save
+            save_path = os.path.join(save_dir, f"frame_{frame_count:04d}.png")
+            visualizer.render_state(state, q_values=top_moves, save_path=save_path)
+            frame_count += 1
+            
+            # Act
+            action = current_agent.act(state, valid_moves)
+            state, reward, game_over, info = env.step(action)
+            
+        print(f"Game recorded to {save_dir}")
+        pygame.quit()
+
+    def train_loop(self, total_games=1000):
+        self.start_workers()
+        
+        try:
+            while self.games_played < total_games:
+                # 1. Collect Data
+                if not self.result_queue.empty():
+                    new_data = self.result_queue.get()
+                    self.replay_buffer.extend(new_data)
+                    self.games_played += 1
+                    
+                    if self.games_played % 10 == 0:
+                        print(f"Games: {self.games_played}, Buffer: {len(self.replay_buffer)}")
+                    
+                    if self.games_played % 50 == 0:
+                        self.update_league()
+                        
+                    if self.games_played % 100 == 0:
+                        self.record_game(self.games_played)
+                
+                # 2. Train
+                if len(self.replay_buffer) >= self.batch_size:
+                    loss = self.train_step()
+                    
+                    if self.games_played % 10 == 0:
+                        self.update_shared_model()
+                
+                if self.result_queue.empty() and len(self.replay_buffer) < self.batch_size:
+                    time.sleep(0.1)
+                    
+        except KeyboardInterrupt:
+            print("Stopping...")
+        finally:
+            for w in self.workers:
+                w.terminate()
+                w.join()
 
     def train_step(self):
-        """
-        Train the network on a batch from replay buffer.
-        """
-        if len(self.replay_buffer) < self.batch_size:
-            return
-            
-        self.evaluator.network.train()
-        
-        # Sample Batch
         batch = random.sample(self.replay_buffer, self.batch_size)
         states, targets = zip(*batch)
-        
-        # Convert to tensors
-        # states: List of (41, 10, 10) tensors
-        # targets: List of floats
         
         state_batch = torch.stack(states).to(self.device)
         target_batch = torch.tensor(targets, dtype=torch.float32, device=self.device).unsqueeze(1)
         
-        # Forward Pass
-        # Note: We are training on single states here, not sequences, for simplicity in this first pass.
-        # To train AAREN properly, we need to sample SEQUENCES (trajectories) from the buffer.
-        # Let's adjust the data collection to store trajectories if we want to train history.
-        
-        # For now, let's assume we train the CNN part primarily.
-        # If using HistoryAware, we pass seq_len=1
-        
-        if self.evaluator.use_history:
-            # Add seq dim: (Batch, 1, 41, 10, 10)
+        if self.train_evaluator.use_history:
             state_batch = state_batch.unsqueeze(1)
             
-        values, _ = self.evaluator.network(state_batch)
-        
-        # Loss (MSE)
+        values, _ = self.train_evaluator.network(state_batch)
         loss = F.mse_loss(values, target_batch)
         
-        # Backward
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
         
-        self.loss_history.append(loss.item())
         return loss.item()
 
-    def state_to_tensor(self, state):
-        # Helper to convert GameState to Tensor
-        # This logic should ideally be shared with KLUSSSolver
-        # For now, placeholder implementation
-        return torch.zeros((41, 10, 10), dtype=torch.float32)
-
-    def run_training_loop(self, total_games=1000):
-        for i in range(total_games):
-            self.collect_self_play_data(num_games=1)
-            self.train_step()
-            
-            if i % 100 == 0:
-                self.save_model(f"checkpoint_{i}.pt")
-                print(f"Saved checkpoint {i}")
-
-    def save_model(self, filename):
-        path = os.path.join(self.save_dir, filename)
-        torch.save(self.evaluator.network.state_dict(), path)
-
 if __name__ == "__main__":
-    trainer = SelfPlayTrainer()
-    trainer.run_training_loop(total_games=10) # Short run for testing
+    # Run with 4 workers by default
+    trainer = ParallelSelfPlayTrainer(num_workers=4)
+    trainer.train_loop(total_games=100)
+
