@@ -1380,3 +1380,76 @@ class ProbabilisticBeliefState:
             )
     
 
+    def get_probability_tensor(self, game_state) -> torch.Tensor:
+        """
+        Generate a (12, 10, 10) tensor representing the probability of each piece rank
+        at each position on the board for unknown enemy pieces.
+        
+        Channels:
+        0: Flag
+        1: Spy
+        2: Scout
+        3: Miner
+        4: Sergeant
+        5: Lieutenant
+        6: Captain
+        7: Major
+        8: Colonel
+        9: General
+        10: Marshal
+        11: Bomb
+        """
+        # Initialize tensor
+        prob_tensor = torch.zeros((12, 10, 10), device=self.device)
+        
+        # Get visible board for the current player
+        # If we are player 1, we look at visible_board_p1
+        # Enemy pieces (player -1) will be negative values if revealed, or hidden
+        
+        # Actually, we need to look at where the ENEMY pieces are.
+        # The game_state.board contains what the current player sees.
+        # Unknown enemy pieces are typically represented by a specific value (e.g., -999 or just sign)
+        # But in this environment, hidden pieces might just be their sign or a specific hidden ID.
+        
+        # Let's rely on self.piece_beliefs which tracks (r, c) -> distribution
+        
+        for (r, c), belief_dist in self.piece_beliefs.items():
+            # belief_dist is a dictionary {rank: probability}
+            # We need to map ranks to channel indices
+            
+            # Check if this piece is still on the board and is an enemy
+            # (The belief state should ideally track this, but let's verify with game_state if possible)
+            # For now, assume piece_beliefs only contains active unknown enemy pieces
+            
+            for rank, prob in belief_dist.items():
+                # Map rank to channel index (0-11)
+                # Ranks are typically 1-10, plus Flag (0/11?) and Bomb (11/12?)
+                # We need a consistent mapping.
+                # Let's use the PIECE_RANKS mapping from piece.py if available, or define one.
+                
+                # Standard Stratego Ranks:
+                # Flag: ? -> 0
+                # Spy: 1 -> 1
+                # Scout: 2 -> 2
+                # ...
+                # Marshal: 10 -> 10
+                # Bomb: 11 -> 11
+                
+                channel_idx = -1
+                if rank == PieceType.FLAG: channel_idx = 0
+                elif rank == PieceType.SPY: channel_idx = 1
+                elif rank == PieceType.SCOUT: channel_idx = 2
+                elif rank == PieceType.MINER: channel_idx = 3
+                elif rank == PieceType.SERGEANT: channel_idx = 4
+                elif rank == PieceType.LIEUTENANT: channel_idx = 5
+                elif rank == PieceType.CAPTAIN: channel_idx = 6
+                elif rank == PieceType.MAJOR: channel_idx = 7
+                elif rank == PieceType.COLONEL: channel_idx = 8
+                elif rank == PieceType.GENERAL: channel_idx = 9
+                elif rank == PieceType.MARSHAL: channel_idx = 10
+                elif rank == PieceType.BOMB: channel_idx = 11
+                
+                if 0 <= channel_idx < 12:
+                    prob_tensor[channel_idx, r, c] = prob
+                    
+        return prob_tensor

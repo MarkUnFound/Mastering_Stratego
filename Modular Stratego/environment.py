@@ -24,18 +24,6 @@ class StrategoEnvironment:
             self._cached_piece_counts = {1: 40, -1: 40}
         if hasattr(self, '_previous_piece_value'):
             self._previous_piece_value = {1: 0, -1: 0}
-        if hasattr(self, '_previous_move_count'):
-            self._previous_move_count = {1: 0, -1: 0}
-            
-        self.board = Board(device)
-        self.battle_resolver = BattleResolver()
-        self.directions = torch.tensor([(0, 1), (0, -1), (1, 0), (-1, 0)], device=device)
-        self.dqn_visualizer = DQNMoveVisualizer()
-        self.reset()
-        
-    def reset(self, p1_placement: Optional[List[Tuple[PieceType, Tuple[int, int]]]] = None,
-              p2_placement: Optional[List[Tuple[PieceType, Tuple[int, int]]]] = None) -> GameState:
-
         self.board.reset()
         self.current_player = 1
         self.game_over = False
@@ -626,13 +614,7 @@ class StrategoEnvironment:
         # Clean up old losses (older than 3 turns, already processed)
         self.piece_losses[player_who_moved] = [(t, v, e) for t, v, e in self.piece_losses[player_who_moved] 
                                                if (current_turn - t) <= 3]
-        
         self.current_player *= -1
-        
-        # Record move for DQN visualization
-        current_state = self._get_game_state()
-        # Record the player who made the move (before switching)
-        self.dqn_visualizer.record_move(action, current_state, self.current_player * -1)
         
         # Check if piece is protecting flag or other high-value pieces
         if not self.game_over:
