@@ -45,7 +45,7 @@ except ImportError:
 # Import random starting player utilities
 # This helps balance training by randomizing which agent goes first
 from random_starting_player import should_swap_players, swap_placements, get_batch_swap_decisions
-
+from league import LeagueManager
 
 # Hyperparameters
 NUM_ENVS = 32  # Number of parallel environments (balanced for CPU/GPU)
@@ -1260,6 +1260,9 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                 print(f"⚠️  Could not load saved setup agent models: {e}")
                 print("   Starting with fresh setup agents")
     
+    # Initialize League Manager
+    league_manager = LeagueManager(league_dir=os.path.join(model_save_path, "league"))
+    
     # Track GIF creation flags
     winning_game_pbs_gif_count = 0  # Track number of winning game PBS GIFs created (max 5)
     winning_game_gif_created = False  # Track if winning game (non-PBS) GIF was created
@@ -1437,8 +1440,8 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
     # Track pending resets
     pending_resets = [False] * NUM_ENVS
     
-    # Track setup agent placements for reward calculation
-    placement_memory = {}  # env_index -> {'p1_placement': ..., 'p2_placement': ..., 'episode_start': ...}
+    # Track placement memory for setup agents
+    placement_memory = {}
     
     # Main training loop
     target_total_episodes = total_episodes + num_episodes
@@ -1490,8 +1493,47 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
             print(f"⚠️  Error saving models: {e}")
             traceback.print_exc()
 
+    # Track league opponent status
+    is_league_opponent = False
+    current_opponent_path = None
+
     try:
         while completed_episodes < num_episodes:
+            # 0. League Opponent Selection (Every 10 episodes)
+            if completed_episodes > 0 and completed_episodes % 10 == 0:
+                # 20% chance to play against league opponent
+                if random.random() < 0.2:
+                    opponent_path = league_manager.get_opponent()
+                    if opponent_path and opponent_path != current_opponent_path:
+                        print(f"⚔️  Swapping to League Opponent: {os.path.basename(opponent_path)}")
+                        try:
+                            # Load opponent into Agent 2
+                            agent2.load_model(opponent_path)
+                            # Try to load associated PBS/AAREN if they exist (optional)
+                            # For now, just loading the DQN weights is a good start
+                            current_opponent_path = opponent_path
+                            is_league_opponent = True
+                            agent2.epsilon = 0.05 # Low exploration for frozen opponent
+                        except Exception as e:
+                            print(f"⚠️  Failed to load league opponent: {e}")
+                            is_league_opponent = False
+                else:
+                    # Switch back to self-play (latest Agent 2) if we were in league mode
+                    if is_league_opponent:
+                        print(f"🔄 Switching back to Self-Play (Agent 2)")
+                        # Reload Agent 2 from Agent 1 (self-play sync) or keep current?
+                        # Standard self-play: Agent 2 is just the other agent training alongside.
+                        # But if we overwrote Agent 2 with a historical one, we need to restore it.
+                        # Actually, in this codebase, Agent 1 and Agent 2 train independently but simultaneously.
+                        # If we overwrote Agent 2, we lost its progress!
+                        # CRITICAL: We should probably save Agent 2 before swapping, or just copy Agent 1 to Agent 2 for self-play.
+                        # Let's copy Agent 1 to Agent 2 to resume self-play (symmetric self-play)
+                        agent2.q_network.load_state_dict(agent1.q_network.state_dict())
+                        agent2.target_network.load_state_dict(agent1.target_network.state_dict())
+                        agent2.optimizer.load_state_dict(agent1.optimizer.state_dict())
+                        is_league_opponent = False
+                        current_opponent_path = None
+            
             # 1. Determine actions for active environments
             actions_list = [None] * NUM_ENVS
         
@@ -1843,18 +1885,20 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                      if loss1 is not None:
                          agent1_losses.append(loss1)
                  
-                     loss2 = agent2.replay()
-                     if loss2 is not None:
-                         agent2_losses.append(loss2)
+                     if not is_league_opponent:
+                         loss2 = agent2.replay()
+                         if loss2 is not None:
+                             agent2_losses.append(loss2)
                      
                      # Train PBS Evaluator
                      eval_loss1 = agent1.train_pbs_evaluator()
                      if eval_loss1 is not None:
                          pbs_evaluator1_losses.append(eval_loss1)
                      
-                     eval_loss2 = agent2.train_pbs_evaluator()
-                     if eval_loss2 is not None:
-                         pbs_evaluator2_losses.append(eval_loss2)
+                     if not is_league_opponent:
+                         eval_loss2 = agent2.train_pbs_evaluator()
+                         if eval_loss2 is not None:
+                             pbs_evaluator2_losses.append(eval_loss2)
                  
                  # DEBUG: Print status every 100 training steps (approx 400 env steps)
                  if (total_steps // REPLAY_UPDATE_INTERVAL) % 100 == 0:
@@ -1883,6 +1927,9 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                 save_checkpoint(total_episodes)
                 # Update last saved episode to prevent saving again
                 last_saved_episode = total_episodes
+                
+                # Save to League
+                league_manager.save_agent(f"{model_save_path}/agent1_dqn_episode_{total_episodes}.pth", total_episodes)
             
         # Save final persistent counters
         try:

@@ -328,8 +328,13 @@ class DQNAgent:
         batch, _, _ = self.memory.sample(self.batch_size, self.beta)
         return batch
         
-    def act(self, state, valid_moves: List[Tuple[Tuple[int, int], Tuple[int, int]]], 
-            game_state=None) -> Tuple[Tuple[int, int], Tuple[int, int]]:
+    def enable_search(self, depth: int = 3, endgame_threshold: int = 15):
+        """Enable hybrid search for endgame."""
+        from search_agent import SearchAgent
+        self.search_agent = SearchAgent(self, search_depth=depth, endgame_threshold=endgame_threshold)
+        print(f"🔍 Hybrid Search enabled for {self.name} (Depth={depth}, Threshold={endgame_threshold})")
+
+    def act(self, state, valid_moves: List[Tuple[Tuple[int, int], Tuple[int, int]]], game_state=None):
         """
         Choose action using epsilon-greedy policy.
         
@@ -338,111 +343,55 @@ class DQNAgent:
         2. DQN then calculates Q-value using PBS-enhanced state
         
         Args:
-            state: Current state representation (can be numpy array or None)
+            state: Current state (board)
             valid_moves: List of valid moves
             game_state: Full game state object (for PBS)
         """
-        if not valid_moves:
-            return None
-        
-        # Step 1: PBS gets the value and creates possible values with confidence scores
-        if self.pbs and game_state is not None:
-            # Get PBS-enhanced state (keep on GPU)
-            enhanced_state = self.pbs.get_belief_enhanced_state(game_state)
-            if enhanced_state is not None:
-                # Keep on GPU, ensure it has channel dimension
-                if enhanced_state.dim() == 2:
-                    state = enhanced_state.unsqueeze(0)
-                else:
-                    state = enhanced_state
-                # Ensure it's on the correct device
-                if state.device != self.device:
-                    state = state.to(self.device)
-        elif state is None and game_state is not None:
-            # Fallback: get state representation if state is None (returns GPU tensor)
-            state = self.get_state_representation(game_state)
-        elif state is None:
-            # No state available, return random action
+        # Use SearchAgent if enabled
+        if hasattr(self, 'search_agent') and self.search_agent:
+            return self.search_agent.act(state, valid_moves, game_state)
+            
+        if np.random.rand() <= self.epsilon:
             return random.choice(valid_moves)
-            
-        # Step 2: Get uncertainty map for uncertainty-driven exploration
-        uncertainty_map = {}
-        if self.pbs and game_state is not None:
-            uncertainty_map = self.pbs.get_uncertainty_map(game_state)
         
-        # Step 3: DQN calculates Q-value using PBS-enhanced state
-        # Ensure state is a GPU tensor
-        if not isinstance(state, torch.Tensor):
-            if isinstance(state, np.ndarray):
-                # Convert numpy to tensor directly on GPU (single transfer)
-                state = torch.from_numpy(state).float().to(self.device)
-            else:
-                # Convert to numpy first, then to tensor on GPU
-                state = np.array(state, dtype=np.float32)
-                state = torch.from_numpy(state).float().to(self.device)
-        elif state.device != self.device:
-            # Move to GPU if not already there
-            state = state.to(self.device)
-            
-        if state.dim() == 3:
-            state = state.unsqueeze(0)  # Add batch dimension
+        # Exploitation
+        # Get state representation (handles PBS internally)
+        state_tensor = self.get_state_representation(state, pbs_instance=self.pbs)
+        
+        # Get uncertainty map if PBS is enabled
+        uncertainty_map = {}
+        if self.pbs and game_state:
+            uncertainty_map = self.pbs.get_uncertainty_map(game_state)
             
         self.q_network.eval()
         with torch.no_grad():
-            base_q_values = self.q_network(state)
+            base_q_values = self.q_network(state_tensor)
         self.q_network.train()
         
-        # Step 4: Apply uncertainty-aware Q-value calculation
+        # Calculate uncertainty aware Q-values
         q_values = self.calculate_uncertainty_aware_q_values(
             base_q_values, valid_moves, uncertainty_map
         )
         
-        # Step 5: Uncertainty-driven exploration (modify epsilon based on uncertainty)
-        # Higher uncertainty in available moves -> more exploration
-        avg_uncertainty = self.get_average_uncertainty(valid_moves, uncertainty_map)
-        adjusted_epsilon = self.epsilon + (avg_uncertainty * self.uncertainty_exploration_multiplier)
-        adjusted_epsilon = min(1.0, adjusted_epsilon)  # Cap at 1.0
-        
-        # Exploration: choose random action with adjusted epsilon
-        if torch.rand(1, device=self.device, dtype=torch.float32).item() <= adjusted_epsilon:
-            return random.choice(valid_moves)
-        
-        # Step 6: Exploitation: choose best action with uncertainty weighting
-        # Pre-compute action indices for all valid moves on GPU
-        action_indices = torch.tensor(
-            [self._move_to_action_index(move) for move in valid_moves],
-            device=self.device,
-            dtype=torch.long
-        )
-        
-        # Get Q-values for all valid moves at once (vectorized)
-        valid_q_values = q_values[0, action_indices]
-        
-        # Add entropy bonus: encourage exploring less-visited actions
-        # Calculate softmax over valid actions to get policy distribution
-        policy_probs = F.softmax(valid_q_values / 0.1, dim=0)  # Temperature 0.1
-        policy_entropy = -(policy_probs * torch.log(policy_probs + 1e-10)).sum()
-        entropy_bonus_per_action = self.entropy_bonus * policy_entropy / len(valid_moves)
-        
-        # Add exploration bonus for uncertain positions
-        exploration_bonuses = torch.zeros(len(valid_moves), device=self.device)
-        for i, move in enumerate(valid_moves):
+        # Filter valid moves
+        valid_q_values = []
+        for move in valid_moves:
+            action_idx = self._move_to_action_index(move)
+            
+            # Add exploration bonus based on uncertainty
             uncertainty = self.get_move_uncertainty(move, uncertainty_map)
-            exploration_bonuses[i] = uncertainty * self.uncertainty_exploration_multiplier
+            exploration_bonus = uncertainty * self.uncertainty_exploration_multiplier
+            
+            valid_q_values.append(q_values[0, action_idx].item() + exploration_bonus)
+            
+        best_move_idx = np.argmax(valid_q_values)
         
-        # Modified Q-values: Q + exploration_bonus + entropy_bonus
-        modified_q_values = valid_q_values + exploration_bonuses + entropy_bonus_per_action
-        
-        # Choose action with highest modified Q-value
-        best_idx = torch.argmax(modified_q_values).item()
-        best_action = valid_moves[best_idx]
-        
-        # Store action-PBS state for feedback
-        if self.pbs and game_state is not None:
-            # Default to env_idx 0 for single action
-            self.store_action_pbs_state(best_action, base_q_values, uncertainty_map, game_state, env_idx=0)
-                
-        return best_action if best_action is not None else random.choice(valid_moves)
+        # Store action-PBS state for feedback (only if using PBS)
+        if self.pbs and game_state:
+            best_move = valid_moves[best_move_idx]
+            self.store_action_pbs_state(best_move, base_q_values, uncertainty_map, game_state)
+            
+        return valid_moves[best_move_idx]
         
     def replay(self, batch: Optional[List[Experience]] = None) -> Optional[float]:
         """
@@ -571,6 +520,7 @@ class DQNAgent:
         if not hasattr(self, 'entropy_history'):
             self.entropy_history = []
         self.entropy_history.append(entropy)
+        
         
         # Update smoothed loss (exponential moving average)
         if self.smoothed_loss is None:
@@ -998,15 +948,16 @@ class DQNAgent:
                 base_q_values, valid_moves, uncertainty_map
             )
             
-            # Epsilon-greedy
-            avg_uncertainty = self.get_average_uncertainty(valid_moves, uncertainty_map)
-            adjusted_epsilon = self.epsilon + (avg_uncertainty * self.uncertainty_exploration_multiplier)
-            adjusted_epsilon = min(1.0, adjusted_epsilon)
-            
-            if torch.rand(1, device=self.device, dtype=torch.float32).item() <= adjusted_epsilon:
+            # Epsilon-greedy selection
+            if random.random() < self.epsilon:
                 actions[i] = random.choice(valid_moves)
             else:
-                # Exploitation
+                # Select best action
+                # q_values is a dict {action_index: q_value}
+                # But here q_values is a tensor [1, action_size]
+                # We need to filter for valid moves
+                
+                # Create mask for valid moves
                 action_indices = torch.tensor(
                     [self._move_to_action_index(move) for move in valid_moves],
                     device=self.device,
@@ -1014,6 +965,7 @@ class DQNAgent:
                 )
                 valid_q_values = q_values[0, action_indices]
                 
+                # Add exploration bonuses
                 exploration_bonuses = torch.zeros(len(valid_moves), device=self.device)
                 for j, move in enumerate(valid_moves):
                     uncertainty = self.get_move_uncertainty(move, uncertainty_map)
@@ -1028,6 +980,30 @@ class DQNAgent:
                     self.store_action_pbs_state(actions[i], base_q_values, uncertainty_map, game_states[i], env_idx=i)
         
         return actions
+
+    def get_state_value(self, game_state) -> float:
+        """
+        Get the Value V(s) of a state for Minimax heuristic.
+        
+        Args:
+            game_state: Current game state
+            
+        Returns:
+            Value of the state (scalar float)
+        """
+        state_tensor = self.get_state_representation(game_state)
+        
+        self.q_network.eval()
+        with torch.no_grad():
+            # ConvDQN returns Q(s,a), but internally computes V(s).
+            # We can either modify ConvDQN to return V(s) or approximate V(s) = max Q(s,a)
+            # Since we have Dueling DQN, V(s) is explicitly computed but combined.
+            # max Q(s,a) is a good approximation of V(s) for the greedy policy.
+            q_values = self.q_network(state_tensor)
+            value = q_values.max().item()
+            
+        self.q_network.train()
+        return value
 
     def update_pbs_batch(self, actions, game_states, acting_player):
         """Update PBS for a batch of actions."""

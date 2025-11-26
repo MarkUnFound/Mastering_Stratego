@@ -378,6 +378,10 @@ class ProbabilisticBeliefState:
         # Active learning: track uncertain positions that need more observation
         self.uncertain_positions: set = set()
         
+        # AAREN Training Buffer
+        # Stores tuples of (action_sequence, true_piece_type, position)
+        self.aaren_training_buffer: deque = deque(maxlen=5000)
+        
     def reset(self):
         """Reset the belief state for a new game."""
         self.piece_action_history.clear()
@@ -797,6 +801,13 @@ class ProbabilisticBeliefState:
         for other_pos in self.belief_distributions:
             if other_pos != pos and other_pos not in self.revealed_pieces:
                 self._apply_piece_count_constraints(other_pos)
+                
+        # 10. NEW: Collect data for AAREN training
+        # If we have action history for this piece, add it to the training buffer
+        if pos in self.piece_action_history and len(self.piece_action_history[pos]) > 0:
+            # Convert deque to list for storage
+            action_sequence = list(self.piece_action_history[pos])
+            self.aaren_training_buffer.append((action_sequence, piece_type, pos))
     
     def get_evaluator_feedback(self, pos: Tuple[int, int], 
                                ground_truth: Optional[PieceType] = None) -> Optional[Dict]:
@@ -833,7 +844,104 @@ class ProbabilisticBeliefState:
         self.evaluator.train_feature_importance(epochs=epochs)
         
         # Train main evaluator network
-        return self.evaluator.train(epochs=epochs)
+        evaluator_loss = self.evaluator.train(epochs=epochs)
+        
+        # 11. NEW: Train AAREN model if we have enough data
+        # We train AAREN whenever we train the evaluator
+        if len(self.aaren_training_buffer) >= 32: # Minimum batch size
+            # Extract sequences and labels
+            sequences = [item[0] for item in self.aaren_training_buffer]
+            labels = [item[1] for item in self.aaren_training_buffer]
+            positions = [item[2] for item in self.aaren_training_buffer]
+            
+            # Get evaluator weights if available
+            evaluator_weights = None
+            if self.evaluator is not None:
+                # We can get weights based on position quality
+                # This is handled inside train_aaren if we pass positions
+                pass
+                
+            # Train AAREN
+            # Use fewer epochs for AAREN to prevent overfitting to small buffers
+            aaren_epochs = max(1, epochs // 2) 
+            self.train_aaren(
+                action_sequences=sequences,
+                true_piece_types=labels,
+                epochs=aaren_epochs,
+                positions=positions
+            )
+            
+        return evaluator_loss
+    
+    def train_aaren(self, action_sequences: List[List[List[float]]], 
+                   true_piece_types: List[PieceType], 
+                   epochs: int = 1,
+                   positions: Optional[List[Tuple[int, int]]] = None):
+        """
+        Train the AAREN model on collected action sequences.
+        
+        Args:
+            action_sequences: List of action feature sequences
+            true_piece_types: List of ground truth piece types
+            epochs: Number of training epochs
+            positions: Optional list of positions for weighting
+        """
+        if not action_sequences or not self.aaren_model:
+            return
+            
+        # Prepare batch data
+        # Pad sequences to same length
+        max_len = max(len(seq) for seq in action_sequences)
+        batch_size = len(action_sequences)
+        if batch_size == 0 or max_len == 0:
+            return
+            
+        input_size = len(action_sequences[0][0])
+        
+        # Create padded tensor
+        x_batch = torch.zeros(batch_size, max_len, input_size, device=self.device)
+        for i, seq in enumerate(action_sequences):
+            seq_len = len(seq)
+            if seq_len > 0:
+                x_batch[i, :seq_len, :] = torch.tensor(seq, dtype=torch.float32, device=self.device)
+                
+        # Create labels tensor
+        y_batch = torch.tensor([pt.value for pt in true_piece_types], dtype=torch.long, device=self.device)
+        
+        # Get weights if positions provided
+        weights = None
+        if positions and self._aaren_training_weights:
+            weights = torch.ones(batch_size, device=self.device)
+            for i, pos in enumerate(positions):
+                if pos in self._aaren_training_weights:
+                    weights[i] = self._aaren_training_weights[pos]
+        
+        # Training loop
+        self.aaren_model.train()
+        for _ in range(epochs):
+            self.aaren_optimizer.zero_grad()
+            
+            # Forward pass (parallel)
+            logits = self.aaren_model(x_batch) # (batch, output_size)
+            
+            # Compute loss
+            if weights is not None:
+                loss = F.cross_entropy(logits, y_batch, reduction='none')
+                loss = (loss * weights).mean()
+            else:
+                loss = F.cross_entropy(logits, y_batch)
+                
+            # Backward pass
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(self.aaren_model.parameters(), max_norm=1.0)
+            self.aaren_optimizer.step()
+            
+        self.aaren_model.eval()
+        
+        # Clear buffer after training
+        self.aaren_training_buffer.clear()
+        self._aaren_training_weights.clear()
+        self._aaren_training_positions.clear()
     
     def get_uncertain_positions(self) -> set:
         """
