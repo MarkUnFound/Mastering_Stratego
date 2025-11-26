@@ -48,7 +48,7 @@ from random_starting_player import should_swap_players, swap_placements, get_bat
 
 
 # Hyperparameters
-NUM_ENVS = 16  # Number of parallel environments (balanced for CPU/GPU)
+NUM_ENVS = 32  # Number of parallel environments (balanced for CPU/GPU)
 BATCH_SIZE = 128  # Large batch size to maximize GPU usage and amortize PER sampling cost
 GAMMA = 0.99
 EPSILON_START = 1.0
@@ -1193,11 +1193,13 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
     # Ensure learning rates are not too low (reset if decayed too much)
     # This prevents agents from being "stuck" if the LR was crushed in a previous run
     # CRITICAL FIX: Re-initialize optimizers completely to clear bad momentum/variance state
-    print("🧹 Re-initializing optimizers to clear potential 'stuck' states...")
-    for agent in [agent1, agent2]:
-        # Keep the weights, but get a fresh optimizer
-        agent.optimizer = torch.optim.AdamW(agent.q_network.parameters(), lr=0.0001, weight_decay=0.01)
-        print(f"   Re-initialized optimizer for {agent.name}")
+    # Optimizer re-initialization removed to preserve momentum from loaded models
+    # Only re-initialize if we started fresh (no history) or if explicitly requested
+    if not loaded_history:
+        print("🧹 Initializing optimizers for fresh training...")
+        # Optimizers are already initialized in DQNAgent __init__, but we can do it here if needed
+        # For now, we trust the loaded state or the fresh init
+        pass
 
     # Create setup agents (for piece placement)
     setup_agent1 = SetupAgent(player_id=1, device=device) if use_setup_agents else None
@@ -1378,8 +1380,20 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
         print(f"📈 Starting fresh training history")
     
     # Initialize loss lists (transient for current run)
+    # Initialize loss lists (transient for current run)
+    # Initialize with last known loss to prevent visual drop to 0.0 at start of plot
     agent1_losses = []
     agent2_losses = []
+    
+    if policy_loss_history.get('agent1') and len(policy_loss_history['agent1']) > 0:
+        last_loss = policy_loss_history['agent1'][-1]
+        if last_loss > 0:
+            agent1_losses.append(last_loss)
+            
+    if policy_loss_history.get('agent2') and len(policy_loss_history['agent2']) > 0:
+        last_loss = policy_loss_history['agent2'][-1]
+        if last_loss > 0:
+            agent2_losses.append(last_loss)
     
     # agent1_prefetcher = ReplayPrefetcher(agent1, max_queue_size=PREFETCH_QUEUE_SIZE)
     # agent2_prefetcher = ReplayPrefetcher(agent2, max_queue_size=PREFETCH_QUEUE_SIZE)
