@@ -152,8 +152,8 @@ class DQNAgent:
                 self.pbs_instances = [self.pbs]
         
         # Uncertainty-driven exploration parameters
-        self.uncertainty_exploration_multiplier = 0.5  # How much uncertainty affects exploration
-        self.uncertainty_penalty_scale = 0.3  # Penalty for uncertain actions
+        self.uncertainty_exploration_multiplier = 0.05  # Reduced from 0.5 to prevent excessive randomness
+        self.uncertainty_penalty_scale = 0.5  # Increased from 0.3 to encourage risk aversion (safety)
         
         # Action-PBS buffer for tracking Q-values with PBS states
         # Keyed by env_idx to ensure parallel safety
@@ -183,7 +183,7 @@ class DQNAgent:
         self.critic = ExploitabilityCritic(input_shape=(1, 10, 10), output_size=action_size).to(device)
         self.critic_optimizer = optim.AdamW(self.critic.parameters(), lr=lr, weight_decay=0.01)
         self.critic_loss_fn = nn.CrossEntropyLoss()
-        self.critic_weight = 0.05  # Increased weight for predictability penalty
+        self.critic_weight = 0.1  # Relative weight (10% of reward magnitude) - Normalized to reward scale
         self.entropy_bonus = 0.02  # Bonus for action diversity
         
         # Experience replay - Prioritized (GPU-accelerated)
@@ -497,9 +497,10 @@ class DQNAgent:
             probs = F.softmax(self.critic(states), dim=1)
             # Get probability assigned to the taken action
             action_probs = probs.gather(1, actions.unsqueeze(1)).squeeze()
-            # Penalty = critic_weight * probability (higher prob = higher penalty)
-            # Increased weight to make the agent less predictable
-            penalty = self.critic_weight * action_probs
+            # Penalty = critic_weight * probability * reward_scale
+            # Normalize penalty to the scale of rewards in the batch
+            reward_scale = torch.mean(torch.abs(rewards)).detach() + 1e-6
+            penalty = self.critic_weight * action_probs * reward_scale
             avg_penalty = penalty.mean().item()
             
             # Calculate entropy for metrics

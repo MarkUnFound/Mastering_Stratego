@@ -257,6 +257,12 @@ class StrategoEnvironment:
         """
         if self.game_over:
             return self._get_game_state(), 0.0, True, {"winner": self.winner}
+
+        # Check for max turns (draw) - reduced to encourage faster games
+        if self.turn_count >= 400:
+            self.game_over = True
+            self.winner = 0
+            return self._get_game_state(), -1.0, True, {"winner": 0}
             
         (r_from, c_from), (r_to, c_to) = action
         

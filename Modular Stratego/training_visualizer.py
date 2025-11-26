@@ -535,8 +535,58 @@ def plot_pbs_evaluator_progress(
         if window > 1:
             ma_losses_2 = []
             ma_episodes_2 = []
+            for i in range(window, len(valid_losses_2)):
+                ma_losses_2.append(np.mean(valid_losses_2[i-window:i]))
+                ma_episodes_2.append(valid_episodes_2[i])
+            if ma_episodes_2:
+                ax1.plot(ma_episodes_2, ma_losses_2, 'r-', linewidth=2.5, label='Evaluator 2 (Moving Avg)')
+        has_data = True
     
-    print(f"📊 PBS Evaluator progress plot saved to {save_path}")
+    if not has_data:
+        ax1.text(0.5, 0.5, 'No loss data available', ha='center', va='center', transform=ax1.transAxes)
+    
+    ax1.set_xlabel('Episodes')
+    ax1.set_ylabel('Loss')
+    ax1.set_title('Evaluator Training Loss (Lower is Better)')
+    ax1.legend()
+    ax1.grid(True, alpha=0.3)
+    
+    # 2. Buffer Size
+    ax2 = axes[1]
+    
+    # Filter out None values
+    valid_episodes_buf_1 = [ep for ep, size in zip(episode_history, evaluator1_buffer_sizes) if size is not None]
+    valid_sizes_1 = [size for size in evaluator1_buffer_sizes if size is not None]
+    valid_episodes_buf_2 = [ep for ep, size in zip(episode_history, evaluator2_buffer_sizes) if size is not None]
+    valid_sizes_2 = [size for size in evaluator2_buffer_sizes if size is not None]
+    
+    if valid_episodes_buf_1:
+        ax2.plot(valid_episodes_buf_1, valid_sizes_1, 'b-', linewidth=2, label='Evaluator 1 Buffer')
+    
+    if valid_episodes_buf_2:
+        ax2.plot(valid_episodes_buf_2, valid_sizes_2, 'r-', linewidth=2, label='Evaluator 2 Buffer')
+        
+    ax2.set_xlabel('Episodes')
+    ax2.set_ylabel('Buffer Size')
+    ax2.set_title('Experience Buffer Size')
+    ax2.legend()
+    ax2.grid(True, alpha=0.3)
+    
+    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+    
+    # Ensure the directory exists
+    save_dir = os.path.dirname(save_path)
+    if save_dir:
+        os.makedirs(save_dir, exist_ok=True)
+    
+    # Save the figure
+    try:
+        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+        print(f"📊 PBS Evaluator progress plot saved to {save_path}")
+    except Exception as e:
+        print(f"⚠️  Error saving PBS evaluator plot: {e}")
+    
+    plt.close(fig)
 
 
 def plot_setup_agent_progress(
