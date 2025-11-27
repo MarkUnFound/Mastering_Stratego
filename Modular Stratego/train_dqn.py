@@ -1531,6 +1531,8 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                         agent2.q_network.load_state_dict(agent1.q_network.state_dict())
                         agent2.target_network.load_state_dict(agent1.target_network.state_dict())
                         agent2.optimizer.load_state_dict(agent1.optimizer.state_dict())
+                        agent2.step_count = agent1.step_count
+                        agent2.epsilon = agent1.epsilon
                         is_league_opponent = False
                         current_opponent_path = None
             
