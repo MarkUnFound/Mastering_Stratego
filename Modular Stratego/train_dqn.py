@@ -1690,6 +1690,11 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                     # Update global stats
                     total_rewards_agent1.append(episode_rewards_agent1[i])
                     total_rewards_agent2.append(episode_rewards_agent2[i])
+                    
+                    # Update adaptive exploration based on per-episode rewards
+                    agent1.update_episode_reward(episode_rewards_agent1[i])
+                    if not is_league_opponent:
+                        agent2.update_episode_reward(episode_rewards_agent2[i])
                 
                     # Determine winner
                     winner = step_infos[i].get('winner', 0)

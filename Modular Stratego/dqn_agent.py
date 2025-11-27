@@ -204,12 +204,16 @@ class DQNAgent:
         self.step_count = 0
         self.epsilon_decay_interval = 500_000  # Decay epsilon over 500,000 steps
         self.epsilon_min = max(epsilon_min, 0.01)  # Ensure minimum epsilon for continued exploration
+        # Epsilon cycling (episode-based)
+        self.epsilon_cycle_interval = 1000  # Episodes between epsilon cycles
+        self.epsilon_cycle_high = 0.5       # Epsilon value after a cycle reset
+        self.episodes_seen = 0              # Episodes processed via update_episode_reward
         
         # Learning rate scheduling with automatic adjustment
         self.initial_lr = lr
         self.lr_decay_factor = 0.5  # Reduce LR by half every 500k steps
         self.lr_decay_interval = 500_000
-        self.min_lr = lr * 0.01  # Minimum learning rate (1% of initial)
+        self.min_lr = max(lr * 0.1, 1e-5)  # Minimum learning rate (10% of initial, bounded)
         
         # Automatic learning rate adjustment based on loss trends
         self.loss_history_for_lr = deque(maxlen=200)  # Track losses for LR adjustment
@@ -223,9 +227,11 @@ class DQNAgent:
         
         # Adaptive epsilon: increase if performance stagnates
         self.reward_history = deque(maxlen=1000)  # Track recent rewards
-        self.stagnation_threshold = 50  # Episodes without improvement
+        self.stagnation_threshold = 30  # Episodes without improvement (more responsive)
         self.stagnation_episodes = 0
         self.best_avg_reward = float('-inf')
+        self.stagnation_boost_epsilon = 0.5
+        self.stagnation_lr_boost_factor = 0.5  # Raise LR toward this fraction of initial on stagnation
         
         # Pre-allocate tensors on GPU for batch operations
         self._batch_actions = None
@@ -583,13 +589,22 @@ class DQNAgent:
                 for param_group in self.optimizer.param_groups:
                     param_group['lr'] = base_lr
         
-        # Gradual epsilon decay
+        # Gradual epsilon decay with support for external boosts
         if self.step_count < self.epsilon_decay_interval:
             progress = self.step_count / self.epsilon_decay_interval
-            self.epsilon = self.epsilon_min + (1.0 - self.epsilon_min) * (1.0 - progress)
-            self.epsilon = max(self.epsilon_min, min(1.0, self.epsilon))
+            baseline_epsilon = self.epsilon_min + (1.0 - self.epsilon_min) * (1.0 - progress)
         else:
-            self.epsilon = self.epsilon_min
+            baseline_epsilon = self.epsilon_min
+
+        baseline_epsilon = max(self.epsilon_min, min(1.0, baseline_epsilon))
+
+        # If epsilon was boosted above the baseline (e.g., due to stagnation or cycling),
+        # relax it slowly back toward the baseline instead of overwriting it.
+        if self.epsilon < baseline_epsilon:
+            self.epsilon = baseline_epsilon
+        else:
+            relax_rate = 0.001
+            self.epsilon = max(baseline_epsilon, self.epsilon - relax_rate * (self.epsilon - baseline_epsilon))
             
         return loss_value
         
@@ -663,7 +678,8 @@ class DQNAgent:
         This helps the agent continue exploring when it gets stuck in a local optimum.
         """
         self.reward_history.append(episode_reward)
-        
+        self.episodes_seen += 1
+
         # Calculate average reward over last 100 episodes
         if len(self.reward_history) >= 100:
             recent_avg = sum(list(self.reward_history)[-100:]) / 100
@@ -675,13 +691,40 @@ class DQNAgent:
             else:
                 self.stagnation_episodes += 1
             
-            # If performance has stagnated, increase epsilon to encourage exploration
+            # If performance has stagnated, aggressively increase exploration and refresh LR
             if self.stagnation_episodes >= self.stagnation_threshold:
-                # Increase epsilon (but cap at 0.2 to avoid too much randomness)
-                self.epsilon = min(0.2, self.epsilon * 1.5)
+                # Boost epsilon to encourage exploration (cap at epsilon_cycle_high)
+                target_eps = max(self.stagnation_boost_epsilon, self.epsilon_min)
+                if self.epsilon < target_eps:
+                    self.epsilon = min(self.epsilon_cycle_high, target_eps)
+                
+                # Warm restart learning rate towards a fraction of the initial LR
+                current_lr = self.optimizer.param_groups[0]['lr']
+                target_lr = max(current_lr, self.initial_lr * self.stagnation_lr_boost_factor)
+                target_lr = max(self.min_lr, min(target_lr, self.initial_lr))
+                for param_group in self.optimizer.param_groups:
+                    param_group['lr'] = target_lr
+
+                try:
+                    print(f"🔁 Stagnation detected: episodes={self.episodes_seen}, recent_avg={recent_avg:.2f}, "
+                          f"epsilon_boosted={self.epsilon:.2f}, lr={target_lr:.2e}")
+                except Exception:
+                    pass
+
                 self.stagnation_episodes = 0  # Reset counter after adjustment
-                # Optionally reset best_avg_reward to allow new baseline
+                # Reset best_avg_reward to allow a new baseline after exploration burst
                 self.best_avg_reward = recent_avg
+
+        # Epsilon cycling based on episode count (periodic exploration bursts)
+        if self.epsilon_cycle_interval > 0 and self.episodes_seen > 0:
+            if self.episodes_seen % self.epsilon_cycle_interval == 0:
+                cycle_eps = max(self.epsilon_cycle_high, self.epsilon_min)
+                if self.epsilon < cycle_eps:
+                    self.epsilon = cycle_eps
+                    try:
+                        print(f"🔄 Epsilon cycle reset at episode {self.episodes_seen}: epsilon={self.epsilon:.2f}")
+                    except Exception:
+                        pass
             
     def _move_to_action_index(self, move: Tuple[Tuple[int, int], Tuple[int, int]]) -> int:
         """Convert a move to an action index (0-999 for 10x10 board)"""
