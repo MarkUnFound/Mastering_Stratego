@@ -48,7 +48,7 @@ from random_starting_player import should_swap_players, swap_placements, get_bat
 from league import LeagueManager
 
 # Hyperparameters
-NUM_ENVS = 32  # Number of parallel environments (balanced for CPU/GPU)
+NUM_ENVS = 16 # Number of parallel environments (balanced for CPU/GPU)
 BATCH_SIZE = 128  # Large batch size to maximize GPU usage and amortize PER sampling cost
 GAMMA = 0.99
 EPSILON_START = 1.0
@@ -57,7 +57,7 @@ EPSILON_DECAY = 0.99995  # Slower decay for longer training
 TARGET_UPDATE = 1000
 MEMORY_SIZE = 10000000
 LEARNING_RATE = 0.0001
-NUM_EPISODES = 10000  # Total episodes to train
+NUM_EPISODES = 100  # Total episodes to train (set to 100 for verification)
 SAVE_INTERVAL = 50   # Save model every N episodes
 EVAL_INTERVAL = 100  # Evaluate every N episodes
 PREFETCH_QUEUE_SIZE = 4 # Size of the prefetch queue

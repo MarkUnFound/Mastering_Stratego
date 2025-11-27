@@ -106,6 +106,13 @@ class DQNAgent:
         self.epsilon_decay = epsilon_decay
         self.batch_size = batch_size
         self.name = f"DQN Agent {player_id}"
+        
+        # Exploration cycling and stagnation recovery
+        self.epsilon_cycle_len = 1000
+        self.stagnation_threshold = 50
+        self.loss_history = deque(maxlen=100)
+        self.base_lr = lr
+        
         self.use_pbs = use_pbs
         
         # Probabilistic Belief State
@@ -114,6 +121,7 @@ class DQNAgent:
         # Probabilistic Belief State
         self.pbs = None
         self.pbs_instances = []
+        self.action_pbs_buffer = {} # Buffer for storing action-PBS states for feedback
         
         if self.use_pbs:
             if num_envs > 1:
@@ -154,18 +162,6 @@ class DQNAgent:
         # Uncertainty-driven exploration parameters
         self.uncertainty_exploration_multiplier = 0.05  # Reduced from 0.5 to prevent excessive randomness
         self.uncertainty_penalty_scale = 0.5  # Increased from 0.3 to encourage risk aversion (safety)
-        
-        # Action-PBS buffer for tracking Q-values with PBS states
-        # Keyed by env_idx to ensure parallel safety
-        self.action_pbs_buffer = {i: deque(maxlen=50) for i in range(num_envs)}
-        
-        # Performance monitoring
-        self.pbs_dqn_alignment_history = deque(maxlen=100)  # Track alignment between PBS and DQN
-        self.performance_metrics = {
-            'pbs_accuracy_trend': deque(maxlen=100),
-            'dqn_loss_trend': deque(maxlen=100),
-            'action_prediction_alignment': deque(maxlen=100)
-        }
         
         # Neural networks (keep on GPU, no compilation for Windows compatibility)
         # Neural networks (keep on GPU, no compilation for Windows compatibility)
@@ -583,13 +579,28 @@ class DQNAgent:
                 for param_group in self.optimizer.param_groups:
                     param_group['lr'] = base_lr
         
-        # Gradual epsilon decay
-        if self.step_count < self.epsilon_decay_interval:
-            progress = self.step_count / self.epsilon_decay_interval
-            self.epsilon = self.epsilon_min + (1.0 - self.epsilon_min) * (1.0 - progress)
-            self.epsilon = max(self.epsilon_min, min(1.0, self.epsilon))
+        # Epsilon Cycling and Decay
+        if self.epsilon_cycle_len > 0:
+            # Cyclic epsilon: restarts every cycle_len steps
+            cycle_progress = (self.step_count % self.epsilon_cycle_len) / self.epsilon_cycle_len
+            # Decay from 1.0 to epsilon_min within the cycle
+            # Use a cosine decay for smoother transitions or linear? Linear is fine.
+            # Let's use a restart strategy: 
+            # Epsilon starts high (0.5) at start of cycle, decays to min.
+            cycle_epsilon_start = 0.5
+            current_cycle_epsilon = self.epsilon_min + (cycle_epsilon_start - self.epsilon_min) * (1.0 - cycle_progress)
+            
+            # Combine with standard decay (which might be global)
+            # Actually, let's override the standard decay if cycling is enabled
+            self.epsilon = max(self.epsilon_min, current_cycle_epsilon)
         else:
-            self.epsilon = self.epsilon_min
+            # Standard Gradual epsilon decay
+            if self.step_count < self.epsilon_decay_interval:
+                progress = self.step_count / self.epsilon_decay_interval
+                self.epsilon = self.epsilon_min + (1.0 - self.epsilon_min) * (1.0 - progress)
+                self.epsilon = max(self.epsilon_min, min(1.0, self.epsilon))
+            else:
+                self.epsilon = self.epsilon_min
             
         return loss_value
         
@@ -677,11 +688,13 @@ class DQNAgent:
             
             # If performance has stagnated, increase epsilon to encourage exploration
             if self.stagnation_episodes >= self.stagnation_threshold:
-                # Increase epsilon (but cap at 0.2 to avoid too much randomness)
-                self.epsilon = min(0.2, self.epsilon * 1.5)
+                # Aggressive Stagnation Recovery
+                # Increase epsilon significantly (cap at 0.5) to force exploration
+                print(f"⚠️  Stagnation detected ({self.stagnation_episodes} episodes). Boosting epsilon!")
+                self.epsilon = min(0.5, self.epsilon * 2.0 + 0.1) 
                 self.stagnation_episodes = 0  # Reset counter after adjustment
-                # Optionally reset best_avg_reward to allow new baseline
-                self.best_avg_reward = recent_avg
+                # Reset best_avg_reward slightly to allow climbing back up
+                self.best_avg_reward = recent_avg * 0.95
             
     def _move_to_action_index(self, move: Tuple[Tuple[int, int], Tuple[int, int]]) -> int:
         """Convert a move to an action index (0-999 for 10x10 board)"""
@@ -833,12 +846,6 @@ class DQNAgent:
     def get_state_representation(self, game_state, pbs_instance=None) -> torch.Tensor:
         """
         Convert game state to neural network input - returns GPU tensor.
-        
-        This method ensures that agents only use visible information.
-        The game_state.board already contains only the visible board for the current player.
-        
-        If PBS is enabled, the state is enhanced with belief probabilities.
-        Returns a torch.Tensor on the GPU to avoid CPU-GPU transfers.
         """
         # Use provided PBS instance or default self.pbs
         pbs = pbs_instance if pbs_instance else self.pbs
@@ -895,32 +902,60 @@ class DQNAgent:
         """
         Convert a batch of game states to a batch tensor.
         """
-        tensor_list = []
-        for i, state in enumerate(states):
-            # Use game_states[i] if available for PBS, otherwise use state
-            gs = game_states[i] if game_states else state
-            # Use the corresponding PBS instance
-            pbs_inst = self.pbs_instances[i] if self.pbs_instances and i < len(self.pbs_instances) else self.pbs
+        with open("debug_log.txt", "a") as f:
+            f.write(f"DEBUG: get_batch_state_representation called with {len(states)} states\n")
+            tensor_list = []
+            for i, state in enumerate(states):
+                f.write(f"DEBUG: Processing state {i}\n")
+                # Use game_states[i] if available for PBS, otherwise use state
+                gs = game_states[i] if game_states else state
+                # Use the corresponding PBS instance
+                pbs_inst = self.pbs_instances[i] if self.pbs_instances and i < len(self.pbs_instances) else self.pbs
+                
+                tensor = self.get_state_representation(gs, pbs_instance=pbs_inst)
+                tensor_list.append(tensor)
             
-            tensor = self.get_state_representation(gs, pbs_instance=pbs_inst)
-            tensor_list.append(tensor)
+            f.write(f"DEBUG: Stacking {len(tensor_list)} tensors. Shape[0]: {tensor_list[0].shape}\n")
         
-        return torch.stack(tensor_list)
+        stacked = torch.stack(tensor_list)
+        with open("debug_log.txt", "a") as f:
+            f.write("DEBUG: Stacking done\n")
+        return stacked
 
     def act_batch(self, states, valid_moves_list, game_states=None) -> List[Optional[Tuple[Tuple[int, int], Tuple[int, int]]]]:
         """
         Choose actions for a batch of states.
         """
-        batch_size = len(states)
+        with open("debug_log.txt", "a") as f:
+            f.write(f"DEBUG: act_batch called for {self.name}\n")
+            try:
+                batch_size = len(states)
+                f.write(f"DEBUG: batch_size={batch_size}\n")
+                if batch_size > 0:
+                     f.write(f"DEBUG: type(states[0])={type(states[0])}\n")
+            except Exception as e:
+                f.write(f"DEBUG: Error getting length: {e}\n")
+        
         actions = [None] * batch_size
         
         # 1. Get batch state representation
-        state_tensor = self.get_batch_state_representation(states, game_states)
-        
+        try:
+            state_tensor = self.get_batch_state_representation(states, game_states)
+            with open("debug_log.txt", "a") as f:
+                f.write(f"DEBUG: State tensor shape: {state_tensor.shape}\n")
+        except Exception as e:
+            with open("debug_log.txt", "a") as f:
+                f.write(f"DEBUG: Error in get_batch_state_representation: {e}\n")
+            raise e
+            
         # 2. Get uncertainty maps (if PBS)
+        with open("debug_log.txt", "a") as f:
+            f.write("DEBUG: Getting uncertainty maps\n")
         uncertainty_maps = []
         if self.pbs_instances and game_states:
             for i, gs in enumerate(game_states):
+                with open("debug_log.txt", "a") as f:
+                    f.write(f"DEBUG: Getting map for state {i}\n")
                 if gs:
                     uncertainty_maps.append(self.pbs_instances[i].get_uncertainty_map(gs))
                 else:
@@ -931,7 +966,16 @@ class DQNAgent:
         # 3. Network forward pass
         self.q_network.eval()
         with torch.no_grad():
-            base_q_values_batch = self.q_network(state_tensor)
+            try:
+                with open("debug_log.txt", "a") as f:
+                    f.write(f"DEBUG: Starting forward pass. Tensor device: {state_tensor.device}\n")
+                base_q_values_batch = self.q_network(state_tensor)
+                with open("debug_log.txt", "a") as f:
+                    f.write("DEBUG: Forward pass done\n")
+            except Exception as e:
+                with open("debug_log.txt", "a") as f:
+                    f.write(f"DEBUG: Error in forward pass: {e}\n")
+                raise e
         self.q_network.train()
         
         # 4. Process each env
@@ -953,10 +997,6 @@ class DQNAgent:
                 actions[i] = random.choice(valid_moves)
             else:
                 # Select best action
-                # q_values is a dict {action_index: q_value}
-                # But here q_values is a tensor [1, action_size]
-                # We need to filter for valid moves
-                
                 # Create mask for valid moves
                 action_indices = torch.tensor(
                     [self._move_to_action_index(move) for move in valid_moves],
