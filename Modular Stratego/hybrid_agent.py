@@ -2,6 +2,7 @@ import torch
 import random
 from kluss_solver import KLUSSSolver
 from dqn_evaluator import DQNEvaluator
+from battle import BattleResolver
 
 class HybridAgent:
     def __init__(self, player_id, model_path=None, device='cpu'):
@@ -11,6 +12,9 @@ class HybridAgent:
         # Initialize Components
         self.evaluator = DQNEvaluator(model_path, device)
         self.solver = KLUSSSolver(self.evaluator)
+
+    def get_belief_state(self, game_state):
+        return None
         
     def act(self, game_state, valid_moves):
         """
@@ -40,12 +44,11 @@ class HybridAgent:
         # Fallback to random if solver fails or returns empty
         return random.choice(valid_moves)
 
-    def get_top_moves(self, game_state, n=3):
+    def get_top_moves(self, game_state, valid_moves, n=3):
         """
         Evaluate all valid moves and return the top n.
         Returns: List of (move, value) tuples.
         """
-        valid_moves = self.env.get_valid_moves() 
         if not valid_moves:
             return []
             

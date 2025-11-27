@@ -9,21 +9,38 @@ from dqn_visualizer import DQNMoveVisualizer
 from game_state import GameState
 
 class StrategoEnvironment:
-    def __init__(self, device, record_game=False, episode_num=None):
+    def __init__(self, device, record_game=False, episode_num=None, p1_placement=None, p2_placement=None):
         self.device = device
         self.record_game = record_game
         self.episode_num = episode_num
         self.current_player = 1
         self.game_over = False
         self.winner = None
+
+        # Core game components
+        self.board = Board(device)
+        self.battle_resolver = BattleResolver()
+        self.directions = torch.tensor([(0, 1), (0, -1), (1, 0), (-1, 0)], device=device)
+        self.dqn_visualizer = DQNMoveVisualizer()
+
+        self.turn_count = 0
+        self.move_history = []
+        self.revealed_pieces_p1 = {}
         self.revealed_pieces_p2 = {}
-        
-        if hasattr(self, '_flag_positions'):
-            self._flag_positions = {1: None, -1: None}
-        if hasattr(self, '_cached_piece_counts'):
-            self._cached_piece_counts = {1: 40, -1: 40}
-        if hasattr(self, '_previous_piece_value'):
-            self._previous_piece_value = {1: 0, -1: 0}
+
+        self._flag_positions = {1: None, -1: None}
+        self._cached_piece_counts = {1: 40, -1: 40}
+        self._previous_piece_value = {1: 0, -1: 0}
+        self._previous_move_count = {1: 0, -1: 0}
+
+        # Track piece losses for exchange penalty mechanism
+        self.piece_losses = {1: [], -1: []}
+        self.exchanges = {1: [], -1: []}
+
+        # Reset board and set up initial pieces
+        self.reset(p1_placement=p1_placement, p2_placement=p2_placement)
+
+    def reset(self, p1_placement=None, p2_placement=None) -> GameState:
         self.board.reset()
         self.current_player = 1
         self.game_over = False
@@ -32,59 +49,54 @@ class StrategoEnvironment:
         self.move_history = []
         self.revealed_pieces_p1 = {}
         self.revealed_pieces_p2 = {}
-        
-        if hasattr(self, '_flag_positions'):
-            self._flag_positions = {1: None, -1: None}
-        if hasattr(self, '_cached_piece_counts'):
-            self._cached_piece_counts = {1: 40, -1: 40}
-        if hasattr(self, '_previous_piece_value'):
-            self._previous_piece_value = {1: 0, -1: 0}
-        if hasattr(self, '_previous_move_count'):
-            self._previous_move_count = {1: 0, -1: 0}
-            
-        # Track piece losses for exchange penalty mechanism
+
+        self._flag_positions = {1: None, -1: None}
+        self._cached_piece_counts = {1: 40, -1: 40}
+        self._previous_piece_value = {1: 0, -1: 0}
+        self._previous_move_count = {1: 0, -1: 0}
+
         self.piece_losses = {1: [], -1: []}
         self.exchanges = {1: [], -1: []}
-        
+
         # Setup pieces in starting positions
         if p1_placement is None:
             p1_pieces = self._generate_pieces()
             p1_positions = self._get_p1_positions()
             p1_placement = [(piece, pos) for piece, pos in zip(p1_pieces, p1_positions)]
-            
+
         if p2_placement is None:
             p2_pieces = self._generate_pieces()
             p2_positions = self._get_p2_positions()
             p2_placement = [(piece, pos) for piece, pos in zip(p2_pieces, p2_positions)]
-            
+
         # Ensure we have exactly 40 pieces and 40 positions for each player
         assert len(p1_placement) == 40, f"Player 1 should have 40 pieces, got {len(p1_placement)}"
         assert len(p2_placement) == 40, f"Player 2 should have 40 pieces, got {len(p2_placement)}"
-        
+
         # Verify no pieces in rows 4-5 (lake rows)
         for piece, (r, c) in p1_placement:
             assert r not in [4, 5], f"Player 1 piece in lake row: ({r}, {c})"
         for piece, (r, c) in p2_placement:
             assert r not in [4, 5], f"Player 2 piece in lake row: ({r}, {c})"
-        
+
         # Place pieces on the board
         self.board.setup_pieces(p1_placement, p2_placement)
-        
+
         return self._get_game_state()
-        
+
     def visualize_moves(self, move_index=None, save_path=None):
         """Visualize recorded moves using the DQNMoveVisualizer."""
         if move_index is not None:
             self.dqn_visualizer.visualize_move(move_index, save_path)
         else:
             self.dqn_visualizer.print_move_history()
-            
+
     def clear_move_history(self):
         """Clear the recorded move history."""
         self.dqn_visualizer.clear_history()
-        
+
         return self._get_game_state()
-        
+
     def _generate_pieces(self) -> List[PieceType]:
         """Generate a list of pieces for one player. Must be exactly 40 pieces."""
         pieces = [PieceType.FLAG, PieceType.SPY] + [PieceType.BOMB]*6 + [PieceType.MARSHAL] + \
@@ -104,7 +116,7 @@ class StrategoEnvironment:
         random.shuffle(pieces)
         assert len(pieces) == 40, f"Expected 40 pieces, got {len(pieces)}"
         return pieces
-        
+
     def _get_p1_positions(self) -> List[Tuple[int, int]]:
         """Get starting positions for Player 1. Must be exactly 40 positions in rows 6-9."""
         # Player 1 is in rows 6-9 (bottom 4 rows)
@@ -150,7 +162,7 @@ class StrategoEnvironment:
         """
         moves = []
         actual_board = self.board.actual_board
-        
+
         # CRITICAL: Use actual_board to get pieces belonging to current player
         # Player 1 has positive values, Player -1 has negative values
         if self.current_player == 1:
@@ -159,40 +171,40 @@ class StrategoEnvironment:
         else:
             # Player -1: get all negative pieces (excluding lakes)
             player_pieces = torch.nonzero((actual_board < 0) & (actual_board != LAKE_SQUARE))
-        
+
         directions_list = [(int(dr.item()), int(dc.item())) for dr, dc in self.directions]
-        
+
         player_pieces_list = [(int(r.item()), int(c.item())) for r, c in player_pieces]
-        
+
         for r, c in player_pieces_list:
             piece_value_actual = int(actual_board[r, c].item())
-            
+
             # Verify this piece actually belongs to current player
             if self.current_player == 1 and piece_value_actual <= 0:
                 continue  # Not player 1's piece
             if self.current_player == -1 and piece_value_actual >= 0:
                 continue  # Not player -1's piece
-            
+
             piece_type = PieceType(abs(piece_value_actual))
-            
+
             # Rule 1: Flags and bombs cannot move - exclude them completely
             if piece_type in [PieceType.FLAG, PieceType.BOMB]:
                 continue
-            
+
             # Rule 2: Scout can move any distance in a straight line
             if piece_type == PieceType.SCOUT:
                 for dr, dc in directions_list:
                     for i in range(1, BOARD_SIZE):
                         r_to, c_to = r + i * dr, c + i * dc
-                        
+
                         # Check bounds
                         if not (0 <= r_to < BOARD_SIZE and 0 <= c_to < BOARD_SIZE):
                             break
-                        
+
                         target_actual = int(actual_board[r_to, c_to].item())
                         if target_actual == LAKE_SQUARE:
                             break
-                        
+
                         # Friendly fire check: cannot attack own pieces
                         if target_actual != EMPTY_SQUARE:
                             # Check if target is same team (same sign)
@@ -200,7 +212,7 @@ class StrategoEnvironment:
                                (piece_value_actual < 0 and target_actual < 0):
                                 # Same team - cannot attack (friendly fire)
                                 break
-                        
+
                         # Valid target: empty or enemy
                         if target_actual == EMPTY_SQUARE:
                             moves.append(((r, c), (r_to, c_to)))
@@ -212,15 +224,15 @@ class StrategoEnvironment:
                 # Rule 3: Other pieces move one square only
                 for dr, dc in directions_list:
                     r_to, c_to = r + dr, c + dc
-                    
+
                     # Check bounds
                     if not (0 <= r_to < BOARD_SIZE and 0 <= c_to < BOARD_SIZE):
                         continue
-                    
+
                     target_actual = int(actual_board[r_to, c_to].item())
                     if target_actual == LAKE_SQUARE:
                         continue
-                    
+
                     # Friendly fire check: cannot attack own pieces
                     if target_actual != EMPTY_SQUARE:
                         # Check if target is same team (same sign)
@@ -228,16 +240,16 @@ class StrategoEnvironment:
                            (piece_value_actual < 0 and target_actual < 0):
                             # Same team - cannot attack (friendly fire)
                             continue
-                    
+
                     # Valid target: empty or enemy
                     if target_actual == EMPTY_SQUARE:
                         moves.append(((r, c), (r_to, c_to)))
                     else:
                         # Enemy piece - can attack
                         moves.append(((r, c), (r_to, c_to)))
-                        
+
         return moves
-        
+
     def step(self, action: Tuple[Tuple[int, int], Tuple[int, int]]) -> Tuple[GameState, float, bool, Dict]:
         """
         Execute a move and return the new state.
@@ -245,13 +257,17 @@ class StrategoEnvironment:
         """
         if self.game_over:
             return self._get_game_state(), 0.0, True, {"winner": self.winner}
-            
+
         (r_from, c_from), (r_to, c_to) = action
-        
+
+        # Record move for visualization and repetition penalty tracking
+        if hasattr(self, "dqn_visualizer"):
+            self.dqn_visualizer.record_move(action, self.current_player)
+
         # Get pieces involved in the move
         moving_piece_value = self.board.actual_board[r_from, c_from].item()
         target_piece_value = self.board.actual_board[r_to, c_to].item()
-        
+
         # Calculate reward
         # REWARD SCALING: Scale down by 10x (divide by 10) to prevent reward explosion
         REWARD_SCALE = 1.0  # Changed from 10.0 to 1.0 (divide by 10)

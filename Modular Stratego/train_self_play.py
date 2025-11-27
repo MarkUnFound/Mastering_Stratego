@@ -102,12 +102,9 @@ class SelfPlayWorker(mp.Process):
                 else: target = -1.0
                 
                 # Convert to tensor (CPU)
-                # We need the helper. Since it's not in a class we can import easily without circular deps,
-                # we'll implement a simple version or call a static method.
-                # For now, placeholder zeros.
-                tensor = torch.zeros((41, 10, 10), dtype=torch.float32)
-                # In real code: tensor = agent_p1.solver.state_to_tensor(game_state)
-                
+                # Use the same encoding as KLUSS/DQN via KLUSSSolver.state_to_tensor
+                tensor = agent_p1.solver.state_to_tensor(game_state).cpu()
+
                 data_points.append((tensor, target))
             
             # Send to Main
@@ -149,6 +146,9 @@ class ParallelSelfPlayTrainer:
         self.batch_size = 32
         self.games_played = 0
         self.loss_history = []
+        self.last_loss = None
+        self.last_value_mean = None
+        self.last_value_std = None
 
     def start_workers(self):
         for i in range(self.num_workers):
@@ -200,7 +200,7 @@ class ParallelSelfPlayTrainer:
                 break
                 
             # Get Top Moves for Visualization
-            top_moves = current_agent.get_top_moves(state, n=3)
+            top_moves = current_agent.get_top_moves(state, valid_moves, n=3)
             
             # Render and Save
             save_path = os.path.join(save_dir, f"frame_{frame_count:04d}.png")
@@ -214,6 +214,29 @@ class ParallelSelfPlayTrainer:
         print(f"Game recorded to {save_dir}")
         pygame.quit()
 
+    def debug_probe_state(self, num_moves=5):
+        """Probe a fresh starting state and print top moves with DQN values."""
+        env = StrategoEnvironment(device=self.device)
+        state = env.reset()
+
+        agent = HybridAgent(player_id=state.current_player, device=self.device)
+        agent.evaluator = self.train_evaluator
+
+        valid_moves = env.get_valid_moves()
+        if not valid_moves:
+            print("No valid moves from initial state.")
+            return
+
+        move_values = agent.analyze_state(state, valid_moves)
+        if not move_values:
+            print("analyze_state returned no moves.")
+            return
+
+        move_values.sort(key=lambda x: x[1], reverse=True)
+        print(f"Top {min(num_moves, len(move_values))} moves from initial state:")
+        for (move, val) in move_values[:num_moves]:
+            print(f"  Move {move}: value={float(val):.3f}")
+
     def train_loop(self, total_games=1000):
         self.start_workers()
         
@@ -226,7 +249,22 @@ class ParallelSelfPlayTrainer:
                     self.games_played += 1
                     
                     if self.games_played % 10 == 0:
-                        print(f"Games: {self.games_played}, Buffer: {len(self.replay_buffer)}")
+                        if self.loss_history:
+                            window = self.loss_history[-100:]
+                            avg_loss = sum(window) / len(window)
+                            if self.last_value_mean is not None and self.last_value_std is not None:
+                                print(
+                                    f"Games: {self.games_played}, Buffer: {len(self.replay_buffer)}, "
+                                    f"LastLoss: {self.last_loss:.4f}, AvgLoss(100): {avg_loss:.4f}, "
+                                    f"ValueMean: {self.last_value_mean:.3f}, ValueStd: {self.last_value_std:.3f}"
+                                )
+                            else:
+                                print(
+                                    f"Games: {self.games_played}, Buffer: {len(self.replay_buffer)}, "
+                                    f"LastLoss: {self.last_loss:.4f}, AvgLoss(100): {avg_loss:.4f}"
+                                )
+                        else:
+                            print(f"Games: {self.games_played}, Buffer: {len(self.replay_buffer)}")
                     
                     if self.games_played % 50 == 0:
                         self.update_league()
@@ -264,11 +302,20 @@ class ParallelSelfPlayTrainer:
         values, _ = self.train_evaluator.network(state_batch)
         loss = F.mse_loss(values, target_batch)
         
+        value_mean = values.mean().item()
+        value_std = values.std().item()
+        
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
         
-        return loss.item()
+        loss_value = loss.item()
+        self.loss_history.append(loss_value)
+        self.last_loss = loss_value
+        self.last_value_mean = value_mean
+        self.last_value_std = value_std
+        
+        return loss_value
 
 if __name__ == "__main__":
     # Run with 4 workers by default
