@@ -912,6 +912,61 @@ def calculate_setup_agent_reward(placement: List[Tuple[PieceType, Tuple[int, int
     return reward
 
 
+def generate_heuristic_placement(player_id: int) -> List[Tuple[PieceType, Tuple[int, int]]]:
+    """
+    Generate a heuristic placement:
+    - Weakest pieces at the back (Flag, Spy, Scouts, Miners)
+    - Strongest pieces at the front (Marshal, General, Colonels, Majors, Bombs)
+    """
+    # Define piece groups
+    back_pieces = [PieceType.FLAG, PieceType.SPY] + [PieceType.SCOUT]*8 + [PieceType.MINER]*5 + [PieceType.SERGEANT]*4
+    front_pieces = [PieceType.MARSHAL, PieceType.GENERAL] + [PieceType.COLONEL]*2 + [PieceType.MAJOR]*3 + \
+                   [PieceType.CAPTAIN]*4 + [PieceType.LIEUTENANT]*4 + [PieceType.BOMB]*6
+    
+    random.shuffle(back_pieces)
+    random.shuffle(front_pieces)
+    
+    placement = []
+    
+    if player_id == 1:
+        rows_back = [(r, c) for r in range(8, 10) for c in range(10)]
+        rows_front = [(r, c) for r in range(6, 8) for c in range(10)]
+        
+        for pos in rows_back:
+            if back_pieces:
+                piece = back_pieces.pop()
+            else:
+                piece = front_pieces.pop()
+            placement.append((piece, pos))
+            
+        for pos in rows_front:
+            if front_pieces:
+                piece = front_pieces.pop()
+            else:
+                piece = back_pieces.pop() 
+            placement.append((piece, pos))
+            
+    else:
+        rows_back = [(r, c) for r in range(0, 2) for c in range(10)]
+        rows_front = [(r, c) for r in range(2, 4) for c in range(10)]
+        
+        for pos in rows_back:
+            if back_pieces:
+                piece = back_pieces.pop()
+            else:
+                piece = front_pieces.pop()
+            placement.append((piece, pos))
+            
+        for pos in rows_front:
+            if front_pieces:
+                piece = front_pieces.pop()
+            else:
+                piece = back_pieces.pop()
+            placement.append((piece, pos))
+            
+    return placement
+
+
 def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100, 
                      model_save_path: str = "dqn_models",
                      use_setup_agents: bool = True,
@@ -1609,6 +1664,10 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                             'p2_placement': p2_place,
                             'episode_start': total_episodes
                         }
+                    else:
+                        # Use heuristic placement instead of random
+                        p1_place = generate_heuristic_placement(1)
+                        p2_place = generate_heuristic_placement(-1)
                     
                     commands.append(('reset', {'p1_placement': p1_place, 'p2_placement': p2_place}))
                 else:

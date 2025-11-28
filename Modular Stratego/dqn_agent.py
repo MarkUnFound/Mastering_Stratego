@@ -359,6 +359,10 @@ class DQNAgent:
         if self.pbs and game_state:
             uncertainty_map = self.pbs.get_uncertainty_map(game_state)
             
+        # Ensure state_tensor has batch dimension (B, C, H, W)
+        if state_tensor.dim() == 3:
+            state_tensor = state_tensor.unsqueeze(0)
+            
         self.q_network.eval()
         with torch.no_grad():
             base_q_values = self.q_network(state_tensor)
@@ -881,14 +885,19 @@ class DQNAgent:
             else:
                 visible_board = torch.tensor(visible_board, dtype=torch.float32, device=self.device)
         
-        # Ensure it's a tensor on GPU
+        # Ensure it's a tensor on GPU and FLOAT type
         if not isinstance(visible_board, torch.Tensor):
             visible_board = torch.tensor(visible_board, dtype=torch.float32, device=self.device)
-        elif visible_board.device != self.device:
-            visible_board = visible_board.to(self.device)
         else:
-            # CRITICAL: Clone to avoid modifying the environment's board tensor in-place
-            visible_board = visible_board.clone()
+            if visible_board.device != self.device:
+                visible_board = visible_board.to(self.device)
+            else:
+                # CRITICAL: Clone to avoid modifying the environment's board tensor in-place
+                visible_board = visible_board.clone()
+            
+            # Ensure float type for neural network input
+            if visible_board.dtype != torch.float32:
+                visible_board = visible_board.float()
         
         # Reshape to (1, 10, 10) if it's (10, 10) - Add channel dimension
         if visible_board.dim() == 2:

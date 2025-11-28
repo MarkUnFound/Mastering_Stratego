@@ -18,14 +18,10 @@ class StrategoEnvironment:
         self.winner = None
         self.revealed_pieces_p2 = {}
         
-        if hasattr(self, '_flag_positions'):
-            self._flag_positions = {1: None, -1: None}
-        if hasattr(self, '_cached_piece_counts'):
-            self._cached_piece_counts = {1: 40, -1: 40}
-        if hasattr(self, '_previous_piece_value'):
-            self._previous_piece_value = {1: 0, -1: 0}
-        if hasattr(self, '_previous_move_count'):
-            self._previous_move_count = {1: 0, -1: 0}
+        self._flag_positions = {1: None, -1: None}
+        self._cached_piece_counts = {1: 40, -1: 40}
+        self._previous_piece_value = {1: 0, -1: 0}
+        self._previous_move_count = {1: 0, -1: 0}
             
         self.board = Board(device)
         self.battle_resolver = BattleResolver()
@@ -45,14 +41,10 @@ class StrategoEnvironment:
         self.revealed_pieces_p1 = {}
         self.revealed_pieces_p2 = {}
         
-        if hasattr(self, '_flag_positions'):
-            self._flag_positions = {1: None, -1: None}
-        if hasattr(self, '_cached_piece_counts'):
-            self._cached_piece_counts = {1: 40, -1: 40}
-        if hasattr(self, '_previous_piece_value'):
-            self._previous_piece_value = {1: 0, -1: 0}
-        if hasattr(self, '_previous_move_count'):
-            self._previous_move_count = {1: 0, -1: 0}
+        self._flag_positions = {1: None, -1: None}
+        self._cached_piece_counts = {1: 40, -1: 40}
+        self._previous_piece_value = {1: 0, -1: 0}
+        self._previous_move_count = {1: 0, -1: 0}
             
         # Track piece losses for exchange penalty mechanism
         self.piece_losses = {1: [], -1: []}
@@ -78,25 +70,26 @@ class StrategoEnvironment:
             assert r not in [4, 5], f"Player 1 piece in lake row: ({r}, {c})"
         for piece, (r, c) in p2_placement:
             assert r not in [4, 5], f"Player 2 piece in lake row: ({r}, {c})"
-        
-        # Place pieces on the board
-        self.board.setup_pieces(p1_placement, p2_placement)
+
+        self.place_pieces(1, p1_placement)
+        self.place_pieces(-1, p2_placement)
         
         return self._get_game_state()
-        
-    def visualize_moves(self, move_index=None, save_path=None):
-        """Visualize recorded moves using the DQNMoveVisualizer."""
-        if move_index is not None:
-            self.dqn_visualizer.visualize_move(move_index, save_path)
-        else:
-            self.dqn_visualizer.print_move_history()
+
+    def place_pieces(self, player_id: int, placement: List[Tuple[PieceType, Tuple[int, int]]]):
+        """Place pieces on the board for a specific player."""
+        for piece_type, (r, c) in placement:
+            # Determine value based on player
+            value = piece_type.value
+            if player_id == -1:
+                value = -value
             
-    def clear_move_history(self):
-        """Clear the recorded move history."""
-        self.dqn_visualizer.clear_history()
-        
-        return self._get_game_state()
-        
+            self.board.place_piece(r, c, value)
+            
+            # Track flag position
+            if piece_type == PieceType.FLAG:
+                self._flag_positions[player_id] = (r, c)
+
     def _generate_pieces(self) -> List[PieceType]:
         """Generate a list of pieces for one player. Must be exactly 40 pieces."""
         pieces = [PieceType.FLAG, PieceType.SPY] + [PieceType.BOMB]*6 + [PieceType.MARSHAL] + \
@@ -116,39 +109,32 @@ class StrategoEnvironment:
         random.shuffle(pieces)
         assert len(pieces) == 40, f"Expected 40 pieces, got {len(pieces)}"
         return pieces
-        
+
+    def get_valid_placement_positions(self, player_id: int) -> List[Tuple[int, int]]:
+        """Get valid placement positions for a player."""
+        positions = []
+        if player_id == 1:
+            # Player 1: Rows 6-9
+            for r in range(6, 10):
+                for c in range(BOARD_SIZE):
+                    positions.append((r, c))
+        else:
+            # Player 2: Rows 0-3
+            for r in range(4):
+                for c in range(BOARD_SIZE):
+                    positions.append((r, c))
+        return positions
+
     def _get_p1_positions(self) -> List[Tuple[int, int]]:
         """Get starting positions for Player 1. Must be exactly 40 positions in rows 6-9."""
-        # Player 1 is in rows 6-9 (bottom 4 rows)
-        # Lakes are in rows 4-5, so no overlap
-        positions = [(r, c) for r in range(6, 10) for c in range(10)]
-        if not hasattr(self, '_lake_positions_set'):
-            self._lake_positions_set = set((int(r.item()), int(c.item())) for r, c in self.board.lakes)
-        # Remove lake positions (shouldn't be any, but check anyway)
-        positions = [pos for pos in positions if pos not in self._lake_positions_set]
-        # Ensure we have exactly 40 positions
-        if len(positions) < 40:
-            raise ValueError(f"Not enough positions for Player 1: {len(positions)} < 40")
+        positions = self.get_valid_placement_positions(1)
         random.shuffle(positions)
-        positions = positions[:40]  # Take exactly 40
-        assert len(positions) == 40, f"Player 1 should have 40 positions, got {len(positions)}"
         return positions
 
     def _get_p2_positions(self) -> List[Tuple[int, int]]:
         """Get starting positions for Player 2. Must be exactly 40 positions in rows 0-3."""
-        # Player 2 is in rows 0-3 (top 4 rows)
-        # Lakes are in rows 4-5, so no overlap
-        positions = [(r, c) for r in range(0, 4) for c in range(10)]
-        if not hasattr(self, '_lake_positions_set'):
-            self._lake_positions_set = set((int(r.item()), int(c.item())) for r, c in self.board.lakes)
-        # Remove lake positions (shouldn't be any, but check anyway)
-        positions = [pos for pos in positions if pos not in self._lake_positions_set]
-        # Ensure we have exactly 40 positions
-        if len(positions) < 40:
-            raise ValueError(f"Not enough positions for Player 2: {len(positions)} < 40")
+        positions = self.get_valid_placement_positions(-1)
         random.shuffle(positions)
-        positions = positions[:40]  # Take exactly 40
-        assert len(positions) == 40, f"Player 2 should have 40 positions, got {len(positions)}"
         return positions
 
     def get_valid_moves(self) -> List[Tuple[Tuple[int, int], Tuple[int, int]]]:
