@@ -57,8 +57,8 @@ EPSILON_DECAY = 0.99995  # Slower decay for longer training
 TARGET_UPDATE = 1000
 MEMORY_SIZE = 10000000
 LEARNING_RATE = 0.0001
-NUM_EPISODES = 100  # Total episodes to train (set to 100 for verification)
-SAVE_INTERVAL = 50   # Save model every N episodes
+NUM_EPISODES = 30000  # Total episodes to train
+SAVE_INTERVAL = 500   # Save model every N episodes
 EVAL_INTERVAL = 100  # Evaluate every N episodes
 PREFETCH_QUEUE_SIZE = 4 # Size of the prefetch queue
 REPLAY_UPDATE_INTERVAL = 2 # Train every N steps (train very frequently)
@@ -1454,7 +1454,7 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
     last_saved_episode = total_episodes - (total_episodes % save_interval) if total_episodes > 0 else -save_interval
     
     # Track last plotted episode to prevent duplicate plot generation in parallel training
-    last_plotted_episode = -50  # Initialize to -50 so first plot at episode 50 works
+    last_plotted_episode = -save_interval  # Initialize to negative interval so first plot works
     
     def save_checkpoint(episode_num, is_final=False):
         """Helper function to save all models"""
@@ -1788,7 +1788,7 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                     # GENERATE PLOTS EVERY 50 EPISODES
                     # ============================================
                     # Prevent duplicate plot generation in parallel environment by checking last_plotted_episode
-                    if total_episodes % 50 == 0 and total_episodes > last_plotted_episode:
+                    if total_episodes % save_interval == 0 and total_episodes > last_plotted_episode:
                         # Generate training progress plots
                         try:
                             if len(episode_history) > 0:
