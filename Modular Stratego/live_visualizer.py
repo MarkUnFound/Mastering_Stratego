@@ -87,9 +87,6 @@ class LiveVisualizer:
         self.agent1 = DQNAgent(player_id=1, device=self.device, use_pbs=True)
         self.agent2 = DQNAgent(player_id=-1, device=self.device, use_pbs=True)
         
-        # Load models if possible
-        self._load_models()
-        
         # State
         self.game_state = self.env.reset()
         self.running = True
@@ -99,12 +96,19 @@ class LiveVisualizer:
         self.selected_tile = None
         self.hovered_tile = None
         self.current_analysis = None
+        self.use_pbs = True  # Toggle for PBS usage
+        self.agent_status = "Initializing..."
+        self.pending_battle = None # Store battle info: {action, attacker, defender, time}
+        
+        # Load models if possible
+        self._load_models()
         
         # UI Elements
         self.buttons = [
             Button(SIDEBAR_X, WINDOW_HEIGHT - 100, 100, 40, "Step (>)", self.step_game),
             Button(SIDEBAR_X + 120, WINDOW_HEIGHT - 100, 100, 40, "Play/Pause", self.toggle_pause),
-            Button(SIDEBAR_X + 240, WINDOW_HEIGHT - 100, 100, 40, "Reset", self.reset_game)
+            Button(SIDEBAR_X + 240, WINDOW_HEIGHT - 100, 100, 40, "Reset", self.reset_game),
+            Button(SIDEBAR_X + 360, WINDOW_HEIGHT - 100, 100, 40, "PBS: ON", self.toggle_pbs)
         ]
         
         # Cache lake positions for drawing
@@ -134,16 +138,26 @@ class LiveVisualizer:
             self.agent2.epsilon = 0.0
             
             print(f"Loaded agent models for episode {episode}.")
+            self.agent_status = f"Loaded (Ep {episode})"
         except Exception as e:
             print(f"Could not load models: {e}")
             print("Using random agents.")
+            self.agent_status = "Random (Untrained)"
 
     def toggle_pause(self):
         self.paused = not self.paused
 
+    def toggle_pbs(self):
+        self.use_pbs = not self.use_pbs
+        # Update button text
+        self.buttons[3].text = f"PBS: {'ON' if self.use_pbs else 'OFF'}"
+        # Clear analysis to force refresh
+        self.current_analysis = None
+
     def reset_game(self):
         self.game_state = self.env.reset()
         self.current_analysis = None
+        self.pending_battle = None
         print("Game Reset")
 
     def get_color_from_gradient(self, value):
@@ -166,32 +180,46 @@ class LiveVisualizer:
         # Set to eval mode to avoid BatchNorm errors with batch size 1
         agent.q_network.eval()
         
-        # Get Q-values
-        with torch.no_grad():
-            q_values = agent.q_network(state_rep.unsqueeze(0))
-        
-        # Get uncertainty if available
-        uncertainty_map = None
-        if agent.pbs:
-            uncertainty_map = agent.pbs.get_uncertainty_map(self.env.board.actual_board)
-            
-        results = []
-        
-        # We want to show: Move, Q-value, Uncertainty Bonus
-        # Re-calculate exploration bonus to show breakdown
-        
-        # Get base Q-values (without bonus) for comparison
+        # Get base Q-values (without bonus/penalty)
         with torch.no_grad():
             base_q_values = agent.q_network(state_rep.unsqueeze(0))
+        
+        # Get uncertainty if available
+        uncertainty_map = {}
+        
+        # Handle PBS Toggle
+        original_pbs = agent.pbs
+        if not self.use_pbs:
+            agent.pbs = None # Temporarily disable for calculation
             
+        try:
+            if agent.pbs:
+                uncertainty_map = agent.pbs.get_uncertainty_map(self.env.board.actual_board)
+                
+            # Calculate uncertainty-aware Q-values (Adjusted Q)
+            # This subtracts the penalty
+            q_values = agent.calculate_uncertainty_aware_q_values(
+                base_q_values, valid_moves, uncertainty_map
+            )
+        finally:
+            if not self.use_pbs:
+                agent.pbs = original_pbs # Restore
+            
+        results = []
         all_scores = []
         
         for move in valid_moves:
             action_idx = agent._move_to_action_index(move)
+            
             base_q = base_q_values[0, action_idx].item()
             adjusted_q = q_values[0, action_idx].item()
+            
+            # Calculate penalty (Base - Adjusted)
+            uncertainty_penalty = base_q - adjusted_q
+            
             uncertainty = agent.get_move_uncertainty(move, uncertainty_map)
             exploration_bonus = uncertainty * agent.uncertainty_exploration_multiplier
+            
             final_score = adjusted_q + exploration_bonus
             
             all_scores.append(final_score)
@@ -200,6 +228,7 @@ class LiveVisualizer:
                 'move': move,
                 'base_q': base_q,
                 'adjusted_q': adjusted_q,
+                'uncertainty_penalty': uncertainty_penalty,
                 'uncertainty': uncertainty,
                 'bonus': exploration_bonus,
                 'final_score': final_score
@@ -219,7 +248,7 @@ class LiveVisualizer:
         return results
 
     def step_game(self):
-        if self.env.game_over:
+        if self.env.game_over or self.pending_battle:
             return
 
         # 1. Analyze before moving
@@ -229,15 +258,47 @@ class LiveVisualizer:
         agent = self.agent1 if current_player == 1 else self.agent2
         
         # 2. Act
-        state_rep = agent.get_state_representation(self.game_state)
-        valid_moves = self.env.get_valid_moves()
         
-        if not valid_moves:
-            return
+        # Handle PBS Toggle for Action
+        original_pbs = agent.pbs
+        if not self.use_pbs:
+            agent.pbs = None
+            
+        try:
+            state_rep = agent.get_state_representation(self.game_state)
+            valid_moves = self.env.get_valid_moves()
+            
+            if not valid_moves:
+                return
 
-        action = agent.act(state_rep, valid_moves, self.game_state)
+            action = agent.act(state_rep, valid_moves, self.game_state)
+        finally:
+            if not self.use_pbs:
+                agent.pbs = original_pbs
         
-        # 3. Step Environment
+        # Check for Battle
+        (r_from, c_from), (r_to, c_to) = action
+        target_val = int(self.env.board.actual_board[r_to, c_to].item())
+        
+        is_attack = False
+        if target_val != 0 and target_val != LAKE_SQUARE:
+            # Check if enemy
+            if (current_player == 1 and target_val < 0) or \
+               (current_player == -1 and target_val > 0):
+                is_attack = True
+                
+        if is_attack:
+            self.pending_battle = {
+                'action': action,
+                'attacker_pos': (r_from, c_from),
+                'defender_pos': (r_to, c_to),
+                'attacker_val': int(self.env.board.actual_board[r_from, c_from].item()),
+                'defender_val': target_val,
+                'start_time': time.time()
+            }
+            return # Wait for animation
+        
+        # 3. Step Environment (Immediate if no battle)
         self.game_state, reward, done, info = self.env.step(action)
         
         # Clear analysis cache for next state
@@ -273,25 +334,27 @@ class LiveVisualizer:
             self.screen.blit(text, (BOARD_OFFSET_X + i * TILE_SIZE + TILE_SIZE//2 - 5, BOARD_OFFSET_Y - 25))
 
     def get_piece_text(self, piece_val):
-        # CORRECT MAPPING based on piece.py
+        # Abbreviations
         piece_map = {
             1: "F",   # FLAG
-            2: "1",   # SPY
-            3: "2",   # SCOUT  
-            4: "3",   # MINER
-            5: "4",   # SERGEANT
-            6: "5",   # LIEUTENANT
-            7: "6",   # CAPTAIN
-            8: "7",   # MAJOR
-            9: "8",   # COLONEL
-            10: "9",  # GENERAL
-            11: "M",  # MARSHAL
+            2: "Spy", # SPY
+            3: "Sc",  # SCOUT  
+            4: "Mn",  # MINER
+            5: "Sgt", # SERGEANT
+            6: "Lt",  # LIEUTENANT
+            7: "Cpt", # CAPTAIN
+            8: "Maj", # MAJOR
+            9: "Col", # COLONEL
+            10: "Gen",# GENERAL
+            11: "Mar",# MARSHAL
             12: "B"   # BOMB
         }
         return piece_map.get(abs(piece_val), "?")
 
     def draw_pieces(self):
         board = self.env.board.actual_board
+        current_player = self.env.current_player
+        agent = self.agent1 if current_player == 1 else self.agent2
         
         for r in range(BOARD_SIZE):
             for c in range(BOARD_SIZE):
@@ -314,6 +377,24 @@ class LiveVisualizer:
                 text_surf = self.font_med.render(txt, True, (255, 255, 255))
                 text_rect = text_surf.get_rect(center=(x, y))
                 self.screen.blit(text_surf, text_rect)
+                
+                # PBS Overlay for Enemy Pieces
+                is_enemy = (current_player == 1 and val < 0) or (current_player == -1 and val > 0)
+                if is_enemy and self.use_pbs and agent.pbs:
+                    # Get predicted rank
+                    beliefs = agent.pbs.get_belief_distribution((r, c))
+                    if beliefs:
+                        # Get max probability rank
+                        best_rank, conf = max(beliefs.items(), key=lambda x: x[1])
+                        if conf > 0.3: # Only show if somewhat confident
+                            # Draw predicted rank below piece
+                            pred_txt = self.get_piece_text(best_rank.value)
+                            pred_surf = self.font_small.render(f"[{pred_txt}]", True, (255, 255, 0))
+                            pred_rect = pred_surf.get_rect(center=(x, y + 20))
+                            # Add black background for readability
+                            bg_rect = pred_rect.inflate(4, 4)
+                            pygame.draw.rect(self.screen, (0,0,0, 180), bg_rect)
+                            self.screen.blit(pred_surf, pred_rect)
 
     def draw_heatmap(self):
         if not self.current_analysis:
@@ -378,7 +459,17 @@ class LiveVisualizer:
         player_txt = self.font_med.render(p_name, True, p_color)
         self.screen.blit(player_txt, (SIDEBAR_X + 20, y))
         
-        y += 50
+        y += 30
+        status_txt = self.font_small.render(f"Agent Status: {self.agent_status}", True, (200, 200, 200))
+        self.screen.blit(status_txt, (SIDEBAR_X + 20, y))
+        
+        y += 20
+        pbs_status = "Enabled" if self.use_pbs else "Disabled"
+        pbs_color = (100, 255, 100) if self.use_pbs else (255, 100, 100)
+        pbs_txt = self.font_small.render(f"PBS Input: {pbs_status}", True, pbs_color)
+        self.screen.blit(pbs_txt, (SIDEBAR_X + 20, y))
+        
+        y += 40
         pygame.draw.line(self.screen, (100,100,100), (SIDEBAR_X, y), (WINDOW_WIDTH, y), 1)
         y += 20
         
@@ -442,8 +533,9 @@ class LiveVisualizer:
                 score = item['final_score']
                 base = item['base_q']
                 unc = item['uncertainty']
+                pen = item.get('uncertainty_penalty', 0.0)
                 
-                txt_str = f"{m[0]}->{m[1]}: Q={score:.2f} (B={base:.2f}, U={unc:.2f})"
+                txt_str = f"{m[0]}->{m[1]}: Q={score:.2f} (P={pen:.2f}, U={unc:.2f})"
                 txt = self.font_small.render(txt_str, True, COLOR_TEXT)
                 self.screen.blit(txt, (SIDEBAR_X + 20, y))
                 y += 20
@@ -453,6 +545,79 @@ class LiveVisualizer:
                 color = self.get_color_from_gradient(norm)
                 pygame.draw.rect(self.screen, color, (SIDEBAR_X + 20, y, int(norm*300), 5))
                 y += 15
+
+    def draw_battle_overlay(self):
+        if not self.pending_battle:
+            return
+            
+        # Semi-transparent background
+        s = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.SRCALPHA)
+        s.fill((0, 0, 0, 180))
+        self.screen.blit(s, (0, 0))
+        
+        # Battle Info
+        cx, cy = WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2
+        
+        # Title
+        title = self.font_large.render("BATTLE!", True, (255, 50, 50))
+        title_rect = title.get_rect(center=(cx, cy - 150))
+        self.screen.blit(title, title_rect)
+        
+        # Attacker
+        att_val = self.pending_battle['attacker_val']
+        att_txt = self.get_piece_text(att_val)
+        att_color = COLOR_P1 if att_val > 0 else COLOR_P2
+        
+        pygame.draw.circle(self.screen, att_color, (cx - 150, cy), 60)
+        att_surf = self.font_large.render(att_txt, True, (255, 255, 255))
+        att_rect = att_surf.get_rect(center=(cx - 150, cy))
+        self.screen.blit(att_surf, att_rect)
+        
+        # VS
+        vs_txt = self.font_large.render("VS", True, (255, 255, 255))
+        vs_rect = vs_txt.get_rect(center=(cx, cy))
+        self.screen.blit(vs_txt, vs_rect)
+        
+        # Defender
+        def_val = self.pending_battle['defender_val']
+        def_txt = self.get_piece_text(def_val)
+        def_color = COLOR_P1 if def_val > 0 else COLOR_P2
+        
+        pygame.draw.circle(self.screen, def_color, (cx + 150, cy), 60)
+        def_surf = self.font_large.render(def_txt, True, (255, 255, 255))
+        def_rect = def_surf.get_rect(center=(cx + 150, cy))
+        self.screen.blit(def_surf, def_rect)
+        
+        # Result Prediction (Who wins?)
+        att_rank = abs(att_val)
+        def_rank = abs(def_val)
+        
+        result_text = "???"
+        res_color = (200, 200, 200)
+        
+        if def_rank == 12: # Bomb
+            if att_rank == 4: # Miner
+                result_text = "Miner Defuses!"
+                res_color = (100, 255, 100)
+            else:
+                result_text = "Boom!"
+                res_color = (255, 100, 100)
+        elif att_rank == 2 and def_rank == 11: # Spy vs Marshal
+            result_text = "Spy Assassinates!"
+            res_color = (100, 255, 100)
+        elif att_rank > def_rank:
+            result_text = "Attacker Wins!"
+            res_color = (100, 255, 100)
+        elif att_rank < def_rank:
+            result_text = "Defender Wins!"
+            res_color = (255, 100, 100)
+        else:
+            result_text = "Draw!"
+            res_color = (255, 255, 100)
+            
+        res_surf = self.font_large.render(result_text, True, res_color)
+        res_rect = res_surf.get_rect(center=(cx, cy + 150))
+        self.screen.blit(res_surf, res_rect)
 
     def update_input(self):
         mouse_pos = pygame.mouse.get_pos()
@@ -493,11 +658,21 @@ class LiveVisualizer:
             self.update_input()
             
             # Auto-play logic
-            if not self.paused:
+            if not self.paused and not self.pending_battle:
                 current_time = time.time()
                 if current_time - self.last_move_time > self.auto_play_speed:
                     self.step_game()
                     self.last_move_time = current_time
+            
+            # Battle Animation Logic
+            if self.pending_battle:
+                if time.time() - self.pending_battle['start_time'] > 2.0: # 2 seconds
+                    # Execute move
+                    action = self.pending_battle['action']
+                    self.game_state, reward, done, info = self.env.step(action)
+                    self.current_analysis = None
+                    self.pending_battle = None
+                    self.last_move_time = time.time()
 
             # Drawing
             self.screen.fill(COLOR_BG)
@@ -506,6 +681,7 @@ class LiveVisualizer:
             self.draw_pieces()
             self.draw_heatmap() # Overlay
             self.draw_sidebar()
+            self.draw_battle_overlay() # Top layer
             
             # Draw Buttons
             for btn in self.buttons:
