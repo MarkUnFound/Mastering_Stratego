@@ -31,6 +31,87 @@ except ImportError:
     PBS_EVALUATOR_AVAILABLE = False
 
 
+
+# 1. Define the JIT-compiled scan kernel
+@torch.jit.script
+def aaren_scan_kernel(k: torch.Tensor, v: torch.Tensor, q: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """
+    JIT-compiled kernel for Hillis-Steele parallel scan.
+    Input shapes: 
+      k, v: (batch, seq_len, hidden)
+      q: (hidden)
+    """
+    batch_size, seq_len, hidden_size = k.size()
+    
+    # Pre-compute scores s = q * k
+    # q is (hidden), k is (B, L, H) -> broadcast multiply then sum
+    s = (k * q).sum(dim=2, keepdim=True) # (B, L, 1)
+
+    # Initialize state (m, u, w)
+    # Using the correct initialization mapping from the paper:
+    # m_i = s_i 
+    # u_i = v_i  (Variable name 'u' in code maps to 'w' in paper)
+    # w_i = 1    (Variable name 'w' in code maps to 'u' in paper)
+    
+    curr_m = s
+    curr_u = v
+    curr_w = torch.ones_like(s)
+
+    # Prepare identity elements for padding
+    # Max identity = -inf
+    # Sum identity = 0
+    pad_m_val = -float('inf')
+    
+    # Calculate number of steps: ceil(log2(L))
+    # For L=20, steps=5
+    # math.log2 is not supported in TorchScript, use change of base
+    num_steps = int(math.ceil(math.log(float(seq_len)) / math.log(2.0)))
+    
+    for i in range(num_steps):
+        offset = 1 << i  # 2^i
+        
+        # -----------------------------------------------------------
+        # Optimization: View-based slicing instead of creating new tensors
+        # where possible, though JIT optimizes cat significantly.
+        # -----------------------------------------------------------
+        
+        # Create shifted tensors (Efficient padding logic)
+        # Shift Right by offset
+        
+        # 1. Pad m (Max)
+        # Construct prev_m: [ -inf padding, curr_m[:-offset] ]
+        pad_m = torch.full((batch_size, offset, 1), pad_m_val, device=curr_m.device, dtype=curr_m.dtype)
+        prev_m = torch.cat((pad_m, curr_m[:, :-offset, :]), dim=1)
+
+        # 2. Pad u (Value Sums)
+        pad_u = torch.zeros((batch_size, offset, hidden_size), device=curr_u.device, dtype=curr_u.dtype)
+        prev_u = torch.cat((pad_u, curr_u[:, :-offset, :]), dim=1)
+
+        # 3. Pad w (Normalization Sums)
+        pad_w = torch.zeros((batch_size, offset, 1), device=curr_w.device, dtype=curr_w.dtype)
+        prev_w = torch.cat((pad_w, curr_w[:, :-offset, :]), dim=1)
+
+        # -----------------------------------------------------------
+        # Associative Operator Core
+        # -----------------------------------------------------------
+        
+        # Update Max
+        m_new = torch.maximum(prev_m, curr_m)
+        
+        # Stable Exponentials
+        # exp(prev - new) and exp(curr - new)
+        exp_prev = torch.exp(prev_m - m_new)
+        exp_curr = torch.exp(curr_m - m_new)
+        
+        # Update Weighted Sums
+        curr_u = prev_u * exp_prev + curr_u * exp_curr
+        curr_w = prev_w * exp_prev + curr_w * exp_curr
+        curr_m = m_new
+
+    # Final division output
+    return curr_u, curr_w, curr_m
+
+
 class AarenCell(nn.Module):
     """
     Aaren (Attention as a Recurrent Neural Network) Cell.
@@ -83,9 +164,13 @@ class AarenCell(nn.Module):
         
         if prev_state is None:
             # Initial state
-            a_t = v_t * torch.exp(s_t)  # (batch, hidden_size)
-            c_t = torch.exp(s_t)  # (batch, 1)
+            # For numerical stability, we track m_t = max(s_1...s_t)
+            # At t=1, m_t = s_t
+            # a_t = v_t * exp(s_t - m_t) = v_t * 1
+            # c_t = exp(s_t - m_t) = 1
             m_t = s_t  # (batch, 1)
+            a_t = v_t  # (batch, hidden_size)
+            c_t = torch.ones_like(s_t)  # (batch, 1)
         else:
             a_prev, c_prev, m_prev = prev_state
             
@@ -241,46 +326,18 @@ class PieceActionAaren(nn.Module):
     
     def _parallel_prefix_scan(self, h: torch.Tensor, aaren_cell: AarenCell, layer_norm: nn.LayerNorm):
         """
-        Parallel prefix scan for Aaren computation.
-        
-        Implements the associative operator for parallel computation:
-        - Processes entire sequence in parallel
-        - Uses cumulative operations for efficiency
-        
-        Args:
-            h: Input tensor (batch, seq_len, hidden_size)
-            aaren_cell: Aaren cell to use
-            layer_norm: Layer normalization
-            
-        Returns:
-            Output tensor (batch, seq_len, hidden_size)
+        Optimized version using JIT kernel and batched projections.
         """
-        batch_size, seq_len, hidden_size = h.size()
+        # 1. Compute Projections (Batched MatMul is highly optimized)
+        k = aaren_cell.W_k(h)
+        v = aaren_cell.W_v(h)
         
-        # Compute keys and values for all timesteps
-        k = aaren_cell.W_k(h)  # (batch, seq_len, hidden_size)
-        v = aaren_cell.W_v(h)  # (batch, seq_len, hidden_size)
+        # 2. Run JIT Scan
+        # Note: We pass aaren_cell.q directly
+        u_final, w_final, _ = aaren_scan_kernel(k, v, aaren_cell.q)
         
-        # Compute attention scores: s_t = dot(q, k_t) for all t
-        q_expanded = aaren_cell.q.unsqueeze(0).unsqueeze(0)  # (1, 1, hidden_size)
-        s = torch.sum(q_expanded * k, dim=2, keepdim=True)  # (batch, seq_len, 1)
-        
-        # Parallel prefix scan for cumulative max
-        m = torch.cummax(s, dim=1)[0]  # (batch, seq_len, 1)
-        
-        # Compute exponentials with numerical stability
-        exp_s_minus_m = torch.exp(s - m)  # (batch, seq_len, 1)
-        
-        # Parallel prefix scan for cumulative sum
-        # a_t = sum_{i=1}^t v_i * exp(s_i - m_t)
-        # c_t = sum_{i=1}^t exp(s_i - m_t)
-        a = torch.cumsum(v * exp_s_minus_m, dim=1)  # (batch, seq_len, hidden_size)
-        c = torch.cumsum(exp_s_minus_m, dim=1)  # (batch, seq_len, 1)
-        
-        # Normalize
-        output = a / (c + 1e-8)  # (batch, seq_len, hidden_size)
-        
-        # Apply layer normalization
+        # 3. Finalize
+        output = u_final / (w_final + 1e-8)
         output = layer_norm(output)
         
         return output
@@ -764,7 +821,8 @@ class ProbabilisticBeliefState:
             piece_value = PIECE_RANKS.get(piece_type, 1)
             # Combine quality score and piece value for training weight
             # Quality score normalized to [0, 1], piece value normalized to [0.5, 1.5]
-            quality_weight = 1.0 / (1.0 + math.exp(-quality_score / 10.0))  # [0, 1]
+            # INVERTED LOGIC: Focus on LOW quality (errors) -> High weight
+            quality_weight = 1.0 - (1.0 / (1.0 + math.exp(-quality_score / 10.0)))  # [0, 1], low score -> high weight
             value_weight = 0.5 + (piece_value / 12.0)  # [0.5, 1.5]
             combined_weight = quality_weight * value_weight
             self._aaren_training_weights[pos] = combined_weight
@@ -842,17 +900,23 @@ class ProbabilisticBeliefState:
         
         # Train feature importance network
         self.evaluator.train_feature_importance(epochs=epochs)
-        
         # Train main evaluator network
         evaluator_loss = self.evaluator.train(epochs=epochs)
         
         # 11. NEW: Train AAREN model if we have enough data
         # We train AAREN whenever we train the evaluator
         if len(self.aaren_training_buffer) >= 32: # Minimum batch size
-            # Extract sequences and labels
-            sequences = [item[0] for item in self.aaren_training_buffer]
-            labels = [item[1] for item in self.aaren_training_buffer]
-            positions = [item[2] for item in self.aaren_training_buffer]
+            # Sample a batch instead of using everything
+            batch_size = 64
+            if len(self.aaren_training_buffer) > batch_size:
+                batch = random.sample(self.aaren_training_buffer, batch_size)
+            else:
+                batch = list(self.aaren_training_buffer)
+            
+            # Extract sequences and labels from batch
+            sequences = [item[0] for item in batch]
+            labels = [item[1] for item in batch]
+            positions = [item[2] for item in batch]
             
             # Get evaluator weights if available
             evaluator_weights = None
@@ -938,10 +1002,10 @@ class ProbabilisticBeliefState:
             
         self.aaren_model.eval()
         
-        # Clear buffer after training
-        self.aaren_training_buffer.clear()
-        self._aaren_training_weights.clear()
-        self._aaren_training_positions.clear()
+        # Do NOT clear buffer after training (Replay Buffer behavior)
+        # self.aaren_training_buffer.clear()
+        # self._aaren_training_weights.clear()
+        # self._aaren_training_positions.clear()
     
     def get_uncertain_positions(self) -> set:
         """
@@ -1392,7 +1456,7 @@ class ProbabilisticBeliefState:
                 batch_weights = sample_weights[batch_start:batch_end] if sample_weights is not None else None
                 
                 # Prepare batch tensor
-                batch_tensor = torch.zeros(len(batch_seqs), max_seq_len, 8, device=self.device)
+                batch_tensor = torch.zeros(len(batch_seqs), max_seq_len, 24, device=self.device)
                 batch_labels_tensor = torch.zeros(len(batch_seqs), NUM_PIECE_TYPES, device=self.device)
                 
                 for i, (seq, label) in enumerate(zip(batch_seqs, batch_labels)):

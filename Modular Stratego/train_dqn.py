@@ -57,7 +57,7 @@ EPSILON_DECAY = 0.99995  # Slower decay for longer training
 TARGET_UPDATE = 1000
 MEMORY_SIZE = 10000000
 LEARNING_RATE = 0.0001
-NUM_EPISODES = 30000  # Total episodes to train
+NUM_EPISODES = 35000  # Total episodes to train
 SAVE_INTERVAL = 500   # Save model every N episodes
 EVAL_INTERVAL = 100  # Evaluate every N episodes
 PREFETCH_QUEUE_SIZE = 4 # Size of the prefetch queue
@@ -988,7 +988,8 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
     TARGET_UPDATE_INTERVAL = 10000  # Update target network every 10000 steps (Increased for better stability)
     
     # Set up device
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    # device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = torch.device('cuda')
     print(f"Using device: {device}")
     
     # Optimize GPU settings for better performance
@@ -1552,8 +1553,14 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
     is_league_opponent = False
     current_opponent_path = None
 
+
     try:
-        while completed_episodes < num_episodes:
+        while True:
+            if completed_episodes >= num_episodes:
+                break
+                
+
+            
             # 0. League Opponent Selection (Every 10 episodes)
             if completed_episodes > 0 and completed_episodes % 10 == 0:
                 # 20% chance to play against league opponent
@@ -1591,6 +1598,8 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                         is_league_opponent = False
                         current_opponent_path = None
             
+
+
             # 1. Determine actions for active environments
             actions_list = [None] * NUM_ENVS
         
@@ -1611,28 +1620,46 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                 batch_valid_moves = [valid_moves[i] for i in agent1_indices]
                 # Pass game_states as states (since states are GameState objects)
                 batch_actions = agent1.act_batch(batch_states, batch_valid_moves, game_states=batch_states)
+                
+
+                    
                 for idx, action in zip(agent1_indices, batch_actions):
                     actions_list[idx] = action
+                    
+
                 
             # Get actions for Agent 2
             if agent2_indices:
                 batch_states = [states[i] for i in agent2_indices]
                 batch_valid_moves = [valid_moves[i] for i in agent2_indices]
                 batch_actions = agent2.act_batch(batch_states, batch_valid_moves, game_states=batch_states)
+                
+
+                    
                 for idx, action in zip(agent2_indices, batch_actions):
                     actions_list[idx] = action
+                    
+
         
             # 2. Update PBS (Cross-update: Agent 1's action updates Agent 2's PBS)
             if agent1_indices:
-                 update_actions = [actions_list[i] for i in agent1_indices]
-                 update_states = [states[i] for i in agent1_indices]
-                 agent2.update_pbs_batch(update_actions, update_states, acting_player=1)
-             
+                update_actions = [actions_list[i] for i in agent1_indices]
+                update_states = [states[i] for i in agent1_indices]
+                
+                try:
+                    agent2.update_pbs_batch(update_actions, update_states, acting_player=1)
+                except Exception as e:
+                    import traceback
+                    raise e
+            
             if agent2_indices:
-                 update_actions = [actions_list[i] for i in agent2_indices]
-                 update_states = [states[i] for i in agent2_indices]
-                 agent1.update_pbs_batch(update_actions, update_states, acting_player=-1)
+                update_actions = [actions_list[i] for i in agent2_indices]
+                update_states = [states[i] for i in agent2_indices]
+                
+                agent1.update_pbs_batch(update_actions, update_states, acting_player=-1)
              
+
+
             # 3. Prepare commands (Actions or Resets)
             commands = []
             for i in range(NUM_ENVS):
@@ -1673,8 +1700,11 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                 else:
                     commands.append(actions_list[i])
                 
+
+
             # 4. Step environment
             next_states_tuple, step_rewards, step_dones, step_infos, next_valid_moves_tuple = env.step(commands)
+
             # Convert tuples to lists for mutability
             next_states = list(next_states_tuple)
             next_valid_moves = list(next_valid_moves_tuple)
@@ -1732,12 +1762,21 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                 # We need to ensure ParallelEnv passes 'revealed_pieces' in info.
                 # Currently it returns info dict.
                 # We should check info[i].
-                if 'revealed_pieces_p1' in step_infos[i]:
-                     for pos, val in step_infos[i]['revealed_pieces_p1'].items():
-                         agent1.update_pbs_from_reveal_batch([[(pos, PieceType(abs(val)))]], game_phase='middle', turn_count=episode_moves[i])
-                if 'revealed_pieces_p2' in step_infos[i]:
-                     for pos, val in step_infos[i]['revealed_pieces_p2'].items():
-                         agent2.update_pbs_from_reveal_batch([[(pos, PieceType(abs(val)))]], game_phase='middle', turn_count=episode_moves[i])
+                # Handle reveals (PBS)
+                # Use the per-step revealed pieces from environment
+                if 'revealed_in_step' in step_infos[i]:
+                    revealed = step_infos[i]['revealed_in_step']
+                    game_phase = step_infos[i].get('game_phase', 'middle')
+                    turn_count = step_infos[i].get('turn_count', 0)
+                    if revealed:
+                        # Update both agents with the revealed information
+                        # revealed is a list of ((r,c), piece_type)
+                        agent1.update_pbs_from_reveal(revealed, env_idx=i, game_phase=game_phase, turn_count=turn_count)
+                        agent2.update_pbs_from_reveal(revealed, env_idx=i, game_phase=game_phase, turn_count=turn_count)
+
+                # Update state and valid moves for next iteration
+                states[i] = next_states[i]
+                valid_moves[i] = next_valid_moves[i]
 
                 # Handle Done
                 if done:
@@ -1758,11 +1797,18 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                         wins_agent2 += 1
                     else:
                         draws += 1
+                        
+                    # Reset PBS state for this environment
+                    # This is CRITICAL to prevent memory growth and state mixing
+                    agent1.reset_pbs(i)
+                    agent2.reset_pbs(i)
                 
                     # ============================================
                     # CONTINUOUS METRIC TRACKING (EVERY EPISODE)
                     # ============================================
                     # Track metrics for every completed episode, not just when plotting
+                
+
                     episode_history.append(total_episodes)
                 
                     # Record episode rewards
@@ -1792,6 +1838,11 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                     pbs_evaluator2_losses.append(pbs_eval_loss_2)
                     pbs_evaluator1_buffer_sizes.append(len(agent1.pbs.evaluator.memory) if agent1.pbs.evaluator else 0)
                     pbs_evaluator2_buffer_sizes.append(len(agent2.pbs.evaluator.memory) if agent2.pbs.evaluator else 0)
+                
+                    # Train PBS Evaluator and AAREN (End of Episode)
+                    # Train every episode to ensure data is used
+                    agent1.train_pbs_evaluator(epochs=1)
+                    agent2.train_pbs_evaluator(epochs=1)
                 
                     # Record Average Q-Value and Entropy
                     avg_q_history['agent1'].append(agent1.get_average_q_value())
@@ -1951,15 +2002,15 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                          if loss2 is not None:
                              agent2_losses.append(loss2)
                      
-                     # Train PBS Evaluator
-                     eval_loss1 = agent1.train_pbs_evaluator()
-                     if eval_loss1 is not None:
-                         pbs_evaluator1_losses.append(eval_loss1)
-                     
-                     if not is_league_opponent:
-                         eval_loss2 = agent2.train_pbs_evaluator()
-                         if eval_loss2 is not None:
-                             pbs_evaluator2_losses.append(eval_loss2)
+                 # Train PBS Evaluator (Once per update interval, not per step)
+                 eval_loss1 = agent1.train_pbs_evaluator()
+                 if eval_loss1 is not None:
+                     pbs_evaluator1_losses.append(eval_loss1)
+                 
+                 if not is_league_opponent:
+                     eval_loss2 = agent2.train_pbs_evaluator()
+                     if eval_loss2 is not None:
+                         pbs_evaluator2_losses.append(eval_loss2)
                  
                  # DEBUG: Print status every 100 training steps (approx 400 env steps)
                  if (total_steps // REPLAY_UPDATE_INTERVAL) % 100 == 0:

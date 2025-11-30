@@ -1,0 +1,3 @@
+Successfully imported StrategoEnvironment
+Successfully instantiated StrategoEnvironment
+StrategoEnvironment has 'step' method

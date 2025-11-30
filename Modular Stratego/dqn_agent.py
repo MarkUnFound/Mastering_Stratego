@@ -539,6 +539,21 @@ class DQNAgent:
         # Automatic learning rate adjustment based on loss trends
         current_lr = self.optimizer.param_groups[0]['lr']
         
+        # DEBUG: Detailed logging for low loss investigation
+        if self.step_count % 100 == 0:
+            print(f"\n🔍 DEBUG [{self.name} Step {self.step_count}]:")
+            print(f"  Loss: {loss_value:.6f} (Smoothed: {self.smoothed_loss:.6f})")
+            print(f"  LR: {current_lr:.2e}")
+            print(f"  Avg Q-Value: {avg_q_value:.4f}")
+            print(f"  Avg Penalty: {avg_penalty:.4f}")
+            print(f"  Critic Loss: {critic_loss.item():.4f}")
+            print(f"  Rewards (Batch): Min={rewards.min().item():.2f}, Max={rewards.max().item():.2f}, Mean={rewards.mean().item():.2f}")
+            print(f"  Target Q (Batch): Min={target_q_values.min().item():.2f}, Max={target_q_values.max().item():.2f}, Mean={target_q_values.mean().item():.2f}")
+            print(f"  Current Q (Batch): Min={current_q_values.min().item():.2f}, Max={current_q_values.max().item():.2f}, Mean={current_q_values.mean().item():.2f}")
+            
+            if loss_value < 1e-6:
+                print("  ⚠️  EXTREMELY LOW LOSS DETECTED!")
+        
         if len(self.loss_history_for_lr) >= self.lr_adjustment_interval:
             recent_losses = list(self.loss_history_for_lr)[-self.lr_adjustment_interval:]
             older_losses = list(self.loss_history_for_lr)[-self.lr_adjustment_interval * 2:-self.lr_adjustment_interval]
@@ -556,6 +571,7 @@ class DQNAgent:
                         for param_group in self.optimizer.param_groups:
                             param_group['lr'] = new_lr
                         print(f"📉 LR reduced to {new_lr:.2e} due to high loss ({recent_avg:.2f})")
+                
                 # If loss increased significantly, reduce learning rate
                 elif older_avg > 0 and recent_avg > older_avg * self.lr_adjustment_threshold:
                     new_lr = current_lr * self.lr_reduction_factor
@@ -563,7 +579,18 @@ class DQNAgent:
                     if new_lr < current_lr:
                         for param_group in self.optimizer.param_groups:
                             param_group['lr'] = new_lr
-                # If loss is very low and stable, consider increasing LR slightly
+                
+                # If loss is very low (near zero), it might mean we're stuck or overfitting
+                # We should try to INCREASE LR to kickstart learning
+                elif recent_avg < 1e-5:
+                     # KICKSTART: Boost LR significantly if loss is dead zero
+                     new_lr = min(current_lr * 2.0, self.initial_lr * 5.0) # Cap at 5x initial
+                     if new_lr > current_lr:
+                         for param_group in self.optimizer.param_groups:
+                             param_group['lr'] = new_lr
+                         print(f"🚀 LR boosted to {new_lr:.2e} to kickstart learning (Loss ~ 0)")
+                
+                # If loss is low and stable (but not dead zero), consider increasing LR slightly
                 elif recent_avg < self.lr_increase_threshold and recent_avg < older_avg * 0.9:
                     new_lr = min(current_lr * self.lr_increase_factor, self.initial_lr)
                     if new_lr > current_lr:
@@ -719,6 +746,34 @@ class DQNAgent:
         r_to, c_to = to_idx // 10, to_idx % 10
         return ((r_from, c_from), (r_to, c_to))
         
+    def reset_pbs(self, env_idx: int = None):
+        """
+        Reset PBS state for a specific environment (or all if env_idx is None).
+        
+        Args:
+            env_idx: Index of the environment to reset. If None, resets all.
+        """
+        if self.num_envs > 1:
+            if env_idx is not None:
+                # Reset specific instance
+                if 0 <= env_idx < len(self.pbs_instances):
+                    self.pbs_instances[env_idx].reset()
+                    # Also clear action buffer for this env
+                    if env_idx in self.action_pbs_buffer:
+                        self.action_pbs_buffer[env_idx].clear()
+            else:
+                # Reset all
+                for pbs in self.pbs_instances:
+                    pbs.reset()
+                for i in range(self.num_envs):
+                    if i in self.action_pbs_buffer:
+                        self.action_pbs_buffer[i].clear()
+        elif self.pbs:
+            # Single environment
+            self.pbs.reset()
+            if 0 in self.action_pbs_buffer:
+                self.action_pbs_buffer[0].clear()
+
     def save_model(self, filepath: str):
         """Save the DQN model only (without PBS components)"""
         checkpoint = {
@@ -993,40 +1048,32 @@ class DQNAgent:
             if not valid_moves:
                 continue
                 
-            base_q_values = base_q_values_batch[i:i+1] # Keep batch dim (1, action_size)
-            uncertainty_map = uncertainty_maps[i]
-            
-            # Calculate uncertainty aware Q-values
-            q_values = self.calculate_uncertainty_aware_q_values(
-                base_q_values, valid_moves, uncertainty_map
-            )
-            
-            # Epsilon-greedy selection
-            if random.random() < self.epsilon:
+            # Epsilon-greedy
+            if np.random.rand() <= self.epsilon:
                 actions[i] = random.choice(valid_moves)
             else:
-                # Select best action
-                # Create mask for valid moves
-                action_indices = torch.tensor(
-                    [self._move_to_action_index(move) for move in valid_moves],
-                    device=self.device,
-                    dtype=torch.long
+                # Exploitation
+                # Calculate uncertainty aware Q-values for this batch item
+                q_values = self.calculate_uncertainty_aware_q_values(
+                    base_q_values_batch[i].unsqueeze(0), 
+                    valid_moves, 
+                    uncertainty_maps[i]
                 )
-                valid_q_values = q_values[0, action_indices]
                 
-                # Add exploration bonuses
-                exploration_bonuses = torch.zeros(len(valid_moves), device=self.device)
-                for j, move in enumerate(valid_moves):
-                    uncertainty = self.get_move_uncertainty(move, uncertainty_map)
-                    exploration_bonuses[j] = uncertainty * self.uncertainty_exploration_multiplier
+                # Filter valid moves and add exploration bonus
+                valid_q_values = []
+                for move in valid_moves:
+                    action_idx = self._move_to_action_index(move)
+                    uncertainty = self.get_move_uncertainty(move, uncertainty_maps[i])
+                    exploration_bonus = uncertainty * self.uncertainty_exploration_multiplier
+                    valid_q_values.append(q_values[0, action_idx].item() + exploration_bonus)
                 
-                modified_q_values = valid_q_values + exploration_bonuses
-                best_idx = torch.argmax(modified_q_values).item()
-                actions[i] = valid_moves[best_idx]
+                best_move_idx = np.argmax(valid_q_values)
+                actions[i] = valid_moves[best_move_idx]
                 
-                # Store action-PBS state for feedback (only if using PBS)
-                if self.pbs_instances and game_states and game_states[i]:
-                    self.store_action_pbs_state(actions[i], base_q_values, uncertainty_map, game_states[i], env_idx=i)
+            # Store action-PBS state for feedback (only if using PBS)
+            if self.pbs_instances and game_states and game_states[i]:
+                self.store_action_pbs_state(actions[i], base_q_values_batch[i].unsqueeze(0), uncertainty_maps[i], game_states[i], env_idx=i)
         
         return actions
 
@@ -1051,11 +1098,15 @@ class DQNAgent:
             q_values = self.q_network(state_tensor)
             value = q_values.max().item()
             
+            
         self.q_network.train()
         return value
 
     def update_pbs_batch(self, actions, game_states, acting_player):
         """Update PBS for a batch of actions."""
+        with open("debug_log.txt", "a") as f:
+            f.write(f"DEBUG: update_pbs_batch called for player {acting_player}\n")
+            
         if not self.pbs_instances:
             return
             
@@ -1072,17 +1123,13 @@ class DQNAgent:
                                 break
                     
                     # Update PBS with action and Q-value
+                    with open("debug_log.txt", "a") as f:
+                        f.write(f"DEBUG: Calling pbs.update_from_action for env {i}\n")
+                        
                     self.pbs_instances[i].update_from_action(action, gs, acting_player, q_value=action_q_value)
-
-    def update_pbs_from_reveal_batch(self, reveals_list, game_phase='middle', turn_count=0):
-        """Update PBS for a batch of reveals."""
-        if not self.pbs_instances:
-            return
-            
-        for i, reveals in enumerate(reveals_list):
-            if reveals and i < len(self.pbs_instances):
-                for pos, piece_type in reveals:
-                    self.pbs_instances[i].update_from_reveal(pos, piece_type, game_phase=game_phase, turn_count=turn_count)
+                    
+                    with open("debug_log.txt", "a") as f:
+                        f.write(f"DEBUG: pbs.update_from_action done for env {i}\n")
     
     def calculate_uncertainty_aware_q_values(self, base_q_values: torch.Tensor,
                                              valid_moves: List[Tuple[Tuple[int, int], Tuple[int, int]]],
@@ -1251,6 +1298,27 @@ class DQNAgent:
         # Adjust scale based on typical Q-value range
         return 1.0 / (1.0 + math.exp(-q_value / 10.0))
     
+    def update_pbs_from_reveal(self, revealed_pieces: List[Tuple[Tuple[int, int], PieceType]], env_idx: int = 0, game_phase: str = 'middle', turn_count: int = 0):
+        """
+        Update PBS with ground truth from revealed pieces.
+        
+        Args:
+            revealed_pieces: List of ((row, col), piece_type) tuples
+            env_idx: Environment index (for parallel envs)
+            game_phase: Current game phase
+            turn_count: Current turn count
+        """
+        if self.pbs is None or not revealed_pieces:
+            return
+            
+        target_pbs = self.pbs
+        if self.num_envs > 1 and self.pbs_instances:
+            if 0 <= env_idx < len(self.pbs_instances):
+                target_pbs = self.pbs_instances[env_idx]
+        
+        for pos, piece_type in revealed_pieces:
+            target_pbs.update_from_reveal(pos, piece_type, game_phase=game_phase, turn_count=turn_count)
+
     def train_pbs_evaluator(self, epochs: int = 1) -> Optional[float]:
         """
         Train the PBS Evaluator if available.
@@ -1383,17 +1451,3 @@ class DQNAgent:
                     })
         
         return recommendations
-    
-    def update_pbs_from_reveal(self, pos: Tuple[int, int], piece_type: PieceType,
-                              game_phase: str = 'middle', turn_count: int = 0):
-        """
-        Update PBS when a piece is revealed.
-        
-        Args:
-            pos: Position of the revealed piece
-            piece_type: Type of the revealed piece
-            game_phase: Game phase ('early', 'middle', or 'end') for evaluator data collection
-            turn_count: Current turn number for evaluator data collection
-        """
-        if self.pbs:
-            self.pbs.update_from_reveal(pos, piece_type, game_phase=game_phase, turn_count=turn_count)

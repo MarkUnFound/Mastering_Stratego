@@ -28,7 +28,7 @@ class StrategoEnvironment:
         self.directions = torch.tensor([(0, 1), (0, -1), (1, 0), (-1, 0)], device=device)
         self.dqn_visualizer = DQNMoveVisualizer()
         self.reset()
-        
+
     def reset(self, p1_placement: Optional[List[Tuple[PieceType, Tuple[int, int]]]] = None,
               p2_placement: Optional[List[Tuple[PieceType, Tuple[int, int]]]] = None) -> GameState:
 
@@ -235,12 +235,15 @@ class StrategoEnvironment:
                         moves.append(((r, c), (r_to, c_to)))
                         
         return moves
-        
+
     def step(self, action: Tuple[Tuple[int, int], Tuple[int, int]]) -> Tuple[GameState, float, bool, Dict]:
         """
         Execute a move and return the new state.
         Assumes action is already validated by get_valid_moves() - no additional checks needed.
         """
+        # Track revealed pieces for PBS training
+        revealed_in_step = []
+
         if self.game_over:
             return self._get_game_state(), 0.0, True, {"winner": self.winner}
 
@@ -248,8 +251,14 @@ class StrategoEnvironment:
         if self.turn_count >= 400:
             self.game_over = True
             self.winner = 0
-            return self._get_game_state(), -1.0, True, {"winner": 0}
+            return self._get_game_state(), -1.0, True, {"winner": 0, "revealed_in_step": [], "game_phase": "end", "turn_count": self.turn_count}
             
+        if action is None:
+            # No valid moves possible - player loses
+            self.game_over = True
+            self.winner = -self.current_player
+            return self._get_game_state(), -1.0, True, {"winner": self.winner, "revealed_in_step": [], "game_phase": "end", "turn_count": self.turn_count}
+
         (r_from, c_from), (r_to, c_to) = action
         
         # Get pieces involved in the move
@@ -269,7 +278,7 @@ class StrategoEnvironment:
         # Determine game phase for reward scaling
         game_phase = "early" if self.turn_count < 50 else ("mid" if self.turn_count < 200 else "end")
         phase_multiplier = 1.2 if game_phase == "early" else (1.0 if game_phase == "mid" else 0.8)
-        
+
         # 1. IMPROVED: Reward for moving forward (toward enemy flag) with distance scaling
         # Player 1 (rows 6-9) moves forward when moving up (decreasing row)
         # Player 2 (rows 0-3) moves forward when moving down (increasing row)
@@ -318,6 +327,10 @@ class StrategoEnvironment:
             self.revealed_pieces_p2[(r_from, c_from)] = abs(moving_piece_value)
             self.revealed_pieces_p1[(r_to, c_to)] = abs(target_piece_value)
             self.revealed_pieces_p2[(r_to, c_to)] = abs(target_piece_value)
+
+            # Add to revealed_in_step for PBS training
+            revealed_in_step.append(((r_from, c_from), attacker_type))
+            revealed_in_step.append(((r_to, c_to), defender_type))
             
             # Determine player ownership for battle resolution
             # Player 1 has positive values, Player 2 has negative values
@@ -836,7 +849,7 @@ class StrategoEnvironment:
         
         # Win/loss rewards are now only in train_dqn.py to avoid duplication
         
-        return self._get_game_state(), reward, self.game_over, {"winner": self.winner}
+        return self._get_game_state(), reward, self.game_over, {"winner": self.winner, "revealed_in_step": revealed_in_step, "game_phase": game_phase, "turn_count": self.turn_count}
         
     def _check_game_end(self):
         # Checks for game-ending conditions.

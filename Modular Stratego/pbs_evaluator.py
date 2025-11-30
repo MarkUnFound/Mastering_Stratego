@@ -759,7 +759,8 @@ class PBSEvaluator:
                 # Use weighted features to predict quality (simplified approach)
                 weighted_features = batch_features * importance_weights
                 # Simple prediction: sum of weighted features should correlate with quality
-                predicted_quality = torch.sigmoid(weighted_features.sum(dim=1))
+                # REMOVED SIGMOID: Sigmoid clamps to [0.5, 1.0] for positive inputs
+                predicted_quality = weighted_features.sum(dim=1)
                 
                 # MSE loss between predicted and actual quality
                 loss = F.mse_loss(predicted_quality, batch_quality)
