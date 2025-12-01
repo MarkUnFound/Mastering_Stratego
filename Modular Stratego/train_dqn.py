@@ -48,7 +48,7 @@ from random_starting_player import should_swap_players, swap_placements, get_bat
 from league import LeagueManager
 
 # Hyperparameters
-NUM_ENVS = 16 # Number of parallel environments (balanced for CPU/GPU)
+NUM_ENVS = 32 # Reduced for debugging
 BATCH_SIZE = 128  # Large batch size to maximize GPU usage and amortize PER sampling cost
 GAMMA = 0.99
 EPSILON_START = 1.0
@@ -1197,16 +1197,24 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                 agent2_aaren_path = final_agent2_aaren_path
         
         if agent1_aaren_path and os.path.exists(agent1_aaren_path):
-            try:
-                agent1.load_aaren_model(agent1_aaren_path)
-            except Exception as e:
-                print(f"⚠️  Could not load Agent 1 AAREN model: {e}")
+            # try:
+            #     agent1.load_aaren_model(agent1_aaren_path)
+            # except Exception as e:
+            #     print(f"⚠️  Could not load Agent 1 AAREN model: {e}")
+            pass
         
         if agent2_aaren_path and os.path.exists(agent2_aaren_path):
-            try:
-                agent2.load_aaren_model(agent2_aaren_path)
-            except Exception as e:
-                print(f"⚠️  Could not load Agent 2 AAREN model: {e}")
+            # try:
+            #     print(f"DEBUG: Attempting to load Agent 2 AAREN model from {agent2_aaren_path}")
+            #     agent2.load_aaren_model(agent2_aaren_path)
+            #     print("DEBUG: Successfully loaded Agent 2 AAREN model")
+            # except BaseException as e:
+            #     print(f"⚠️  CRITICAL ERROR loading Agent 2 AAREN model: {type(e).__name__}: {e}")
+            #     import traceback
+            #     traceback.print_exc()
+            pass
+        
+        print("DEBUG: Finished loading AAREN models")
         
         # Load PBS Evaluator models if found (separate files)
         agent1_evaluator_files = glob.glob(os.path.join(model_save_path, "agent1_pbs_evaluator_episode_*.pth"))
@@ -1229,34 +1237,34 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                 agent2_evaluator_path = final_agent2_evaluator_path
         
         if agent1_evaluator_path and os.path.exists(agent1_evaluator_path):
-            try:
-                agent1.load_pbs_evaluator(agent1_evaluator_path)
-            except Exception as e:
-                print(f"⚠️  Could not load Agent 1 PBS Evaluator model: {e}")
+            # try:
+            #     agent1.load_pbs_evaluator(agent1_evaluator_path)
+            # except Exception as e:
+            #     print(f"⚠️  Could not load Agent 1 PBS Evaluator model: {e}")
+            pass
         
         if agent2_evaluator_path and os.path.exists(agent2_evaluator_path):
-            try:
-                agent2.load_pbs_evaluator(agent2_evaluator_path)
-            except Exception as e:
-                print(f"⚠️  Could not load Agent 2 PBS Evaluator model: {e}")
-                
+            # try:
+            #     agent2.load_pbs_evaluator(agent2_evaluator_path)
+            # except Exception as e:
+            #     print(f"⚠️  Could not load Agent 2 PBS Evaluator model: {e}")
+            pass
+        
     except Exception as e:
         print(f"⚠️  Could not load saved models: {e}")
         print("   Starting with fresh agents")
         traceback.print_exc()
-    
     
     # Ensure learning rates are not too low (reset if decayed too much)
     # This prevents agents from being "stuck" if the LR was crushed in a previous run
     # CRITICAL FIX: Re-initialize optimizers completely to clear bad momentum/variance state
     # Optimizer re-initialization removed to preserve momentum from loaded models
     # Only re-initialize if we started fresh (no history) or if explicitly requested
+    
     if not loaded_history:
         print("🧹 Initializing optimizers for fresh training...")
-        # Optimizers are already initialized in DQNAgent __init__, but we can do it here if needed
-        # For now, we trust the loaded state or the fresh init
         pass
-
+    
     # Create setup agents (for piece placement)
     setup_agent1 = SetupAgent(player_id=1, device=device) if use_setup_agents else None
     setup_agent2 = SetupAgent(player_id=-1, device=device) if use_setup_agents else None
@@ -1291,7 +1299,6 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                 setup_agent1_path = final_setup_agent1_path
                 if os.path.exists(final_setup_agent2_path):
                     setup_agent2_path = final_setup_agent2_path
-            
             if setup_agent1_path and os.path.exists(setup_agent1_path):
                 setup_agent1.load_model(setup_agent1_path)
                 print(f"✅ Loaded Setup Agent 1 model from: {setup_agent1_path}")
@@ -1316,8 +1323,12 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                 print(f"⚠️  Could not load saved setup agent models: {e}")
                 print("   Starting with fresh setup agents")
     
+    print("DEBUG: Finished setup agent loading")
+    
     # Initialize League Manager
+    print("DEBUG: Initializing League Manager")
     league_manager = LeagueManager(league_dir=os.path.join(model_save_path, "league"))
+    print("DEBUG: League Manager initialized")
     
     # Track GIF creation flags
     winning_game_pbs_gif_count = 0  # Track number of winning game PBS GIFs created (max 5)
@@ -1459,6 +1470,8 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
     # prefetchers = [agent1_prefetcher, agent2_prefetcher]
     prefetchers = []
     
+    print("DEBUG: Ready to start training loop")
+    
     print(f"Starting DQN training for {num_episodes} episodes...")
     print(f"Total Episodes (all runs): {total_episodes}")
     print(f"Total Steps (all runs): {total_steps}")
@@ -1488,6 +1501,7 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
     states = list(states_tuple)
     valid_moves = list(valid_moves_tuple)
     
+    
     # Track episode stats
     episode_rewards_agent1 = [0.0] * NUM_ENVS
     episode_rewards_agent2 = [0.0] * NUM_ENVS
@@ -1499,9 +1513,9 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
     # Track placement memory for setup agents
     placement_memory = {}
     
+    
     # Main training loop
     target_total_episodes = total_episodes + num_episodes
-    pbar = tqdm(total=num_episodes, desc="Training Episodes")
     
     # Track completed episodes in this run
     completed_episodes = 0
@@ -1512,6 +1526,8 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
     # Track last plotted episode to prevent duplicate plot generation in parallel training
     last_plotted_episode = -save_interval  # Initialize to negative interval so first plot works
     
+    pbar = tqdm(total=num_episodes, desc="Training Episodes")
+
     def save_checkpoint(episode_num, is_final=False):
         """Helper function to save all models"""
         suffix = "final" if is_final else f"episode_{episode_num}"

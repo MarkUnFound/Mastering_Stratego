@@ -445,13 +445,14 @@ class ProbabilisticBeliefState:
         self.belief_distributions.clear()
         self.revealed_pieces.clear()
         self.aaren_states.clear()  # Clear Aaren states
-        self._aaren_training_weights.clear()  # Clear evaluator weights
         self._aaren_training_positions.clear()  # Clear training positions
         self.revealed_piece_counts = {pt: 0 for pt in PieceType}
         self.piece_observation_times.clear()
         self.turn_count = 0
         self.piece_coordination.clear()
         self.uncertain_positions.clear()
+        self.prediction_history.clear()
+        self.accuracy_by_piece_type.clear()
     
     def _extract_action_features(self, action: Tuple[Tuple[int, int], Tuple[int, int]], 
                                  game_state, pos: Optional[Tuple[int, int]] = None,
@@ -1550,5 +1551,26 @@ class ProbabilisticBeliefState:
                 evaluator_weights=evaluator_weights,
                 positions=positions
             )
+    
+    def get_aaren_training_data(self) -> Tuple[List, List, List, List]:
+        """
+        Collect training data for shared AAREN training.
+        Returns:
+            Tuple of (action_sequences, true_piece_types, evaluator_weights, positions)
+        """
+        action_sequences = []
+        true_piece_types = []
+        evaluator_weights = []
+        positions = []
+        
+        for pos, piece_type in self.revealed_pieces.items():
+            if pos in self.piece_action_history and len(self.piece_action_history[pos]) > 0:
+                action_sequences.append(list(self.piece_action_history[pos]))
+                true_piece_types.append(piece_type)
+                positions.append(pos)
+                weight = self._aaren_training_weights.get(pos, 1.0)
+                evaluator_weights.append(weight)
+                
+        return action_sequences, true_piece_types, evaluator_weights, positions
     
 

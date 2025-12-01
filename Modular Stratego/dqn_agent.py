@@ -1313,7 +1313,6 @@ class DQNAgent:
             
         target_pbs = self.pbs
         if self.num_envs > 1 and self.pbs_instances:
-            if 0 <= env_idx < len(self.pbs_instances):
                 target_pbs = self.pbs_instances[env_idx]
         
         for pos, piece_type in revealed_pieces:
@@ -1322,7 +1321,7 @@ class DQNAgent:
     def train_pbs_evaluator(self, epochs: int = 1) -> Optional[float]:
         """
         Train the PBS Evaluator if available.
-        Handles both single and parallel environments.
+        Handles both single and parallel environments efficiently.
         
         Args:
             epochs: Number of training epochs
@@ -1333,70 +1332,65 @@ class DQNAgent:
         if self.pbs is None:
             return None
         
-        # Train separate PBS instances if using parallel envs
-        if self.num_envs > 1 and self.pbs_instances:
-            total_loss = 0.0
-            count = 0
+        total_loss = 0.0
+        loss_count = 0
+        
+        # 1. Train Shared Evaluator (ONCE per step)
+        if self.shared_evaluator is not None:
+            # Shared evaluator has its own memory buffer that is populated by all envs
+            # So we only need to call train() once
+            eval_loss = self.shared_evaluator.train(epochs=epochs)
+            if eval_loss is not None:
+                total_loss += eval_loss
+                loss_count += 1
+        
+        # 2. Train Shared AAREN (ONCE per step)
+        if self.shared_aaren is not None and self.num_envs > 1 and self.pbs_instances:
+            # Aggregate training data from all PBS instances
+            all_action_sequences = []
+            all_true_piece_types = []
+            all_evaluator_weights = []
+            all_positions = []
+            
+            for pbs in self.pbs_instances:
+                # Extract data from each instance
+                if hasattr(pbs, 'get_aaren_training_data'):
+                    sequences, types, weights, positions = pbs.get_aaren_training_data()
+                    all_action_sequences.extend(sequences)
+                    all_true_piece_types.extend(types)
+                    all_evaluator_weights.extend(weights)
+                    all_positions.extend(positions)
+            
+            # Train shared AAREN once with aggregated data
+            if all_action_sequences:
+                # Use the first PBS instance to drive the training
+                self.pbs.train_aaren(
+                    action_sequences=all_action_sequences,
+                    true_piece_types=all_true_piece_types,
+                    epochs=epochs,
+                    evaluator_weights=all_evaluator_weights,
+                    positions=all_positions
+                )
+        
+        # 3. Fallback: Independent Training (if not shared)
+        elif self.num_envs > 1 and self.pbs_instances:
+            # If models are NOT shared, we must train each one
             for pbs in self.pbs_instances:
                 loss = pbs.train_evaluator(epochs=epochs)
                 if loss is not None:
                     total_loss += loss
-                    count += 1
-            return total_loss / count if count > 0 else None
+                    loss_count += 1
         else:
+            # Single environment case
             return self.pbs.train_evaluator(epochs=epochs)
-    
-    def update_performance_metrics(self, pbs_accuracy: Optional[float] = None,
-                                  dqn_loss: Optional[float] = None,
-                                  action_alignment: Optional[float] = None):
-        """
-        Update cross-system performance metrics.
+            
         
-        Args:
-            pbs_accuracy: PBS prediction accuracy (0-1)
-            dqn_loss: DQN training loss
-            action_alignment: Alignment between PBS predictions and DQN actions (0-1)
-        """
-        if pbs_accuracy is not None:
-            self.performance_metrics['pbs_accuracy_trend'].append(pbs_accuracy)
-        if dqn_loss is not None:
-            self.performance_metrics['dqn_loss_trend'].append(dqn_loss)
-        if action_alignment is not None:
-            self.performance_metrics['action_prediction_alignment'].append(action_alignment)
-    
-    def get_performance_summary(self) -> Dict[str, float]:
-        """
-        Get summary of performance metrics.
-        
-        Returns:
-            Dictionary with average metrics
-        """
-        summary = {}
-        
-        if self.performance_metrics['pbs_accuracy_trend']:
-            summary['avg_pbs_accuracy'] = sum(self.performance_metrics['pbs_accuracy_trend']) / len(self.performance_metrics['pbs_accuracy_trend'])
-        else:
-            summary['avg_pbs_accuracy'] = 0.0
-        
-        if self.performance_metrics['dqn_loss_trend']:
-            summary['avg_dqn_loss'] = sum(self.performance_metrics['dqn_loss_trend']) / len(self.performance_metrics['dqn_loss_trend'])
-        else:
-            summary['avg_dqn_loss'] = 0.0
-        
-        if self.performance_metrics['action_prediction_alignment']:
-            summary['avg_action_alignment'] = sum(self.performance_metrics['action_prediction_alignment']) / len(self.performance_metrics['action_prediction_alignment'])
-        else:
-            summary['avg_action_alignment'] = 0.0
-        
-        return summary
+        if loss_count > 0:
+            return total_loss / loss_count
+        return None
+
     
     def detect_pbs_dqn_misalignment(self) -> bool:
-        """
-        Detect if PBS and DQN are misaligned.
-        
-        Returns:
-            True if misalignment detected
-        """
         if len(self.performance_metrics['pbs_accuracy_trend']) < 10:
             return False
         
@@ -1411,12 +1405,6 @@ class DQNAgent:
         return avg_pbs < 0.5 and avg_dqn > 0.5
     
     def get_optimization_recommendations(self) -> List[Dict[str, str]]:
-        """
-        Analyze trends and recommend system adjustments.
-        
-        Returns:
-            List of recommendation dictionaries
-        """
         recommendations = []
         
         if self.detect_pbs_dqn_misalignment():
