@@ -1354,42 +1354,125 @@ class ProbabilisticBeliefState:
             # For now, just track coordination
             self.piece_coordination[pos].extend(nearby_pieces[:3])  # Keep last 3
     
-    def get_belief_enhanced_state(self, game_state, board_size: int = 10) -> torch.Tensor:
+    def get_multi_channel_state(self, game_state, board_size: int = 10) -> torch.Tensor:
         """
-        Enhance game state with belief information.
+        Get a multi-channel tensor representation of the game state.
+        
+        Channels:
+        0: Own pieces (positive values for rank)
+        1: Lakes (binary)
+        2-13: Belief probabilities for each piece type (Flag, Spy, Scout... Bomb)
+        14: Unknown enemy piece mask
         
         Returns:
-            Enhanced state tensor with belief probabilities
+            Tensor of shape (15, board_size, board_size)
         """
         if not hasattr(game_state, 'board'):
-            return None
+            return torch.zeros((15, board_size, board_size), device=self.device)
         
         board = game_state.board
         if not isinstance(board, torch.Tensor):
-            return None
+            # Convert to tensor if needed (though it should be a tensor)
+            board = torch.tensor(board, device=self.device)
+            
+        # Initialize multi-channel tensor
+        # 15 channels: 1 (Own) + 1 (Lakes) + 12 (Beliefs) + 1 (Unknown Mask)
+        channels = 15
+        state_tensor = torch.zeros((channels, board_size, board_size), device=self.device, dtype=torch.float32)
         
-        # Create belief-enhanced board
-        # For each position, add belief probabilities
-        enhanced_state = board.clone().float()
+        # Channel 0: Own pieces and known enemy pieces (ground truth for own, revealed for enemy)
+        # We want to represent ranks. 
+        # Own pieces: Positive rank (1-12)
+        # Lakes: -13 -> Handled in Channel 1
+        # Unknown/Hidden: Handled in Beliefs
         
-        # Add belief layer: for each unknown enemy piece, add expected value
+        # Create masks
+        lakes_mask = (board == -13)
+        
+        # Channel 1: Lakes
+        state_tensor[1] = lakes_mask.float()
+        
+        # Channel 0: Known pieces
+        # Iterate to fill channel 0 and belief channels
+        # Vectorized approach is harder due to dictionary lookups for beliefs, 
+        # but we can vectorize the "known" parts.
+        
+        # Fill Channel 0 with raw board values first, then clean up
+        # We only want positive ranks for own pieces here.
+        # If player_id == 1, own pieces are > 0.
+        # If player_id == -1, own pieces are < 0 (need to take abs).
+        
+        if self.player_id == 1:
+            own_pieces_mask = (board > 0)
+            state_tensor[0][own_pieces_mask] = board[own_pieces_mask].float()
+        else:
+            own_pieces_mask = (board < 0) & (board != -13) & (board != -20) # Exclude lakes/hidden
+            state_tensor[0][own_pieces_mask] = board[own_pieces_mask].abs().float()
+            
+        # Channel 14: Unknown enemy piece mask
+        # And Channels 2-13: Beliefs
+        
+        # Identify unknown enemy pieces
+        # If player 1: Enemy pieces are < 0. Unknown if not in revealed_pieces.
+        # If player -1: Enemy pieces are > 0. Unknown if not in revealed_pieces.
+        
+        # We need to iterate to handle the dictionary lookups for beliefs efficiently
+        # Since board is small (10x10), a loop is acceptable, but we can optimize if needed.
+        
+        sorted_piece_types = sorted(PieceType, key=lambda pt: pt.value)
+        
         for r in range(board_size):
             for c in range(board_size):
                 pos = (r, c)
                 piece_val = board[r, c].item()
                 
-                # If it's an unknown enemy piece
-                if (self.player_id == 1 and piece_val < 0 and piece_val != -13) or \
-                   (self.player_id == -1 and piece_val > 0):
-                    if pos not in self.revealed_pieces:
-                        # Add expected value as additional information
-                        expected_val = float(self.get_expected_value(pos))
-                        # Store in a normalized form (0-1 range)
-                        # Calculate enhancement and assign as Python float (PyTorch accepts this)
-                        enhancement_value = float((expected_val / 12.0) * 0.1)
-                        enhanced_state[r, c] = float(piece_val) + enhancement_value
-        
-        return enhanced_state
+                is_enemy = False
+                if self.player_id == 1:
+                    if piece_val < 0 and piece_val != -13: # Enemy
+                        is_enemy = True
+                else:
+                    if piece_val > 0: # Enemy
+                        is_enemy = True
+                        
+                if is_enemy:
+                    if pos in self.revealed_pieces:
+                        # Known enemy piece - put in Channel 0 (as negative rank? or just rank?)
+                        # Let's put known enemy pieces in Channel 0 as NEGATIVE rank to distinguish?
+                        # Or maybe better: Channel 0 is OWN, Channel 1 is LAKES.
+                        # Let's add a channel for KNOWN ENEMY?
+                        # The prompt plan said:
+                        # 0: Own pieces
+                        # 1: Lakes
+                        # 2-13: Beliefs (which covers unknown enemy)
+                        # 14: Unknown mask
+                        
+                        # What about KNOWN enemy pieces?
+                        # If we know it's a Marshal (10), probability of Marshal is 1.0.
+                        # So we can just fill the belief channels with 1.0 for known pieces!
+                        
+                        # Get the piece type
+                        actual_type = self.revealed_pieces[pos]
+                        # Find index in sorted_piece_types
+                        type_idx = sorted_piece_types.index(actual_type)
+                        # Set probability 1.0
+                        state_tensor[2 + type_idx, r, c] = 1.0
+                        
+                    else:
+                        # Unknown enemy piece
+                        state_tensor[14, r, c] = 1.0
+                        
+                        # Fill belief channels
+                        if pos in self.belief_distributions:
+                            beliefs = self.belief_distributions[pos]
+                            for i, pt in enumerate(sorted_piece_types):
+                                prob = beliefs.get(pt, 0.0)
+                                state_tensor[2 + i, r, c] = prob
+                        else:
+                            # Default uniform belief
+                            uniform_prob = 1.0 / 12.0
+                            state_tensor[2:14, r, c] = uniform_prob
+                            
+        return state_tensor
     
     def train_aaren(self, action_sequences: List[List[np.ndarray]], 
                    true_piece_types: List[PieceType], epochs: int = 10,

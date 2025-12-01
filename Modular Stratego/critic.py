@@ -15,7 +15,7 @@ class ExploitabilityCritic(nn.Module):
     If this network has high accuracy, the agent is predictable (exploitable).
     """
     
-    def __init__(self, input_shape: Tuple[int, int, int] = (1, 10, 10), output_size: int = 1000):
+    def __init__(self, input_shape: Tuple[int, int, int] = (15, 10, 10), output_size: int = 1000):
         """
         Initialize the Critic network (CNN-based, similar to the Agent)
         

@@ -25,7 +25,7 @@ Experience = namedtuple('Experience', ['state', 'action', 'reward', 'next_state'
 class ConvDQN(nn.Module):
     """Convolutional Deep Q-Network for Stratego"""
     
-    def __init__(self, input_shape: Tuple[int, int, int] = (1, 10, 10), output_size: int = 1000):
+    def __init__(self, input_shape: Tuple[int, int, int] = (15, 10, 10), output_size: int = 1000):
         """
         Initialize the ConvDQN network
         
@@ -165,8 +165,8 @@ class DQNAgent:
         
         # Neural networks (keep on GPU, no compilation for Windows compatibility)
         # Neural networks (keep on GPU, no compilation for Windows compatibility)
-        self.q_network = ConvDQN(output_size=action_size).to(device)
-        self.target_network = ConvDQN(output_size=action_size).to(device)
+        self.q_network = ConvDQN(input_shape=(15, 10, 10), output_size=action_size).to(device)
+        self.target_network = ConvDQN(input_shape=(15, 10, 10), output_size=action_size).to(device)
         
         # Enable cuDNN benchmarking for faster convolutions (if using conv layers)
         if device.type == 'cuda':
@@ -176,7 +176,7 @@ class DQNAgent:
         self.optimizer = optim.AdamW(self.q_network.parameters(), lr=lr, weight_decay=0.01)
         
         # Exploitability Critic
-        self.critic = ExploitabilityCritic(input_shape=(1, 10, 10), output_size=action_size).to(device)
+        self.critic = ExploitabilityCritic(input_shape=(15, 10, 10), output_size=action_size).to(device)
         self.critic_optimizer = optim.AdamW(self.critic.parameters(), lr=lr, weight_decay=0.01)
         self.critic_loss_fn = nn.CrossEntropyLoss()
         self.critic_weight = 0.1  # Relative weight (10% of reward magnitude) - Normalized to reward scale
@@ -238,8 +238,8 @@ class DQNAgent:
         """Reset the DQN agent by reinitializing networks and optimizer"""
         # Reinitialize Q-network and target network
         # Reinitialize Q-network and target network
-        self.q_network = ConvDQN(output_size=self.action_size).to(self.device)
-        self.target_network = ConvDQN(output_size=self.action_size).to(self.device)
+        self.q_network = ConvDQN(input_shape=(15, 10, 10), output_size=self.action_size).to(self.device)
+        self.target_network = ConvDQN(input_shape=(15, 10, 10), output_size=self.action_size).to(self.device)
         
         # Reinitialize optimizer
         self.optimizer = optim.AdamW(self.q_network.parameters(), lr=self.lr, weight_decay=0.01)
@@ -909,56 +909,41 @@ class DQNAgent:
         # Use provided PBS instance or default self.pbs
         pbs = pbs_instance if pbs_instance else self.pbs
         
-        # Step 1: PBS gets the value and creates possible values with confidence scores
+        # Step 1: PBS gets the multi-channel state
         if pbs and hasattr(game_state, 'board'):
-            enhanced_state = pbs.get_belief_enhanced_state(game_state)
-            if enhanced_state is not None:
-                # Keep on GPU
-                visible_board = enhanced_state
-                if visible_board.device != self.device:
-                    visible_board = visible_board.to(self.device)
-            else:
-                # Fallback to regular state
-                visible_board = game_state.board
-                if isinstance(visible_board, torch.Tensor):
-                    if visible_board.device != self.device:
-                        visible_board = visible_board.to(self.device)
-                else:
-                    visible_board = torch.tensor(visible_board, dtype=torch.float32, device=self.device)
+            state = pbs.get_multi_channel_state(game_state)
+            # Ensure it's on the correct device
+            if state.device != self.device:
+                state = state.to(self.device)
         else:
-            # Ensure we're only using the visible board information
+            # Fallback for no PBS (shouldn't happen in this config)
+            # Create a basic 15-channel tensor with just board info
+            state = torch.zeros((15, 10, 10), device=self.device, dtype=torch.float32)
             if hasattr(game_state, 'board'):
-                # It's a game state object with visible board for current player
-                visible_board = game_state.board
-            else:
-                # It's already a board/array
-                visible_board = game_state
-            
-            if isinstance(visible_board, torch.Tensor):
-                if visible_board.device != self.device:
-                    visible_board = visible_board.to(self.device)
-            else:
-                visible_board = torch.tensor(visible_board, dtype=torch.float32, device=self.device)
+                board = game_state.board
+                if isinstance(board, torch.Tensor):
+                    board = board.to(self.device)
+                else:
+                    board = torch.tensor(board, device=self.device)
+                
+                # Channel 0: Own pieces (positive)
+                if self.player_id == 1:
+                    mask = (board > 0)
+                    state[0][mask] = board[mask].float()
+                else:
+                    mask = (board < 0) & (board != -13) & (board != -20)
+                    state[0][mask] = board[mask].abs().float()
+                
+                # Channel 1: Lakes
+                state[1] = (board == -13).float()
         
-        # Ensure it's a tensor on GPU and FLOAT type
-        if not isinstance(visible_board, torch.Tensor):
-            visible_board = torch.tensor(visible_board, dtype=torch.float32, device=self.device)
-        else:
-            if visible_board.device != self.device:
-                visible_board = visible_board.to(self.device)
-            else:
-                # CRITICAL: Clone to avoid modifying the environment's board tensor in-place
-                visible_board = visible_board.clone()
+        # Ensure float type
+        if state.dtype != torch.float32:
+            state = state.float()
             
-            # Ensure float type for neural network input
-            if visible_board.dtype != torch.float32:
-                visible_board = visible_board.float()
-        
-        # Reshape to (1, 10, 10) if it's (10, 10) - Add channel dimension
-        if visible_board.dim() == 2:
-            state = visible_board.unsqueeze(0)
-        else:
-            state = visible_board
+        # Add batch dimension if needed (C, H, W) -> (1, C, H, W)
+        if state.dim() == 3:
+            state = state.unsqueeze(0)
             
         return state
 
