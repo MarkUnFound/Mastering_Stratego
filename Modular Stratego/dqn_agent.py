@@ -324,11 +324,28 @@ class DQNAgent:
         batch, _, _ = self.memory.sample(self.batch_size, self.beta)
         return batch
         
-    def enable_search(self, depth: int = 3, endgame_threshold: int = 15):
-        """Enable hybrid search for endgame."""
-        from search_agent import SearchAgent
-        self.search_agent = SearchAgent(self, search_depth=depth, endgame_threshold=endgame_threshold)
-        print(f"🔍 Hybrid Search enabled for {self.name} (Depth={depth}, Threshold={endgame_threshold})")
+    def enable_search(self, num_simulations: int = 50, endgame_threshold: int = 15):
+        """Enable hybrid search for endgame using ISMCTS."""
+        from ismcts_agent import ISMCTSAgent
+        self.search_agent = ISMCTSAgent(self, num_simulations=num_simulations)
+        self.endgame_threshold = endgame_threshold
+        print(f"🔍 Hybrid Search (ISMCTS) enabled for {self.name} (Sims={num_simulations}, Threshold={endgame_threshold})")
+
+    def is_endgame(self, game_state) -> bool:
+        """Check if the game is in the endgame phase."""
+        if not hasattr(self, 'endgame_threshold'):
+            return False
+            
+        # Count total pieces on board
+        total_pieces = 0
+        if hasattr(game_state, 'board'):
+            board = game_state.board
+            if isinstance(board, torch.Tensor):
+                total_pieces = (board != 0).sum().item()
+            else:
+                total_pieces = np.count_nonzero(board)
+        
+        return total_pieces <= self.endgame_threshold
 
     def act(self, state, valid_moves: List[Tuple[Tuple[int, int], Tuple[int, int]]], game_state=None):
         """
@@ -345,6 +362,14 @@ class DQNAgent:
         """
         if np.random.rand() <= self.epsilon:
             return random.choice(valid_moves)
+            
+        # Check for Hybrid Search (ISMCTS) in endgame
+        if hasattr(self, 'search_agent') and self.search_agent and game_state:
+            if self.is_endgame(game_state):
+                # Use ISMCTS
+                best_move = self.search_agent.act(game_state, valid_moves)
+                if best_move:
+                    return best_move
         
         # Exploitation
         # Get state representation (handles PBS internally)
@@ -937,70 +962,38 @@ class DQNAgent:
         if state.dtype != torch.float32:
             state = state.float()
             
-        # Add batch dimension if needed (C, H, W) -> (1, C, H, W)
-        if state.dim() == 3:
-            state = state.unsqueeze(0)
-            
         return state
 
     def get_batch_state_representation(self, states, game_states=None) -> torch.Tensor:
         """
         Convert a batch of game states to a batch tensor.
         """
-        with open("debug_log.txt", "a") as f:
-            f.write(f"DEBUG: get_batch_state_representation called with {len(states)} states\n")
-            tensor_list = []
-            for i, state in enumerate(states):
-                f.write(f"DEBUG: Processing state {i}\n")
-                # Use game_states[i] if available for PBS, otherwise use state
-                gs = game_states[i] if game_states else state
-                # Use the corresponding PBS instance
-                pbs_inst = self.pbs_instances[i] if self.pbs_instances and i < len(self.pbs_instances) else self.pbs
-                
-                tensor = self.get_state_representation(gs, pbs_instance=pbs_inst)
-                tensor_list.append(tensor)
+        tensor_list = []
+        for i, state in enumerate(states):
+            # Use game_states[i] if available for PBS, otherwise use state
+            gs = game_states[i] if game_states else state
+            # Use the corresponding PBS instance
+            pbs_inst = self.pbs_instances[i] if self.pbs_instances and i < len(self.pbs_instances) else self.pbs
             
-            f.write(f"DEBUG: Stacking {len(tensor_list)} tensors. Shape[0]: {tensor_list[0].shape}\n")
+            tensor = self.get_state_representation(gs, pbs_instance=pbs_inst)
+            tensor_list.append(tensor)
         
-        stacked = torch.stack(tensor_list)
-        with open("debug_log.txt", "a") as f:
-            f.write("DEBUG: Stacking done\n")
-        return stacked
+        return torch.stack(tensor_list)
 
     def act_batch(self, states, valid_moves_list, game_states=None) -> List[Optional[Tuple[Tuple[int, int], Tuple[int, int]]]]:
         """
         Choose actions for a batch of states.
         """
-        with open("debug_log.txt", "a") as f:
-            f.write(f"DEBUG: act_batch called for {self.name}\n")
-            try:
-                batch_size = len(states)
-                f.write(f"DEBUG: batch_size={batch_size}\n")
-                if batch_size > 0:
-                     f.write(f"DEBUG: type(states[0])={type(states[0])}\n")
-            except Exception as e:
-                f.write(f"DEBUG: Error getting length: {e}\n")
-        
+        batch_size = len(states)
         actions = [None] * batch_size
         
         # 1. Get batch state representation
-        try:
-            state_tensor = self.get_batch_state_representation(states, game_states)
-            with open("debug_log.txt", "a") as f:
-                f.write(f"DEBUG: State tensor shape: {state_tensor.shape}\n")
-        except Exception as e:
-            with open("debug_log.txt", "a") as f:
-                f.write(f"DEBUG: Error in get_batch_state_representation: {e}\n")
-            raise e
+        state_tensor = self.get_batch_state_representation(states, game_states)
             
         # 2. Get uncertainty maps (if PBS)
-        with open("debug_log.txt", "a") as f:
-            f.write("DEBUG: Getting uncertainty maps\n")
         uncertainty_maps = []
         if self.pbs_instances and game_states:
             for i, gs in enumerate(game_states):
-                with open("debug_log.txt", "a") as f:
-                    f.write(f"DEBUG: Getting map for state {i}\n")
                 if gs:
                     uncertainty_maps.append(self.pbs_instances[i].get_uncertainty_map(gs))
                 else:
@@ -1011,16 +1004,7 @@ class DQNAgent:
         # 3. Network forward pass
         self.q_network.eval()
         with torch.no_grad():
-            try:
-                with open("debug_log.txt", "a") as f:
-                    f.write(f"DEBUG: Starting forward pass. Tensor device: {state_tensor.device}\n")
-                base_q_values_batch = self.q_network(state_tensor)
-                with open("debug_log.txt", "a") as f:
-                    f.write("DEBUG: Forward pass done\n")
-            except Exception as e:
-                with open("debug_log.txt", "a") as f:
-                    f.write(f"DEBUG: Error in forward pass: {e}\n")
-                raise e
+            base_q_values_batch = self.q_network(state_tensor)
         self.q_network.train()
         
         # 4. Process each env
@@ -1069,6 +1053,8 @@ class DQNAgent:
             Value of the state (scalar float)
         """
         state_tensor = self.get_state_representation(game_state)
+        if state_tensor.dim() == 3:
+            state_tensor = state_tensor.unsqueeze(0)
         
         self.q_network.eval()
         with torch.no_grad():
@@ -1085,9 +1071,6 @@ class DQNAgent:
 
     def update_pbs_batch(self, actions, game_states, acting_player):
         """Update PBS for a batch of actions."""
-        with open("debug_log.txt", "a") as f:
-            f.write(f"DEBUG: update_pbs_batch called for player {acting_player}\n")
-            
         if not self.pbs_instances:
             return
             
@@ -1104,13 +1087,7 @@ class DQNAgent:
                                 break
                     
                     # Update PBS with action and Q-value
-                    with open("debug_log.txt", "a") as f:
-                        f.write(f"DEBUG: Calling pbs.update_from_action for env {i}\n")
-                        
                     self.pbs_instances[i].update_from_action(action, gs, acting_player, q_value=action_q_value)
-                    
-                    with open("debug_log.txt", "a") as f:
-                        f.write(f"DEBUG: pbs.update_from_action done for env {i}\n")
     
     def calculate_uncertainty_aware_q_values(self, base_q_values: torch.Tensor,
                                              valid_moves: List[Tuple[Tuple[int, int], Tuple[int, int]]],

@@ -48,7 +48,7 @@ from random_starting_player import should_swap_players, swap_placements, get_bat
 from league import LeagueManager
 
 # Hyperparameters
-NUM_ENVS = 32 # Reduced for debugging
+NUM_ENVS = 16 # Reduced to 1 to strictly limit memory usage
 BATCH_SIZE = 128  # Large batch size to maximize GPU usage and amortize PER sampling cost
 GAMMA = 0.99
 EPSILON_START = 1.0

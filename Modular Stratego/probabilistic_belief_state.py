@@ -1374,6 +1374,8 @@ class ProbabilisticBeliefState:
         if not isinstance(board, torch.Tensor):
             # Convert to tensor if needed (though it should be a tensor)
             board = torch.tensor(board, device=self.device)
+        else:
+            board = board.to(self.device)
             
         # Initialize multi-channel tensor
         # 15 channels: 1 (Own) + 1 (Lakes) + 12 (Beliefs) + 1 (Unknown Mask)
