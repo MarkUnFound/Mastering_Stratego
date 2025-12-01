@@ -343,10 +343,6 @@ class DQNAgent:
             valid_moves: List of valid moves
             game_state: Full game state object (for PBS)
         """
-        # Use SearchAgent if enabled
-        if hasattr(self, 'search_agent') and self.search_agent:
-            return self.search_agent.act(state, valid_moves, game_state)
-            
         if np.random.rand() <= self.epsilon:
             return random.choice(valid_moves)
         
