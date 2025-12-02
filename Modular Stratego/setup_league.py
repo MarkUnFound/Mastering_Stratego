@@ -6,7 +6,8 @@ import copy
 from typing import List, Dict
 from setup_agent import SetupAgent
 from dqn_agent import DQNAgent
-from train_dqn import calculate_setup_agent_reward
+from setup_evaluation import calculate_setup_agent_reward
+from environment import StrategoEnvironment
 
 class SetupLeague:
     """
@@ -31,12 +32,16 @@ class SetupLeague:
         Run evolution for a number of generations.
         
         Args:
-            env: The Stratego environment (can be the main one or a temporary one)
+            env: Ignored (we create a local environment for the tournament)
             gameplay_agent: The DQNAgent used to play out the games (evaluator)
             generations: Number of generations to run
             games_per_matchup: Number of games per pair of agents
         """
         print(f"🏆 Starting Setup League Evolution ({generations} generations)...")
+        
+        # Create a local environment for the tournament to avoid interference with the main parallel env
+        # and to ensure we have a single-agent environment interface
+        tournament_env = StrategoEnvironment(device=self.device)
         
         # Ensure gameplay agent is in eval mode
         was_training = gameplay_agent.q_network.training
@@ -54,7 +59,7 @@ class SetupLeague:
                     agent_a = self.population[i]
                     agent_b = self.population[j]
                     
-                    self._play_matchup(env, gameplay_agent, agent_a, agent_b, games_per_matchup)
+                    self._play_matchup(tournament_env, gameplay_agent, agent_a, agent_b, games_per_matchup)
             
             # Log results
             best_name = max(self.scores, key=self.scores.get)
@@ -106,7 +111,7 @@ class SetupLeague:
                 
                 # Play out game
                 while not done and move_count < 150: # Cap game length for speed
-                    valid_moves = env.get_valid_moves(env.current_player)
+                    valid_moves = env.get_valid_moves()
                     if not valid_moves:
                         break
                     

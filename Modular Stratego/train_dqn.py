@@ -542,9 +542,10 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                     p1_place = None
                     p2_place = None
                     if use_setup_agents:
-                        pieces = env.get_all_pieces()
-                        p1_place = setup_agent1.place_pieces(pieces, env.get_valid_placement_positions(1))
-                        p2_place = setup_agent2.place_pieces(pieces, env.get_valid_placement_positions(-1))
+                        # Use call_method to get pieces from the first worker
+                        pieces = env.call_method('get_all_pieces')
+                        p1_place = setup_agent1.place_pieces(pieces, env.call_method('get_valid_placement_positions', 1))
+                        p2_place = setup_agent2.place_pieces(pieces, env.call_method('get_valid_placement_positions', -1))
                         placement_memory[i] = {'p1_placement': p1_place, 'p2_placement': p2_place}
                     commands.append(('reset', {'p1_placement': p1_place, 'p2_placement': p2_place}))
                 else:
@@ -634,6 +635,16 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                     avg_q_history['agent2'].append(agent2.get_average_q_value())
                     entropy_history['agent1'].append(agent1.get_average_entropy())
                     entropy_history['agent2'].append(agent2.get_average_entropy())
+
+                    # DEBUG: Print status every 100 episodes
+                    if total_episodes % 100 == 0:
+                        print(f"\n🔍 Diagnostics (Episode {total_episodes}):")
+                        print(f"  Agent 1: Mem={len(agent1.memory)}, Loss={agent1_losses[-1] if agent1_losses else 'N/A'}, LR={agent1.optimizer.param_groups[0]['lr']:.2e}")
+                        print(f"  Agent 2: Mem={len(agent2.memory)}, Loss={agent2_losses[-1] if agent2_losses else 'N/A'}, LR={agent2.optimizer.param_groups[0]['lr']:.2e}")
+                        if len(agent2.memory) < agent2.batch_size:
+                            print(f"  ⚠️ Agent 2 memory too low to train (< {agent2.batch_size})")
+                        if agent2_losses and agent2_losses[-1] == 0.0:
+                            print(f"  ⚠️ Agent 2 loss is exactly 0.0!")
                 
                     # ============================================
                     # SETUP AGENT TRAINING
@@ -797,15 +808,7 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                          if eval_loss2 is not None:
                              pbs_evaluator2_losses.append(eval_loss2)
                  
-                     # DEBUG: Print status every 100 training steps (approx 400 env steps)
-                     if (total_steps // REPLAY_UPDATE_INTERVAL) % 100 == 0:
-                         print(f"\n🔍 Diagnostics (Step {total_steps}):")
-                         print(f"  Agent 1: Mem={len(agent1.memory)}, Loss={agent1_losses[-1] if agent1_losses else 'N/A'}, LR={agent1.optimizer.param_groups[0]['lr']:.2e}")
-                         print(f"  Agent 2: Mem={len(agent2.memory)}, Loss={agent2_losses[-1] if agent2_losses else 'N/A'}, LR={agent2.optimizer.param_groups[0]['lr']:.2e}")
-                         if len(agent2.memory) < agent2.batch_size:
-                             print(f"  ⚠️ Agent 2 memory too low to train (< {agent2.batch_size})")
-                         if agent2_losses and agent2_losses[-1] == 0.0:
-                             print(f"  ⚠️ Agent 2 loss is exactly 0.0!")
+
 
                  
                 # Update target networks
@@ -828,39 +831,39 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                     # Save to League
                     league_manager.save_agent(f"{model_save_path}/agent1_dqn_episode_{total_episodes}.pth", total_episodes)
             
-            # Save final persistent counters
-            try:
-                with open(total_episodes_file, 'w') as f:
-                    f.write(str(total_episodes))
-                with open(total_steps_file, 'w') as f:
-                    f.write(str(total_steps))
-                print(f"💾 Saved persistent counters: {total_episodes} episodes, {total_steps:,} steps")
-            except Exception as e:
-                print(f"⚠️  Could not save persistent counters: {e}")
+                    # Save final persistent counters
+                    try:
+                        with open(total_episodes_file, 'w') as f:
+                            f.write(str(total_episodes))
+                        with open(total_steps_file, 'w') as f:
+                            f.write(str(total_steps))
+                        print(f"💾 Saved persistent counters: {total_episodes} episodes, {total_steps:,} steps")
+                    except Exception as e:
+                        print(f"⚠️  Could not save persistent counters: {e}")
     
-            # Save final training history for continuity
-            try:
-                save_training_history(
-                    model_save_path,
-                    episode_history,
-                    rewards_history,
-                    wins_history,
-                    epsilon_history,
-                    policy_loss_history,
-                    setup_agent1_rewards,
-                    setup_agent2_rewards,
-                    setup_agent1_losses,
-                    setup_agent2_losses,
-                    pbs_evaluator1_losses,
-                    pbs_evaluator2_losses,
-                    pbs_evaluator1_buffer_sizes,
-                    pbs_evaluator2_buffer_sizes,
-                    avg_q_history,
-                    entropy_history
-                )
-                print(f"💾 Saved final training history for continuity")
-            except Exception as e:
-                print(f"⚠️  Could not save final training history: {e}")
+                    # Save final training history for continuity
+                    try:
+                        save_training_history(
+                            model_save_path,
+                            episode_history,
+                            rewards_history,
+                            wins_history,
+                            epsilon_history,
+                            policy_loss_history,
+                            setup_agent1_rewards,
+                            setup_agent2_rewards,
+                            setup_agent1_losses,
+                            setup_agent2_losses,
+                            pbs_evaluator1_losses,
+                            pbs_evaluator2_losses,
+                            pbs_evaluator1_buffer_sizes,
+                            pbs_evaluator2_buffer_sizes,
+                            avg_q_history,
+                            entropy_history
+                        )
+                        print(f"💾 Saved final training history for continuity")
+                    except Exception as e:
+                        print(f"⚠️  Could not save final training history: {e}")
     
     except KeyboardInterrupt:
         print("\n⏹️  Training interrupted by user! Saving current state...")

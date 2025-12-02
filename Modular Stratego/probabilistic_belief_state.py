@@ -439,6 +439,12 @@ class ProbabilisticBeliefState:
         # Stores tuples of (action_sequence, true_piece_type, position)
         self.aaren_training_buffer: deque = deque(maxlen=5000)
         
+        # Cached Belief Tensor (Optimization)
+        # Shape: (NUM_PIECE_TYPES, 10, 10)
+        # We maintain this on the device to avoid re-creating it every step
+        self.belief_tensor = torch.zeros((NUM_PIECE_TYPES, 10, 10), device=device, dtype=torch.float32)
+
+        
     def reset(self):
         """Reset the belief state for a new game."""
         self.piece_action_history.clear()
@@ -453,6 +459,28 @@ class ProbabilisticBeliefState:
         self.uncertain_positions.clear()
         self.prediction_history.clear()
         self.accuracy_by_piece_type.clear()
+        if hasattr(self, 'belief_tensor'):
+            self.belief_tensor.zero_()
+    
+    def _update_belief_tensor(self, pos: Tuple[int, int]):
+        """
+        Update the cached belief tensor for a specific position.
+        Should be called whenever beliefs for a position change.
+        """
+        if pos not in self.belief_distributions:
+            return
+            
+        r, c = pos
+        beliefs = self.belief_distributions[pos]
+        
+        # Create tensor from beliefs
+        # We use a fixed order of piece types
+        sorted_piece_types = sorted(PieceType, key=lambda pt: pt.value)
+        probs = [beliefs.get(pt, 0.0) for pt in sorted_piece_types]
+        
+        # Update tensor on device
+        self.belief_tensor[:, r, c] = torch.tensor(probs, device=self.device, dtype=torch.float32)
+
     
     def _extract_action_features(self, action: Tuple[Tuple[int, int], Tuple[int, int]], 
                                  game_state, pos: Optional[Tuple[int, int]] = None,
@@ -740,6 +768,9 @@ class ProbabilisticBeliefState:
                 for piece_type in corrected_beliefs:
                     corrected_beliefs[piece_type] /= total
                 self.belief_distributions[pos] = corrected_beliefs
+            
+            self._update_belief_tensor(pos)
+
         
         # Check if we need more information (active learning)
         if self.evaluator is not None and pos in self.belief_distributions:
@@ -855,6 +886,8 @@ class ProbabilisticBeliefState:
         self.belief_distributions[pos] = {
             pt: 1.0 if pt == piece_type else 0.0 for pt in PieceType
         }
+        self._update_belief_tensor(pos)
+
         
         # Apply piece count constraints to all other positions
         for other_pos in self.belief_distributions:
@@ -1195,6 +1228,8 @@ class ProbabilisticBeliefState:
             beliefs[pt] /= total
             
         self.belief_distributions[pos] = beliefs
+        self._update_belief_tensor(pos)
+
 
     def _apply_rule_based_inference(self, pos: Tuple[int, int], 
                                    action: Tuple[Tuple[int, int], Tuple[int, int]]):
@@ -1209,7 +1244,9 @@ class ProbabilisticBeliefState:
             self.belief_distributions[pos] = {
                 pt: 1.0 if pt == PieceType.SCOUT else 0.0 for pt in PieceType
             }
+            self._update_belief_tensor(pos)
             return
+
 
         # Rule 2: Bombs and Flags cannot move
         # If it moved, probability of Bomb/Flag is 0
@@ -1226,6 +1263,9 @@ class ProbabilisticBeliefState:
             else:
                 # Fallback if all became 0 (shouldn't happen if logic is sound)
                 self._initialize_position_priors(pos)
+            
+            self._update_belief_tensor(pos)
+
 
     def _apply_behavioral_patterns(self, pos: Tuple[int, int], 
                                    action: Tuple[Tuple[int, int], Tuple[int, int]],
@@ -1252,6 +1292,9 @@ class ProbabilisticBeliefState:
         if total > 0:
             for pt in beliefs:
                 beliefs[pt] /= total
+        
+        self._update_belief_tensor(pos)
+
 
     def _apply_piece_count_constraints(self, pos: Tuple[int, int]):
         """
@@ -1276,6 +1319,9 @@ class ProbabilisticBeliefState:
         if total > 0:
             for pt in beliefs:
                 beliefs[pt] /= total
+        
+        self._update_belief_tensor(pos)
+
 
     def _apply_aaren_inference(self, pos: Tuple[int, int]):
         """
@@ -1320,6 +1366,9 @@ class ProbabilisticBeliefState:
         if total > 0:
             for pt in beliefs:
                 beliefs[pt] /= total
+        
+        self._update_belief_tensor(pos)
+
 
     def _update_piece_coordination(self, pos: Tuple[int, int],
                                    action: Tuple[Tuple[int, int], Tuple[int, int]],
@@ -1414,65 +1463,38 @@ class ProbabilisticBeliefState:
         # Channel 14: Unknown enemy piece mask
         # And Channels 2-13: Beliefs
         
-        # Identify unknown enemy pieces
-        # If player 1: Enemy pieces are < 0. Unknown if not in revealed_pieces.
-        # If player -1: Enemy pieces are > 0. Unknown if not in revealed_pieces.
+        # 1. Copy cached belief tensor directly (Channels 2-13)
+        if hasattr(self, 'belief_tensor'):
+            state_tensor[2:14] = self.belief_tensor
+            
+        # 2. Identify enemy pieces
+        if self.player_id == 1:
+            # Agent 1: Enemy pieces are < 0 and not lakes (-13)
+            enemy_mask = (board < 0) & (board != -13)
+        else:
+            # Agent 2: Enemy pieces are > 0
+            enemy_mask = (board > 0)
+            
+        # 3. Set Unknown Mask (Channel 14)
+        # Default to all enemies being unknown
+        state_tensor[14][enemy_mask] = 1.0
         
-        # We need to iterate to handle the dictionary lookups for beliefs efficiently
-        # Since board is small (10x10), a loop is acceptable, but we can optimize if needed.
+        # Unset mask for revealed pieces
+        # Iterate over revealed pieces (much smaller set than board size)
+        for pos in self.revealed_pieces:
+            r, c = pos
+            state_tensor[14, r, c] = 0.0
+            
+        # 4. Handle missing beliefs (Uniform prior for unknown enemies with no history)
+        # Check where we have an enemy but belief sum is 0
+        belief_sum = state_tensor[2:14].sum(dim=0)
+        missing_belief_mask = enemy_mask & (belief_sum < 0.01) # Use small epsilon
         
-        sorted_piece_types = sorted(PieceType, key=lambda pt: pt.value)
-        
-        for r in range(board_size):
-            for c in range(board_size):
-                pos = (r, c)
-                piece_val = board[r, c].item()
-                
-                is_enemy = False
-                if self.player_id == 1:
-                    if piece_val < 0 and piece_val != -13: # Enemy
-                        is_enemy = True
-                else:
-                    if piece_val > 0: # Enemy
-                        is_enemy = True
-                        
-                if is_enemy:
-                    if pos in self.revealed_pieces:
-                        # Known enemy piece - put in Channel 0 (as negative rank? or just rank?)
-                        # Let's put known enemy pieces in Channel 0 as NEGATIVE rank to distinguish?
-                        # Or maybe better: Channel 0 is OWN, Channel 1 is LAKES.
-                        # Let's add a channel for KNOWN ENEMY?
-                        # The prompt plan said:
-                        # 0: Own pieces
-                        # 1: Lakes
-                        # 2-13: Beliefs (which covers unknown enemy)
-                        # 14: Unknown mask
-                        
-                        # What about KNOWN enemy pieces?
-                        # If we know it's a Marshal (10), probability of Marshal is 1.0.
-                        # So we can just fill the belief channels with 1.0 for known pieces!
-                        
-                        # Get the piece type
-                        actual_type = self.revealed_pieces[pos]
-                        # Find index in sorted_piece_types
-                        type_idx = sorted_piece_types.index(actual_type)
-                        # Set probability 1.0
-                        state_tensor[2 + type_idx, r, c] = 1.0
-                        
-                    else:
-                        # Unknown enemy piece
-                        state_tensor[14, r, c] = 1.0
-                        
-                        # Fill belief channels
-                        if pos in self.belief_distributions:
-                            beliefs = self.belief_distributions[pos]
-                            for i, pt in enumerate(sorted_piece_types):
-                                prob = beliefs.get(pt, 0.0)
-                                state_tensor[2 + i, r, c] = prob
-                        else:
-                            # Default uniform belief
-                            uniform_prob = 1.0 / 12.0
-                            state_tensor[2:14, r, c] = uniform_prob
+        if missing_belief_mask.any():
+            uniform_prob = 1.0 / 12.0
+            for i in range(12):
+                state_tensor[2+i][missing_belief_mask] = uniform_prob
+
                             
         return state_tensor
     

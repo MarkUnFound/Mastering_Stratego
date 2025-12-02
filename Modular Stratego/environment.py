@@ -110,6 +110,10 @@ class StrategoEnvironment:
         assert len(pieces) == 40, f"Expected 40 pieces, got {len(pieces)}"
         return pieces
 
+    def get_all_pieces(self) -> List[PieceType]:
+        """Public method to get a full set of pieces (for setup agents)."""
+        return self._generate_pieces()
+
     def get_valid_placement_positions(self, player_id: int) -> List[Tuple[int, int]]:
         """Get valid placement positions for a player."""
         positions = []
@@ -235,7 +239,6 @@ class StrategoEnvironment:
                         moves.append(((r, c), (r_to, c_to)))
                         
         return moves
-
     def step(self, action: Tuple[Tuple[int, int], Tuple[int, int]]) -> Tuple[GameState, float, bool, Dict]:
         """
         Execute a move and return the new state.
@@ -617,7 +620,7 @@ class StrategoEnvironment:
         player_who_moved = self.current_player
         
         # Check losses for the player who just moved
-        # We check if a loss from exactly 3 turns ago didn't have an exchange in the 3 turns after it
+        # We check if a loss from exactly 3 turns ago didn't have an exchange in the 3 turns after the loss (loss_turn+1 to loss_turn+3)
         for loss_turn, piece_value, was_exchange in self.piece_losses[player_who_moved]:
             # Check if exactly 3 turns have passed since the loss
             if not was_exchange and (current_turn - loss_turn) == 3:

@@ -44,6 +44,15 @@ def worker(remote, parent_remote, env_idx, device):
                         remote.send(getattr(env, attr_name))
                     else:
                         remote.send(None)
+                        
+                elif cmd == 'call_method':
+                    method_name, args = data
+                    if hasattr(env, method_name):
+                        method = getattr(env, method_name)
+                        result = method(*args)
+                        remote.send(result)
+                    else:
+                        remote.send(None)
                 else:
                     print(f"Worker {env_idx}: Unknown command {cmd}")
                     remote.close()
@@ -210,4 +219,9 @@ class ParallelStrategoEnvironment:
     def get_attr(self, attr_name):
         # Get attribute from first env (assuming homogeneous)
         self.remotes[0].send(('get_attr', attr_name))
+        return self.remotes[0].recv()
+
+    def call_method(self, method_name, *args):
+        """Call a method on the first environment and return the result."""
+        self.remotes[0].send(('call_method', (method_name, args)))
         return self.remotes[0].recv()
