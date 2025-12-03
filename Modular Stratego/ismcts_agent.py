@@ -131,7 +131,7 @@ class ISMCTSAgent:
                 
                 # We need to know available moves from this new state to populate the new node
                 # Simulate move to get next state
-                next_state = copy.deepcopy(determinized_state)
+                next_state = determinized_state.clone()
                 self._apply_move_logic(next_state, move)
                 
                 # Get valid moves for the NEXT player
@@ -163,7 +163,8 @@ class ISMCTSAgent:
         Create a concrete game state by sampling unknown pieces from PBS beliefs.
         (Adapted from SearchAgent logic)
         """
-        new_state = copy.deepcopy(game_state)
+        # Use lightweight clone instead of deepcopy
+        new_state = game_state.clone()
         pbs = self.dqn_agent.pbs
         
         if not pbs:

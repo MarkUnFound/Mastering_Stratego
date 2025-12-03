@@ -1,0 +1,9 @@
+
+--- Benchmarking GameState Clone ---
+GameState.clone(): 0.0418 ms
+copy.deepcopy(): 0.2768 ms
+Speedup: 6.62x
+--- Benchmarking PBS Update ---
+Device: cuda
+Batched Update (Batch Size 32): 0.99 ms per batch
+Per Item: 0.03 ms

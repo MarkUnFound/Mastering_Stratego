@@ -1150,20 +1150,75 @@ class DQNAgent:
         if not self.pbs_instances:
             return
             
+    def update_pbs_batch(self, actions, game_states, acting_player):
+        """Update PBS for a batch of actions."""
+        if not self.pbs_instances:
+            return
+            
+        # 1. Collect inputs from all instances
+        all_aaren_inputs = []
+        update_metadata = [] # List of (instance_idx, pos, action, game_state, has_sequence)
+        
         for i, (action, gs) in enumerate(zip(actions, game_states)):
-            if action is not None and gs is not None:
-                # Use the corresponding PBS instance
-                if i < len(self.pbs_instances):
-                    # Retrieve Q-value feedback if available
-                    action_q_value = None
-                    if i in self.action_pbs_buffer:
-                        for stored in self.action_pbs_buffer[i]:
-                            if stored['action'] == action:
-                                action_q_value = stored['q_value']
-                                break
-                    
-                    # Update PBS with action and Q-value
-                    self.pbs_instances[i].update_from_action(action, gs, acting_player, q_value=action_q_value)
+            if action is None or gs is None:
+                continue
+            
+            if i >= len(self.pbs_instances):
+                continue
+                
+            pbs = self.pbs_instances[i]
+            
+            # Get Q-value if available
+            q_val = None
+            if i in self.action_pbs_buffer:
+                for stored in self.action_pbs_buffer[i]:
+                    if stored['action'] == action:
+                        q_val = stored['q_value']
+                        break
+            
+            # Prepare update (updates history, returns AAREN input if needed)
+            result = pbs.prepare_aaren_update(action, gs, acting_player, q_value=q_val)
+            
+            if result:
+                pos, sequence = result
+                has_sequence = sequence is not None
+                update_metadata.append((i, pos, action, gs, has_sequence))
+                
+                if has_sequence:
+                    all_aaren_inputs.append(sequence)
+        
+        # 2. Run Batch AAREN Inference
+        aaren_probs_batch = []
+        
+        if all_aaren_inputs and self.shared_aaren is not None:
+            # Pad sequences
+            max_len = max(len(seq) for seq in all_aaren_inputs)
+            batch_size = len(all_aaren_inputs)
+            input_size = len(all_aaren_inputs[0][0])
+            
+            x_batch = torch.zeros(batch_size, max_len, input_size, device=self.device)
+            for j, seq in enumerate(all_aaren_inputs):
+                seq_len = len(seq)
+                x_batch[j, :seq_len, :] = torch.tensor(np.array(seq), dtype=torch.float32, device=self.device)
+            
+            with torch.no_grad():
+                logits = self.shared_aaren(x_batch)
+                probs = torch.softmax(logits, dim=1)
+                aaren_probs_batch = [probs[j] for j in range(batch_size)]
+        
+        # 3. Apply updates
+        aaren_idx = 0
+        for metadata in update_metadata:
+            instance_idx, pos, action, gs, has_sequence = metadata
+            pbs = self.pbs_instances[instance_idx]
+            
+            probs = None
+            if has_sequence and aaren_idx < len(aaren_probs_batch):
+                probs = aaren_probs_batch[aaren_idx]
+                aaren_idx += 1
+            
+            pbs.apply_aaren_update(pos, probs, action, gs)
+
     
     def calculate_uncertainty_aware_q_values(self, base_q_values: torch.Tensor,
                                              valid_moves: List[Tuple[Tuple[int, int], Tuple[int, int]]],

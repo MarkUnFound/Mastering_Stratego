@@ -32,3 +32,32 @@ class GameState:
             return self.revealed_pieces_p1
         else:
             return self.revealed_pieces_p2
+
+    def clone(self):
+        """
+        Create a lightweight copy of the game state.
+        Much faster than copy.deepcopy() for tensors and simple types.
+        """
+        # Clone tensor (fast)
+        new_board = self.board.clone()
+        
+        # Shallow copy lists/dicts where possible, or create new ones
+        # We need new containers but can share immutable elements
+        new_move_history = list(self.move_history)
+        new_revealed_p1 = self.revealed_pieces_p1.copy()
+        new_revealed_p2 = self.revealed_pieces_p2.copy()
+        
+        # Uncertainty mask is a tensor
+        new_uncertainty = self.uncertainty_mask.clone() if self.uncertainty_mask is not None else None
+        
+        return GameState(
+            board=new_board,
+            current_player=self.current_player,
+            turn_count=self.turn_count,
+            game_over=self.game_over,
+            winner=self.winner,
+            move_history=new_move_history,
+            uncertainty_mask=new_uncertainty,
+            revealed_pieces_p1=new_revealed_p1,
+            revealed_pieces_p2=new_revealed_p2
+        )

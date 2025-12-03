@@ -666,71 +666,51 @@ class ProbabilisticBeliefState:
             except Exception:
                 # If feature importance fails, use unweighted features
                 pass
-        
         return features
-    
-    def update_from_action(self, action: Tuple[Tuple[int, int], Tuple[int, int]], 
-                          game_state, acting_player: int, q_value: Optional[float] = None):
+
+    def prepare_aaren_update(self, action: Tuple[Tuple[int, int], Tuple[int, int]], 
+                            game_state, acting_player: int, q_value: Optional[float] = None) -> Optional[Tuple[Tuple[int, int], List[List[float]]]]:
         """
-        Update belief state based on an action.
-        
-        Args:
-            action: The action taken ((from_pos), (to_pos))
-            game_state: Current game state
-            acting_player: Player who took the action
-            q_value: Q-value of the action (optional, for evaluator feedback)
+        Prepare for AAREN update. Returns (pos, sequence) if AAREN inference is needed.
+        Also performs initial processing (history update, etc.).
         """
         (r_from, c_from), (r_to, c_to) = action
         
         # Only track opponent's pieces
         if acting_player == self.player_id:
-            return
+            return None
         
         # Check if this is an unknown piece
-        # CRITICAL: game_state.board is the visible board for the current player
-        # For Agent 2, Agent 1's pieces show as HIDDEN_PIECE (-3), not positive values
-        # Use actual_board if available, otherwise use visible board
         board = None
         if hasattr(game_state, 'actual_board'):
             board = game_state.actual_board
         elif hasattr(game_state, 'board'):
             board = game_state.board
         else:
-            return
+            return None
         
+        pos = None
         if isinstance(board, torch.Tensor):
             piece_val = board[r_from, c_from].item()
             # If piece is revealed, don't track it
             if (r_from, c_from) in self.revealed_pieces:
-                return
+                return None
             
-            # Check if it's an unknown enemy piece
-            # CRITICAL: Use actual board values:
-            # - Agent 1's pieces are positive (> 0)
-            # - Agent 2's pieces are negative (< 0)
-            # - HIDDEN_PIECE = -3 (only in visible boards, not actual board)
-            # - LAKE_SQUARE = -13
-            # - EMPTY_SQUARE = 0
             if self.player_id == 1:
-                # Agent 1 tracking Agent 2's pieces (negative values in actual board)
-                if piece_val < 0 and piece_val != -13:  # Not empty, not lake, enemy piece
+                if piece_val < 0 and piece_val != -13:
                     pos = (r_from, c_from)
-                else:
-                    return
             elif self.player_id == -1:
-                # Agent 2 tracking Agent 1's pieces (positive values in actual board)
-                if piece_val > 0:  # Enemy piece (Agent 1's pieces are positive in actual board)
+                if piece_val > 0:
                     pos = (r_from, c_from)
-                else:
-                    return
-        else:
-            return
         
-        # Track observation time if first time seeing this piece
+        if pos is None:
+            return None
+            
+        # Track observation time
         if pos not in self.piece_observation_times:
             self.piece_observation_times[pos] = self.turn_count
             
-        # Store Q-value if provided (for later evaluator feedback)
+        # Store Q-value
         if q_value is not None:
             if not hasattr(self, 'piece_q_value_history'):
                 self.piece_q_value_history = {}
@@ -738,73 +718,114 @@ class ProbabilisticBeliefState:
                 self.piece_q_value_history[pos] = []
             self.piece_q_value_history[pos].append(q_value)
         
-        # Initialize beliefs with position-based priors if not already set
+        # Initialize priors
         if pos not in self.belief_distributions or len(self.belief_distributions[pos]) == 0:
             self._initialize_position_priors(pos)
         
-        # Extract action features (with position for enhanced features)
+        # Extract features and update history
         action_features = self._extract_action_features(action, game_state, pos=pos)
         self.piece_action_history[pos].append(action_features)
         
-        # Rule-based inference
+        # Prepare AAREN input if history exists
+        if len(self.piece_action_history[pos]) >= 1:
+            history = list(self.piece_action_history[pos])
+            seq_len = min(len(history), 10)
+            sequence = history[-seq_len:]
+            return pos, sequence
+            
+        return pos, None
+
+    def apply_aaren_update(self, pos: Tuple[int, int], aaren_probs: Optional[torch.Tensor], 
+                          action: Tuple[Tuple[int, int], Tuple[int, int]], game_state):
+        """
+        Apply AAREN results and other inference rules.
+        """
+        # Rule-based
         self._apply_rule_based_inference(pos, action)
         
-        # Behavioral pattern recognition
+        # Behavioral
         self._apply_behavioral_patterns(pos, action, game_state)
         
-        # Aaren-based inference (sequential update for efficiency)
-        if len(self.piece_action_history[pos]) >= 1:
-            self._apply_aaren_inference(pos)
+        # Apply AAREN results
+        if aaren_probs is not None:
+            # We trust AAREN more as sequence grows
+            history_len = len(self.piece_action_history[pos])
+            aaren_weight = min(0.8, history_len * 0.1)
+            current_weight = 1.0 - aaren_weight
+            
+            beliefs = self.belief_distributions[pos]
+            piece_types = list(PieceType)
+            
+            for k, pt in enumerate(piece_types):
+                aaren_prob = aaren_probs[k].item()
+                current_prob = beliefs.get(pt, 0.0)
+                beliefs[pt] = current_weight * current_prob + aaren_weight * aaren_prob
+            
+            # Renormalize
+            total = sum(beliefs.values())
+            if total > 0:
+                for pt in beliefs:
+                    beliefs[pt] /= total
         
-        # Apply bias correction from evaluator
+        # Evaluator bias correction
         if self.evaluator is not None and pos in self.belief_distributions:
             beliefs = self.belief_distributions[pos]
-            # Apply correction factors to each piece type
             corrected_beliefs = {}
             for piece_type in beliefs:
                 correction = self.evaluator.get_bias_correction(piece_type)
                 corrected_beliefs[piece_type] = beliefs[piece_type] * correction
             
-            # Normalize to ensure probabilities sum to 1
             total = sum(corrected_beliefs.values())
             if total > 0:
                 for piece_type in corrected_beliefs:
                     corrected_beliefs[piece_type] /= total
                 self.belief_distributions[pos] = corrected_beliefs
-            
-            self._update_belief_tensor(pos)
-
         
-        # Check if we need more information (active learning)
+        # Active learning
         if self.evaluator is not None and pos in self.belief_distributions:
-            beliefs = self.belief_distributions[pos]
-            if self.evaluator.should_gather_more_info(beliefs):
+            if self.evaluator.should_gather_more_info(self.belief_distributions[pos]):
                 self.uncertain_positions.add(pos)
             else:
                 self.uncertain_positions.discard(pos)
         
-        # Apply piece count constraints
+        # Constraints
         self._apply_piece_count_constraints(pos)
         
-        # Update turn count
-        if hasattr(game_state, 'turn_count'):
-            self.turn_count = game_state.turn_count
+        # Update tensor
+        self._update_belief_tensor(pos)
         
-        # 3. NEW: Multi-Piece Pattern Recognition
-        # Track pieces moving together or coordinating
+        # Coordination
         self._update_piece_coordination(pos, action, game_state)
         
-        # Update position tracking: if piece moved, transfer beliefs to new position
+        # Turn count
+        if hasattr(game_state, 'turn_count'):
+            self.turn_count = game_state.turn_count
+            
+        # Update position tracking
+        (r_from, c_from), (r_to, c_to) = action
         if (r_from, c_from) != (r_to, c_to):
-            # Check if target position has an unknown piece (after move)
-            # This will be handled in the next state update, but we can prepare
-            # by transferring the belief distribution if the piece moved to an empty square
-            if (r_from, c_from) in self.belief_distributions:
-                # Store the old position's beliefs temporarily
-                old_beliefs = self.belief_distributions.get((r_from, c_from), {})
-                # We don't move beliefs here because the move might fail or be a battle
-                # The environment update will handle the actual move
+             if (r_from, c_from) in self.belief_distributions:
                 pass
+
+    def update_from_action(self, action: Tuple[Tuple[int, int], Tuple[int, int]], 
+                          game_state, acting_player: int, q_value: Optional[float] = None):
+        """
+        Update belief state based on an action.
+        """
+        result = self.prepare_aaren_update(action, game_state, acting_player, q_value)
+        if result:
+            pos, sequence = result
+            
+            # Run AAREN inference if sequence available
+            probs = None
+            if sequence is not None and self.aaren_model is not None:
+                # Single inference
+                seq_tensor = torch.tensor(np.array(sequence), dtype=torch.float32, device=self.device).unsqueeze(0)
+                with torch.no_grad():
+                    logits = self.aaren_model(seq_tensor)
+                    probs = torch.softmax(logits, dim=1).squeeze(0)
+            
+            self.apply_aaren_update(pos, probs, action, game_state)
     def update_from_reveal(self, pos: Tuple[int, int], piece_type: PieceType, 
                           game_phase: str = 'middle', turn_count: int = 0):
         """
