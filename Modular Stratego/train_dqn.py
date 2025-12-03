@@ -945,6 +945,10 @@ def main():
     use_setup_agents = True  # Enable setup agents for piece placement
     
     try:
+        # Run pre-flight checks
+        from preflight_checks import run_preflight_checks
+        run_preflight_checks(model_save_path)
+        
         # Train agents with parallel environment
         agent1, agent2 = train_dqn_agents(NUM_EPISODES, SAVE_INTERVAL, model_save_path,
                                           use_setup_agents=use_setup_agents,
