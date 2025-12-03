@@ -9,7 +9,7 @@ from typing import List, Tuple, Dict, Optional
 
 # Import existing modules
 try:
-    from drqn_agent import DRQNAgent
+    from drqn_agent import RainbowAgent
     from setup_agent import SetupAgent
     from environment import StrategoEnvironment
     from piece import PieceType
@@ -81,20 +81,6 @@ class LiveVisualizer:
         self.clock = pygame.time.Clock()
         self.font_large = pygame.font.SysFont("Arial", 32, bold=True)
         self.font_med = pygame.font.SysFont("Arial", 24)
-        self.font_small = pygame.font.SysFont("Arial", 16)
-        
-        # Init Environment and Agents
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        print(f"Using device: {self.device}")
-        
-        self.setup_agent2 = SetupAgent(-1, self.device)
-        self.setup_status = "Not Loaded"
-        self._load_setup_models(self.episode_num)
-        
-        self.pending_battle = None # Store battle info: {action, attacker, defender, time}
-        self.use_pbs = True
-        
-        # UI Elements
         self.buttons = [
             Button(SIDEBAR_X, WINDOW_HEIGHT - 100, 100, 40, "Step (>)", self.step_game),
             Button(SIDEBAR_X + 120, WINDOW_HEIGHT - 100, 100, 40, "Play/Pause", self.toggle_pause),

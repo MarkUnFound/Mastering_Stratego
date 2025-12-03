@@ -3,23 +3,24 @@ Configuration settings for DQN training.
 """
 
 # Hyperparameters
-NUM_ENVS = 8 # Reduced to 4 to strictly limit memory usage for 6GB GPU (running 2 processes)
-BATCH_SIZE = 32  # Reduced batch size for DRQN (sequences take more memory)
-TRACE_LENGTH = 8 # Length of sequence traces for DRQN training
+# Hyperparameters
+NUM_ENVS = 4 # Reduced to 4 for stability and speed
+BATCH_SIZE = 32
+TRACE_LENGTH = 8 # Unused for Rainbow
 GAMMA = 0.99
 EPSILON_START = 1.0
 EPSILON_MIN = 0.1
-EPSILON_DECAY = 0.99995  # Slower decay for longer training
+EPSILON_DECAY = 0.99995
 TARGET_UPDATE = 1000
-MEMORY_SIZE = 1000 # Reduced to 1000 episodes (sequences take more memory)
+MEMORY_SIZE = 100000 # Increased buffer size for transitions
 LEARNING_RATE = 0.0001
-NUM_EPISODES = 35000  # Total episodes to train
-SAVE_INTERVAL = 250   # Save model every N episodes
-EVAL_INTERVAL = 100  # Evaluate every N episodes
-PREFETCH_QUEUE_SIZE = 4 # Size of the prefetch queue
-REPLAY_UPDATE_INTERVAL = 2 # Train every N steps (train very frequently)
-REPLAY_UPDATES_PER_STEP = 4 # Multiple gradient updates per training step (maximize GPU work)
-TARGET_UPDATE_INTERVAL = 5000 # Update target network every N steps
+NUM_EPISODES = 35000
+SAVE_INTERVAL = 250
+EVAL_INTERVAL = 100
+PREFETCH_QUEUE_SIZE = 4
+REPLAY_UPDATE_INTERVAL = 4 # Train every 4 steps
+REPLAY_UPDATES_PER_STEP = 1 # Unused in current script
+TARGET_UPDATE_INTERVAL = 5000
 
 # League Settings
 LEAGUE_INTERVAL = 500 # Run setup league every N episodes

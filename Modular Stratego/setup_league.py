@@ -5,7 +5,7 @@ import os
 import copy
 from typing import List, Dict
 from setup_agent import SetupAgent
-from drqn_agent import DRQNAgent
+from drqn_agent import RainbowAgent
 from setup_evaluation import calculate_setup_agent_reward
 from environment import StrategoEnvironment
 
@@ -27,13 +27,13 @@ class SetupLeague:
             self.population.append(agent)
             self.scores[agent.name] = 0
             
-    def run_evolution(self, env, gameplay_agent: DRQNAgent, generations: int = 1, games_per_matchup: int = 4):
+    def run_evolution(self, env, gameplay_agent: RainbowAgent, generations: int = 1, games_per_matchup: int = 4):
         """
         Run evolution for a number of generations.
         
         Args:
             env: Ignored (we create a local environment for the tournament)
-            gameplay_agent: The DQNAgent used to play out the games (evaluator)
+            gameplay_agent: The RainbowAgent used to play out the games (evaluator)
             generations: Number of generations to run
             games_per_matchup: Number of games per pair of agents
         """
@@ -46,8 +46,7 @@ class SetupLeague:
         # Ensure gameplay agent is in eval mode
         was_training = gameplay_agent.q_network.training
         gameplay_agent.q_network.eval()
-        original_epsilon = gameplay_agent.epsilon
-        gameplay_agent.epsilon = 0.1 # Low exploration for evaluation
+        # RainbowAgent doesn't use epsilon, so we don't need to save/restore it
         
         for gen in range(generations):
             # Reset scores for this generation
@@ -85,7 +84,6 @@ class SetupLeague:
         # Restore gameplay agent state
         if was_training:
             gameplay_agent.q_network.train()
-        gameplay_agent.epsilon = original_epsilon
         
     def _play_matchup(self, env, gameplay_agent, agent_a, agent_b, num_games):
         """Play a set of games between two setup agents."""

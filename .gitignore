@@ -6,6 +6,7 @@ setup_agent_models/
 # Ignore Python cache directories
 __pycache__/
 Modular Stratego/__pycache__/
+Modular Stratego/dqn_models/
 
 # Ignore debug logs
 debug_log.txt
