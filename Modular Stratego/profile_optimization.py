@@ -3,7 +3,7 @@ import time
 import torch
 import numpy as np
 import copy
-from dqn_agent import DQNAgent
+from drqn_agent import DRQNAgent
 from game_state import GameState
 from piece import PieceType
 from probabilistic_belief_state import ProbabilisticBeliefState
@@ -14,7 +14,7 @@ def benchmark_pbs_update():
     print(f"Device: {device}")
     
     # Initialize Agent and PBS
-    agent = DQNAgent(player_id=1, device=device, num_envs=32)
+    agent = DRQNAgent(player_id=1, device=device, num_envs=32)
     # Ensure PBS is initialized
     if agent.pbs is None:
         agent.pbs = ProbabilisticBeliefState(player_id=1, device=device)

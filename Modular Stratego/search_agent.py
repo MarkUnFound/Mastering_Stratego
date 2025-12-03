@@ -6,8 +6,8 @@ from piece import PieceType
 
 class SearchAgent:
     """
-    Wraps a DQNAgent to add Minimax search capabilities for the endgame.
-    Uses the DQN's Q-value as a heuristic evaluation function.
+    Wraps a DRQNAgent to add Minimax search capabilities for the endgame.
+    Uses the DRQN's Q-value as a heuristic evaluation function.
     """
     
     def __init__(self, dqn_agent, search_depth: int = 3, endgame_threshold: int = 15):
@@ -15,7 +15,7 @@ class SearchAgent:
         Initialize the SearchAgent.
         
         Args:
-            dqn_agent: The underlying DQNAgent to use for heuristics and non-endgame play
+            dqn_agent: The underlying DRQNAgent to use for heuristics and non-endgame play
             search_depth: Depth of the Minimax search
             endgame_threshold: Number of pieces below which search is enabled
         """
@@ -42,7 +42,7 @@ class SearchAgent:
         
     def act(self, state, valid_moves: List[Tuple[Tuple[int, int], Tuple[int, int]]], game_state=None):
         """
-        Choose an action, using Search if in endgame, otherwise DQN.
+        Choose an action, using Search if in endgame, otherwise DRQN.
         """
         if not valid_moves:
             return None
@@ -54,7 +54,7 @@ class SearchAgent:
             best_move = self.determinize_and_search(game_state if game_state else state, valid_moves, self.search_depth, num_samples=3)
             return best_move
         else:
-            # Use standard DQN policy
+            # Use standard DRQN policy
             return self.dqn_agent.act(state, valid_moves)
             
     def determinize_and_search(self, game_state, valid_moves, depth, num_samples=3) -> Tuple[Tuple[int, int], Tuple[int, int]]:
@@ -103,7 +103,7 @@ class SearchAgent:
         import copy
         new_state = copy.deepcopy(game_state)
         
-        # Access PBS from DQN agent
+        # Access PBS from DRQN agent
         pbs = self.dqn_agent.pbs
         if not pbs:
             return new_state # Fallback to raw state if no PBS

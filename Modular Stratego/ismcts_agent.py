@@ -52,7 +52,7 @@ class ISMCTSAgent:
     """
     Information Set Monte Carlo Tree Search Agent.
     Uses Probabilistic Belief State (PBS) to sample consistent worlds (Determinization).
-    Uses DQN as a heuristic to evaluate leaf nodes (AlphaZero-style).
+    Uses DRQN as a heuristic to evaluate leaf nodes (AlphaZero-style).
     """
     def __init__(self, dqn_agent, num_simulations: int = 50, c_puct: float = 1.414):
         self.dqn_agent = dqn_agent
@@ -92,7 +92,7 @@ class ISMCTSAgent:
         1. Determinize: Sample a concrete world from PBS.
         2. Select: Traverse tree to a leaf.
         3. Expand: Add a new child.
-        4. Evaluate: Use DQN to estimate value.
+        4. Evaluate: Use DRQN to estimate value.
         5. Backpropagate: Update values up the tree.
         """
         node = root
@@ -146,7 +146,7 @@ class ISMCTSAgent:
                 determinized_state = next_state # Update state to the expanded node
 
         # 4. Evaluation
-        # Use DQN to get value of this state
+        # Use DRQN to get value of this state
         # Value is from perspective of current player in determinized_state
         value = self.dqn_agent.get_state_value(determinized_state)
         
@@ -211,33 +211,56 @@ class ISMCTSAgent:
         return new_state
 
     def _apply_move_logic(self, game_state, move):
-        """Apply move to state (in-place). Simplified battle logic."""
+        """Apply move to state (in-place)."""
         (r1, c1), (r2, c2) = move
         board = game_state.board
         
+        # Move piece
         piece_val = board[r1][c1]
         target_val = board[r2][c2]
         
+        # Get piece types (absolute values)
         attacker = abs(int(piece_val))
         defender = abs(int(target_val))
         
+        # Battle logic
         if target_val == 0:
+            # Move to empty square
             board[r2][c2] = piece_val
             board[r1][c1] = 0
         else:
-            # Simplified Battle
-            winner_val = 0
-            if attacker == 3 and defender == 11: winner_val = piece_val # Miner vs Bomb
-            elif attacker == 1 and defender == 10: winner_val = piece_val # Spy vs Marshal
-            elif attacker > defender: winner_val = piece_val
-            elif defender > attacker: winner_val = target_val
+            # Battle
+            # We need to resolve battle.
+            # Assuming standard Stratego rules.
+            # 1: Spy, 2: Scout, 3: Miner, ..., 10: Marshal, 11: Bomb, 12: Flag
+            # Higher rank wins, except Spy vs Marshal, Miner vs Bomb.
             
+            # Simple resolution
+            winner_val = 0
+            
+            # Special cases
+            if attacker == 3 and defender == 11: # Miner vs Bomb
+                winner_val = piece_val # Miner wins
+            elif attacker == 1 and defender == 10: # Spy vs Marshal
+                winner_val = piece_val # Spy wins
+            elif attacker == 11: # Bomb attacking? (Illegal usually, but if allowed, it loses)
+                winner_val = target_val # Defender wins
+            elif defender == 11: # Attacking Bomb (non-Miner)
+                winner_val = target_val # Bomb wins
+            elif attacker > defender:
+                winner_val = piece_val # Attacker wins
+            elif defender > attacker:
+                winner_val = target_val # Defender wins
+            else:
+                winner_val = 0 # Draw (both removed)
+                
             board[r2][c2] = winner_val
             board[r1][c1] = 0
-            
+        
+        # Switch turn
         game_state.current_player *= -1
 
     def _is_terminal(self, game_state) -> bool:
-        """Check if game is over (simplified)."""
-        # In real implementation, check for flag capture or no moves
-        return False
+        """Check if game is over."""
+        # Check flag capture or no moves
+        return False # Simplified

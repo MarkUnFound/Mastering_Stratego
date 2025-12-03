@@ -9,7 +9,7 @@ from typing import List, Tuple, Dict, Optional
 
 # Import existing modules
 try:
-    from dqn_agent import DQNAgent
+    from drqn_agent import DRQNAgent
     from setup_agent import SetupAgent
     from environment import StrategoEnvironment
     from piece import PieceType
@@ -86,19 +86,6 @@ class LiveVisualizer:
         self.font_small = pygame.font.SysFont("Arial", 16)
         self.font_med = pygame.font.SysFont("Arial", 20)
         self.font_large = pygame.font.SysFont("Arial", 32, bold=True)
-        
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.env = StrategoEnvironment(self.device)
-        
-        action_size = len(self.env.get_valid_moves())
-        
-        self.agent1 = DQNAgent(1, self.device, action_size=action_size)
-        self.agent2 = DQNAgent(-1, self.device, action_size=action_size)
-        self.setup_agent1 = SetupAgent(1, self.device)
-        self.setup_agent2 = SetupAgent(-1, self.device)
-        
-        self.running = True
-        self.paused = True
         self.game_state = None
         self.selected_tile = None
         self.hovered_tile = None

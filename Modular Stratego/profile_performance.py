@@ -10,7 +10,7 @@ from tqdm import tqdm
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from parallel_environment import ParallelStrategoEnvironment
-from dqn_agent import DQNAgent
+from drqn_agent import DRQNAgent
 from setup_agent import SetupAgent
 from training_config import *
 
@@ -30,8 +30,8 @@ def profile_training():
     
     # Initialize Agents
     print("Initializing Agents...")
-    agent1 = DQNAgent(player_id=1, device=device, lr=LEARNING_RATE, batch_size=BATCH_SIZE, num_envs=NUM_ENVS, buffer_size=MEMORY_SIZE)
-    agent2 = DQNAgent(player_id=-1, device=device, lr=LEARNING_RATE, batch_size=BATCH_SIZE, num_envs=NUM_ENVS, buffer_size=MEMORY_SIZE)
+    agent1 = DRQNAgent(player_id=1, device=device, lr=LEARNING_RATE, batch_size=BATCH_SIZE, num_envs=NUM_ENVS, buffer_size=MEMORY_SIZE)
+    agent2 = DRQNAgent(player_id=-1, device=device, lr=LEARNING_RATE, batch_size=BATCH_SIZE, num_envs=NUM_ENVS, buffer_size=MEMORY_SIZE)
     
     setup_agent1 = SetupAgent(player_id=1, device=device)
     setup_agent2 = SetupAgent(player_id=-1, device=device)

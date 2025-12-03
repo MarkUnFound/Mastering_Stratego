@@ -8,8 +8,8 @@ def run_live_dqn_game(num_games: int = 1, move_delay: float = 1.0,
     print(f"Using device: {device}")
     
     # Create agents
-    agent1 = DQNAgent(1, device)
-    agent2 = DQNAgent(-1, device)
+    agent1 = DRQNAgent(1, device)
+    agent2 = DRQNAgent(-1, device)
     
     # Load trained models if available
     try:

@@ -2,113 +2,89 @@
 import numpy as np
 import random
 import torch
-from collections import namedtuple
+from collections import namedtuple, deque
 
-# Define Experience namedtuple to match DQNAgent
+# Define Experience namedtuple to match DRQNAgent
 Experience = namedtuple('Experience', ['state', 'action', 'reward', 'next_state', 'done'])
 
-class PrioritizedReplayBuffer:
+class SequentialReplayBuffer:
     """
-    GPU-accelerated Prioritized Experience Replay Buffer.
-    Uses PyTorch tensors for priorities to enable fast vectorized sampling.
-    This eliminates the CPU bottleneck from the SumTree implementation.
+    Replay Buffer for DRQN that stores entire episodes and samples sequences (traces).
+    Handles zero-padding for sequences that exceed episode boundaries or for short episodes.
     """
-    def __init__(self, capacity, alpha=0.6, device='cuda'):
+    def __init__(self, capacity, trace_length=8, device='cuda'):
         self.capacity = capacity
-        self.alpha = alpha  # Priority exponent
-        self.epsilon = 0.01  # Small constant to ensure non-zero priority
+        self.trace_length = trace_length
         self.device = device
         
-        # Storage
-        self.buffer = [None] * capacity
-        self.priorities = torch.zeros(capacity, dtype=torch.float32, device=device)
-        self.position = 0
-        self.size = 0
+        # Storage: List of episodes, where each episode is a list of Experience tuples
+        self.buffer = deque(maxlen=capacity)
         
-    def add(self, experience, error=None):
+    def add(self, episode):
         """
-        Add a new experience to the buffer.
-        New experiences are given max priority to ensure they are seen at least once.
+        Add a full episode to the buffer.
+        Args:
+            episode: List of Experience tuples representing one complete game episode.
         """
-        # Calculate priority
-        if error is None:
-            # Use max priority for new experiences
-            if self.size > 0:
-                max_priority = self.priorities[:self.size].max().item()
-                if max_priority == 0:
-                    max_priority = 1.0
+        # Only add non-empty episodes
+        if len(episode) > 0:
+            self.buffer.append(episode)
+    
+    def sample(self, batch_size):
+        """
+        Sample a batch of sequences (traces) from stored episodes.
+        
+        Returns:
+            batch_traces: List of list of Experience tuples (the sequences)
+            mask: Tensor of shape (batch_size, trace_length) indicating valid steps (1=valid, 0=padded)
+        """
+        sampled_episodes = random.sample(self.buffer, batch_size)
+        
+        batch_traces = []
+        mask = torch.zeros((batch_size, self.trace_length), dtype=torch.float32, device=self.device)
+        
+        for i, episode in enumerate(sampled_episodes):
+            # Pick a random start point for the trace
+            # We want to ensure we can get at least some valid data
+            if len(episode) <= self.trace_length:
+                # If episode is shorter than trace, take the whole thing and pad
+                start_idx = 0
+                trace = episode
             else:
-                max_priority = 1.0
-        else:
-            max_priority = (abs(error) + self.epsilon) ** self.alpha
-        
-        # Store experience
-        self.buffer[self.position] = experience
-        self.priorities[self.position] = max_priority
-        
-        # Update position and size
-        self.position = (self.position + 1) % self.capacity
-        self.size = min(self.size + 1, self.capacity)
-    
-    def sample(self, batch_size, beta=0.4):
-        """
-        Sample a batch of experiences based on priority.
-        FULLY GPU-ACCELERATED using PyTorch operations.
-        Returns batch, indices (for update), and importance sampling weights.
-        """
-        # Get valid priorities (only up to current size)
-        valid_priorities = self.priorities[:self.size]
-        
-        # Check for NaNs or Infs in priorities
-        if torch.isnan(valid_priorities).any() or torch.isinf(valid_priorities).any():
-            # Replace NaNs/Infs with max priority or 1.0
-            valid_priorities = torch.nan_to_num(valid_priorities, nan=1.0, posinf=1.0, neginf=1.0)
-            # Update the stored priorities to fix the buffer
-            self.priorities[:self.size] = valid_priorities
+                # If episode is longer, pick a random start
+                # We allow picking near the end, which will result in padding
+                start_idx = random.randint(0, len(episode) - 1)
+                trace = episode[start_idx : start_idx + self.trace_length]
             
-        # Normalize to probabilities (on GPU)
-        sum_priorities = valid_priorities.sum()
-        if sum_priorities == 0:
-            # Handle case where all priorities are zero
-            probabilities = torch.ones_like(valid_priorities) / self.size
-        else:
-            probabilities = valid_priorities / sum_priorities
-        
-        # Sample indices using multinomial (GPU operation)
-        indices = torch.multinomial(probabilities, batch_size, replacement=True)
-        
-        # Get experiences
-        batch = [self.buffer[idx.item()] for idx in indices]
-        
-        # Calculate importance sampling weights (GPU operations)
-        sample_probs = probabilities[indices]
-        is_weights = torch.pow(self.size * sample_probs, -beta)
-        is_weights = is_weights / is_weights.max()  # Normalize
-        
-        # Convert to numpy for compatibility with existing training code
-        is_weights_np = is_weights.cpu().numpy()
-        indices_list = indices.cpu().tolist()
-        
-        return batch, indices_list, is_weights_np
-    
-    def update(self, indices, errors):
-        """
-        Update priorities of sampled experiences based on new TD errors.
-        """
-        indices_tensor = torch.tensor(indices, dtype=torch.long, device=self.device)
-        priorities = torch.tensor(
-            [(abs(error) + self.epsilon) ** self.alpha for error in errors],
-            dtype=torch.float32,
-            device=self.device
-        )
-        self.priorities[indices_tensor] = priorities
+            # Create the padded trace
+            padded_trace = []
+            
+            # 1. Add valid experiences
+            for j, exp in enumerate(trace):
+                padded_trace.append(exp)
+                mask[i, j] = 1.0
+                
+            # 2. Add zero-padding if necessary
+            while len(padded_trace) < self.trace_length:
+                # Create a zero-filled experience
+                # We need to match the shape of the state tensors
+                # Assuming state is (C, H, W)
+                zero_state = torch.zeros_like(episode[0].state)
+                zero_action = 0 # Dummy action
+                zero_reward = 0.0
+                zero_next_state = torch.zeros_like(episode[0].next_state)
+                zero_done = True # Treat padding as done
+                
+                padding_exp = Experience(zero_state, zero_action, zero_reward, zero_next_state, zero_done)
+                padded_trace.append(padding_exp)
+                # Mask remains 0 for these steps
+            
+            batch_traces.append(padded_trace)
+            
+        return batch_traces, mask
     
     def __len__(self):
-        return self.size
+        return len(self.buffer)
     
     def clear(self):
-        """Clear the buffer"""
-        self.buffer = [None] * self.capacity
-        self.priorities = torch.zeros(self.capacity, dtype=torch.float32, device=self.device)
-        self.position = 0
-        self.size = 0
+        self.buffer.clear()

@@ -11,7 +11,7 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 if current_dir not in sys.path:
     sys.path.append(current_dir)
 
-from dqn_agent import DQNAgent
+from drqn_agent import DRQNAgent
 
 
 def reset_dqn_agents(device=None, lr=0.001):
@@ -30,8 +30,8 @@ def reset_dqn_agents(device=None, lr=0.001):
     print(f"Using device: {device}")
     
     # Create new agents with default parameters
-    agent1 = DQNAgent(player_id=1, device=device, lr=lr)
-    agent2 = DQNAgent(player_id=-1, device=device, lr=lr)
+    agent1 = DRQNAgent(player_id=1, device=device, lr=lr)
+    agent2 = DRQNAgent(player_id=-1, device=device, lr=lr)
     
     # Reset the agents
     agent1.reset()

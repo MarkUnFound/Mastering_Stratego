@@ -347,7 +347,7 @@ class StrategoEnvironment:
             return self._get_game_state(), 0.0, True, {"winner": self.winner}
 
         # Check for max turns (draw) - reduced to encourage faster games
-        if self.turn_count >= 400:
+        if self.turn_count >= 800:
             self.game_over = True
             self.winner = 0
             return self._get_game_state(), -1.0, True, {"winner": 0, "revealed_in_step": [], "game_phase": "end", "turn_count": self.turn_count}
@@ -672,7 +672,7 @@ class StrategoEnvironment:
                 self.game_over = True
                 self.winner = -self.current_player # Player who cannot move loses
         # Smart draw detection (relaxed to allow more decisive games)
-        if self.turn_count > 400:  # Increased from 300 to 400 moves before checking (gives more time for decisive play)
+        if self.turn_count > 800:  # Increased from 400 to 800 moves before checking (gives more time for decisive play)
             # Check for repetitive positions (same piece arrangement)
             if self._is_position_repetitive():
                 self.game_over = True

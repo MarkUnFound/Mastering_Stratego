@@ -4,7 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from training_visualizer import plot_training_progress, plot_setup_agent_progress, plot_pbs_evaluator_progress, plot_additional_metrics
 from environment import StrategoEnvironment
-from dqn_agent import DQNAgent
+from drqn_agent import DRQNAgent
 from training_config import NUM_ENVS
 
 def run_preflight_checks(model_save_path: str):

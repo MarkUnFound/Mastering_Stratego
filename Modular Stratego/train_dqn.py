@@ -27,7 +27,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from environment import StrategoEnvironment
 from parallel_environment import ParallelStrategoEnvironment
-from dqn_agent import DQNAgent
+from drqn_agent import DRQNAgent
 from setup_agent import SetupAgent
 from game_state import GameState
 from training_visualizer import plot_training_progress, create_training_gif, create_episode_gif, plot_setup_agent_progress, plot_pbs_evaluator_progress, plot_additional_metrics
@@ -153,8 +153,8 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
     loaded_history = load_training_history(model_save_path)
     
     # Create game-playing agents (with increased learning rate for CNN)
-    agent1 = DQNAgent(player_id=1, device=device, lr=0.0001, batch_size=TRAINING_BATCH_SIZE, num_envs=NUM_ENVS, buffer_size=MEMORY_SIZE)
-    agent2 = DQNAgent(player_id=-1, device=device, lr=0.0001, batch_size=TRAINING_BATCH_SIZE, num_envs=NUM_ENVS, buffer_size=MEMORY_SIZE)
+    agent1 = DRQNAgent(player_id=1, device=device, lr=0.0001, batch_size=TRAINING_BATCH_SIZE, num_envs=NUM_ENVS, buffer_size=MEMORY_SIZE)
+    agent2 = DRQNAgent(player_id=-1, device=device, lr=0.0001, batch_size=TRAINING_BATCH_SIZE, num_envs=NUM_ENVS, buffer_size=MEMORY_SIZE)
     
     # Try to load the most recent saved models (separate files)
     try:
@@ -525,14 +525,14 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
             if agent1_indices:
                 batch_states = [states[i] for i in agent1_indices]
                 batch_moves = [valid_moves[i] for i in agent1_indices]
-                batch_actions = agent1.act_batch(batch_states, batch_moves, game_states=batch_states)
+                batch_actions = agent1.act_batch(batch_states, batch_moves, game_states=batch_states, env_indices=agent1_indices)
                 for idx, action in zip(agent1_indices, batch_actions):
                     actions_list[idx] = action
                 
             if agent2_indices:
                 batch_states = [states[i] for i in agent2_indices]
                 batch_moves = [valid_moves[i] for i in agent2_indices]
-                batch_actions = agent2.act_batch(batch_states, batch_moves, game_states=batch_states)
+                batch_actions = agent2.act_batch(batch_states, batch_moves, game_states=batch_states, env_indices=agent2_indices)
                 for idx, action in zip(agent2_indices, batch_actions):
                     actions_list[idx] = action
                 
@@ -580,7 +580,7 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                 current_agent = agent1 if states[i].current_player == 1 else agent2
                 state_tensor = current_agent.get_state_representation(states[i])
                 next_state_tensor = current_agent.get_state_representation(next_states[i])
-                current_agent.remember(state_tensor, current_agent._move_to_action_index(action), reward, next_state_tensor, done)
+                current_agent.remember(state_tensor, current_agent._move_to_action_index(action), reward, next_state_tensor, done, env_idx=i)
             
                 if states[i].current_player == 1: episode_rewards_agent1[i] += reward
                 else: episode_rewards_agent2[i] += reward
@@ -603,8 +603,8 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                     elif winner == -1: wins_agent2 += 1
                     else: draws += 1
                 
-                    agent1.reset_pbs(i)
-                    agent2.reset_pbs(i)
+                    agent1.reset_episode(i)
+                    agent2.reset_episode(i)
                 
                     episode_history.append(total_episodes)
                     rewards_history['agent1'].append(episode_rewards_agent1[i])

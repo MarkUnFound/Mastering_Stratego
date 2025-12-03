@@ -5,7 +5,7 @@ import os
 import copy
 from typing import List, Dict
 from setup_agent import SetupAgent
-from dqn_agent import DQNAgent
+from drqn_agent import DRQNAgent
 from setup_evaluation import calculate_setup_agent_reward
 from environment import StrategoEnvironment
 
@@ -27,7 +27,7 @@ class SetupLeague:
             self.population.append(agent)
             self.scores[agent.name] = 0
             
-    def run_evolution(self, env, gameplay_agent: DQNAgent, generations: int = 1, games_per_matchup: int = 4):
+    def run_evolution(self, env, gameplay_agent: DRQNAgent, generations: int = 1, games_per_matchup: int = 4):
         """
         Run evolution for a number of generations.
         

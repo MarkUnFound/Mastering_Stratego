@@ -9,7 +9,7 @@ from typing import List, Tuple, Dict, Optional
 
 # Import existing modules
 try:
-    from dqn_agent import DQNAgent
+    from drqn_agent import DRQNAgent
     from setup_agent import SetupAgent
     from environment import StrategoEnvironment
     from piece import PieceType
@@ -87,19 +87,6 @@ class LiveVisualizer:
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         print(f"Using device: {self.device}")
         
-        self.env = StrategoEnvironment(device=self.device)
-        
-        # Find best model
-        self.episode_num = self._find_best_model_episode()
-        
-        # Load Agents
-        self.agent1 = DQNAgent(player_id=1, device=self.device, use_pbs=True)
-        self.agent2 = DQNAgent(player_id=-1, device=self.device, use_pbs=True)
-        self.agent_status = "Not Loaded"
-        self._load_models(self.episode_num)
-        
-        # Setup Agents
-        self.setup_agent1 = SetupAgent(1, self.device)
         self.setup_agent2 = SetupAgent(-1, self.device)
         self.setup_status = "Not Loaded"
         self._load_setup_models(self.episode_num)

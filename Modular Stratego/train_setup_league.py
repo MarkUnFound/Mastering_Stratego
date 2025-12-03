@@ -18,7 +18,7 @@ from typing import Optional
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from environment import StrategoEnvironment
-from dqn_agent import DQNAgent
+from drqn_agent import DRQNAgent
 from setup_agent import SetupAgent
 from setup_league import SetupLeague
 from training_config import *
@@ -41,7 +41,7 @@ def train_setup_league(model_save_path: str = "dqn_models"):
     
     # Initialize Evaluator Agent (DQN)
     # We use a single agent to evaluate both sides
-    evaluator_agent = DQNAgent(player_id=1, device=device, lr=0.0001, batch_size=BATCH_SIZE)
+    evaluator_agent = DRQNAgent(player_id=1, device=device, lr=0.0001, batch_size=BATCH_SIZE)
     
     # Initialize Setup League
     print("Initializing Setup League...")
@@ -118,7 +118,7 @@ def train_setup_league(model_save_path: str = "dqn_models"):
             traceback.print_exc()
             time.sleep(10) # Wait before retrying
 
-def load_latest_dqn_model(agent: DQNAgent, model_save_path: str):
+def load_latest_dqn_model(agent: DRQNAgent, model_save_path: str):
     """Load the most recent DQN model to use as evaluator."""
     try:
         # Look for agent1 models (assuming agent1 and agent2 are similar/symmetric enough for eval)
