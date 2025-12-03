@@ -459,8 +459,11 @@ class ProbabilisticBeliefState:
         self.uncertain_positions.clear()
         self.prediction_history.clear()
         self.accuracy_by_piece_type.clear()
+        if hasattr(self, 'piece_q_value_history'):
+            self.piece_q_value_history.clear()
         if hasattr(self, 'belief_tensor'):
             self.belief_tensor.zero_()
+
     
     def _update_belief_tensor(self, pos: Tuple[int, int]):
         """

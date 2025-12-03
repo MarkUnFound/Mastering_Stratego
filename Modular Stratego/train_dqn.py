@@ -415,14 +415,9 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
         except Exception as e:
             print(f"⚠️  Could not load setup agents: {e}")
 
-    # Initialize Setup League
-    setup_league = None
-    if use_setup_agents:
-        print("🏆 Initializing Setup League...")
-        setup_league = SetupLeague(population_size=4, device=device)
-        if setup_agent1_path:
-             setup_league.population[0].q_network.load_state_dict(setup_agent1.q_network.state_dict())
-             print("   Seeded League Bot 0 with Setup Agent 1")
+    # Setup League is now run in a separate process (train_setup_league.py)
+    # We just load the best agents produced by that process
+    print("🏆 Setup League running in separate process. Will reload best agents periodically.")
 
     # Initialize League Manager
     league_manager = LeagueManager(league_dir=os.path.join(model_save_path, "league"))
@@ -480,6 +475,7 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
     completed_episodes = 0
     last_saved_episode = total_episodes
     last_plotted_episode = total_episodes
+    last_reload_episode = 0
     
     pbar = tqdm(total=num_episodes, desc="Training Episodes")
     
@@ -499,16 +495,27 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
             if completed_episodes >= num_episodes:
                 break
             
-            # --- Setup League Evolution ---
-            if use_setup_agents and setup_league and total_episodes > 0 and total_episodes % LEAGUE_INTERVAL == 0:
-                print(f"\n🏆 Running Setup League Evolution (Episode {total_episodes})")
-                setup_league.run_evolution(env, agent1, generations=LEAGUE_GENERATIONS)
-                best_league_agent = setup_league.get_best_agent()
-                print(f"   Updating main Setup Agents with weights from {best_league_agent.name}")
-                setup_agent1.q_network.load_state_dict(best_league_agent.q_network.state_dict())
-                setup_agent1.target_network.load_state_dict(best_league_agent.target_network.state_dict())
-                setup_agent2.q_network.load_state_dict(best_league_agent.q_network.state_dict())
-                setup_agent2.target_network.load_state_dict(best_league_agent.target_network.state_dict())
+            # --- Reload Best Setup Agents ---
+            if use_setup_agents and total_episodes > 0 and total_episodes % 100 == 0 and total_episodes > last_reload_episode:
+                last_reload_episode = total_episodes
+                best_setup_path = os.path.join(model_save_path, "setup_agent_best.pth")
+                if os.path.exists(best_setup_path):
+                    try:
+                        # Load the best agent into both setup agents (they share the best strategy)
+                        # We use a helper to avoid code duplication
+                        checkpoint = torch.load(best_setup_path, map_location=device)
+                        
+                        for agent in [setup_agent1, setup_agent2]:
+                            agent.q_network.load_state_dict(checkpoint['q_network_state_dict'])
+                            agent.target_network.load_state_dict(checkpoint['target_network_state_dict'])
+                            # We might NOT want to load optimizer state if we aren't training them here
+                            # But loading it is safer if we do decide to fine-tune
+                            if 'optimizer_state_dict' in checkpoint:
+                                agent.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+                        
+                        print(f"🔄 Reloaded best setup agents from {best_setup_path}")
+                    except Exception as e:
+                        print(f"⚠️ Failed to reload best setup agent: {e}")
 
             # Action Selection
             actions_list = [None] * NUM_ENVS
@@ -666,19 +673,20 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                         )
                     
                         # Apply rewards to setup agent episode memory and store in replay buffer
-                        setup_agent1.finish_episode(setup_reward_1)
-                        setup_agent2.finish_episode(setup_reward_2)
+                        # We don't train here anymore, just store experience if needed (though league handles training)
+                        # setup_agent1.finish_episode(setup_reward_1)
+                        # setup_agent2.finish_episode(setup_reward_2)
                     
-                        # Train setup agents
-                        setup_loss_1 = setup_agent1.replay()
-                        setup_loss_2 = setup_agent2.replay()
+                        # Train setup agents - REMOVED (Handled by Setup League)
+                        # setup_loss_1 = setup_agent1.replay()
+                        # setup_loss_2 = setup_agent2.replay()
                     
                         # Track setup agent performance for plotting
                         setup_agent1_rewards.append(setup_reward_1)
                         setup_agent2_rewards.append(setup_reward_2)
-                        # Always append loss values (0 if training didn't happen)
-                        setup_agent1_losses.append(setup_loss_1 if setup_loss_1 is not None else 0.0)
-                        setup_agent2_losses.append(setup_loss_2 if setup_loss_2 is not None else 0.0)
+                        # Always append loss values (0 since we don't train here)
+                        setup_agent1_losses.append(0.0)
+                        setup_agent2_losses.append(0.0)
                     
                         # Clean up placement memory after training
                         del placement_memory[i]

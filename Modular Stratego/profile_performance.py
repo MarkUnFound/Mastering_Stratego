@@ -47,8 +47,13 @@ def profile_training():
         'reset_time': []
     }
     
+    # Game length stats
+    episode_lengths = []
+    current_lengths = [0] * NUM_ENVS
+    
     # Initial Reset
     print("Performing initial reset...")
+
     states_tuple, rewards, dones, infos, valid_moves_tuple = env.reset()
     states = list(states_tuple)
     valid_moves = list(valid_moves_tuple)
@@ -111,7 +116,13 @@ def profile_training():
         next_states_tuple, step_rewards, step_dones, step_infos, next_valid_moves_tuple = env.step(commands)
         next_states = list(next_states_tuple)
         next_valid_moves = list(next_valid_moves_tuple)
+        next_valid_moves = list(next_valid_moves_tuple)
         stats['env_step_time'].append(time.perf_counter() - t0)
+        
+        # Update lengths
+        for i in range(NUM_ENVS):
+            current_lengths[i] += 1
+
         
         # 4. State Update & Memory
         t0 = time.perf_counter()
@@ -135,11 +146,21 @@ def profile_training():
             valid_moves[i] = next_valid_moves[i]
             
             if done:
+                episode_lengths.append(current_lengths[i])
+                current_lengths[i] = 0
                 pending_resets[i] = True
                 completed_episodes += 1
                 pbar.update(1)
+
                 agent1.reset_pbs(i)
                 agent2.reset_pbs(i)
+                
+                # Mimic train_dqn.py overhead
+                t_pbs = time.perf_counter()
+                agent1.train_pbs_evaluator(epochs=1)
+                agent2.train_pbs_evaluator(epochs=1)
+                stats['pbs_update_time'][-1] += (time.perf_counter() - t_pbs) # Add to PBS time
+
         stats['remember_time'].append(time.perf_counter() - t0)
         
         # 5. Training
@@ -169,6 +190,19 @@ def profile_training():
     print(f"Avg Env Step Time: {np.mean(stats['env_step_time']):.4f}s")
     print(f"Avg Remember Time: {np.mean(stats['remember_time']):.4f}s")
     print(f"Avg Training Time: {np.mean(stats['training_time']):.4f}s")
+    print("-" * 30)
+    if episode_lengths:
+        print(f"Avg Game Length: {np.mean(episode_lengths):.1f} steps")
+        print(f"Min Game Length: {np.min(episode_lengths)} steps")
+        print(f"Max Game Length: {np.max(episode_lengths)} steps")
+        
+        # Calculate effective time per episode
+        # Total time / number of episodes completed
+        # This is rough because some episodes might be partial
+        avg_step_time = np.mean(stats['total_step_time'])
+        avg_episode_time = avg_step_time * (np.mean(episode_lengths) / NUM_ENVS)
+        print(f"Est. Time per Episode: {avg_episode_time:.2f}s (assuming {NUM_ENVS} parallel envs)")
+
     print("="*40)
 
 if __name__ == "__main__":

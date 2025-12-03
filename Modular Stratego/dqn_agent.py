@@ -233,6 +233,9 @@ class DQNAgent:
         
         # Mixed Precision Training
         self.scaler = torch.amp.GradScaler('cuda')
+        self.amp_enabled = True # Flag to disable AMP if unstable
+        self.inf_gradient_count = 0
+        self.total_optim_steps = 0
         
     def reset(self):
         """Reset the DQN agent by reinitializing networks and optimizer"""
@@ -312,6 +315,10 @@ class DQNAgent:
             # For now, just add normally, PER will prioritize if TD error is high
             self.memory.add(experience)
         else:
+            # Clip reward to prevent extreme values
+            reward = max(-100.0, min(100.0, reward))
+            # Update experience with clipped reward
+            experience = Experience(state, action, reward, next_state, done)
             self.memory.add(experience)
         
         # Increment step counter for epsilon decay
@@ -347,6 +354,8 @@ class DQNAgent:
         
         return total_pieces <= self.endgame_threshold
 
+
+        
     def act(self, state, valid_moves: List[Tuple[Tuple[int, int], Tuple[int, int]]], game_state=None):
         """
         Choose action using epsilon-greedy policy.
@@ -387,6 +396,15 @@ class DQNAgent:
         self.q_network.eval()
         with torch.no_grad():
             base_q_values = self.q_network(state_tensor)
+            
+        # Check for NaNs in Q-values
+        if torch.isnan(base_q_values).any() or torch.isinf(base_q_values).any():
+            print(f"⚠️  Warning: NaN/Inf detected in Q-values for {self.name}. Choosing random action.")
+            return random.choice(valid_moves)
+            
+        # Clamp Q-values to prevent runaway growth
+        base_q_values = torch.clamp(base_q_values, -500.0, 500.0)
+            
         self.q_network.train()
         
         # Calculate uncertainty aware Q-values
@@ -450,16 +468,26 @@ class DQNAgent:
         
         # --- 1. Train Critic First ---
         # Predict action from state
-        with torch.amp.autocast('cuda'):
+        if self.amp_enabled:
+            with torch.amp.autocast('cuda'):
+                critic_logits = self.critic(states)
+                critic_loss = self.critic_loss_fn(critic_logits, actions)
+        else:
             critic_logits = self.critic(states)
             critic_loss = self.critic_loss_fn(critic_logits, actions)
         
         self.critic_optimizer.zero_grad()
-        self.scaler.scale(critic_loss).backward()
-        self.scaler.unscale_(self.critic_optimizer)
-        torch.nn.utils.clip_grad_norm_(self.critic.parameters(), max_norm=10.0)
-        self.scaler.step(self.critic_optimizer)
-        self.scaler.update()
+        
+        if self.amp_enabled:
+            self.scaler.scale(critic_loss).backward()
+            self.scaler.unscale_(self.critic_optimizer)
+            torch.nn.utils.clip_grad_norm_(self.critic.parameters(), max_norm=1.0) # Stricter clipping
+            self.scaler.step(self.critic_optimizer)
+            self.scaler.update()
+        else:
+            critic_loss.backward()
+            torch.nn.utils.clip_grad_norm_(self.critic.parameters(), max_norm=1.0)
+            self.critic_optimizer.step()
         
         # --- 2. Calculate Predictability Penalty ---
         # We use the updated critic to calculate the penalty
@@ -478,8 +506,11 @@ class DQNAgent:
             entropy = (-probs * torch.log(probs + 1e-10)).sum(dim=1).mean().item()
             
         # --- 3. Train Agent with Penalized Rewards ---
-        with torch.amp.autocast('cuda'):
-            # Current Q values
+        if self.amp_enabled:
+            with torch.amp.autocast('cuda'):
+                # Current Q values
+                current_q_values = self.q_network(states).gather(1, actions.unsqueeze(1))
+        else:
             current_q_values = self.q_network(states).gather(1, actions.unsqueeze(1))
         
         # Calculate average Q-value for metrics
@@ -500,23 +531,63 @@ class DQNAgent:
         # Calculate target Q-values
         target_q_values = penalized_rewards + (self.gamma * next_q_values * ~dones)
         
+        # Clamp target Q-values to prevent runaway growth
+        target_q_values = torch.clamp(target_q_values, -500.0, 500.0)
+        
         # Compute loss with importance sampling weights
         # Smooth L1 loss per element (reduction='none')
         loss_elementwise = F.smooth_l1_loss(current_q_values.squeeze(), target_q_values, reduction='none')
         loss = (loss_elementwise * weights).mean()
         
+        # Check for NaN/Inf in loss
+        if torch.isnan(loss) or torch.isinf(loss):
+            print(f"⚠️  Warning: NaN/Inf detected in loss for {self.name}. Skipping update.")
+            self.optimizer.zero_grad()
+            return None
+
         # Update priorities
         if idxs:
             td_errors = torch.abs(target_q_values - current_q_values.squeeze()).detach().cpu().numpy()
+            # Check for NaNs in TD errors
+            if np.isnan(td_errors).any() or np.isinf(td_errors).any():
+                 print(f"⚠️  Warning: NaN/Inf detected in TD errors for {self.name}. Replacing with small value.")
+                 td_errors = np.nan_to_num(td_errors, nan=1.0, posinf=1.0, neginf=1.0)
             self.memory.update(idxs, td_errors)
         
         # Optimize Agent
         self.optimizer.zero_grad()
-        self.scaler.scale(loss).backward()
-        self.scaler.unscale_(self.optimizer)
-        torch.nn.utils.clip_grad_norm_(self.q_network.parameters(), max_norm=10.0)
-        self.scaler.step(self.optimizer)
-        self.scaler.update()
+        
+        if self.amp_enabled:
+            self.scaler.scale(loss).backward()
+            self.scaler.unscale_(self.optimizer)
+        else:
+            loss.backward()
+        
+        # Check gradients for NaN/Inf
+        grad_norm = torch.nn.utils.clip_grad_norm_(self.q_network.parameters(), max_norm=1.0) # Stricter clipping (was 10.0)
+        
+        if torch.isnan(grad_norm) or torch.isinf(grad_norm):
+             print(f"⚠️  Warning: NaN/Inf detected in gradients (norm={grad_norm}) for {self.name}. Skipping optimizer step.")
+             self.optimizer.zero_grad()
+             
+             # AMP Fallback Logic
+             self.inf_gradient_count += 1
+             if self.amp_enabled and self.total_optim_steps > 100:
+                 failure_rate = self.inf_gradient_count / self.total_optim_steps
+                 if failure_rate > 0.1: # >10% failure
+                     print(f"🚨 Unstable Gradients detected ({failure_rate:.1%} failure). Disabling Mixed Precision (AMP) for {self.name}!")
+                     self.amp_enabled = False
+                     # self.scaler = None # Keep scaler object but don't use it
+             
+             return None
+             
+        self.total_optim_steps += 1
+             
+        if self.amp_enabled:
+            self.scaler.step(self.optimizer)
+            self.scaler.update()
+        else:
+            self.optimizer.step()
         
         # --- 4. Logging & Updates ---
         
@@ -605,11 +676,16 @@ class DQNAgent:
                 # We should try to INCREASE LR to kickstart learning
                 elif recent_avg < 1e-5:
                      # KICKSTART: Boost LR significantly if loss is dead zero
-                     new_lr = min(current_lr * 2.0, self.initial_lr * 5.0) # Cap at 5x initial
-                     if new_lr > current_lr:
-                         for param_group in self.optimizer.param_groups:
-                             param_group['lr'] = new_lr
-                         print(f"🚀 LR boosted to {new_lr:.2e} to kickstart learning (Loss ~ 0)")
+                     # MODIFIED: Cap boost to avoid instability and ensure we don't boost if loss is suspiciously exactly 0.0 (unless it's float precision limit)
+                     if recent_avg == 0.0:
+                         # Suspicious exact zero - might be a bug, don't boost blindly
+                         pass
+                     else:
+                         new_lr = min(current_lr * 1.5, self.initial_lr * 2.0) # Reduced from 2.0x/5.0x to 1.5x/2.0x
+                         if new_lr > current_lr:
+                             for param_group in self.optimizer.param_groups:
+                                 param_group['lr'] = new_lr
+                             print(f"🚀 LR boosted to {new_lr:.2e} to kickstart learning (Loss ~ 0)")
                 
                 # If loss is low and stable (but not dead zero), consider increasing LR slightly
                 elif recent_avg < self.lr_increase_threshold and recent_avg < older_avg * 0.9:

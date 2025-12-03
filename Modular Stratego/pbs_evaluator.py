@@ -145,11 +145,16 @@ class BiasTracker:
             if confidence < 0.5:
                 # Underconfident: correct but low confidence
                 self.underconfidence_by_type[predicted].append(confidence)
+                if len(self.underconfidence_by_type[predicted]) > 1000:
+                    self.underconfidence_by_type[predicted].pop(0)
         else:
             # Wrong prediction
             if confidence > 0.5:
                 # Overconfident: wrong but high confidence
                 self.overconfidence_by_type[predicted].append(confidence)
+                if len(self.overconfidence_by_type[predicted]) > 1000:
+                    self.overconfidence_by_type[predicted].pop(0)
+
     
     def get_correction_factor(self, piece_type: PieceType, min_samples: int = 10) -> float:
         """
