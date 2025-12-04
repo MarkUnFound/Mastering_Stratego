@@ -13,14 +13,14 @@ def run_preflight_checks(model_save_path: str):
 
     # 1. Test Plotting Functions
     print("   Testing plotting functions...")
-    # try:
-    #     _test_plotting(model_save_path)
-    #     print("   ✅ Plotting functions verified.")
-    # except Exception as e:
-    #     print(f"   ❌ Plotting check failed: {e}")
-    #     import traceback
-    #     traceback.print_exc()
-    #     raise
+    try:
+        _test_plotting(model_save_path)
+        print("   ✅ Plotting functions verified.")
+    except Exception as e:
+        print(f"   ❌ Plotting check failed: {e}")
+        import traceback
+        traceback.print_exc()
+        raise
 
     # 2. Test Game Logic (Simulation)
     print("   Testing game logic (simulation)...")
