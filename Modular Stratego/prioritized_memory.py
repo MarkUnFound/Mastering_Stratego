@@ -19,24 +19,39 @@ class StandardReplayBuffer:
         
     def add(self, state, action, reward, next_state, done):
         """Add a transition to the buffer."""
-        # Ensure tensors are on CPU for storage to save GPU memory, or keep on GPU if preferred
-        # Here we keep them as is, assuming they are already processed/moved in agent
-        exp = Experience(state, action, reward, next_state, done)
+        # Store on CPU to save VRAM
+        state_cpu = state.cpu() if isinstance(state, torch.Tensor) else torch.tensor(state)
+        next_state_cpu = next_state.cpu() if isinstance(next_state, torch.Tensor) else torch.tensor(next_state)
+        
+        # Action/Reward/Done are usually scalars or small tensors, but move to CPU for consistency
+        action_cpu = action.cpu() if isinstance(action, torch.Tensor) else action
+        reward_cpu = reward.cpu() if isinstance(reward, torch.Tensor) else reward
+        done_cpu = done.cpu() if isinstance(done, torch.Tensor) else done
+        
+        exp = Experience(state_cpu, action_cpu, reward_cpu, next_state_cpu, done_cpu)
         self.buffer.append(exp)
     
     def sample(self, batch_size):
         """
         Sample a batch of transitions.
         Returns:
-            states, actions, rewards, next_states, dones (all Tensors)
+            states, actions, rewards, next_states, dones (all Tensors on device)
         """
         batch = random.sample(self.buffer, batch_size)
         
-        states = torch.stack([e.state for e in batch])
-        actions = torch.tensor([e.action for e in batch], dtype=torch.long, device=self.device)
+        # Move back to device (GPU) during sampling
+        states = torch.stack([e.state for e in batch]).to(self.device)
+        
+        # Handle actions (might be int or tensor)
+        actions_list = [e.action for e in batch]
+        if isinstance(actions_list[0], torch.Tensor):
+             actions = torch.stack(actions_list).to(self.device).long()
+        else:
+             actions = torch.tensor(actions_list, dtype=torch.long, device=self.device)
+             
         rewards = torch.tensor([e.reward for e in batch], dtype=torch.float32, device=self.device)
-        next_states = torch.stack([e.next_state for e in batch])
-        dones = torch.tensor([e.done for e in batch], dtype=torch.float32, device=self.device) # float for math
+        next_states = torch.stack([e.next_state for e in batch]).to(self.device)
+        dones = torch.tensor([e.done for e in batch], dtype=torch.float32, device=self.device)
         
         return states, actions, rewards, next_states, dones
     

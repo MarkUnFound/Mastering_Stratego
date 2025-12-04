@@ -6,7 +6,19 @@ import threading
 import time
 import os
 import json
+import numpy as np
 from typing import List, Dict, Optional
+
+class NumpyEncoder(json.JSONEncoder):
+    """Custom encoder for numpy data types"""
+    def default(self, obj):
+        if isinstance(obj, np.integer):
+            return int(obj)
+        if isinstance(obj, np.floating):
+            return float(obj)
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return super(NumpyEncoder, self).default(obj)
 
 class ReplayPrefetcher:
     """Background prefetcher that samples replay batches asynchronously."""
@@ -49,44 +61,13 @@ def save_counters(total_episodes_file, total_steps_file, total_episodes, total_s
     print(f"💾 Saved persistent counters: {total_episodes} episodes, {total_steps:,} steps")
 
 
-def save_training_history(model_save_path: str, 
-                          episode_history: List[int],
-                          rewards_history: dict,
-                          wins_history: dict,
-                          epsilon_history: dict,
-                          policy_loss_history: dict,
-                          setup_agent1_rewards: List[float],
-                          setup_agent2_rewards: List[float],
-                          setup_agent1_losses: List[float],
-                          setup_agent2_losses: List[float],
-                          pbs_evaluator1_losses: List[float],
-                          pbs_evaluator2_losses: List[float],
-                          pbs_evaluator1_buffer_sizes: List[int],
-                          pbs_evaluator2_buffer_sizes: List[int],
-                          avg_q_history: dict,
-                          entropy_history: dict):
+def save_training_history(metrics: dict, model_save_path: str):
     """Save training history to JSON file for continuity across training sessions"""
     history_file = os.path.join(model_save_path, "training_history.json")
     try:
-        history_data = {
-            'episode_history': episode_history,
-            'rewards_history': rewards_history,
-            'wins_history': wins_history,
-            'epsilon_history': epsilon_history,
-            'policy_loss_history': policy_loss_history,
-            'setup_agent1_rewards': setup_agent1_rewards,
-            'setup_agent2_rewards': setup_agent2_rewards,
-            'setup_agent1_losses': setup_agent1_losses,
-            'setup_agent2_losses': setup_agent2_losses,
-            'pbs_evaluator1_losses': pbs_evaluator1_losses,
-            'pbs_evaluator2_losses': pbs_evaluator2_losses,
-            'pbs_evaluator1_buffer_sizes': pbs_evaluator1_buffer_sizes,
-            'pbs_evaluator2_buffer_sizes': pbs_evaluator2_buffer_sizes,
-            'avg_q_history': avg_q_history,
-            'entropy_history': entropy_history
-        }
+        # Just dump the metrics dict directly, it already contains all the lists
         with open(history_file, 'w') as f:
-            json.dump(history_data, f, indent=2)
+            json.dump(metrics, f, indent=2, cls=NumpyEncoder)
     except Exception as e:
         print(f"⚠️  Could not save training history: {e}")
 

@@ -134,8 +134,10 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
     metrics = {
         'rewards_p1': [], 'rewards_p2': [],
         'wins_p1': 0, 'wins_p2': 0, 'draws': 0,
+        'wins_p1_history': [], 'wins_p2_history': [],  # Track cumulative wins per episode
         'lengths': [],
         'losses_p1': [], 'losses_p2': [],
+        'avg_loss_p1_history': [], 'avg_loss_p2_history': [], # Track avg loss per episode
         'pbs_accuracy': []
     }
     
@@ -177,6 +179,10 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
         
         episode_rewards = {1: np.zeros(NUM_ENVS), -1: np.zeros(NUM_ENVS)}
         active_envs = np.ones(NUM_ENVS, dtype=bool)
+        
+        # Track losses for this episode
+        episode_losses_p1 = []
+        episode_losses_p2 = []
         
         step_in_episode = 0
         
@@ -245,8 +251,12 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                 loss1 = agent1.replay()
                 loss2 = agent2.replay()
                 
-                if loss1: metrics['losses_p1'].append(loss1)
-                if loss2: metrics['losses_p2'].append(loss2)
+                if loss1: 
+                    metrics['losses_p1'].append(loss1)
+                    episode_losses_p1.append(loss1)
+                if loss2: 
+                    metrics['losses_p2'].append(loss2)
+                    episode_losses_p2.append(loss2)
                 
             # Update Target Networks
             if global_step % TARGET_UPDATE_INTERVAL == 0:
@@ -261,6 +271,15 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
         metrics['rewards_p2'].append(avg_reward_p2)
         metrics['lengths'].append(step_in_episode)
         
+        # Update history metrics for plotting
+        metrics['wins_p1_history'].append(metrics['wins_p1'])
+        metrics['wins_p2_history'].append(metrics['wins_p2'])
+        
+        avg_loss_p1 = np.mean(episode_losses_p1) if episode_losses_p1 else 0
+        avg_loss_p2 = np.mean(episode_losses_p2) if episode_losses_p2 else 0
+        metrics['avg_loss_p1_history'].append(avg_loss_p1)
+        metrics['avg_loss_p2_history'].append(avg_loss_p2)
+        
         pbar.set_postfix({
             'R1': f"{avg_reward_p1:.2f}",
             'R2': f"{avg_reward_p2:.2f}",
@@ -273,7 +292,24 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
             agent1.save_model(os.path.join(model_save_path, f"agent1_rainbow_episode_{episode}.pth"))
             agent2.save_model(os.path.join(model_save_path, f"agent2_rainbow_episode_{episode}.pth"))
             save_training_history(metrics, model_save_path)
-            plot_training_progress(metrics, model_save_path)
+            
+            # Prepare data for plotting
+            episode_history = list(range(start_episode + 1, episode + 1))
+            # If we loaded history, we need to adjust the range or just use the length of metrics
+            # Ideally, metrics lists should align with total episodes.
+            # Let's assume metrics lists are the source of truth for history length
+            current_history_len = len(metrics['rewards_p1'])
+            plot_episodes = list(range(1, current_history_len + 1))
+            
+            plot_training_progress(
+                episode_history=plot_episodes,
+                rewards_history={'agent1': metrics['rewards_p1'], 'agent2': metrics['rewards_p2']},
+                wins_history={'agent1': metrics['wins_p1_history'], 'agent2': metrics['wins_p2_history']},
+                policy_loss_history={'agent1': metrics['avg_loss_p1_history'], 'agent2': metrics['avg_loss_p2_history']},
+                save_path=os.path.join(model_save_path, f"training_progress_episode_{episode}.png"),
+                total_episodes=episode,
+                total_steps=global_step
+            )
             print(f"💾 Saved models and plots for episode {episode}")
 
 if __name__ == "__main__":
