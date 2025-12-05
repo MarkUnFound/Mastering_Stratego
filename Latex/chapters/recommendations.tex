@@ -1,0 +1,32 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\chapter{Contributions and Recommendations}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{Summary of Contributions}
+
+Write summary of contributions here.
+
+\section{Recommendations}
+
+
+There could be several reasons why our tests did not yield the ``same'' results as that of \cite{Zaritsky2004}'s.
+The author claims that this may be due to the myriad of parameters used in evolving
+individuals in each step of the genetic algorithm and the large number of possible candidates or values that we can set these parameters with. 
+For example, we may claim that the appropriate choice of the recombination technique is necessary. In \cite{Zaritsky2004},
+a two-point crossover was employed. Thinking that this may be less of a factor, the author proceeded with just
+one-point cross in implementing the genetic algorithm for the experiment.
+Another could be in choice of the probabilities associated with recombination, elitism, and mutation rates.
+The author did only consider what was stated in the base paper without performing tests to validate
+whether this values are appropriate and could still complement the change made in some of the assumptions.
+As such, more empirical tests could be done to appropriately estimate these parameters. 
+
+If indeed DNA sequence assembly is the task at hand, lots of other techniques are now available.
+One may consider for example representing the reads or DNA fragments in a de Bruijn graph
+as opposed to the overlap graph presented in this paper. 
+Assembling reads  in a de Bruijn graph 
+reduces the problem to a fragment assembly problem that can be 
+formulated as the goal to find a trail or Eularian path that visits 
+each edge (read or fragment) in the (de Bruijn) graph exactly once. 
+Such, somehow makes the assembly process much ``easier'' since Eularian path
+construction is known to be solvable in deterministic polynomial time.
+

@@ -1,0 +1,91 @@
+\chapter{Introduction}
+\section{Project Context}
+Games have a history of being a metric for how Artificial Intelligence (AI) progresses and performs in the current time \cite{StudeGame}. Many real-world problems, from military tactics to multiplayer games, require intelligent decision-making in environments where all information is not available. A common example is a feature found in many multiplayer games known as the "fog of war"  \cite{FogofWar}, where the game environment is not fully revealed, which makes it an example of an imperfect information game \cite{National}. Imperfect information games create a scenario where players develop unconventional strategies without having full knowledge of the game's environmental state \cite{FogofWar}. Solving these kinds of problems and determining the optimal strategy remains a significant challenge for Artificial Intelligence \cite{GeneralGame}.
+
+This study focuses on mastering imperfect information games through Multi-Agent Reinforcement Learning (MARL) with Deep Q-Networks (DQN). In MARL, multiple agents learn and adapt in the same environment, making each decision based on its own observations and rewards \cite{MARLCOMP, MARLCHALL}. With DQN, the agents can utilize deep neural networks to approximate the Q-function that maps state-action pairs for the expected reward. With all of these together, this study introduces MARQ (Multi-Agent Rainbow Deep Q-Networks), a framework to solve imperfect information games. This approach is suited well for Stratego, where these agents are trained to compete against each other, developing strategies through repeated experience, even though information is lacking about the opponent's setup or the environment's full state. 
+
+
+\section{Purpose and Description}
+This research aims to evaluate whether Multi-Agent Reinforcement Learning (MARL) with Deep Q-Networks (DQN) can be used to develop intelligent agents capable of mastering imperfect information games. By focusing on the limited information available to players in environments such as the board game Stratego, this study seeks to address the challenge of making decisions under uncertainty while incorporating strategic planning. Although existing tools for Stratego provide some analytical support, they are often limited in fostering deeper reasoning about the game’s tactical complexities.
+
+
+To advance beyond these limitations, this research seeks to provide an algorithmic foundation for future analytical systems while also emphasizing the development of critical thinking in solving imperfect information games. By modeling adaptive strategies and reasoning under uncertainty, the study highlights how artificial intelligence can mirror and enhance human-like logical reasoning, offering valuable insights for both game analysis and broader decision-making domains.
+\subsection{Research Questions}
+This study is guided by three main research questions:
+
+\begin{enumerate}
+   
+    \item How effective is the AI agent in adapting to hidden information and different strategies?
+    \item To what extent does the trained AI agent’s performance compare against human players and other AI opponents in Stratego?
+    \item How does the use of Stratego as a research platform contribute to advancing studies in imperfect information multi-agent reinforcement learning?
+\end{enumerate}
+
+\section{Objectives}
+The main objective of this study is to develop and evaluate Multi-Agent Reinforcement Learning with Deep Q-Networks for learning appropriate strategies in an imperfect information game, where the agents operate under hidden state variables to improve decision-making, adaptability, and strategic reasoning against both human and AI opponents. This can be achieved through the following:
+\begin{itemize}
+    \item Introduction of Stratego to the community
+    \item Design and implement a game environment for Stratego
+    \item Build and implement a training model using Multi-Agent Reinforcement Learning with Deep Q-Networks and AAREN.
+    \item Train and optimize the AI agent to respond to varying game states, hidden information, and opposing strategies.
+\end{itemize}
+
+\section{Scope and Limitation}
+
+The study is limited to the development of an AI agent for imperfect information games, Stratego being the test environment. The scope includes the design and implementation of Stratego as a game environment, the development of a training framework using Multi-Agent Reinforcement Learning (MARL) with Deep Q-Networks (DQN) using AAREN, and the training and optimization of the AI agent to adapt to differences in game states. The evaluation of the agent's performance would primarily be on Stratego's environment. The trainings are limited to the personal devices of the researchers and would not rely on cloud-based computing resources. Since the AI is going to learn alongside the community the player and AI head-to-head will be analyzed mostly qualitative. The goal will be achieving the same human critical thinking in the model.
+
+\section{Significance of the Study}
+The development of MARQ addresses limitations in current imperfect information game AI, where existing systems either require large computational resources or employ model-free approaches that limit strategic depth.
+MARQ's significance lies in its explicit opponent modeling through AAREN and probabilistic belief states, and hybrid DQN architecture that balances strategic depth with computational tractability. The synchronized learning evaluation framework provides insights into AI adaptability against improving human opponents, with implications extending beyond gaming to domains characterized by incomplete information and strategic interaction, including cybersecurity, financial trading, and strategic planning.
+
+\section{Definition of Terms}
+
+\noindent\textbf{AAREN} \\
+Attention a recurrent neural network, a model that integrates the sequential processing of RNNs with the parallel efficiency of Transformers, designed for tasks such as event forecasting and classification. \\[6pt]
+
+\noindent\textbf{Alpha-Beta Pruning} \\
+A search algorithm that explores possible moves in a game tree while pruning branches that cannot affect the final decision, making the search process more efficient. \\[6pt]
+
+\noindent\textbf{Counterfactual Regret Minimization (CFR)} \\
+An iterative algorithm that approximates Nash equilibrium by minimizing regret, widely applied in imperfect information games such as Poker and Stratego. \\[6pt]
+
+\noindent\textbf{Deep Q-Networks (DQN)} \\
+A reinforcement learning algorithm that combines Q-learning with deep neural networks, enabling agents to approximate optimal decision-making in complex environments. \\[6pt]
+
+\noindent\textbf{Fog of War} \\
+A game mechanic used in strategy games that conceals parts of the map or opponent actions, requiring players to utilize prediction and information-gathering strategies to reduce uncertainty. \\[6pt]
+
+\noindent\textbf{Imperfect Information Games} \\
+Games where players have incomplete knowledge of the current game state, requiring them to make strategic decisions under uncertainty (e.g., Stratego, Poker, Multiplayer Online Battle Arenas). \\[6pt]
+
+\noindent\textbf{ Knowledge-Limited Unfrozen Subgame Solving(KLUSS)} \\
+Knowledge-Limited Unfrozen Subgame Solving (KLUSS) is an advancement in search algorithms for imperfect-information games. KLUSS builds on the earlier Knowledge-Limited Subgame Solving (KLSS) method, which simplified computation by removing irrelevant states and freezing certain strategies. \\[6pt]
+
+\noindent\textbf{Long Short-Term Memory (LSTM)} \\
+A variant of RNN designed to capture long-term dependencies in sequential data while mitigating the vanishing gradient problem. \\[6pt]
+
+\noindent\textbf{Multi-Agent Reinforcement Learning (MARL)} \\
+An extension of reinforcement learning in which multiple agents interact within the same environment, learning coordinated or competitive strategies through simultaneous training. \\[6pt]
+
+\noindent\textbf{Nash Equilibrium} \\
+A game-theoretic concept where no player can gain an advantage by unilaterally changing their strategy, often used as a benchmark for decision-making in imperfect information games. \\[6pt]
+
+\noindent\textbf{Perfect Information Games} \\
+Games in which all players have complete knowledge of the current game state and available moves, such as Chess and Go. \\[6pt]
+
+\noindent\textbf{Proximal Policy Optimization (PPO)} \\
+A reinforcement learning algorithm that optimizes policies through probability ratio clipping, often compared to DQN in performance within gaming environments such as VizDoom. \\[6pt]
+
+\noindent\textbf{Recurrent Neural Network (RNN)} \\
+A type of neural network designed to process sequential data by maintaining memory of previous inputs, useful in imperfect information games for recalling past moves or revealed information. \\[6pt]
+
+\noindent\textbf{Reinforcement Learning (RL)} \\
+A machine learning paradigm where agents learn optimal strategies through trial-and-error interactions with the environment, guided by rewards and penalties. \\[6pt]
+
+\noindent\textbf{Stratego} \\
+A two-player strategy board game characterized by hidden information and asymmetric piece abilities, where the objective is to capture the opponent’s flag or render them immobile. \\[6pt]
+
+\noindent\textbf{Student of Games (SoG)} \\
+A unified AI framework combining self-play learning, strategic search, and game-theoretic reasoning, designed to handle both perfect and imperfect information games. \\[6pt]
+
+\noindent\textbf{Vanishing Gradient} \\
+The vanishing gradient problem is basically as in the name, vanishing gradient, as color in a gradient, the message in this case starts strong and gradually fades away when it passes through each layer, making the learning weak or close to zero.\\[6pt]
