@@ -130,6 +130,26 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
         setup_agent2.load_model(setup2_files[0])
         print(f"✅ Loaded Setup Agent 2 from {setup2_files[0]}")
 
+    # Load PBS Evaluators (if available)
+    pbs_eval1_files = glob.glob(os.path.join(model_save_path, "pbs_evaluator1_episode_*.pth"))
+    pbs_eval2_files = glob.glob(os.path.join(model_save_path, "pbs_evaluator2_episode_*.pth"))
+    
+    if pbs_eval1_files and agent1.pbs and hasattr(agent1.pbs, 'evaluator') and agent1.pbs.evaluator:
+        pbs_eval1_files.sort(key=extract_episode, reverse=True)
+        try:
+            agent1.pbs.evaluator.load(pbs_eval1_files[0])
+            print(f"✅ Loaded PBS Evaluator 1 from {pbs_eval1_files[0]}")
+        except Exception as e:
+            print(f"⚠️ Could not load PBS Evaluator 1: {e}")
+            
+    if pbs_eval2_files and agent2.pbs and hasattr(agent2.pbs, 'evaluator') and agent2.pbs.evaluator:
+        pbs_eval2_files.sort(key=extract_episode, reverse=True)
+        try:
+            agent2.pbs.evaluator.load(pbs_eval2_files[0])
+            print(f"✅ Loaded PBS Evaluator 2 from {pbs_eval2_files[0]}")
+        except Exception as e:
+            print(f"⚠️ Could not load PBS Evaluator 2: {e}")
+
     # Metrics
     metrics = {
         'rewards_p1': [], 'rewards_p2': [],
@@ -186,6 +206,9 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
         
         step_in_episode = 0
         
+        # PBS optimization: track steps for interval-based updates
+        from training_config import PBS_UPDATE_INTERVAL
+        
         while np.any(active_envs):
             # 3. Get Actions for P1
             # valid_moves currently holds moves for the current player (P1 at start of loop)
@@ -202,12 +225,36 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
             # parallel_env.step returns (next_states, rewards, dones, infos, valid_moves_for_next_player)
             next_states_p1, rewards_p1, dones_p1, infos_p1, valid_moves = parallel_env.step(actions_p1)
             
-            # Store P1 Experience
+            # UPDATE P2's PBS with P1's moves (interval-based)
+            # Always update if any action is a Scout move (2+ tiles), otherwise use interval
+            should_update_p2_pbs = (step_in_episode % PBS_UPDATE_INTERVAL == 0)
+            if not should_update_p2_pbs:
+                # Check for Scout moves (must be updated immediately)
+                for action in actions_p1:
+                    if action:
+                        (r_from, c_from), (r_to, c_to) = action
+                        if abs(r_to - r_from) + abs(c_to - c_from) > 1:
+                            should_update_p2_pbs = True
+                            break
+            if should_update_p2_pbs:
+                agent2.update_pbs_batch(actions_p1, game_states, acting_player=1)
+            
+            # Store P1 Experience (batched for efficiency)
+            agent1.remember_batch(
+                [gs.board for gs in game_states],
+                actions_p1,
+                rewards_p1,
+                [ns.board for ns in next_states_p1],
+                dones_p1,
+                active_envs,
+                game_states,
+                next_states_p1
+            )
+            
+            # Update episode rewards and track wins
             for i in range(NUM_ENVS):
                 if active_envs[i]:
-                    agent1.remember(game_states[i].board, actions_p1[i], rewards_p1[i], next_states_p1[i].board, dones_p1[i])
                     episode_rewards[1][i] += rewards_p1[i]
-                    
                     if dones_p1[i]:
                         active_envs[i] = False
                         if infos_p1[i]['winner'] == 1: metrics['wins_p1'] += 1
@@ -230,12 +277,35 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
             # Step P2
             next_states_p2, rewards_p2, dones_p2, infos_p2, valid_moves = parallel_env.step(actions_p2)
             
-            # Store P2 Experience
+            # UPDATE P1's PBS with P2's moves (interval-based)
+            should_update_p1_pbs = (step_in_episode % PBS_UPDATE_INTERVAL == 0)
+            if not should_update_p1_pbs:
+                # Check for Scout moves (must be updated immediately)
+                for action in actions_p2:
+                    if action:
+                        (r_from, c_from), (r_to, c_to) = action
+                        if abs(r_to - r_from) + abs(c_to - c_from) > 1:
+                            should_update_p1_pbs = True
+                            break
+            if should_update_p1_pbs:
+                agent1.update_pbs_batch(actions_p2, game_states, acting_player=-1)
+            
+            # Store P2 Experience (batched for efficiency)
+            agent2.remember_batch(
+                [gs.board for gs in game_states],
+                actions_p2,
+                rewards_p2,
+                [ns.board for ns in next_states_p2],
+                dones_p2,
+                active_envs,
+                game_states,
+                next_states_p2
+            )
+            
+            # Update episode rewards and track wins
             for i in range(NUM_ENVS):
                 if active_envs[i]:
-                    agent2.remember(game_states[i].board, actions_p2[i], rewards_p2[i], next_states_p2[i].board, dones_p2[i])
                     episode_rewards[-1][i] += rewards_p2[i]
-                    
                     if dones_p2[i]:
                         active_envs[i] = False
                         if infos_p2[i]['winner'] == 1: metrics['wins_p1'] += 1
@@ -264,6 +334,11 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                 agent2.update_target_network()
                 print("🔄 Target Networks Updated")
 
+        # 5. Train PBS (AAREN) Models
+        # Train on data collected during this episode
+        agent1.train_pbs(epochs=5)
+        agent2.train_pbs(epochs=5)
+
         # End of Episode Logging
         avg_reward_p1 = np.mean(episode_rewards[1])
         avg_reward_p2 = np.mean(episode_rewards[-1])
@@ -291,6 +366,23 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
         if episode % save_interval == 0:
             agent1.save_model(os.path.join(model_save_path, f"agent1_rainbow_episode_{episode}.pth"))
             agent2.save_model(os.path.join(model_save_path, f"agent2_rainbow_episode_{episode}.pth"))
+            
+            # Save Setup Agents
+            setup_agent1.save_model(os.path.join(model_save_path, f"setup_agent1_episode_{episode}.pth"))
+            setup_agent2.save_model(os.path.join(model_save_path, f"setup_agent2_episode_{episode}.pth"))
+            
+            # Save PBS Evaluators (if available)
+            if agent1.pbs and hasattr(agent1.pbs, 'evaluator') and agent1.pbs.evaluator:
+                try:
+                    agent1.pbs.evaluator.save(os.path.join(model_save_path, f"pbs_evaluator1_episode_{episode}.pth"))
+                except Exception as e:
+                    print(f"⚠️ Could not save PBS Evaluator 1: {e}")
+            if agent2.pbs and hasattr(agent2.pbs, 'evaluator') and agent2.pbs.evaluator:
+                try:
+                    agent2.pbs.evaluator.save(os.path.join(model_save_path, f"pbs_evaluator2_episode_{episode}.pth"))
+                except Exception as e:
+                    print(f"⚠️ Could not save PBS Evaluator 2: {e}")
+            
             save_training_history(metrics, model_save_path)
             
             # Prepare data for plotting

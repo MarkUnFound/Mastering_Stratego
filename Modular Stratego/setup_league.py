@@ -14,15 +14,15 @@ class SetupLeague:
     Manages a league of SetupAgents to evolve better starting formations.
     """
     def __init__(self, population_size: int = 4, device: str = "cuda", 
-                 lr: float = 0.0001, epsilon: float = 0.5):
+                 lr: float = 0.0001):
         self.population_size = population_size
         self.device = device
         self.population: List[SetupAgent] = []
         self.scores: Dict[str, int] = {}
         
-        # Initialize population
+        # Initialize population (SetupAgent now uses Noisy Nets, no epsilon needed)
         for i in range(population_size):
-            agent = SetupAgent(player_id=1, device=device, lr=lr, epsilon=epsilon)
+            agent = SetupAgent(player_id=1, device=device, lr=lr)
             agent.name = f"SetupBot_{i}"
             self.population.append(agent)
             self.scores[agent.name] = 0
@@ -78,8 +78,8 @@ class SetupLeague:
                 loser.q_network.load_state_dict(survivor.q_network.state_dict())
                 loser.target_network.load_state_dict(survivor.target_network.state_dict())
                 
-                # Mutate loser (high exploration for next round)
-                loser.epsilon = 0.5 
+                # Mutate loser by resetting noise for fresh exploration
+                loser.reset_noise() 
                 
         # Restore gameplay agent state
         if was_training:

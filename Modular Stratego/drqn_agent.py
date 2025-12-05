@@ -19,7 +19,11 @@ from typing import List, Tuple, Optional, Dict
 from piece import PieceType
 from board import LAKE_SQUARE
 
-from probabilistic_belief_state import ProbabilisticBeliefState, PieceActionAaren, PBS_EVALUATOR_AVAILABLE
+# Import from new modular structure
+from networks import NoisyLinear, RainbowDQN
+from pbs import ProbabilisticBeliefState, PBS_EVALUATOR_AVAILABLE
+from aaren import PieceActionAaren
+
 if PBS_EVALUATOR_AVAILABLE:
     from pbs_evaluator import PBSEvaluator
 from critic import ExploitabilityCritic
@@ -30,133 +34,15 @@ V_MIN = -100.0
 V_MAX = 100.0
 NUM_ATOMS = 51
 
-class NoisyLinear(nn.Module):
-    """
-    Noisy Linear Layer for exploration.
-    Factorized Gaussian Noise.
-    """
-    def __init__(self, in_features, out_features, std_init=0.5):
-        super(NoisyLinear, self).__init__()
-        self.in_features = in_features
-        self.out_features = out_features
-        self.std_init = std_init
 
-        self.weight_mu = nn.Parameter(torch.empty(out_features, in_features))
-        self.weight_sigma = nn.Parameter(torch.empty(out_features, in_features))
-        self.register_buffer('weight_epsilon', torch.empty(out_features, in_features))
 
-        self.bias_mu = nn.Parameter(torch.empty(out_features))
-        self.bias_sigma = nn.Parameter(torch.empty(out_features))
-        self.register_buffer('bias_epsilon', torch.empty(out_features))
 
-        self.reset_parameters()
-        self.reset_noise()
-
-    def reset_parameters(self):
-        mu_range = 1 / math.sqrt(self.in_features)
-        self.weight_mu.data.uniform_(-mu_range, mu_range)
-        self.weight_sigma.data.fill_(self.std_init / math.sqrt(self.in_features))
-        
-        self.bias_mu.data.uniform_(-mu_range, mu_range)
-        self.bias_sigma.data.fill_(self.std_init / math.sqrt(self.out_features))
-
-    def _scale_noise(self, size):
-        x = torch.randn(size, device=self.weight_mu.device)
-        return x.sign().mul_(x.abs().sqrt_())
-
-    def reset_noise(self):
-        epsilon_in = self._scale_noise(self.in_features)
-        epsilon_out = self._scale_noise(self.out_features)
-        
-        # Factorized noise: outer product
-        self.weight_epsilon.copy_(epsilon_out.ger(epsilon_in))
-        self.bias_epsilon.copy_(epsilon_out)
-
-    def forward(self, input):
-        if self.training:
-            return F.linear(input, self.weight_mu + self.weight_sigma * self.weight_epsilon,
-                            self.bias_mu + self.bias_sigma * self.bias_epsilon)
-        else:
-            return F.linear(input, self.weight_mu, self.bias_mu)
-
+# NoisyLinear and RainbowDQN are now imported from networks module
 
 import sys
 
-class RainbowDQN(nn.Module):
-    """
-    Rainbow DQN Network
-    - Feed-Forward (CNN)
-    - Dueling Heads
-    - Noisy Nets
-    - C51 Distributional Output
-    """
-    
-    def __init__(self, input_shape: Tuple[int, int, int] = (15, 10, 10), output_size: int = 1000, num_atoms: int = 51):
-        super(RainbowDQN, self).__init__()
-        self.input_shape = input_shape
-        self.output_size = output_size
-        self.num_atoms = num_atoms
-        
-        # CNN Layers (Feature Extractor)
-        self.conv1 = nn.Conv2d(input_shape[0], 32, kernel_size=3, stride=1, padding=1)
-        self.conv2 = nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1)
-        
-        # Calculate flattened size: 64 * 10 * 10 = 6400
-        self.flatten_size = 64 * 10 * 10
-        
-        # Dueling Architecture with Noisy Nets
-        # Value stream: State -> Value Distribution
-        self.value_fc = NoisyLinear(self.flatten_size, 512)
-        self.value_out = NoisyLinear(512, num_atoms) # Output is distribution over atoms
-        
-        # Advantage stream: State -> Advantage Distribution
-        self.advantage_fc = NoisyLinear(self.flatten_size, 512)
-        self.advantage_out = NoisyLinear(512, output_size * num_atoms) # Output is (Actions * Atoms)
-        
-    def forward(self, x):
-        """
-        Forward pass
-        Args:
-            x: Input tensor (batch, C, H, W)
-        Returns:
-            log_probs: Log probabilities of shape (batch, action_size, num_atoms)
-        """
-        batch_size = x.size(0)
-        
-        # CNN Feature Extraction
-        x = F.relu(self.conv1(x))
-        x = F.relu(self.conv2(x))
-        x = x.view(batch_size, -1)  # Flatten
-        
-        # Dueling Heads
-        # Value stream
-        val_hidden = F.relu(self.value_fc(x))
-        val_out = self.value_out(val_hidden) # (batch, num_atoms)
-        val_out = val_out.view(batch_size, 1, self.num_atoms) # Reshape for broadcasting
-        
-        # Advantage stream
-        adv_hidden = F.relu(self.advantage_fc(x))
-        adv_out = self.advantage_out(adv_hidden) # (batch, action_size * num_atoms)
-        adv_out = adv_out.view(batch_size, self.output_size, self.num_atoms)
-        
-        # Combine: Q(s, a) = V(s) + (A(s, a) - mean(A(s, a)))
-        # In Distributional RL, we combine logits/probs
-        adv_mean = adv_out.mean(dim=1, keepdim=True) # Mean over actions
-        
-        # Unnormalized logits
-        q_logits = val_out + (adv_out - adv_mean)
-        
-        # Softmax to get probabilities (Log Softmax for stability with KL Div loss)
-        log_probs = F.log_softmax(q_logits, dim=2) # Softmax over atoms dimension
-        
-        return log_probs
-    
-    def reset_noise(self):
-        """Reset noise in all NoisyLinear layers"""
-        self.value_fc.reset_noise()
-        self.value_out.reset_noise()
-        self.advantage_fc.reset_noise()
-        self.advantage_out.reset_noise()
+
+
 
 
 class RainbowAgent:
@@ -277,7 +163,11 @@ class RainbowAgent:
         Now includes PBS belief tensor (12 channels).
         Total channels: 15 (Board) + 12 (PBS) = 27
         """
-        # print("DEBUG: Inside get_state_representation")
+        # Handle GameState object - extract the board tensor
+        from game_state import GameState
+        if isinstance(board, GameState):
+            board = board.board
+            
         if isinstance(board, np.ndarray):
             board = torch.from_numpy(board).to(self.device)
             
@@ -344,6 +234,46 @@ class RainbowAgent:
             
         self.memory.add(state_processed, action, reward, next_state_processed, done)
         self.step_count += 1
+
+    def remember_batch(self, states, actions, rewards, next_states, dones, active_mask, game_states=None, next_game_states=None):
+        """
+        Store multiple experiences efficiently with batched state processing.
+        
+        Args:
+            states: List of game states (boards)
+            actions: List of actions (tuples)
+            rewards: List of rewards
+            next_states: List of next game states (boards)
+            dones: List of done flags
+            active_mask: Boolean array indicating which envs are active
+            game_states: List of GameState objects (for PBS lookup)
+            next_game_states: List of next GameState objects
+        """
+        # Get batch state representation once (much more efficient)
+        state_tensors = self.get_batch_state_representation(states, game_states)
+        next_state_tensors = self.get_batch_state_representation(next_states, next_game_states)
+        
+        # Add to memory for active environments only
+        for i in range(len(states)):
+            if not active_mask[i]:
+                continue
+                
+            action = actions[i]
+            if action is None:
+                continue
+                
+            # Process action
+            if isinstance(action, tuple) or isinstance(action, list):
+                action = self._move_to_action_index(action)
+            
+            # Clip reward
+            reward = rewards[i]
+            if abs(reward) <= 5.0:
+                reward = max(-100.0, min(100.0, reward))
+            
+            # Add pre-processed state tensors to memory
+            self.memory.add(state_tensors[i], action, reward, next_state_tensors[i], dones[i])
+            self.step_count += 1
 
     def act(self, state, valid_moves: List[Tuple[Tuple[int, int], Tuple[int, int]]], game_state=None):
         """
@@ -479,6 +409,209 @@ class RainbowAgent:
         
         return actions
 
+    def update_pbs_batch(self, actions: List[Optional[Tuple[Tuple[int, int], Tuple[int, int]]]], 
+                        game_states: List, acting_player: int):
+        """
+        Update PBS state for a batch of actions from the opponent.
+        Uses batched inference for efficiency.
+        
+        OPTIMIZATION: Skips simple moves and immediately detects Scout moves.
+        """
+        if not self.pbs:
+            return
+        
+        # Import config for optimization settings
+        try:
+            from training_config import PBS_SKIP_SIMPLE_MOVES
+        except ImportError:
+            PBS_SKIP_SIMPLE_MOVES = True
+            
+        # 1. Categorize actions: immediate (Scout), skip (simple), or batch (complex)
+        immediate_updates = []  # Scout moves (2+ tiles) - update immediately
+        batch_updates = []      # Complex moves to batch
+        
+        for i, action in enumerate(actions):
+            if action is None:
+                continue
+                
+            # Get move distance
+            (r_from, c_from), (r_to, c_to) = action
+            distance = abs(r_to - r_from) + abs(c_to - c_from)
+            
+            # Get PBS instance for this env
+            pbs_instance = None
+            if self.pbs_instances and i < len(self.pbs_instances):
+                pbs_instance = self.pbs_instances[i]
+            else:
+                pbs_instance = self.pbs
+                
+            if not pbs_instance:
+                continue
+                
+            # IMMEDIATE: Scout detection (2+ tile move) - NEVER skip this
+            if distance > 1:
+                # This MUST be a Scout - update immediately with certainty
+                immediate_updates.append((i, pbs_instance, action, game_states[i]))
+                continue
+            
+            # Check if it's an attack (has target piece)
+            is_attack = False
+            if hasattr(game_states[i], 'board'):
+                board = game_states[i].board
+                if isinstance(board, torch.Tensor):
+                    target_val = board[r_to, c_to].item()
+                    if self.player_id == 1:
+                        is_attack = target_val < 0 and target_val > -13
+                    else:
+                        is_attack = target_val > 0
+            
+            # SKIP: Simple 1-square non-attack moves (if enabled)
+            if PBS_SKIP_SIMPLE_MOVES and distance == 1 and not is_attack:
+                # Just update history without AAREN inference
+                result = pbs_instance.prepare_recurrent_update(action, game_states[i], acting_player)
+                if result:
+                    pos, feature, hidden_state = result
+                    # Apply only rule-based updates (no AAREN)
+                    pbs_instance.apply_recurrent_update(pos, None, hidden_state, action, game_states[i])
+                continue
+            
+            # BATCH: Complex moves (attacks or moves we want to analyze)
+            batch_updates.append((i, pbs_instance, action, game_states[i]))
+        
+        # 2. Process immediate Scout detections (rule-based, very fast)
+        for i, pbs_instance, action, game_state in immediate_updates:
+            (r_from, c_from), (r_to, c_to) = action
+            pos = (r_from, c_from)
+            
+            # Scout confirmed with certainty - set beliefs directly
+            from piece import PieceType
+            pbs_instance.belief_distributions[pos] = {
+                pt: 1.0 if pt == PieceType.SCOUT else 0.0 for pt in PieceType
+            }
+            pbs_instance._update_belief_tensor(pos)
+            
+            # Update position tracking
+            new_pos = (r_to, c_to)
+            if pos in pbs_instance.belief_distributions:
+                pbs_instance.belief_distributions[new_pos] = pbs_instance.belief_distributions.pop(pos)
+            if pos in pbs_instance.piece_action_history:
+                pbs_instance.piece_action_history[new_pos] = pbs_instance.piece_action_history.pop(pos)
+            pbs_instance._update_belief_tensor(new_pos)
+        
+        # 3. Batch process complex moves with AAREN inference
+        inference_batch_features = []
+        inference_batch_states = []
+        update_metadata = []
+        
+        for i, pbs_instance, action, game_state in batch_updates:
+            result = pbs_instance.prepare_recurrent_update(action, game_state, acting_player)
+            if result:
+                pos, feature, hidden_state = result
+                if feature is not None:
+                    inference_batch_features.append(feature)
+                    inference_batch_states.append(hidden_state)
+                    update_metadata.append((i, pos, action, game_state))
+                else:
+                    pbs_instance.apply_recurrent_update(pos, None, None, action, game_state)
+        
+        # 4. Run Batched AAREN Inference (only if we have batch items)
+        if inference_batch_features:
+            aaren_model = None
+            if hasattr(self, 'shared_aaren') and self.shared_aaren:
+                aaren_model = self.shared_aaren
+            elif self.pbs and self.pbs.aaren_model:
+                aaren_model = self.pbs.aaren_model
+                
+            if aaren_model:
+                # Create batch tensor efficiently (NumPy -> GPU)
+                batch_np = np.array(inference_batch_features, dtype=np.float32)
+                batch_tensor = torch.from_numpy(batch_np).to(self.device)
+                
+                num_layers = aaren_model.num_layers
+                hidden_size = aaren_model.hidden_size
+                batched_states = []
+                
+                has_any_state = any(s is not None for s in inference_batch_states)
+                
+                if has_any_state:
+                    for layer_idx in range(num_layers):
+                        a_list, c_list, m_list = [], [], []
+                        
+                        for sample_state in inference_batch_states:
+                            if sample_state is not None:
+                                a, c, m = sample_state[layer_idx]
+                                a_list.append(a)
+                                c_list.append(c)
+                                m_list.append(m)
+                            else:
+                                a_list.append(torch.zeros(1, hidden_size, device=self.device))
+                                c_list.append(torch.zeros(1, 1, device=self.device))
+                                m_list.append(torch.full((1, 1), -1e9, device=self.device))
+                        
+                        a_batch = torch.cat(a_list, dim=0)
+                        c_batch = torch.cat(c_list, dim=0)
+                        m_batch = torch.cat(m_list, dim=0)
+                        
+                        batched_states.append((a_batch, c_batch, m_batch))
+                else:
+                    batched_states = None
+
+                aaren_model.eval()
+                with torch.no_grad():
+                    probs, new_states = aaren_model.forward_sequential(batch_tensor, batched_states)
+                aaren_model.train()
+                
+                # Apply Updates
+                for k, (env_idx, pos, action, gs) in enumerate(update_metadata):
+                    pbs_instance = self.pbs_instances[env_idx] if self.pbs_instances else self.pbs
+                    
+                    sample_new_state = []
+                    for layer_state in new_states:
+                        a_k = layer_state[0][k:k+1]
+                        c_k = layer_state[1][k:k+1]
+                        m_k = layer_state[2][k:k+1]
+                        sample_new_state.append((a_k, c_k, m_k))
+                    
+                    pbs_instance.apply_recurrent_update(pos, probs[k], sample_new_state, action, gs)
+
+    def train_pbs(self, epochs: int = 5):
+        """
+        Train the PBS (AAREN) model using collected data from all environments.
+        """
+        if not self.pbs:
+            return
+            
+        # If using shared AAREN model (Parallel Env)
+        if hasattr(self, 'shared_aaren') and self.shared_aaren and self.pbs_instances:
+            all_sequences = []
+            all_labels = []
+            all_weights = []
+            all_positions = [] # Not strictly needed for batch training but kept for API consistency
+            
+            # Collect data from all instances
+            for pbs in self.pbs_instances:
+                seqs, labels, weights, pos = pbs.get_aaren_training_data()
+                all_sequences.extend(seqs)
+                all_labels.extend(labels)
+                all_weights.extend(weights)
+                all_positions.extend(pos)
+            
+            if len(all_sequences) > 0:
+                # Use the first PBS instance to drive the training (it holds the optimizer)
+                # Note: Ideally, the agent should hold the optimizer for the shared model.
+                # But currently, each PBS has an optimizer.
+                # We will use the first PBS instance to train the shared model.
+                self.pbs_instances[0].train_aaren(
+                    action_sequences=all_sequences,
+                    true_piece_types=all_labels,
+                    epochs=epochs,
+                    evaluator_weights=all_weights,
+                    positions=all_positions
+                )
+        else:
+            # Single Env
+            self.pbs.train_aaren_with_evaluator_feedback(epochs=epochs)
+
     def replay(self, batch_size=None) -> Optional[float]:
         """
         Train the Rainbow model using C51 Distributional Loss.
@@ -565,12 +698,17 @@ class RainbowAgent:
 
     def save_model(self, filepath):
         """Save model checkpoint"""
-        torch.save({
+        checkpoint = {
             'q_network_state_dict': self.q_network.state_dict(),
             'target_network_state_dict': self.target_network.state_dict(),
             'optimizer_state_dict': self.optimizer.state_dict(),
             'step_count': self.step_count
-        }, filepath)
+        }
+        
+        if self.pbs:
+            checkpoint['pbs_state_dict'] = self.pbs.state_dict()
+            
+        torch.save(checkpoint, filepath)
         
     def load_model(self, filepath):
         """Load model checkpoint"""
@@ -580,6 +718,11 @@ class RainbowAgent:
             self.target_network.load_state_dict(checkpoint['target_network_state_dict'])
             self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
             self.step_count = checkpoint.get('step_count', 0)
+            
+            if self.pbs and 'pbs_state_dict' in checkpoint:
+                self.pbs.load_state_dict(checkpoint['pbs_state_dict'])
+                print(f"✅ PBS state loaded from {filepath}")
+                
             print(f"✅ Model loaded from {filepath} (Step: {self.step_count})")
         except Exception as e:
             print(f"❌ Failed to load model from {filepath}: {e}")

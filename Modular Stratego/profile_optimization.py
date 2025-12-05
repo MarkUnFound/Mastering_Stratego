@@ -6,7 +6,7 @@ import copy
 from drqn_agent import DRQNAgent
 from game_state import GameState
 from piece import PieceType
-from probabilistic_belief_state import ProbabilisticBeliefState
+from pbs import ProbabilisticBeliefState
 
 def benchmark_pbs_update():
     print("--- Benchmarking PBS Update ---")

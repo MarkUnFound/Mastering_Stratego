@@ -18,7 +18,7 @@ from typing import Optional
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from environment import StrategoEnvironment
-from drqn_agent import DRQNAgent
+from drqn_agent import RainbowAgent
 from setup_agent import SetupAgent
 from setup_league import SetupLeague
 from training_config import *
@@ -41,7 +41,7 @@ def train_setup_league(model_save_path: str = "dqn_models"):
     
     # Initialize Evaluator Agent (DQN)
     # We use a single agent to evaluate both sides
-    evaluator_agent = DRQNAgent(player_id=1, device=device, lr=0.0001, batch_size=BATCH_SIZE)
+    evaluator_agent = RainbowAgent(player_id=1, device=device, lr=0.0001, batch_size=BATCH_SIZE)
     
     # Initialize Setup League
     print("Initializing Setup League...")
@@ -118,7 +118,7 @@ def train_setup_league(model_save_path: str = "dqn_models"):
             traceback.print_exc()
             time.sleep(10) # Wait before retrying
 
-def load_latest_dqn_model(agent: DRQNAgent, model_save_path: str):
+def load_latest_dqn_model(agent: RainbowAgent, model_save_path: str):
     """Load the most recent DQN model to use as evaluator."""
     try:
         # Look for agent1 models (assuming agent1 and agent2 are similar/symmetric enough for eval)
@@ -150,12 +150,12 @@ def save_best_setup_agent(agent: SetupAgent, model_save_path: str):
         # Save as 'best' which train_dqn.py will look for
         save_path = os.path.join(model_save_path, "setup_agent_best.pth")
         
-        # We save it in a format that SetupAgent.load_model expects
+        # We save it in the format that SetupAgent.load_model expects (Rainbow DQN format)
         torch.save({
-            'q_network_state_dict': agent.q_network.state_dict(),
-            'target_network_state_dict': agent.target_network.state_dict(),
-            'optimizer_state_dict': agent.optimizer.state_dict(),
-            'epsilon': agent.epsilon
+            'q_network': agent.q_network.state_dict(),
+            'target_network': agent.target_network.state_dict(),
+            'optimizer': agent.optimizer.state_dict(),
+            'critic': agent.critic.state_dict(),
         }, save_path)
         
         print(f"💾 Saved best setup agent to {save_path}")

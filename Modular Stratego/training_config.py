@@ -29,3 +29,9 @@ LEAGUE_GENERATIONS = 3 # Number of generations to evolve per interval
 # Visualization settings
 GENERATE_GIFS = False # Whether to generate GIFs of games
 GIF_INTERVAL = 100   # Generate GIF every N episodes (reduced frequency)
+
+# PBS Optimization Settings
+PBS_UPDATE_INTERVAL = 4  # How often to update PBS (every N steps)
+PBS_SKIP_SIMPLE_MOVES = True  # Skip AAREN for obvious 1-square non-attack moves
+PBS_CACHE_UNCERTAINTY = True  # Cache uncertainty maps until beliefs change
+
