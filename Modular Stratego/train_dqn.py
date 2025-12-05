@@ -374,12 +374,12 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
             # Save PBS Evaluators (if available)
             if agent1.pbs and hasattr(agent1.pbs, 'evaluator') and agent1.pbs.evaluator:
                 try:
-                    agent1.pbs.evaluator.save(os.path.join(model_save_path, f"pbs_evaluator1_episode_{episode}.pth"))
+                    agent1.pbs.evaluator.save_model(os.path.join(model_save_path, f"pbs_evaluator1_episode_{episode}.pth"))
                 except Exception as e:
                     print(f"⚠️ Could not save PBS Evaluator 1: {e}")
             if agent2.pbs and hasattr(agent2.pbs, 'evaluator') and agent2.pbs.evaluator:
                 try:
-                    agent2.pbs.evaluator.save(os.path.join(model_save_path, f"pbs_evaluator2_episode_{episode}.pth"))
+                    agent2.pbs.evaluator.save_model(os.path.join(model_save_path, f"pbs_evaluator2_episode_{episode}.pth"))
                 except Exception as e:
                     print(f"⚠️ Could not save PBS Evaluator 2: {e}")
             
