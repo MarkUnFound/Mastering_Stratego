@@ -8,7 +8,7 @@
 \@writefile{toc}{\contentsline {section}{\numberline {3.2}MARQ Policy Definition}{16}{}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {3.2.1}Core Policy Framework}{16}{}\protected@file@percent }
 \@writefile{lot}{\contentsline {table}{\numberline {3.1}{\ignorespaces Key Symbols and Descriptions from the MARQ Framework}}{17}{}\protected@file@percent }
-\newlabel{tab:MARQ-symbols}{{3.1}{17}{}{}{}}
+\newlabel{tab:MARQ-symbols}{{3.1}{17}{}{table.3.1}{}}
 \@writefile{toc}{\contentsline {subsubsection}{PBS-to-Reality Optimization}{18}{}\protected@file@percent }
 \@writefile{toc}{\contentsline {paragraph}{Belief Calibration Loss}{18}{}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {3.2.2}Bellman Equation}{18}{}\protected@file@percent }
@@ -64,11 +64,43 @@
 \@writefile{toc}{\contentsline {subsection}{\numberline {3.11.3}Dynamic Strategy Adaptation}{32}{}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {3.11.4}Stratego}{32}{}\protected@file@percent }
 \@writefile{lof}{\contentsline {figure}{\numberline {3.1}{\ignorespaces Stratego Pieces}}{33}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {3.12}League Training Implementation}{33}{}\protected@file@percent }
 \@writefile{lof}{\contentsline {figure}{\numberline {3.2}{\ignorespaces Stratego Game board.}}{34}{}\protected@file@percent }
-\newlabel{fig:stratego_tech}{{3.2}{34}{}{}{}}
+\newlabel{fig:stratego_tech}{{3.2}{34}{}{figure.3.2}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.12.1}League Manager Architecture}{34}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.12.2}Opponent Pool Dynamics}{34}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.12.3}Exploiter Agents}{35}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {3.13}Reward Shaping Module}{35}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.13.1}Material Reward}{35}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.13.2}Epistemic Reward}{36}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.13.3}Positional Reward (PBRS)}{36}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {3.14}Information Hiding Architecture}{37}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.14.1}Board Representation}{37}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.14.2}Observation Function}{37}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.14.3}Piece Revelation}{37}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {3.15}PBS Update on Piece Revelation}{38}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.15.1}Belief Collapse}{38}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.15.2}Constraint Propagation}{38}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.15.3}Training Data Collection}{38}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {3.16}Curriculum Learning}{38}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.16.1}Phase 1: Full Observability}{39}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.16.2}Phase 2: Partial Observability}{39}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.16.3}Phase 3: Self-Play}{39}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.16.4}Phase 4: League Training}{39}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.16.5}Phase 5: Scenario Drills}{39}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {3.17}Reward Shaping}{40}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.17.1}Material Rewards (Combat Signal)}{40}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.17.2}Epistemic Rewards (Information Signal)}{40}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.17.3}Positional Rewards (Potential-Based Reward Shaping)}{40}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.17.4}Prediction Auxiliary Rewards}{41}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.17.5}Composite Reward Function}{41}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {3.18}Parallel Environment Architecture}{41}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.18.1}Worker Process Design}{41}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.18.2}Observability Control}{42}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.18.3}Batch Processing}{42}{}\protected@file@percent }
 \@setckpt{chapters/techbackground}{
-\setcounter{page}{35}
-\setcounter{equation}{47}
+\setcounter{page}{43}
+\setcounter{equation}{69}
 \setcounter{enumi}{3}
 \setcounter{enumii}{0}
 \setcounter{enumiii}{0}
@@ -77,8 +109,8 @@
 \setcounter{mpfootnote}{0}
 \setcounter{part}{0}
 \setcounter{chapter}{3}
-\setcounter{section}{11}
-\setcounter{subsection}{4}
+\setcounter{section}{18}
+\setcounter{subsection}{3}
 \setcounter{subsubsection}{0}
 \setcounter{paragraph}{0}
 \setcounter{subparagraph}{0}

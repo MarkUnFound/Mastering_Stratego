@@ -225,3 +225,14 @@ class ParallelStrategoEnvironment:
         """Call a method on the first environment and return the result."""
         self.remotes[0].send(('call_method', (method_name, args)))
         return self.remotes[0].recv()
+    
+    def set_full_observability(self, enabled: bool):
+        """
+        Set full observability mode for all environments.
+        Used for Phase 1 curriculum (full observability training).
+        """
+        for remote in self.remotes:
+            remote.send(('call_method', ('set_full_observability', (enabled,))))
+        # Receive acknowledgments
+        for remote in self.remotes:
+            remote.recv()

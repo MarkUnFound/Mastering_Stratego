@@ -1,5 +1,11 @@
 """
 Training Script for Rainbow DQN Agents in Stratego
+
+Features:
+- Single-agent focus (Agent1 trains, Agent2 for opponents)
+- League training: Auto-switches from Agent2 to historical opponents
+- Diverse opponents: League (50%), Random (20%), Greedy (20%), Self (10%)
+- PBS/AAREN inference for fair opponent play
 """
 
 # Set matplotlib backend to non-interactive BEFORE any imports
@@ -47,17 +53,33 @@ except ImportError:
 from random_starting_player import should_swap_players, swap_placements, get_batch_swap_decisions
 from league import LeagueManager
 from setup_league import SetupLeague
+from opponents import RandomAgent, GreedyAgent, OpponentPool
 from training_config import *
 from training_utils import save_training_history, load_training_history
 from setup_evaluation import calculate_setup_agent_reward
 from preflight_checks import run_preflight_checks
+
+# Curriculum and Reward Shaping
+from curriculum import CurriculumManager, TrainingPhase, HeuristicOpponent
+from reward_shaping import RewardCalculator, RewardWeights, create_move_info
+from exploiter_agents import get_random_exploiter, RusherAgent, TurtleAgent, FlankingAgent
+from scenario_drills import get_scenario_drill, get_random_scenario
+
+# Piece Value Tracking (for convergence analysis)
+try:
+    from piece_value_tracker import PieceValueTracker, ANALYTICAL_VALUES
+    PIECE_VALUE_TRACKING = True
+except ImportError:
+    PIECE_VALUE_TRACKING = False
+    print("⚠️ Piece value tracking disabled (module not found)")
 
 def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100, 
                      model_save_path: str = "dqn_models",
                      use_setup_agents: bool = True,
                      generate_gifs: bool = True):
     """
-    Train two Rainbow DQN agents through self-play
+    Train Rainbow DQN agent with league-based diverse opponents.
+    Early training uses self-play, then transitions to historical opponents.
     """
     # Set up device
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -78,11 +100,57 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
     # Initialize Agents
     print("Initializing Rainbow Agents...")
     agent1 = RainbowAgent(player_id=1, device=device, lr=LEARNING_RATE, batch_size=BATCH_SIZE, num_envs=NUM_ENVS, buffer_size=MEMORY_SIZE)
-    agent2 = RainbowAgent(player_id=-1, device=device, lr=LEARNING_RATE, batch_size=BATCH_SIZE, num_envs=NUM_ENVS, buffer_size=MEMORY_SIZE)
+    # Agent2 uses minimal buffer - mainly loads from league, doesn't train
+    agent2 = RainbowAgent(player_id=-1, device=device, lr=LEARNING_RATE, batch_size=BATCH_SIZE, num_envs=NUM_ENVS, buffer_size=10000)
     
     # Initialize Setup Agents
     setup_agent1 = SetupAgent(player_id=1, device=device)
     setup_agent2 = SetupAgent(player_id=-1, device=device)
+    
+    # Initialize League Manager and Opponent Pool
+    league_dir = os.path.join(model_save_path, "league")
+    league_manager = LeagueManager(league_dir=league_dir, max_agents=LEAGUE_MAX_AGENTS)
+    
+    opponent_pool = OpponentPool(
+        league_manager=league_manager,
+        device=device,
+        league_prob=OPPONENT_LEAGUE_PROB,
+        random_prob=OPPONENT_RANDOM_PROB,
+        greedy_prob=OPPONENT_GREEDY_PROB,
+        self_prob=OPPONENT_SELF_PROB
+    )
+    
+    # Specialized opponents (for non-league matches)
+    random_agent = RandomAgent()
+    greedy_agent = GreedyAgent(device=device, player_id=-1)
+    heuristic_agent = HeuristicOpponent(device=device, player_id=-1)  # Frozen heuristic for Phase 2
+    
+    # Initialize Curriculum Manager
+    curriculum = None
+    if CURRICULUM_ENABLED:
+        curriculum = CurriculumManager(start_phase=CURRICULUM_START_PHASE, save_dir=model_save_path)
+        print(f"📚 Curriculum enabled: Phase {curriculum.current_phase.value} ({curriculum.get_phase_config().name})")
+        
+        # Set initial observability based on phase
+        if curriculum.should_use_full_observability():
+            parallel_env.set_full_observability(True)
+            print("   Full observability mode: ENABLED (Phase 1)")
+    
+    # Initialize Reward Calculator
+    reward_weights = RewardWeights(
+        outcome=REWARD_WEIGHT_OUTCOME,
+        material=REWARD_WEIGHT_MATERIAL,
+        epistemic=REWARD_WEIGHT_EPISTEMIC,
+        positional=REWARD_WEIGHT_POSITIONAL
+    )
+    reward_calculator = RewardCalculator(device, reward_weights)
+    
+    # Initialize Piece Value Tracker (for convergence analysis)
+    piece_tracker = None
+    if PIECE_VALUE_TRACKING:
+        piece_tracker = PieceValueTracker(save_path=os.path.join(model_save_path, "piece_value_tracking.json"))
+        print(f"📊 Piece value tracking enabled ({piece_tracker.games_tracked} games loaded)")
+    
     
     # --- Load Existing Models ---
     start_episode = 0
@@ -137,7 +205,7 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
     if pbs_eval1_files and agent1.pbs and hasattr(agent1.pbs, 'evaluator') and agent1.pbs.evaluator:
         pbs_eval1_files.sort(key=extract_episode, reverse=True)
         try:
-            agent1.pbs.evaluator.load(pbs_eval1_files[0])
+            agent1.pbs.evaluator.load_model(pbs_eval1_files[0])
             print(f"✅ Loaded PBS Evaluator 1 from {pbs_eval1_files[0]}")
         except Exception as e:
             print(f"⚠️ Could not load PBS Evaluator 1: {e}")
@@ -145,7 +213,7 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
     if pbs_eval2_files and agent2.pbs and hasattr(agent2.pbs, 'evaluator') and agent2.pbs.evaluator:
         pbs_eval2_files.sort(key=extract_episode, reverse=True)
         try:
-            agent2.pbs.evaluator.load(pbs_eval2_files[0])
+            agent2.pbs.evaluator.load_model(pbs_eval2_files[0])
             print(f"✅ Loaded PBS Evaluator 2 from {pbs_eval2_files[0]}")
         except Exception as e:
             print(f"⚠️ Could not load PBS Evaluator 2: {e}")
@@ -174,6 +242,82 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
     pbar = tqdm(range(start_episode + 1, num_episodes + 1), desc="Training Episodes")
     
     for episode in pbar:
+        # --- CURRICULUM-BASED OPPONENT SELECTION ---
+        opponent_type = "self"  # Default
+        opponent_uses_pbs = False
+        
+        if curriculum and CURRICULUM_ENABLED:
+            phase = curriculum.current_phase
+            
+            # Set observability based on phase
+            parallel_env.set_full_observability(curriculum.should_use_full_observability())
+            
+            # Get opponent distribution for current phase
+            opponent_dist = curriculum.get_opponent_distribution()
+            
+            # Select opponent based on phase probabilities
+            r = random.random()
+            cumulative = 0.0
+            for op_type, prob in opponent_dist.items():
+                cumulative += prob
+                if r < cumulative:
+                    opponent_type = op_type
+                    break
+            
+            # Configure opponent based on type
+            if opponent_type == "random":
+                current_opponent = random_agent
+            elif opponent_type in ["heuristic", "frozen_heuristic", "greedy"]:
+                current_opponent = heuristic_agent
+            elif opponent_type == "league":
+                path = league_manager.get_opponent()
+                if path:
+                    agent2.load_model(path)
+                    current_opponent = agent2
+                    opponent_uses_pbs = True
+                else:
+                    # No league agents yet - fallback to self-play
+                    opponent_type = "self"
+                    agent2.q_network.load_state_dict(agent1.q_network.state_dict())
+                    agent2.target_network.load_state_dict(agent1.target_network.state_dict())
+                    current_opponent = agent2
+                    opponent_uses_pbs = True
+            elif opponent_type == "self_500" or opponent_type == "self":
+                # Self-play: copy agent1 weights to agent2
+                agent2.q_network.load_state_dict(agent1.q_network.state_dict())
+                agent2.target_network.load_state_dict(agent1.target_network.state_dict())
+                current_opponent = agent2
+                opponent_uses_pbs = True
+            elif opponent_type == "exploiters":
+                # Random exploiter agent
+                current_opponent = get_random_exploiter(device, player_id=-1)
+            elif opponent_type == "scenario":
+                # Scenario drills (Phase 5) - handled separately
+                current_opponent = heuristic_agent
+            else:
+                # Default to greedy
+                current_opponent = greedy_agent
+        else:
+            # Legacy mode: use opponent pool
+            opponent_type, opponent_data = opponent_pool.select_opponent()
+            
+            if opponent_type == "league":
+                agent2.load_model(opponent_data)
+                current_opponent = agent2
+                opponent_uses_pbs = True
+            elif opponent_type == "random":
+                current_opponent = random_agent
+            elif opponent_type == "greedy":
+                current_opponent = greedy_agent
+            else:  # self-play
+                agent2.q_network.load_state_dict(agent1.q_network.state_dict())
+                agent2.target_network.load_state_dict(agent1.target_network.state_dict())
+                current_opponent = agent2
+                opponent_uses_pbs = True
+        
+        # Reset reward calculator for new episode
+        reward_calculator.reset()
+        
         # 1. Generate Placements
         p1_placements = []
         p2_placements = []
@@ -193,9 +337,10 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
         # parallel_env.reset returns (states, rewards, dones, infos, valid_moves)
         game_states, _, _, _, valid_moves = parallel_env.reset(p1_placements, p2_placements)
         
-        # Reset Agents
+        # Reset Agents PBS (both for fair environment)
         agent1.reset_pbs()
-        agent2.reset_pbs()
+        if opponent_uses_pbs:
+            agent2.reset_pbs()
         
         episode_rewards = {1: np.zeros(NUM_ENVS), -1: np.zeros(NUM_ENVS)}
         active_envs = np.ones(NUM_ENVS, dtype=bool)
@@ -236,7 +381,7 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                         if abs(r_to - r_from) + abs(c_to - c_from) > 1:
                             should_update_p2_pbs = True
                             break
-            if should_update_p2_pbs:
+            if should_update_p2_pbs and opponent_uses_pbs:
                 agent2.update_pbs_batch(actions_p1, game_states, acting_player=1)
             
             # Store P1 Experience (batched for efficiency)
@@ -265,9 +410,8 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
             
             if not np.any(active_envs): break
             
-            # P2 Actions
-            # valid_moves now holds moves for P2
-            actions_p2 = agent2.act_batch(
+            # P2 Actions (using current_opponent - may be league/random/greedy/self)
+            actions_p2 = current_opponent.act_batch(
                 [gs.board for gs in game_states],
                 valid_moves,
                 game_states,
@@ -311,28 +455,41 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                         if infos_p2[i]['winner'] == 1: metrics['wins_p1'] += 1
                         elif infos_p2[i]['winner'] == -1: metrics['wins_p2'] += 1
                         else: metrics['draws'] += 1
+                        
+                        # Track piece values for convergence analysis
+                        if piece_tracker is not None:
+                            try:
+                                # Get surviving pieces from final game state
+                                board = game_states[i].board if hasattr(game_states[i], 'board') else game_states[i]
+                                surviving_p1 = {}
+                                surviving_p2 = {}
+                                for r in range(10):
+                                    for c in range(10):
+                                        val = board[r, c].item() if hasattr(board[r, c], 'item') else board[r, c]
+                                        if val > 0 and val <= 11:
+                                            surviving_p1[val] = surviving_p1.get(val, 0) + 1
+                                        elif val < 0 and val >= -11:
+                                            surviving_p2[abs(val)] = surviving_p2.get(abs(val), 0) + 1
+                                piece_tracker.record_game_end(infos_p2[i]['winner'], surviving_p1, surviving_p2)
+                            except Exception:
+                                pass  # Silent fail to not impact training
 
             game_states = next_states_p2
             step_in_episode += 1
             global_step += 1
             
-            # 4. Training Step
+            # 4. Training Step (only Agent1 trains)
             if global_step % REPLAY_UPDATE_INTERVAL == 0:
                 loss1 = agent1.replay()
-                loss2 = agent2.replay()
                 
                 if loss1: 
                     metrics['losses_p1'].append(loss1)
                     episode_losses_p1.append(loss1)
-                if loss2: 
-                    metrics['losses_p2'].append(loss2)
-                    episode_losses_p2.append(loss2)
                 
-            # Update Target Networks
+            # Update Target Networks (only Agent1)
             if global_step % TARGET_UPDATE_INTERVAL == 0:
                 agent1.update_target_network()
-                agent2.update_target_network()
-                print("🔄 Target Networks Updated")
+                print("🔄 Target Network Updated")
 
         # 5. Train PBS (AAREN) Models
         # Train on data collected during this episode
@@ -355,17 +512,73 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
         metrics['avg_loss_p1_history'].append(avg_loss_p1)
         metrics['avg_loss_p2_history'].append(avg_loss_p2)
         
-        pbar.set_postfix({
-            'R1': f"{avg_reward_p1:.2f}",
-            'R2': f"{avg_reward_p2:.2f}",
-            'Win1': metrics['wins_p1'],
-            'Win2': metrics['wins_p2']
-        })
+        # --- CURRICULUM METRICS UPDATE ---
+        if curriculum and CURRICULUM_ENABLED:
+            # Determine winner from episode
+            episode_winner = 0  # Draw by default
+            for i in range(NUM_ENVS):
+                # Check the final state from any environment
+                if not np.any(active_envs):
+                    # All done - check last info
+                    break
+            
+            # Use metrics to determine winner (most common outcome)
+            total_games = metrics['wins_p1'] + metrics['wins_p2'] + metrics['draws']
+            if total_games > 0:
+                last_win_p1 = metrics['wins_p1'] > metrics.get('prev_wins_p1', 0)
+                last_win_p2 = metrics['wins_p2'] > metrics.get('prev_wins_p2', 0)
+                if last_win_p1:
+                    episode_winner = 1
+                elif last_win_p2:
+                    episode_winner = -1
+            
+            metrics['prev_wins_p1'] = metrics['wins_p1']
+            metrics['prev_wins_p2'] = metrics['wins_p2']
+            
+            # Update curriculum metrics
+            curriculum.update_metrics({
+                'winner': episode_winner,
+                'opponent_type': opponent_type,
+                'pbs_accuracy': agent1.pbs.avg_accuracy if agent1.pbs and hasattr(agent1.pbs, 'avg_accuracy') else 0.0
+            })
+            
+            # Check for phase transition
+            if curriculum.check_phase_transition():
+                old_phase = curriculum.current_phase
+                if curriculum.advance_phase():
+                    print(f"\n🎓 PHASE TRANSITION: {old_phase.name} → {curriculum.current_phase.name}")
+                    
+                    # Update environment observability for new phase
+                    parallel_env.set_full_observability(curriculum.should_use_full_observability())
+            
+            # Save curriculum state periodically
+            if episode % save_interval == 0:
+                curriculum.save_state()
+            
+            # Enhanced progress bar with phase info
+            pbar.set_postfix({
+                'R1': f"{avg_reward_p1:.2f}",
+                'W1': metrics['wins_p1'],
+                'W2': metrics['wins_p2'],
+                'Ph': curriculum.current_phase.value,
+                'Opp': opponent_type[:4]
+            })
+        else:
+            pbar.set_postfix({
+                'R1': f"{avg_reward_p1:.2f}",
+                'W1': metrics['wins_p1'],
+                'W2': metrics['wins_p2'],
+                'Opp': opponent_type[:4]
+            })
         
         # Save Models
         if episode % save_interval == 0:
-            agent1.save_model(os.path.join(model_save_path, f"agent1_rainbow_episode_{episode}.pth"))
-            agent2.save_model(os.path.join(model_save_path, f"agent2_rainbow_episode_{episode}.pth"))
+            agent1_path = os.path.join(model_save_path, f"agent1_rainbow_episode_{episode}.pth")
+            agent1.save_model(agent1_path)
+            
+            # Add to league for diverse future opponents
+            if episode % LEAGUE_SAVE_INTERVAL == 0:
+                league_manager.save_agent(agent1_path, episode)
             
             # Save Setup Agents
             setup_agent1.save_model(os.path.join(model_save_path, f"setup_agent1_episode_{episode}.pth"))
@@ -403,6 +616,11 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                 total_steps=global_step
             )
             print(f"💾 Saved models and plots for episode {episode}")
+            
+            # Log piece value convergence (every 500 episodes)
+            if piece_tracker is not None and episode % 500 == 0:
+                piece_tracker.log_comparison(episode)
+                piece_tracker.save()
 
 if __name__ == "__main__":
     print("🎮 DQN Agent Training for Stratego")

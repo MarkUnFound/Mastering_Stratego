@@ -76,20 +76,56 @@
 \contentsline {subsection}{\numberline {3.11.2}Exploitation Resistance}{31}{}%
 \contentsline {subsection}{\numberline {3.11.3}Dynamic Strategy Adaptation}{32}{}%
 \contentsline {subsection}{\numberline {3.11.4}Stratego}{32}{}%
-\contentsline {chapter}{\numberline {4}Methodology}{35}{}%
-\contentsline {section}{\numberline {4.1}Project Planning}{35}{}%
-\contentsline {subsection}{\numberline {4.1.1}Community Introduction to Stratego}{36}{}%
-\contentsline {subsection}{\numberline {4.1.2}Participant Selection}{36}{}%
-\contentsline {subsection}{\numberline {4.1.3}Experimental Procedures}{36}{}%
-\contentsline {section}{\numberline {4.2}System Development}{37}{}%
-\contentsline {subsection}{\numberline {4.2.1}Piece Value Computation}{37}{}%
-\contentsline {subsection}{\numberline {4.2.2}Handling Imperfect Information: Probabilistic Belief State (PBS)}{37}{}%
-\contentsline {section}{\numberline {4.3}Model Training}{38}{}%
-\contentsline {subsection}{\numberline {4.3.1}Deployment}{39}{}%
-\contentsline {section}{\numberline {4.4}Evaluation}{40}{}%
-\contentsline {subsection}{\numberline {4.4.1}Quantitative Analysis}{40}{}%
-\contentsline {subsection}{\numberline {4.4.2}Qualitative Analysis}{41}{}%
-\contentsline {subsection}{\numberline {4.4.3}Model Version History}{41}{}%
-\contentsline {subsection}{\numberline {4.4.4}Initial Training}{41}{}%
-\contentsline {chapter}{\numberline {A}Gantt Chart}{42}{}%
-\contentsline {chapter}{\numberline {B}System UI and Training}{45}{}%
+\contentsline {section}{\numberline {3.12}League Training Implementation}{33}{}%
+\contentsline {subsection}{\numberline {3.12.1}League Manager Architecture}{34}{}%
+\contentsline {subsection}{\numberline {3.12.2}Opponent Pool Dynamics}{34}{}%
+\contentsline {subsection}{\numberline {3.12.3}Exploiter Agents}{35}{}%
+\contentsline {section}{\numberline {3.13}Reward Shaping Module}{35}{}%
+\contentsline {subsection}{\numberline {3.13.1}Material Reward}{35}{}%
+\contentsline {subsection}{\numberline {3.13.2}Epistemic Reward}{36}{}%
+\contentsline {subsection}{\numberline {3.13.3}Positional Reward (PBRS)}{36}{}%
+\contentsline {section}{\numberline {3.14}Information Hiding Architecture}{37}{}%
+\contentsline {subsection}{\numberline {3.14.1}Board Representation}{37}{}%
+\contentsline {subsection}{\numberline {3.14.2}Observation Function}{37}{}%
+\contentsline {subsection}{\numberline {3.14.3}Piece Revelation}{37}{}%
+\contentsline {section}{\numberline {3.15}PBS Update on Piece Revelation}{38}{}%
+\contentsline {subsection}{\numberline {3.15.1}Belief Collapse}{38}{}%
+\contentsline {subsection}{\numberline {3.15.2}Constraint Propagation}{38}{}%
+\contentsline {subsection}{\numberline {3.15.3}Training Data Collection}{38}{}%
+\contentsline {section}{\numberline {3.16}Curriculum Learning}{38}{}%
+\contentsline {subsection}{\numberline {3.16.1}Phase 1: Full Observability}{39}{}%
+\contentsline {subsection}{\numberline {3.16.2}Phase 2: Partial Observability}{39}{}%
+\contentsline {subsection}{\numberline {3.16.3}Phase 3: Self-Play}{39}{}%
+\contentsline {subsection}{\numberline {3.16.4}Phase 4: League Training}{39}{}%
+\contentsline {subsection}{\numberline {3.16.5}Phase 5: Scenario Drills}{39}{}%
+\contentsline {section}{\numberline {3.17}Reward Shaping}{40}{}%
+\contentsline {subsection}{\numberline {3.17.1}Material Rewards (Combat Signal)}{40}{}%
+\contentsline {subsection}{\numberline {3.17.2}Epistemic Rewards (Information Signal)}{40}{}%
+\contentsline {subsection}{\numberline {3.17.3}Positional Rewards (Potential-Based Reward Shaping)}{40}{}%
+\contentsline {subsection}{\numberline {3.17.4}Prediction Auxiliary Rewards}{41}{}%
+\contentsline {subsection}{\numberline {3.17.5}Composite Reward Function}{41}{}%
+\contentsline {section}{\numberline {3.18}Parallel Environment Architecture}{41}{}%
+\contentsline {subsection}{\numberline {3.18.1}Worker Process Design}{41}{}%
+\contentsline {subsection}{\numberline {3.18.2}Observability Control}{42}{}%
+\contentsline {subsection}{\numberline {3.18.3}Batch Processing}{42}{}%
+\contentsline {chapter}{\numberline {4}Methodology}{43}{}%
+\contentsline {section}{\numberline {4.1}Project Planning}{43}{}%
+\contentsline {subsection}{\numberline {4.1.1}Community Introduction to Stratego}{44}{}%
+\contentsline {subsection}{\numberline {4.1.2}Participant Selection}{44}{}%
+\contentsline {subsection}{\numberline {4.1.3}Experimental Procedures}{44}{}%
+\contentsline {section}{\numberline {4.2}System Development}{45}{}%
+\contentsline {subsection}{\numberline {4.2.1}Piece Value Computation}{45}{}%
+\contentsline {subsubsection}{Combat Dominance Score}{45}{}%
+\contentsline {subsubsection}{Survival Rate}{45}{}%
+\contentsline {subsubsection}{Auxiliary Value Components}{46}{}%
+\contentsline {subsubsection}{Composite Value Function}{46}{}%
+\contentsline {subsection}{\numberline {4.2.2}Handling Imperfect Information: Probabilistic Belief State (PBS)}{47}{}%
+\contentsline {section}{\numberline {4.3}Model Training}{48}{}%
+\contentsline {subsection}{\numberline {4.3.1}Deployment}{49}{}%
+\contentsline {section}{\numberline {4.4}Evaluation}{50}{}%
+\contentsline {subsection}{\numberline {4.4.1}Quantitative Analysis}{50}{}%
+\contentsline {subsection}{\numberline {4.4.2}Qualitative Analysis}{50}{}%
+\contentsline {subsection}{\numberline {4.4.3}Model Version History}{51}{}%
+\contentsline {subsection}{\numberline {4.4.4}Initial Training}{51}{}%
+\contentsline {chapter}{\numberline {A}Gantt Chart}{52}{}%
+\contentsline {chapter}{\numberline {B}System UI and Training}{55}{}%

@@ -21,31 +21,97 @@ Each session will last one (1) hour, during which participants must complete at 
 The system development consists of two components which is the game environment and MARQ. The game environment will be developed to serve as the interface for human players and the world in which the AI agent operates. While MARQ is the trained model to be used as the bot playing against the player.
 
 \subsection{Piece Value Computation}
-To inform MARQ's reward function and internal heuristics, a quantitative value was assigned to each piece in Stratego. This was achieved through a systematic process to account for the relative power of each piece.
-\begin{enumerate}
-\item {Initial Unweighted Calculation:} The value of each piece was first computed using the formula:
-\[
-\text{Unweighted Piece Value} = a - b
-\]
+The reward function requires a quantitative assessment of piece value to guide learning. This section presents an analytical method for computing piece values based on probability theory, providing a deterministic alternative to empirical estimation through gameplay simulation.
 
-where a is the number of pieces it defeats and b is the number of pieces it loses to.
-\item {Normalization:} The computed values were then normalized to a range of [0,1] using min-max scaling to create a standardized set of weights, typically used in chess evaluation.
-\item {Final Weighted Calculation:} The final value was then recomputed by weighting each interaction:
-\[
-\text{Final Piece Value} = \sum_{i \in \text{beats}} w_i \;-\; \sum_{j \in \text{loses to}} w_j
-\]
-\end{enumerate}
- 
-where \(w_i\) and where \(w_j\) are the normalized values of the pieces it beats or loses to, respectively. This provides a more accurate reflection of each piece's strategic importance.
+\subsubsection{Combat Dominance Score}
+The Combat Dominance Score (CDS) represents the probability that a given piece type defeats a uniformly random opponent piece. Let $\mathcal{P}$ denote the set of all piece types and $n_i$ the count of piece type $i$ in standard Stratego. The CDS for piece $p$ is defined as:
+
+\begin{equation}
+\text{CDS}(p) = \frac{\sum_{i \in \mathcal{P}} \mathbb{1}_{p \succ i} \cdot n_i}{N}
+\end{equation}
+
+\noindent where $N = \sum_{i \in \mathcal{P}} n_i = 40$ is the total piece count, $\mathbb{1}_{p \succ i}$ is an indicator function equal to 1 if piece $p$ defeats piece $i$ according to Stratego combat rules, and 0 otherwise. The combat rules specify that higher-ranked pieces defeat lower-ranked pieces, with exceptions: the Spy defeats the Marshal when attacking, and the Miner defeats Bombs.
+
+\subsubsection{Survival Rate}
+The Survival Rate (SR) measures the expected probability of a piece surviving an attack from a uniformly random attacker. Let $\mathcal{M} \subset \mathcal{P}$ denote the set of movable piece types (excluding Flag and Bomb). The SR for piece $p$ is:
+
+\begin{equation}
+\text{SR}(p) = \frac{\sum_{a \in \mathcal{M}} \mathbb{1}_{p \succeq a} \cdot n_a}{\sum_{a \in \mathcal{M}} n_a}
+\end{equation}
+
+\noindent where $\mathbb{1}_{p \succeq a}$ equals 1 if piece $p$ survives an attack from piece $a$ (i.e., $p$ defeats $a$ or both are destroyed).
+
+\subsubsection{Auxiliary Value Components}
+Three additional factors contribute to piece value:
+
+\textbf{Strategic Ability Bonus.} Certain pieces possess capabilities that extend beyond their combat rank. Table \ref{tab:strategic_bonus} enumerates these bonuses.
+
+\begin{table}[h]
+\centering
+\caption{Strategic ability bonuses for pieces with special capabilities.}
+\label{tab:strategic_bonus}
+\begin{tabular}{lcp{6cm}}
+\hline
+\textbf{Piece} & \textbf{Bonus} & \textbf{Description} \\
+\hline
+Miner & 2.0 & Sole piece capable of removing Bombs \\
+Spy & 1.5 & Defeats Marshal when initiating attack \\
+Scout & 1.0 & Multi-square movement capability \\
+Marshal & 0.5 & Highest combat rank \\
+\hline
+\end{tabular}
+\end{table}
+
+\textbf{Mobility Factor.} The Scout receives a mobility bonus of 1.0 due to its ability to move multiple squares per turn; all other movable pieces receive a base mobility of 0.5. Immovable pieces (Flag, Bomb) receive 0.
+
+\textbf{Scarcity Factor.} The scarcity of each piece type influences its strategic importance. This is computed using logarithmic scaling:
+
+\begin{equation}
+\text{SF}(p) = \log\left(\frac{\max_{i \in \mathcal{P}} n_i}{n_p}\right) + 1
+\end{equation}
+
+\subsubsection{Composite Value Function}
+The final piece value is a weighted linear combination of the above components:
+
+\begin{equation}
+V(p) = \alpha_1 \cdot \text{CDS}(p) + \alpha_2 \cdot \text{SR}(p) + \alpha_3 \cdot S(p) + \alpha_4 \cdot M(p) + \alpha_5 \cdot \text{SF}(p)
+\end{equation}
+
+\noindent where $S(p)$ is the strategic ability bonus, $M(p)$ is the mobility factor, and weights $\alpha = (0.40, 0.25, 0.20, 0.10, 0.05)$ were selected to prioritize combat capability while accounting for strategic factors. Values are normalized such that $V(\text{Scout}) = 1.0$, analogous to the convention in chess where the Pawn serves as the unit of measurement.
+
+\begin{table}[h]
+\centering
+\caption{Computed piece values with associated combat and survival metrics.}
+\label{tab:piece_values}
+\begin{tabular}{lccc}
+\hline
+\textbf{Piece} & \textbf{Value} & \textbf{CDS} & \textbf{SR} \\
+\hline
+Marshal & 8.4 & 0.825 & 0.939 \\
+General & 8.0 & 0.800 & 0.939 \\
+Colonel & 7.5 & 0.750 & 0.879 \\
+Major & 6.7 & 0.675 & 0.788 \\
+Captain & 5.7 & 0.575 & 0.667 \\
+Lieutenant & 4.8 & 0.475 & 0.545 \\
+Miner & 4.3 & 0.400 & 0.273 \\
+Sergeant & 3.8 & 0.375 & 0.424 \\
+Spy & 1.1 & 0.050 & 0.000 \\
+Scout & 1.0 & 0.050 & 0.030 \\
+\hline
+\end{tabular}
+\end{table}
+
+These values inform the material reward component of the reward shaping function described in subsequent sections.
 
 \subsection{Handling Imperfect Information: Probabilistic Belief State (PBS)}
-A key challenge in Stratego is the unknown identity of opponent pieces. To address this, the MARQ system will incorporate a Probabilistic Belief State (PBS). The PBS is a matrix that maintains a probability distribution for the identity of each of the opponent's unrevealed pieces. This belief state is updated throughout the game using two forms of reasoning:
-\begin{itemize}
-\item {Deductive Reasoning:} When a piece interaction occurs, the PBS is updated with absolute certainty. The probabilities of the unknown piece being a Scout, Miner, or Sergeant would be set to 0, and the remaining probabilities are renormalized.
-\item {Inductive Reasoning:} The system infers piece identity from an opponent's behavior. For example, a piece that moves frequently and far is more likely to be a Scout. A piece that moves away from a threat exhibits defensive behavior, slightly increasing the probability that it is a high-value piece like the Flag or Marshal. These behavioral heuristics, based on aggression, defensiveness, and movement patterns, are used to adjust the probabilities in the PBS via Bayesian updates.
+A fundamental challenge in Stratego is the hidden identity of opponent pieces. To address this, the system incorporates a Probabilistic Belief State (PBS), represented as a matrix that maintains a probability distribution over the possible identities of each unrevealed opponent piece. The PBS is updated throughout the game through two complementary reasoning mechanisms.
 
-\item {Real state vs. PBS comparison:} The system compares the  PBS with the real state of the board and can be updated to allign more to the true piece for training. Training will have two stages separated, creating the belief state and later on normalizing the values from the real state to the PBS for a more accurate prediction. The main purpose of the PBS is to create a pseudo-perfect information game out of the imperfect information.
-\end{itemize}
+Deductive reasoning applies when direct piece interactions occur. Upon combat, the identity of the involved pieces becomes known with certainty, and the PBS is updated accordingly. The probability mass previously assigned to eliminated possibilities is redistributed among remaining candidates through renormalization.
+
+Inductive reasoning enables the system to infer piece identity from observed behavior patterns. Pieces exhibiting high mobility and long-range movement are assigned increased probability of being Scouts. Conversely, pieces that retreat from threats or remain stationary near the back rank suggest defensive behavior characteristic of high-value pieces such as the Flag or Marshal. These behavioral heuristics are incorporated through Bayesian updates to the belief distribution.
+
+During training, the PBS is compared against the true game state to provide supervised learning signal. This comparison allows the belief estimation network to be trained toward more accurate predictions. The trained PBS effectively transforms the imperfect information game into an approximate perfect information representation, enabling the application of standard reinforcement learning techniques.
+
 
 \section{Model Training}
 The most time-intensive part of the research. Mainly due to the computation needed by the model to learn both exploration and exploitation. Since we are using a DQN model, the epsilon value in the first few games will be large, making the model have a higher likelihood of choosing random moves to try and explore. Once the epsilon value becomes smaller and smaller the model tends to follow what it thinks will be the optimal move.

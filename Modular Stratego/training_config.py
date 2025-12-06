@@ -21,8 +21,9 @@ PREFETCH_QUEUE_SIZE = 4
 REPLAY_UPDATE_INTERVAL = 4 # Train every 4 steps
 REPLAY_UPDATES_PER_STEP = 1 # Unused in current script
 TARGET_UPDATE_INTERVAL = 5000
+REWARD_SCALE = 1.0  # Scaling factor for reward calculations
 
-# League Settings
+# League Settings (Setup League)
 LEAGUE_INTERVAL = 500 # Run setup league every N episodes
 LEAGUE_GENERATIONS = 3 # Number of generations to evolve per interval
 
@@ -31,7 +32,49 @@ GENERATE_GIFS = False # Whether to generate GIFs of games
 GIF_INTERVAL = 100   # Generate GIF every N episodes (reduced frequency)
 
 # PBS Optimization Settings
-PBS_UPDATE_INTERVAL = 4  # How often to update PBS (every N steps)
+PBS_UPDATE_INTERVAL = 2  # Update PBS every 2 steps (faster inference)
 PBS_SKIP_SIMPLE_MOVES = True  # Skip AAREN for obvious 1-square non-attack moves
 PBS_CACHE_UNCERTAINTY = True  # Cache uncertainty maps until beliefs change
+
+# League Training Settings (Opponent Diversity)
+LEAGUE_TRAINING_ENABLED = True
+LEAGUE_SAVE_INTERVAL = 500      # Save agent to league every N episodes
+LEAGUE_MAX_AGENTS = 50          # Max historical agents to keep
+
+# Opponent Selection Probabilities
+OPPONENT_LEAGUE_PROB = 0.5      # 50% historical opponents
+OPPONENT_RANDOM_PROB = 0.2      # 20% random agent
+OPPONENT_GREEDY_PROB = 0.2      # 20% greedy agent
+OPPONENT_SELF_PROB = 0.1        # 10% self-play
+
+# =============================================================================
+# CURRICULUM LEARNING SETTINGS
+# =============================================================================
+CURRICULUM_ENABLED = True       # Enable 5-phase curriculum learning
+CURRICULUM_START_PHASE = 1      # Start from Phase 1 (or resume from saved state)
+
+# Phase Transition Thresholds
+PHASE_1_WIN_THRESHOLD_RANDOM = 0.90     # 90% win rate vs random
+PHASE_1_WIN_THRESHOLD_HEURISTIC = 0.60  # 60% win rate vs heuristic
+PHASE_2_PBS_ACCURACY_THRESHOLD = 0.70   # 70% PBS prediction accuracy
+PHASE_2_WIN_THRESHOLD = 0.55            # 55% overall win rate
+
+# Phase Episode Limits (min, max)
+PHASE_1_MIN_EPISODES = 500
+PHASE_1_MAX_EPISODES = 2000
+PHASE_2_MIN_EPISODES = 1000
+PHASE_2_MAX_EPISODES = 3000
+PHASE_3_MIN_EPISODES = 2000
+PHASE_3_MAX_EPISODES = 5000
+
+# Scenario Drill Settings (Phase 5)
+SCENARIO_DRILL_INTERVAL = 1000  # Run scenario drills every N episodes during Phase 4
+
+# =============================================================================
+# REWARD SHAPING WEIGHTS
+# =============================================================================
+REWARD_WEIGHT_OUTCOME = 1.0     # Win/Loss terminal reward weight
+REWARD_WEIGHT_MATERIAL = 0.5    # Combat/capture reward weight
+REWARD_WEIGHT_EPISTEMIC = 0.3   # Information gain reward weight
+REWARD_WEIGHT_POSITIONAL = 0.2  # Strategic positioning reward weight
 

@@ -7,12 +7,14 @@ from piece import PieceType
 from battle import BattleResolver
 from dqn_visualizer import DQNMoveVisualizer
 from game_state import GameState
+from training_config import REWARD_SCALE
 
 class StrategoEnvironment:
-    def __init__(self, device, record_game=False, episode_num=None):
+    def __init__(self, device, record_game=False, episode_num=None, full_observability=False):
         self.device = device
         self.record_game = record_game
         self.episode_num = episode_num
+        self.full_observability = full_observability  # For Phase 1 curriculum (cheating mode)
         self.current_player = 1
         self.game_over = False
         self.winner = None
@@ -347,7 +349,7 @@ class StrategoEnvironment:
             return self._get_game_state(), 0.0, True, {"winner": self.winner}
 
         # Check for max turns (draw) - reduced to encourage faster games
-        if self.turn_count >= 800:
+        if self.turn_count >= 1000:
             self.game_over = True
             self.winner = 0
             return self._get_game_state(), -1.0, True, {"winner": 0, "revealed_in_step": [], "game_phase": "end", "turn_count": self.turn_count}
@@ -365,43 +367,40 @@ class StrategoEnvironment:
         moving_piece_value = actual_board[r_from, c_from].item()
         target_piece_value = actual_board[r_to, c_to].item()
         
-        # Calculate reward
-        REWARD_SCALE = 1.0
-        reward = -0.01 * REWARD_SCALE
+        # ============= NORMALIZED REWARD STRUCTURE =============
+        # All rewards normalized to approximately [-1, +1] range
+        # Win/Loss handled separately in train_dqn.py for cleaner gradients
         
-        # Add penalty for repeating moves
+        reward = 0.0
+        
+        # 1. Small step penalty (encourages efficiency, prevents infinite games)
+        reward -= 0.005
+        
+        # 2. Penalty for repeating moves (prevents deadlocks)
         move_penalty = self.dqn_visualizer.get_move_penalty(action, self.current_player)
-        reward += move_penalty * REWARD_SCALE
+        reward += move_penalty * 0.1  # Scale down
         
         # Determine game phase
         game_phase = "early" if self.turn_count < 50 else ("mid" if self.turn_count < 200 else "end")
-        phase_multiplier = 1.2 if game_phase == "early" else (1.0 if game_phase == "mid" else 0.8)
-
-        # 1. IMPROVED: Reward for moving forward
-        row_change = r_to - r_from
-        col_change = abs(c_to - c_from)
-        distance_moved = abs(row_change) + col_change
         
+        # 3. Forward movement reward (scaled by phase)
+        row_change = r_to - r_from
         is_forward = (self.current_player == 1 and row_change < 0) or \
                      (self.current_player == -1 and row_change > 0)
-                     
         if is_forward:
-            forward_reward = (0.05 + (0.02 * min(distance_moved, 3))) * REWARD_SCALE
-            reward += forward_reward * phase_multiplier
+            reward += 0.02 if game_phase == "early" else 0.01
         
-        # 2. NEW: Strategic positioning rewards
+        # 4. Strategic positioning (smaller rewards)
         # Center control (rows 4-5, excluding lakes)
         if 4 <= r_to <= 5:
-            # Check if not lake (hardcoded lake positions for speed)
-            # Lakes: (4,2), (4,3), (5,2), (5,3), (4,6), (4,7), (5,6), (5,7)
             is_lake = (c_to in [2, 3, 6, 7])
             if not is_lake:
-                reward += 0.05 * REWARD_SCALE * phase_multiplier
+                reward += 0.01
         
         # Territory control
         if (self.current_player == 1 and r_to <= 3) or \
            (self.current_player == -1 and r_to >= 6):
-            reward += 0.02 * REWARD_SCALE * phase_multiplier
+            reward += 0.01
         
         # Handle battle or simple move
         if target_piece_value != EMPTY_SQUARE and target_piece_value != LAKE_SQUARE:
@@ -426,72 +425,44 @@ class StrategoEnvironment:
             attacker_rank = abs(moving_piece_value)
             defender_rank = abs(target_piece_value)
             
-            # 3. Penalty for revealing own high-value pieces
-            if attacker_rank >= 8:
-                reveal_penalty = 0.3 * (attacker_rank / 11.0) * REWARD_SCALE
-                reward -= reveal_penalty * phase_multiplier
-            
-            # 4. Reward for revealing enemy high-value pieces
-            if defender_rank >= 8:
-                reveal_reward = 0.3 * (defender_rank / 11.0) * REWARD_SCALE
-                reward += reveal_reward * phase_multiplier
-            
-            # 5. Tactical rewards
+            # 5. Tactical rewards (normalized)
             if attacker_type == PieceType.MINER and defender_type == PieceType.BOMB:
-                reward += 0.5 * REWARD_SCALE * phase_multiplier
+                reward += 0.15  # Miner defuses bomb
             elif attacker_type == PieceType.SPY and defender_type == PieceType.MARSHAL:
-                reward += 1.0 * REWARD_SCALE * phase_multiplier
-            elif attacker_type == PieceType.SCOUT:
-                reward += 0.1 * REWARD_SCALE * phase_multiplier
-                if distance_moved >= 3:
-                    reward += 0.1 * (distance_moved / 8.0) * REWARD_SCALE * phase_multiplier
+                reward += 0.2   # Spy kills Marshal
             
-            # 8. Information Gathering
-            if attacker_rank <= 3 and defender_rank >= 5:
-                reward += 0.2 * (defender_rank / 11.0) * REWARD_SCALE * phase_multiplier
-            
-            # 15. Piece Value Discovery
-            if defender_rank >= 9:
-                was_previously_revealed = (r_to, c_to) in self.revealed_pieces_p1 or \
-                                         (r_to, c_to) in self.revealed_pieces_p2
-                if not was_previously_revealed:
-                    reward += 0.3 * (defender_rank / 11.0) * REWARD_SCALE * phase_multiplier
+            # 6. Information value (discovering enemy pieces)
+            if defender_rank >= 8 and (r_to, c_to) not in self.revealed_pieces_p1:
+                reward += 0.05 * (defender_rank / 11.0)
             
             if result == 1:  # Attacker wins
                 self.board.move_piece(self.current_player, (r_from, c_from), (r_to, c_to))
                 
                 if hasattr(self, '_cached_piece_counts'):
-                    # Piece was captured, update cache
                     self._cached_piece_counts[-self.current_player] = max(0, self._cached_piece_counts[-self.current_player] - 1)
                 
-                # IMPROVED: Better piece value scaling for captures
+                # 7. Capture reward (normalized by piece value)
                 captured_value = abs(target_piece_value)
-                # Scale reward by piece rank (higher rank = more reward)
-                capture_reward = 0.15 * (captured_value / 11.0) * REWARD_SCALE  # Normalized to 0-1.5 (was 0-0.15)
-                reward += capture_reward * phase_multiplier
+                reward += 0.1 + 0.05 * (captured_value / 11.0)
                 
+                # Bonus for favorable trades
                 value_diff = defender_rank - attacker_rank
                 if value_diff > 0:
-                    reward += 0.2 * (value_diff / 11.0) * REWARD_SCALE * phase_multiplier
-                elif value_diff < 0:
-                    reward -= 0.15 * (abs(value_diff) / 11.0) * REWARD_SCALE * phase_multiplier
-                else:
-                    reward += 0.05 * REWARD_SCALE * phase_multiplier
+                    reward += 0.05 * (value_diff / 11.0)
                 
-                # Track exchange: attacker captured enemy piece
-                # Store temporarily to record after turn increment
                 if not hasattr(self, '_pending_exchanges'):
                     self._pending_exchanges = []
                 self._pending_exchanges.append(self.current_player)
                 
+                # Flag capture = WIN
                 if defender_type == PieceType.FLAG:
                     self.game_over = True
                     self.winner = self.current_player
-                    reward += 50.0
+                    reward += 1.0  # Normalized win reward (main reward comes from train_dqn.py)
                     if hasattr(self, '_flag_positions'):
                         self._flag_positions[-self.current_player] = None
                         
-            elif result == -1:  # Defender wins
+            elif result == -1:  # Defender wins (attacker loses piece)
                 actual_board[r_from, c_from] = EMPTY_SQUARE
                 if self.current_player == 1:
                     self.board.visible_board_p1[r_from, c_from] = EMPTY_SQUARE
@@ -503,11 +474,8 @@ class StrategoEnvironment:
                 if hasattr(self, '_cached_piece_counts'):
                     self._cached_piece_counts[self.current_player] = max(0, self._cached_piece_counts[self.current_player] - 1)
                 
-                loss_penalty = 0.15 * (attacker_rank / 11.0) * REWARD_SCALE
-                if game_phase == "end":
-                    reward -= 0.3 * (attacker_rank / 11.0) * REWARD_SCALE
-                else:
-                    reward -= loss_penalty * phase_multiplier
+                # 8. Loss penalty (normalized by piece value)
+                reward -= 0.1 + 0.05 * (attacker_rank / 11.0)
                 
                 self._pending_loss = (self.current_player, attacker_rank, False)
                 
@@ -515,10 +483,9 @@ class StrategoEnvironment:
                     self._pending_exchanges = []
                 self._pending_exchanges.append(-self.current_player)
                 
-            else:  # Draw
+            else:  # Both pieces die (mutual destruction)
                 actual_board[r_from, c_from] = EMPTY_SQUARE
                 actual_board[r_to, c_to] = EMPTY_SQUARE
-                # Update visible boards (simplified for brevity, assume helper or direct update)
                 for p_board in [self.board.visible_board_p1, self.board.visible_board_p2]:
                     p_board[r_from, c_from] = EMPTY_SQUARE
                     p_board[r_to, c_to] = EMPTY_SQUARE
@@ -532,31 +499,35 @@ class StrategoEnvironment:
                 self._pending_exchanges.append(self.current_player)
                 self._pending_exchanges.append(-self.current_player)
                 
+                # 9. Mutual destruction penalty (both lose pieces)
+                reward -= 0.05 + 0.03 * (attacker_rank / 11.0)
+                
                 if not hasattr(self, '_pending_losses'):
                     self._pending_losses = []
                 self._pending_losses.append((self.current_player, attacker_rank, True))
                 self._pending_losses.append((-self.current_player, defender_rank, True))
                 
         else:
-            # Simple move
+            # Simple move (no battle)
             self.board.move_piece(self.current_player, (r_from, c_from), (r_to, c_to))
             
+            # 10. Moving high-value pieces (small bonus in endgame)
             moving_rank = abs(moving_piece_value)
-            if moving_rank >= 8:
-                reward += 0.05 * (moving_rank / 11.0) * REWARD_SCALE * phase_multiplier
+            if game_phase == "end" and moving_rank >= 8:
+                reward += 0.01
             
+            # 11. Approaching enemy flag (endgame)
             if game_phase == "end":
-                enemy_flag_pos = self._flag_positions[-self.current_player] if hasattr(self, '_flag_positions') else None
+                enemy_flag_pos = self._flag_positions.get(-self.current_player) if hasattr(self, '_flag_positions') else None
                 if enemy_flag_pos:
                     dist_after = abs(r_to - enemy_flag_pos[0]) + abs(c_to - enemy_flag_pos[1])
                     dist_before = abs(r_from - enemy_flag_pos[0]) + abs(c_from - enemy_flag_pos[1])
                     if dist_after < dist_before:
-                        reward += 0.5 * REWARD_SCALE
+                        reward += 0.03
                     if dist_after < 3:
-                        reward += 0.3 * REWARD_SCALE
+                        reward += 0.02
             
-            # 9. NEW: Tactical Support (Vectorized 3x3 check)
-            # Extract 3x3 patch around target
+            # 12. Tactical Support (being near friendly pieces)
             r_min, r_max = max(0, r_to-1), min(BOARD_SIZE, r_to+2)
             c_min, c_max = max(0, c_to-1), min(BOARD_SIZE, c_to+2)
             patch = actual_board[r_min:r_max, c_min:c_max]
@@ -566,47 +537,17 @@ class StrategoEnvironment:
             else:
                 friendly_count = torch.sum(patch < 0).item()
             
-            # Subtract self (which is now at r_to, c_to)
             friendly_count = max(0, friendly_count - 1)
             
+            # Small bonus for tactical grouping
             if friendly_count >= 2:
-                reward += 0.1 * min(friendly_count / 3.0, 1.0) * REWARD_SCALE * phase_multiplier
-            
-            # 13. Bomb Protection (Vectorized)
-            # Check adjacent bombs
-            if moving_rank >= 5:
-                bomb_val = PieceType.BOMB.value
-                if self.current_player == 1:
-                    adj_bombs = torch.sum(patch == bomb_val).item()
-                else:
-                    adj_bombs = torch.sum(patch == -bomb_val).item()
-                
-                if adj_bombs > 0:
-                    reward += 0.1 * adj_bombs * REWARD_SCALE * phase_multiplier
+                reward += 0.01 * min(friendly_count / 3.0, 1.0)
 
         self.turn_count += 1
         self.move_history.append(action)
         
-        # 10. Piece Economy (Vectorized)
-        if self.turn_count % 10 == 0:
-            if not hasattr(self, '_previous_piece_value'):
-                self._previous_piece_value = {1: 0, -1: 0}
-            
-            # Vectorized sum
-            p1_val = torch.sum(torch.abs(actual_board[(actual_board > 0) & (actual_board != LAKE_SQUARE)])).item()
-            p2_val = torch.sum(torch.abs(actual_board[(actual_board < 0) & (actual_board != LAKE_SQUARE)])).item()
-            
-            curr_val = p1_val if self.current_player == 1 else p2_val
-            prev_val = self._previous_piece_value[self.current_player]
-            
-            val_change = curr_val - prev_val
-            if val_change > 0:
-                reward += 0.15 * (val_change / 50.0) * REWARD_SCALE
-            elif val_change < -5:
-                reward -= 0.2 * (abs(val_change) / 50.0) * REWARD_SCALE
-                
-            self._previous_piece_value[1] = p1_val
-            self._previous_piece_value[-1] = p2_val
+        # 13. Clamp reward to normalized range
+        reward = max(-1.0, min(1.0, reward))
 
         # 11. Stalemate Prevention
         if not hasattr(self, '_previous_move_count'):
@@ -617,7 +558,7 @@ class StrategoEnvironment:
         prev_moves = self._previous_move_count.get(self.current_player, avail_moves)
         
         if avail_moves < prev_moves * 0.5 and prev_moves > 0:
-            reward -= 0.05 * REWARD_SCALE * phase_multiplier
+            reward -= 0.05 * REWARD_SCALE
             
         self._previous_move_count[self.current_player] = avail_moves
         
@@ -671,30 +612,33 @@ class StrategoEnvironment:
             if not self.get_valid_moves():
                 self.game_over = True
                 self.winner = -self.current_player # Player who cannot move loses
-        # Smart draw detection (relaxed to allow more decisive games)
-        if self.turn_count > 800:  # Increased from 400 to 800 moves before checking (gives more time for decisive play)
-            # Check for repetitive positions (same piece arrangement)
+        
+        # Early draw detection (start checking after 100 turns to catch deadlocks faster)
+        if self.turn_count > 100:
+            # Check for repetitive positions (aggressive check)
             if self._is_position_repetitive():
                 self.game_over = True
                 self.winner = 0
                 return
-            # Check for minimal piece movement (stalemate)
+        
+        # Stalemate check (after 200 turns - few pieces moving)
+        if self.turn_count > 200:
             if self._is_stalemate():
                 self.game_over = True
                 self.winner = 0
                 return
-        # Ultimate limit (increased to allow longer games)
-        if self.turn_count > 1500:  # Increased from 1000 to 1500
+        
+        # Hard limit (1000 turns = draw)
+        if self.turn_count >= 1000:
             self.game_over = True
             self.winner = 0
             
     def _is_position_repetitive(self):
-        # Check if the same position has occurred multiple times
-        if len(self.move_history) < 10:
+        # Check if the same position has occurred multiple times (aggressive detection)
+        if len(self.move_history) < 6:
             return False
-        # Simple check: last 10 moves are mostly back-and-forth
-        recent_moves = self.move_history[-10:]
-        # Count how many moves are reversals of previous moves
+        # Check last 6 moves for back-and-forth patterns (deadlock)
+        recent_moves = self.move_history[-6:]
         reversal_count = 0
         for i in range(1, len(recent_moves)):
             current_move = recent_moves[i]
@@ -702,7 +646,7 @@ class StrategoEnvironment:
             if (current_move[0] == previous_move[1] and 
                 current_move[1] == previous_move[0]):
                 reversal_count += 1
-        return reversal_count >= 3  # 3 or more reversals indicate stalemate
+        return reversal_count >= 2  # 2 reversals in 6 moves = deadlock
 
     def _is_stalemate(self):
         # Check if very few pieces are moving
@@ -717,9 +661,14 @@ class StrategoEnvironment:
         return len(moved_pieces) <= 3
             
     def _get_game_state(self) -> GameState:
+        # Use actual board if full_observability enabled (Phase 1 curriculum)
+        if self.full_observability:
+            board = self.board.actual_board
+        else:
+            board = self.board.get_visible_board(self.current_player)
 
         game_state = GameState(
-            board=self.board.get_visible_board(self.current_player),
+            board=board,
             current_player=self.current_player,
             turn_count=self.turn_count,
             game_over=self.game_over,
@@ -733,3 +682,7 @@ class StrategoEnvironment:
         # clone() is necessary here to avoid reference issues when board changes
         game_state.actual_board = self.board.actual_board.clone()
         return game_state
+    
+    def set_full_observability(self, enabled: bool):
+        """Set full observability mode (for curriculum Phase 1)."""
+        self.full_observability = enabled

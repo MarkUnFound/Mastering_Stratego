@@ -559,6 +559,256 @@ A turn consists of moving one piece to an adjacent, unoccupied square (except Sc
     \label{fig:stratego_tech}
 \end{figure}
 
+\section{League Training Implementation}
+
+The league training system maintains a collection of historical agent checkpoints, enabling training against diverse opponents that represent different strategic approaches discovered during training. This prevents policy cycling and ensures generalization.
+
+\subsection{League Manager Architecture}
+The \texttt{LeagueManager} class persists agent checkpoints as PyTorch state dictionaries, storing both the network weights and episode metadata. The league capacity is capped at $N_{max} = 50$ agents; when this limit is exceeded, the oldest checkpoint is removed. New checkpoints are saved every 500 episodes, ensuring that distinct strategic eras are captured without excessive storage overhead.
+
+Opponent selection follows a configurable probability distribution during training:
+\begin{equation}
+P(\text{opponent}) = \begin{cases}
+0.5 & \text{League (historical agents)} \\
+0.2 & \text{Random agent} \\
+0.2 & \text{Greedy heuristic} \\
+0.1 & \text{Self-play (current weights)}
+\end{cases}
+\end{equation}
+
+\subsection{Opponent Pool Dynamics}
+The \texttt{OpponentPool} class implements the opponent selection logic. At each episode, a uniform random value $r \in [0, 1)$ determines which opponent type is selected. If the league is non-empty and $r < P_{league}$, an agent is sampled uniformly from the historical pool. Otherwise, the random agent, greedy heuristic, or current self are selected based on the cumulative probability thresholds.
+
+\begin{equation}
+\text{select\_opponent()} = \begin{cases}
+\text{Uniform}(\mathcal{L}) & \text{if } |\mathcal{L}| > 0 \land r < P_{league} \\
+\pi_{random} & \text{if } r < P_{league} + P_{random} \\
+\pi_{greedy} & \text{if } r < P_{league} + P_{random} + P_{greedy} \\
+\pi_{self} & \text{otherwise}
+\end{cases}
+\end{equation}
+
+\subsection{Exploiter Agents}
+Three specialized exploiter agents probe specific weaknesses. The \textbf{RusherAgent} prioritizes aggressive forward advancement, adding $+0.5$ to Q-values for each row moved toward the opponent and $+1.0$ for any attack action. The \textbf{TurtleAgent} implements a defensive stance with a $-2.0$ penalty for attacks and $+0.3$ bonus for remaining in the player's starting territory (rows 6-9 for Player 1). The \textbf{FlankingAgent} focuses on the board edges, adding $+0.4$ for moves in columns 0-2 or 7-9, while penalizing central columns 3-6 by $-0.2$. These exploiters are introduced during Phase 4 to verify the main agent handles diverse playstyles.
+
+\section{Reward Shaping Module}
+
+The \texttt{RewardCalculator} class computes multi-component rewards with configurable weights. The default configuration assigns weight $1.0$ to game outcomes, $0.5$ to material exchanges, $0.3$ to information gain, and $0.2$ to positional advantage.
+
+\subsection{Material Reward}
+Combat outcomes generate material rewards scaled by piece rank. When the attacking piece wins, it receives a base reward of $+0.5$ plus an additional $0.05 \times \frac{\text{captured\_rank}}{11}$, proportional to the captured piece's value. Losing an attack incurs $-0.3$ minus a rank-scaled penalty. Mutual destruction results in zero material reward.
+
+\begin{equation}
+R_{material} = \begin{cases}
++0.5 + 0.05 \times \frac{\text{captured\_rank}}{11} & \text{if attacker wins} \\
+-0.3 - 0.05 \times \frac{\text{lost\_rank}}{11} & \text{if defender wins} \\
+0 & \text{if mutual destruction}
+\end{cases}
+\end{equation}
+
+Special cases receive fixed bonuses: Miners defusing Bombs earn $R_{special} = +0.5$, Spies assassinating the Marshal earn $+1.0$, and capturing the Flag yields the terminal reward $R_{terminal} = +10.0$.
+
+\subsection{Epistemic Reward}
+Information gain is quantified as the reduction in belief entropy when pieces are revealed:
+
+\begin{equation}
+R_{epistemic} = \sum_{pos \in \text{revealed}} \left( H_{before}(\mathcal{B}_{pos}) - H_{after}(\mathcal{B}_{pos}) \right)
+\end{equation}
+
+where $H(\mathcal{B}) = -\sum_{t} \mathcal{B}[t] \log \mathcal{B}[t]$ is the Shannon entropy of the belief distribution. Additional small rewards are given for Scout identification via multi-square movement ($+0.02$), Bomb discovery through failed attacks ($+0.03$), and narrowing the probable Flag location ($+0.05$).
+
+\subsection{Positional Reward (PBRS)}
+Potential-based reward shaping (PBRS) provides dense feedback while preserving optimal policy invariance. The reward is computed as the discounted difference in state potential:
+
+\begin{equation}
+R_{positional} = \gamma \Phi(s') - \Phi(s)
+\end{equation}
+
+The potential function $\Phi(s)$ combines three terms: the negative Manhattan distance from friendly pieces to the enemy Flag region (encouraging advancement), a bonus of $+0.01$ per piece occupying central columns 3-6 (rewarding board control), and $+0.05$ for Miners positioned near suspected Bomb locations (facilitating defusal):
+
+\begin{equation}
+\Phi(s) = w_1 \cdot \text{FlagDistance}(s) + w_2 \cdot \text{CenterControl}(s) + w_3 \cdot \text{MinerPosition}(s)
+\end{equation}
 
 
+\section{Information Hiding Architecture}
+
+The environment maintains separate board tensors to enforce Stratego's hidden information constraints.
+
+\subsection{Board Representation}
+Three tensors represent the game state: \texttt{actual\_board} contains the ground truth with all piece values, while \texttt{visible\_board\_p1} and \texttt{visible\_board\_p2} store each player's observed state. Enemy pieces appear as a constant \texttt{HIDDEN\_PIECE = -20} in visible boards, encoding the presence of an opponent piece without revealing its rank.
+
+\subsection{Observation Function}
+The game state returned to agents depends on the training mode. During curriculum Phase 1, full observability is enabled and agents receive the actual board. In all other phases, agents receive their player-specific visible board:
+\begin{equation}
+\mathcal{O}_{player}(s) = \begin{cases}
+s_{actual} & \text{if full\_observability} \\
+s_{visible}^{player} & \text{otherwise}
+\end{cases}
+\end{equation}
+
+Each cell in the visible board is set according to:
+\begin{equation}
+s_{visible}^{player}[r,c] = \begin{cases}
+s_{actual}[r,c] & \text{if own piece or previously revealed} \\
+\text{HIDDEN} & \text{if unrevealed enemy piece} \\
+\text{EMPTY} & \text{if empty square} \\
+\text{LAKE} & \text{if lake square}
+\end{cases}
+\end{equation}
+
+\subsection{Piece Revelation}
+When a battle occurs, the \texttt{reveal\_pieces} function updates both visible boards simultaneously:
+\begin{equation}
+\text{reveal\_pieces}(pos_1, pos_2) \rightarrow \begin{cases}
+s_{visible}^{p1}[pos_1] \leftarrow s_{actual}[pos_1] \\
+s_{visible}^{p1}[pos_2] \leftarrow s_{actual}[pos_2] \\
+s_{visible}^{p2}[pos_1] \leftarrow s_{actual}[pos_1] \\
+s_{visible}^{p2}[pos_2] \leftarrow s_{actual}[pos_2]
+\end{cases}
+\end{equation}
+
+Revelations are permanent and tracked for PBS updates.
+
+\section{PBS Update on Piece Revelation}
+
+When a battle reveals a piece's true type, the PBS synchronizes with ground truth through several update steps.
+
+\subsection{Belief Collapse}
+Upon revealing piece type $g$ at position $pos$, the belief distribution collapses to certainty:
+\begin{equation}
+\mathcal{B}_{pos}[t] = \begin{cases}
+1.0 & \text{if } t = g \\
+0.0 & \text{otherwise}
+\end{cases}
+\end{equation}
+
+\subsection{Constraint Propagation}
+The revealed piece count is incremented, and remaining beliefs are adjusted to respect piece count constraints. For unrevealed positions $p \neq pos$:
+\begin{equation}
+\mathcal{B}_p[t] \leftarrow \mathcal{B}_p[t] \cdot \frac{\text{max\_count}[t] - \text{revealed\_count}[t]}{\text{remaining\_count}[t]}
+\end{equation}
+
+For example, when the single Marshal is revealed, the probability of any other piece being a Marshal drops to zero.
+
+\subsection{Training Data Collection}
+Each revelation generates a supervised training example for AAREN. The action sequence observed for the now-revealed piece becomes a labeled sample:
+\begin{equation}
+\mathcal{D}_{AAREN} \leftarrow \mathcal{D}_{AAREN} \cup \{(\text{action\_sequence}_{pos}, g, pos)\}
+\end{equation}
+
+\section{Curriculum Learning}
+
+Training is organized into five phases that progressively introduce complexity, starting with simplified conditions and advancing to full league training.
+
+\subsection{Phase 1: Full Observability}
+The agent initially trains with \texttt{full\_observability = True}, allowing it to see all piece values. This removes uncertainty and enables learning of basic game mechanics: piece movement rules, combat outcomes, and tactical patterns. Opponents consist of random agents (60\%) and heuristic policies (40\%). Training continues for 500 to 2000 episodes until the agent achieves $\geq 90\%$ win rate against random and $\geq 60\%$ against heuristic.
+
+\subsection{Phase 2: Partial Observability}
+Observability is disabled (\texttt{full\_observability = False}), requiring the agent to rely on the PBS for hidden pieces. The opponent is a frozen heuristic agent, providing a stable training target. This phase runs for 1000 to 3000 episodes, with transition requiring PBS accuracy $\geq 70\%$ and win rate $\geq 55\%$.
+
+\subsection{Phase 3: Self-Play}
+The agent trains against a delayed copy of itself (from 500 episodes prior), discovering novel strategies through iterated self-improvement. This phase runs 2000 to 5000 episodes, transitioning when the win rate variance falls below 0.1, indicating strategic stability.
+
+\subsection{Phase 4: League Training}
+The full opponent distribution is activated: league agents (50\%), random (20\%), greedy heuristic (20\%), and self-play (10\%). The exploiter agents (Rusher, Turtle, Flanking) are periodically introduced to probe for weaknesses. This is the main training phase, running for 5000+ episodes.
+
+\subsection{Phase 5: Scenario Drills}
+Every 1000 episodes during Phase 4, specialized board configurations are initialized for targeted training: Miner vs Bomb defusal patterns, Marshal tracking and elimination, and endgame Flag search. These drills reinforce specific tactical skills that may be underrepresented in normal games.
+
+The phase transition logic follows:
+\begin{equation}
+\text{Transition}(phase) = (\text{episodes} \geq \text{min}) \land (\text{metrics} \geq \text{thresholds})
+\end{equation}
+
+
+
+\section{Reward Shaping}
+
+The reward function has four components:
+
+\subsection{Material Rewards (Combat Signal)}
+Combat outcomes are weighted by piece strategic value:
+\begin{equation}
+R_{material} = w_{capture} \cdot \text{CaptureReward} + w_{loss} \cdot \text{LossPenalty} + w_{special} \cdot \text{SpecialBonus}
+\end{equation}
+
+Special bonuses include:
+\begin{itemize}
+    \item Miner vs Bomb: $+0.5$ (strategic bomb defusal)
+    \item Spy vs Marshal: $+1.0$ (high-value assassination)
+    \item Favorable trade: $+0.1 \times (V_{captured} - V_{lost})$
+\end{itemize}
+
+\subsection{Epistemic Rewards (Information Signal)}
+Information gain is measured through entropy reduction:
+\begin{equation}
+R_{epistemic} = \alpha \cdot \Delta H(\mathcal{B}) + \beta \cdot \text{ScoutDeduction} + \gamma \cdot \text{BombIdentification}
+\end{equation}
+
+where:
+\begin{equation}
+\Delta H(\mathcal{B}) = H(\mathcal{B}_{t-1}) - H(\mathcal{B}_t)
+\end{equation}
+
+Scout identification provides immediate entropy reduction when multi-square movement is observed.
+
+\subsection{Positional Rewards (Potential-Based Reward Shaping)}
+Territorial control is rewarded through potential-based reward shaping (PBRS):
+\begin{equation}
+R_{positional} = \gamma \Phi(s') - \Phi(s)
+\end{equation}
+
+where the potential function $\Phi(s)$ includes:
+\begin{itemize}
+    \item Flag proximity: Manhattan distance to opponent flag region
+    \item Center control: Bonus for pieces near board center
+    \item Miner positioning: Reward for Miners near suspected bombs
+\end{itemize}
+
+PBRS guarantees that the optimal policy remains unchanged while providing denser learning signals.
+
+\subsection{Prediction Auxiliary Rewards}
+Auxiliary tasks provide additional learning signals:
+\begin{equation}
+R_{prediction} = \lambda_{piece} \cdot \text{PieceTypeAccuracy} + \lambda_{outcome} \cdot \text{BattleOutcomePrediction}
+\end{equation}
+
+These rewards improve representation learning without affecting the primary game objective.
+
+\subsection{Composite Reward Function}
+The total reward combines all components with configurable weights:
+\begin{equation}
+R_{total} = w_o \cdot R_{outcome} + w_m \cdot R_{material} + w_e \cdot R_{epistemic} + w_p \cdot R_{positional}
+\end{equation}
+
+Default weights are: $w_o = 1.0$, $w_m = 0.5$, $w_e = 0.3$, $w_p = 0.2$.
+
+\section{Parallel Environment Architecture}
+
+MARQ utilizes parallel environment execution to accelerate training through batch processing.
+
+\subsection{Worker Process Design}
+Each environment runs in a separate process to avoid Python GIL limitations:
+\begin{equation}
+\text{ParallelEnv} = \{E_1, E_2, \ldots, E_N\}
+\end{equation}
+
+Workers communicate via pipes, receiving commands and returning game states.
+
+\subsection{Observability Control}
+The parallel environment supports dynamic observability switching for curriculum learning:
+\begin{equation}
+\text{set\_full\_observability}(enabled) \rightarrow \forall_{i} E_i.\text{full\_observability} \leftarrow enabled
+\end{equation}
+
+This allows seamless transition between curriculum phases during training.
+
+\subsection{Batch Processing}
+Actions, states, and PBS updates are processed in batches:
+\begin{equation}
+\text{step\_batch}(\mathbf{a}) \rightarrow (\mathbf{s}', \mathbf{r}, \mathbf{d}, \mathbf{info})
+\end{equation}
+
+where vectors represent parallel environment states, enabling efficient GPU utilization.
 
