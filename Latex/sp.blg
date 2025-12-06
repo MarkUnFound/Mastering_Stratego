@@ -23,23 +23,22 @@ Reallocating 'name_of_file' (item size: 1) to 11 items.
 Reallocating 'name_of_file' (item size: 1) to 14 items.
 A level-1 auxiliary file: misc/vita.aux
 Database file #1: references.bib
-Warning--there's a number but no series in alphabe
 You've used 42 entries,
             2030 wiz_defined-function locations,
-            780 strings with 13434 characters,
-and the built_in function-call counts, 17362 in all, are:
+            781 strings with 13436 characters,
+and the built_in function-call counts, 17361 in all, are:
 = -- 1618
 > -- 990
 < -- 0
 + -- 392
 - -- 346
-* -- 1400
+* -- 1399
 := -- 2710
 add.period$ -- 48
 call.type$ -- 42
 change.case$ -- 295
 chr.to.int$ -- 0
-cite$ -- 43
+cite$ -- 42
 duplicate$ -- 763
 empty$ -- 1158
 format.name$ -- 346
@@ -49,11 +48,11 @@ int.to.str$ -- 42
 missing$ -- 41
 newline$ -- 135
 num.names$ -- 88
-pop$ -- 301
+pop$ -- 302
 preamble$ -- 1
 purify$ -- 253
 quote$ -- 0
-skip$ -- 632
+skip$ -- 633
 stack$ -- 0
 substring$ -- 954
 swap$ -- 334
@@ -61,8 +60,7 @@ text.length$ -- 0
 text.prefix$ -- 0
 top$ -- 0
 type$ -- 166
-warning$ -- 1
+warning$ -- 0
 while$ -- 151
 width$ -- 44
 write$ -- 395
-(There was 1 warning)

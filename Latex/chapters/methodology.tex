@@ -114,11 +114,26 @@ During training, the PBS is compared against the true game state to provide supe
 
 
 \section{Model Training}
-The most time-intensive part of the research. Mainly due to the computation needed by the model to learn both exploration and exploitation. Since we are using a DQN model, the epsilon value in the first few games will be large, making the model have a higher likelihood of choosing random moves to try and explore. Once the epsilon value becomes smaller and smaller the model tends to follow what it thinks will be the optimal move.
 
-The state representation provided to the DQN is crucial. It will be a multi-channel tensor including: (1) the location of the player's pieces, (2) the location of known opponent pieces, and (3) the complete Probabilistic Belief State (PBS) for all unknown pieces. 
+Training the MARQ agent is computationally intensive due to the large state-action space and the need to learn accurate belief state representations over extended game histories.
 
-Every 100 episodes, the target model or history model will be synced from the policy network, along with the memory replay by the AAREN.
+\paragraph{Rainbow DQN Architecture.}
+MARQ employs a Rainbow DQN architecture that integrates several algorithmic improvements over the standard DQN. The implementation includes Categorical DQN (C51) for distributional value estimation with 51 atoms over the range $[V_{min}, V_{max}] = [-10, 10]$, Noisy Networks for learned exploration (replacing $\epsilon$-greedy), and Dueling Network Architecture separating state value and action advantage estimation. The noisy linear layers inject state-dependent stochasticity, enabling the agent to learn appropriate exploration levels for different game situations without manual scheduling.
+
+\paragraph{Network Structure.}
+The Q-network processes a 27-channel state tensor through a convolutional encoder followed by dueling streams. The state representation consists of 12 channels for PBS belief distributions (one per piece type), plus additional channels encoding the player's known pieces, board validity masks, and positional features. The AAREN module uses 24-dimensional action feature vectors, 64 hidden units, and 3 layers to process action histories and output piece type probability distributions.
+
+\paragraph{Training Hyperparameters.}
+The training configuration uses the following key parameters: learning rate $\alpha = 0.0001$ with Adam optimizer, discount factor $\gamma = 0.99$, batch size of 32 transitions, replay buffer capacity of 100,000 transitions, and target network synchronization every 5,000 steps. The PBS is updated every 2 steps to balance inference accuracy with computational efficiency. Training proceeds for 35,000 episodes with model checkpoints saved every 250 episodes.
+
+\paragraph{League-Based Training.}
+To prevent policy cycling and ensure robustness, the agent trains against a diverse opponent pool. The opponent selection distribution allocates 50\% to historical league agents, 20\% to random agents, 20\% to greedy heuristic agents, and 10\% to self-play. Agent checkpoints are added to the league every 500 episodes, with a maximum pool size of 50 historical agents.
+
+\paragraph{Curriculum Learning.}
+Training follows a five-phase curriculum of increasing complexity. Phase 1 (Full Observability) allows the agent to see all piece identities, learning basic game mechanics against random and heuristic opponents for 500--2,000 episodes until achieving $\geq$90\% win rate against random. Phase 2 (Partial Observability) disables full observability, requiring reliance on PBS predictions for 1,000--3,000 episodes until PBS accuracy reaches $\geq$70\%. Phase 3 (Self-Play) trains against a delayed copy of the agent for 2,000--5,000 episodes to discover novel strategies. Phase 4 (League Training) activates the full opponent distribution for 5,000+ episodes. Phase 5 (Scenario Drills) introduces specialized board configurations every 1,000 episodes for targeted skill training.
+
+\paragraph{Reward Shaping Weights.}
+The composite reward function uses configurable weights: outcome reward $w_o = 1.0$, material reward $w_m = 0.5$, epistemic reward $w_e = 0.3$, and positional reward $w_p = 0.2$. These weights prioritize terminal outcomes while providing dense learning signals through intermediate rewards.
 
 \begin{figure}[htbp]
 \centering
@@ -140,34 +155,16 @@ The deployed system will function as the complete application used during the us
     \label{fig:Sequence Diagram}
 \end{figure}
 
-In the figure above, the player starts the game and the loop begins until either the player wins by getting the flag of the agent or loses if the agent reaches the player's flag. The agent gets the current position and sends it to AAREN, constructing the possible positions of the board. After getting the PBS, it is then used to calculate the possible moves and actions that can be taken by the DeepCFR. Once the DeepCFR calculates pieces that are possible to have moves, it is then the role of the DQN to formalize a strategy to be used. 
+In the figure above, the player starts the game and the loop begins until either the player wins by capturing the opponent's flag or loses if the agent captures the player's flag. The agent receives the current board state and updates the AAREN module, which constructs the PBS representing the probability distribution over hidden piece identities. The DQN then evaluates Q-values for all legal actions given this belief-enhanced state representation and selects the action with the highest expected value.
 \section{Evaluation}
+
 A comprehensive evaluation approach combining quantitative and qualitative methods will be used to assess the MARQ system's performance and the user experience.
 
-\subsection{Quantitative Analysis}
-The quantitative assessment of the model's performance is conducted through the Evaluation component. Key metrics are tracked to gauge learning progress and strategic capability. Primary analytics include:
-\begin{itemize}
-\item {Win Rate\%}: The percentage of games won against human participants.
-\item {Average Game Length}: The mean number of moves or duration of games, indicating game efficiency.
-\item {Decision-Making Speed}: The average time taken by the agent to select an action.
-\item {Loss Curves}: The progression of policy and value loss over training time, indicating the stability of the learning process.
-\item {Player Performance over Time}: To evaluate the "synchronized learning" environment, a two-tailed paired t-test will be used. This will determine if there is a statistically significant difference in gameplay metrics (e.g., difference in remaining pieces) between a player's first and last games, assessing if human players improve against the AI.
+\paragraph{Quantitative Analysis.}
+The quantitative assessment of the model's performance tracks several key metrics to gauge learning progress and strategic capability. Win rate percentage measures the proportion of games won against human participants. Average game length, computed as the mean number of moves per game, indicates decision efficiency. Decision-making speed records the average time taken by the agent to select an action. Training stability is assessed through loss curves showing the progression of distributional and value losses over training episodes. To evaluate the synchronized learning environment, a two-tailed paired t-test will determine if there is a statistically significant difference in gameplay metrics between a player's first and last games, assessing whether human players improve against the AI. The results from Likert-scale questions will be analyzed using a weighted mean to derive a quantitative score for each dimension of user acceptance.
 
-The results from the Likert-scale questions will be analyzed using a weighted mean to derive a quantitative score for each dimension of user acceptance.
-\end{itemize}
+\paragraph{Qualitative Analysis.}
+To assess end-user opinion on usability, a usability testing session will gather participant feedback through an evaluation form evaluating three key dimensions. Performance assessment examines the agent's speed, consistency, and perceived strategic competence. Usability evaluation considers the ease of use, intuitiveness of the interface, and overall user experience. Relevance gauges the AI's value as a strategic training tool and its potential for helping players learn Stratego.
 
-\subsection{Qualitative Analysis}
-To assess the end-user opinion on usability, a usability testing session will focus on gathering participant feedback through an evaluation form. The form will evaluate three key dimensions:
-\begin{itemize}
-\item {Performance:} Assessing the agent's speed, consistency, and perceived strategic competence.
-\item {Usability:} Evaluating the ease of use, intuitiveness of the interface, and overall user experience.
-\item {Relevance:} Gauging the AI's value as a strategic tool and its potential for helping players learn Stratego.
-\end{itemize}
-
-
-\subsection{Model Version History}
-The development of MARQ is an iterative process. Each model version represents a snapshot of this evolution, performance metrics, and reliability. 
-
-\subsection{Initial Training}
-
-Under Appendix B are the initial training results of 1000 training cycles or episodes. We can see that the early training phase is not yet refined due to the agent being in the exploratory phase, ready to search and find an exploitable strategy. The reward indicates that it is having a hard time finding a good strategy to fight against the other agent. The win-rate stayed to a draw due to the agents being on an endless loop of moving pieces back in forth. Another issue is that the agent has reduced epsilon, making the moves deterministic, and only picking the "best move" with the highest q-value. 
+\paragraph{Model Iteration and Initial Results.}
+The development of MARQ is an iterative process where each model version represents a snapshot of the system's evolution. Appendix B presents initial training results from 1,000 episodes. During this early phase, the agent remains in an exploratory state, searching for exploitable strategies. The reward signal indicates difficulty in discovering effective tactics against the opponent. Early win rates reflect frequent draws caused by repetitive piece movements. With the transition to Noisy Networks, the agent's stochasticity is learned rather than scheduled, allowing more adaptive exploration throughout training.

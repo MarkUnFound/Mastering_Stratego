@@ -24,67 +24,58 @@
 \contentsline {section}{\numberline {3.1}MARQ Architecture Integration}{15}{}%
 \contentsline {subsection}{\numberline {3.1.1}Convergence and Theoretical Guarantees}{16}{}%
 \contentsline {section}{\numberline {3.2}MARQ Policy Definition}{16}{}%
-\contentsline {subsection}{\numberline {3.2.1}Core Policy Framework}{16}{}%
+\contentsline {subsection}{\numberline {3.2.1}Core Policy Framework}{18}{}%
 \contentsline {subsubsection}{PBS-to-Reality Optimization}{18}{}%
-\contentsline {paragraph}{Belief Calibration Loss}{18}{}%
-\contentsline {subsection}{\numberline {3.2.2}Bellman Equation}{18}{}%
-\contentsline {subsection}{\numberline {3.2.3}Nash Equilibrium in Imperfect Information}{19}{}%
-\contentsline {subsection}{\numberline {3.2.4}Implementation Framework}{19}{}%
-\contentsline {subsection}{\numberline {3.2.5}Convergence Properties}{19}{}%
-\contentsline {section}{\numberline {3.3}Multi-Piece Coordination and Pattern Recognition}{19}{}%
-\contentsline {subsection}{\numberline {3.3.1}Coordination Pattern Detection}{19}{}%
-\contentsline {subsection}{\numberline {3.3.2}Pattern-Based Belief Updates}{20}{}%
-\contentsline {subsection}{\numberline {3.3.3}Behavioral Pattern Classification}{20}{}%
-\contentsline {subsection}{\numberline {3.3.4}Temporal Pattern Recognition}{20}{}%
-\contentsline {section}{\numberline {3.4}Game Environment and State Management}{21}{}%
-\contentsline {subsection}{\numberline {3.4.1}Information Set Management}{21}{}%
-\contentsline {subsection}{\numberline {3.4.2}State Space Complexity}{21}{}%
-\contentsline {subsection}{\numberline {3.4.3}Temporal State Evolution}{21}{}%
-\contentsline {subsection}{\numberline {3.4.4}Valid Action Filtering}{21}{}%
-\contentsline {subsection}{\numberline {3.4.5}Piece Setup and Initialization}{22}{}%
-\contentsline {section}{\numberline {3.5}Theoretical Convergence Guarantees}{22}{}%
-\contentsline {subsection}{\numberline {3.5.1}Incremental Learning Bounds}{22}{}%
-\contentsline {subsection}{\numberline {3.5.2}Belief State Accuracy Bounds}{22}{}%
-\contentsline {subsection}{\numberline {3.5.3}Strategy Convergence in Self-Play}{23}{}%
-\contentsline {section}{\numberline {3.6}Deep Q-Network with Belief States}{23}{}%
-\contentsline {subsection}{\numberline {3.6.1}Rainbow DQN Components}{23}{}%
-\contentsline {subsubsection}{Distributional RL (Categorical DQN)}{23}{}%
-\contentsline {subsubsection}{Noisy Networks for Exploration}{24}{}%
-\contentsline {subsubsection}{Dueling Network Architecture}{24}{}%
-\contentsline {subsection}{\numberline {3.6.2}Exploration-Driven Q-Value Adjustment}{24}{}%
-\contentsline {subsection}{\numberline {3.6.3}Adaptive Learning Rate Scheduling}{24}{}%
-\contentsline {subsection}{\numberline {3.6.4}Cross-System Performance Monitoring}{25}{}%
-\contentsline {section}{\numberline {3.7}Attention as Recurrent Neural Network (AAREN)}{25}{}%
-\contentsline {subsection}{\numberline {3.7.1}AAREN Architecture}{25}{}%
-\contentsline {subsection}{\numberline {3.7.2}Parallel Prefix Scan Implementation}{26}{}%
-\contentsline {subsection}{\numberline {3.7.3}AAREN-Based Piece Value Inference}{27}{}%
-\contentsline {section}{\numberline {3.8}PBS Quality Evaluation Framework}{27}{}%
-\contentsline {subsection}{\numberline {3.8.1}PBS Evaluator Network}{27}{}%
-\contentsline {subsection}{\numberline {3.8.2}Reward-Based Quality Assessment}{27}{}%
-\contentsline {subsection}{\numberline {3.8.3}Bias Detection and Correction}{28}{}%
-\contentsline {subsection}{\numberline {3.8.4}Feature Importance Learning}{28}{}%
-\contentsline {subsection}{\numberline {3.8.5}Active Learning for Information Gathering}{28}{}%
-\contentsline {section}{\numberline {3.9}Specialized Agent Architectures}{29}{}%
-\contentsline {subsection}{\numberline {3.9.1}Setup Agent via Distributional RL}{29}{}%
-\contentsline {subsection}{\numberline {3.9.2}Information Set Monte Carlo Tree Search (IS-MCTS)}{29}{}%
-\contentsline {section}{\numberline {3.10}Multi-Agent Reinforcement Learning}{30}{}%
-\contentsline {subsection}{\numberline {3.10.1}League-Based Training Architecture}{30}{}%
-\contentsline {subsection}{\numberline {3.10.2}Experience Replay}{30}{}%
-\contentsline {subsection}{\numberline {3.10.3}Multi-Dimensional Reward Structure}{30}{}%
-\contentsline {section}{\numberline {3.11}Strategy Mixing}{31}{}%
-\contentsline {subsection}{\numberline {3.11.1}Mixed Strategy Foundation}{31}{}%
-\contentsline {subsection}{\numberline {3.11.2}Exploitation Resistance}{31}{}%
-\contentsline {subsection}{\numberline {3.11.3}Dynamic Strategy Adaptation}{32}{}%
-\contentsline {subsection}{\numberline {3.11.4}Stratego}{32}{}%
+\contentsline {paragraph}{Belief Calibration Loss.}{19}{}%
+\contentsline {subsection}{\numberline {3.2.2}Bellman Equation with Belief States}{20}{}%
+\contentsline {subsection}{\numberline {3.2.3}Nash Equilibrium in Imperfect Information}{20}{}%
+\contentsline {subsection}{\numberline {3.2.4}Implementation Framework}{20}{}%
+\contentsline {subsection}{\numberline {3.2.5}Convergence Properties}{21}{}%
+\contentsline {section}{\numberline {3.3}Game Environment and State Management}{22}{}%
+\contentsline {subsection}{\numberline {3.3.1}Information Set Management}{22}{}%
+\contentsline {subsection}{\numberline {3.3.2}State Space Complexity}{22}{}%
+\contentsline {subsection}{\numberline {3.3.3}Temporal State Evolution}{22}{}%
+\contentsline {subsection}{\numberline {3.3.4}Valid Action Filtering}{22}{}%
+\contentsline {subsection}{\numberline {3.3.5}Piece Setup and Initialization}{23}{}%
+\contentsline {section}{\numberline {3.4}Theoretical Convergence Guarantees}{23}{}%
+\contentsline {subsection}{\numberline {3.4.1}Incremental Learning Bounds}{23}{}%
+\contentsline {subsection}{\numberline {3.4.2}Belief State Accuracy Bounds}{23}{}%
+\contentsline {subsection}{\numberline {3.4.3}Strategy Convergence in Self-Play}{24}{}%
+\contentsline {section}{\numberline {3.5}Deep Q-Network with Belief States}{24}{}%
+\contentsline {subsection}{\numberline {3.5.1}Rainbow DQN Components}{24}{}%
+\contentsline {subsubsection}{Distributional RL (Categorical DQN)}{24}{}%
+\contentsline {subsubsection}{Noisy Networks for Exploration}{25}{}%
+\contentsline {subsubsection}{Dueling Network Architecture}{25}{}%
+\contentsline {subsection}{\numberline {3.5.2}Exploration-Driven Q-Value Adjustment}{25}{}%
+\contentsline {subsection}{\numberline {3.5.3}Adaptive Learning Rate Scheduling}{25}{}%
+\contentsline {subsection}{\numberline {3.5.4}Cross-System Performance Monitoring}{26}{}%
+\contentsline {section}{\numberline {3.6}Attention as Recurrent Neural Network (AAREN)}{26}{}%
+\contentsline {paragraph}{Recurrent Attention Computation.}{26}{}%
+\contentsline {paragraph}{Parallel Training and Piece Value Inference.}{27}{}%
+\contentsline {section}{\numberline {3.7}PBS Quality Evaluation Framework}{28}{}%
+\contentsline {paragraph}{Evaluator Network and Quality Assessment.}{28}{}%
+\contentsline {paragraph}{Bias Detection and Feature Learning.}{28}{}%
+\contentsline {paragraph}{Active Learning for Information Gathering.}{29}{}%
+\contentsline {section}{\numberline {3.8}Specialized Agent Architectures}{29}{}%
+\contentsline {subsection}{\numberline {3.8.1}Setup Agent via Distributional RL}{29}{}%
+\contentsline {subsection}{\numberline {3.8.2}Information Set Monte Carlo Tree Search (IS-MCTS)}{30}{}%
+\contentsline {section}{\numberline {3.9}Multi-Agent Reinforcement Learning}{30}{}%
+\contentsline {subsection}{\numberline {3.9.1}League-Based Training Architecture}{30}{}%
+\contentsline {subsection}{\numberline {3.9.2}Experience Replay}{31}{}%
+\contentsline {subsection}{\numberline {3.9.3}Multi-Dimensional Reward Structure}{31}{}%
+\contentsline {section}{\numberline {3.10}Strategy Mixing}{31}{}%
+\contentsline {paragraph}{Action-Level Stochasticity via Noisy Networks.}{32}{}%
+\contentsline {paragraph}{Strategy-Level Diversity via League Training.}{32}{}%
+\contentsline {section}{\numberline {3.11}Stratego Game Domain}{32}{}%
 \contentsline {section}{\numberline {3.12}League Training Implementation}{33}{}%
-\contentsline {subsection}{\numberline {3.12.1}League Manager Architecture}{34}{}%
+\contentsline {subsection}{\numberline {3.12.1}League Manager Architecture}{33}{}%
 \contentsline {subsection}{\numberline {3.12.2}Opponent Pool Dynamics}{34}{}%
 \contentsline {subsection}{\numberline {3.12.3}Exploiter Agents}{35}{}%
 \contentsline {section}{\numberline {3.13}Reward Shaping Module}{35}{}%
 \contentsline {subsection}{\numberline {3.13.1}Material Reward}{35}{}%
 \contentsline {subsection}{\numberline {3.13.2}Epistemic Reward}{36}{}%
 \contentsline {subsection}{\numberline {3.13.3}Positional Reward (PBRS)}{36}{}%
-\contentsline {section}{\numberline {3.14}Information Hiding Architecture}{37}{}%
+\contentsline {section}{\numberline {3.14}Information Hiding Architecture}{36}{}%
 \contentsline {subsection}{\numberline {3.14.1}Board Representation}{37}{}%
 \contentsline {subsection}{\numberline {3.14.2}Observation Function}{37}{}%
 \contentsline {subsection}{\numberline {3.14.3}Piece Revelation}{37}{}%
@@ -99,33 +90,34 @@
 \contentsline {subsection}{\numberline {3.16.4}Phase 4: League Training}{39}{}%
 \contentsline {subsection}{\numberline {3.16.5}Phase 5: Scenario Drills}{39}{}%
 \contentsline {section}{\numberline {3.17}Reward Shaping}{40}{}%
-\contentsline {subsection}{\numberline {3.17.1}Material Rewards (Combat Signal)}{40}{}%
-\contentsline {subsection}{\numberline {3.17.2}Epistemic Rewards (Information Signal)}{40}{}%
-\contentsline {subsection}{\numberline {3.17.3}Positional Rewards (Potential-Based Reward Shaping)}{40}{}%
-\contentsline {subsection}{\numberline {3.17.4}Prediction Auxiliary Rewards}{41}{}%
-\contentsline {subsection}{\numberline {3.17.5}Composite Reward Function}{41}{}%
-\contentsline {section}{\numberline {3.18}Parallel Environment Architecture}{41}{}%
-\contentsline {subsection}{\numberline {3.18.1}Worker Process Design}{41}{}%
-\contentsline {subsection}{\numberline {3.18.2}Observability Control}{42}{}%
-\contentsline {subsection}{\numberline {3.18.3}Batch Processing}{42}{}%
-\contentsline {chapter}{\numberline {4}Methodology}{43}{}%
-\contentsline {section}{\numberline {4.1}Project Planning}{43}{}%
-\contentsline {subsection}{\numberline {4.1.1}Community Introduction to Stratego}{44}{}%
-\contentsline {subsection}{\numberline {4.1.2}Participant Selection}{44}{}%
-\contentsline {subsection}{\numberline {4.1.3}Experimental Procedures}{44}{}%
-\contentsline {section}{\numberline {4.2}System Development}{45}{}%
-\contentsline {subsection}{\numberline {4.2.1}Piece Value Computation}{45}{}%
-\contentsline {subsubsection}{Combat Dominance Score}{45}{}%
-\contentsline {subsubsection}{Survival Rate}{45}{}%
-\contentsline {subsubsection}{Auxiliary Value Components}{46}{}%
-\contentsline {subsubsection}{Composite Value Function}{46}{}%
-\contentsline {subsection}{\numberline {4.2.2}Handling Imperfect Information: Probabilistic Belief State (PBS)}{47}{}%
-\contentsline {section}{\numberline {4.3}Model Training}{48}{}%
+\contentsline {paragraph}{Material Rewards.}{40}{}%
+\contentsline {paragraph}{Epistemic Rewards.}{40}{}%
+\contentsline {paragraph}{Positional Rewards.}{40}{}%
+\contentsline {paragraph}{Composite Reward.}{40}{}%
+\contentsline {section}{\numberline {3.18}Parallel Environment Architecture}{40}{}%
+\contentsline {chapter}{\numberline {4}Methodology}{42}{}%
+\contentsline {section}{\numberline {4.1}Project Planning}{42}{}%
+\contentsline {subsection}{\numberline {4.1.1}Community Introduction to Stratego}{43}{}%
+\contentsline {subsection}{\numberline {4.1.2}Participant Selection}{43}{}%
+\contentsline {subsection}{\numberline {4.1.3}Experimental Procedures}{43}{}%
+\contentsline {section}{\numberline {4.2}System Development}{44}{}%
+\contentsline {subsection}{\numberline {4.2.1}Piece Value Computation}{44}{}%
+\contentsline {subsubsection}{Combat Dominance Score}{44}{}%
+\contentsline {subsubsection}{Survival Rate}{44}{}%
+\contentsline {subsubsection}{Auxiliary Value Components}{45}{}%
+\contentsline {subsubsection}{Composite Value Function}{45}{}%
+\contentsline {subsection}{\numberline {4.2.2}Handling Imperfect Information: Probabilistic Belief State (PBS)}{46}{}%
+\contentsline {section}{\numberline {4.3}Model Training}{47}{}%
+\contentsline {paragraph}{Rainbow DQN Architecture.}{47}{}%
+\contentsline {paragraph}{Network Structure.}{47}{}%
+\contentsline {paragraph}{Training Hyperparameters.}{47}{}%
+\contentsline {paragraph}{League-Based Training.}{47}{}%
+\contentsline {paragraph}{Curriculum Learning.}{48}{}%
+\contentsline {paragraph}{Reward Shaping Weights.}{48}{}%
 \contentsline {subsection}{\numberline {4.3.1}Deployment}{49}{}%
 \contentsline {section}{\numberline {4.4}Evaluation}{50}{}%
-\contentsline {subsection}{\numberline {4.4.1}Quantitative Analysis}{50}{}%
-\contentsline {subsection}{\numberline {4.4.2}Qualitative Analysis}{50}{}%
-\contentsline {subsection}{\numberline {4.4.3}Model Version History}{51}{}%
-\contentsline {subsection}{\numberline {4.4.4}Initial Training}{51}{}%
+\contentsline {paragraph}{Quantitative Analysis.}{50}{}%
+\contentsline {paragraph}{Qualitative Analysis.}{50}{}%
+\contentsline {paragraph}{Model Iteration and Initial Results.}{50}{}%
 \contentsline {chapter}{\numberline {A}Gantt Chart}{52}{}%
 \contentsline {chapter}{\numberline {B}System UI and Training}{55}{}%
