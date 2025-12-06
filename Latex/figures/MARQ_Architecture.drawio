@@ -1,0 +1,386 @@
+<mxfile host="app.diagrams.net" modified="2025-12-06T02:00:00.000Z" agent="5.0" version="21.0.0" type="device">
+  <diagram name="MARQ Architecture" id="marq-architecture">
+    <mxGraphModel dx="1434" dy="836" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1200" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        
+        <!-- Title -->
+        <mxCell id="title" value="&lt;font style=&quot;font-size: 24px;&quot;&gt;&lt;b&gt;MARQ: Multi-Agent Rainbow Deep Q-Networks Framework&lt;/b&gt;&lt;/font&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontColor=#1a1a2e;" vertex="1" parent="1">
+          <mxGeometry x="400" y="20" width="800" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- ==================== INPUT LAYER ==================== -->
+        
+        <!-- Game Environment -->
+        <mxCell id="env-container" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2d3436;strokeColor=#636e72;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="40" y="100" width="200" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="env-title" value="&lt;b&gt;Stratego Environment&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontColor=#dfe6e9;" vertex="1" parent="1">
+          <mxGeometry x="60" y="105" width="160" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="env-board" value="10×10 Board&#xa;+ Lakes" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#0984e3;strokeColor=#74b9ff;fontColor=#ffffff;" vertex="1" parent="1">
+          <mxGeometry x="55" y="135" width="80" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="env-hidden" value="Hidden&#xa;Pieces (?)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d63031;strokeColor=#ff7675;fontColor=#ffffff;" vertex="1" parent="1">
+          <mxGeometry x="145" y="135" width="80" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="env-actions" value="Actions &amp; Combat" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#00b894;strokeColor=#55efc4;fontColor=#ffffff;" vertex="1" parent="1">
+          <mxGeometry x="55" y="195" width="170" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- State Representation -->
+        <mxCell id="state-container" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2d3436;strokeColor=#636e72;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="300" y="100" width="220" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="state-title" value="&lt;b&gt;27-Channel State Tensor&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontColor=#dfe6e9;" vertex="1" parent="1">
+          <mxGeometry x="320" y="105" width="180" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="state-pbs" value="PBS Beliefs&#xa;(12 channels)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#6c5ce7;strokeColor=#a29bfe;fontColor=#ffffff;" vertex="1" parent="1">
+          <mxGeometry x="315" y="135" width="90" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="state-own" value="Own Pieces&#xa;(12 channels)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#0984e3;strokeColor=#74b9ff;fontColor=#ffffff;" vertex="1" parent="1">
+          <mxGeometry x="415" y="135" width="90" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="state-masks" value="Masks &amp; Features (3 channels)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#00cec9;strokeColor=#81ecec;fontColor=#ffffff;" vertex="1" parent="1">
+          <mxGeometry x="315" y="195" width="190" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- Arrow from Env to State -->
+        <mxCell id="arrow-env-state" value="" style="endArrow=classic;html=1;strokeColor=#74b9ff;strokeWidth=2;entryX=0;entryY=0.5;entryDx=0;entryDy=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" edge="1" parent="1" source="env-container" target="state-container">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="250" y="180" as="sourcePoint" />
+            <mxPoint x="300" y="180" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="arrow-env-label" value="Observation" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontColor=#74b9ff;" vertex="1" connectable="0" parent="arrow-env-state">
+          <mxGeometry x="-0.1" relative="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- ==================== AAREN MODULE ==================== -->
+        
+        <mxCell id="aaren-container" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2d3436;strokeColor=#e17055;strokeWidth=3;" vertex="1" parent="1">
+          <mxGeometry x="40" y="320" width="280" height="200" as="geometry" />
+        </mxCell>
+        <mxCell id="aaren-title" value="&lt;b&gt;AAREN Module&lt;/b&gt;&lt;br&gt;(Attention as Recurrent Neural Network)" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontColor=#fab1a0;" vertex="1" parent="1">
+          <mxGeometry x="55" y="325" width="250" height="35" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="aaren-history" value="Observation History&#xa;O = {o₁, ..., oₜ}" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=10;fillColor=#fdcb6e;strokeColor=#f39c12;fontColor=#2d3436;" vertex="1" parent="1">
+          <mxGeometry x="55" y="370" width="100" height="60" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="aaren-attention" value="Self-Attention&#xa;αᵢ = softmax(qᵀkᵢ)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e17055;strokeColor=#fab1a0;fontColor=#ffffff;" vertex="1" parent="1">
+          <mxGeometry x="170" y="370" width="130" height="40" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="aaren-aggregate" value="Weighted Aggregation&#xa;hₜ = Σ αᵢ · vᵢ" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e17055;strokeColor=#fab1a0;fontColor=#ffffff;" vertex="1" parent="1">
+          <mxGeometry x="170" y="420" width="130" height="40" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="aaren-output" value="Piece Type Prediction&#xa;P(type | actions)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d63031;strokeColor=#ff7675;fontColor=#ffffff;" vertex="1" parent="1">
+          <mxGeometry x="55" y="475" width="250" height="35" as="geometry" />
+        </mxCell>
+
+        <!-- Arrow history to attention -->
+        <mxCell id="arr-hist-att" value="" style="endArrow=classic;html=1;strokeColor=#fab1a0;strokeWidth=2;exitX=1;exitY=0.5;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="aaren-history" target="aaren-attention">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ==================== PBS MODULE ==================== -->
+        
+        <mxCell id="pbs-container" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2d3436;strokeColor=#6c5ce7;strokeWidth=3;" vertex="1" parent="1">
+          <mxGeometry x="360" y="320" width="260" height="200" as="geometry" />
+        </mxCell>
+        <mxCell id="pbs-title" value="&lt;b&gt;Probabilistic Belief State (PBS)&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontColor=#a29bfe;" vertex="1" parent="1">
+          <mxGeometry x="375" y="325" width="230" height="25" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="pbs-matrix" value="Belief Matrix&#xa;P(piece_type | position)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#6c5ce7;strokeColor=#a29bfe;fontColor=#ffffff;" vertex="1" parent="1">
+          <mxGeometry x="375" y="360" width="130" height="60" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="pbs-deductive" value="Deductive&#xa;Update" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#00b894;strokeColor=#55efc4;fontColor=#ffffff;" vertex="1" parent="1">
+          <mxGeometry x="520" y="360" width="85" height="40" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="pbs-inductive" value="Inductive&#xa;Update" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fdcb6e;strokeColor=#f39c12;fontColor=#2d3436;" vertex="1" parent="1">
+          <mxGeometry x="520" y="410" width="85" height="40" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="pbs-constraint" value="Constraint Propagation &amp; Renormalization" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#a29bfe;strokeColor=#6c5ce7;fontColor=#2d3436;" vertex="1" parent="1">
+          <mxGeometry x="375" y="475" width="230" height="35" as="geometry" />
+        </mxCell>
+
+        <!-- Arrow from AAREN to PBS -->
+        <mxCell id="arrow-aaren-pbs" value="" style="endArrow=classic;html=1;strokeColor=#55efc4;strokeWidth=2;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="aaren-container" target="pbs-container">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="arrow-aaren-pbs-label" value="Belief Update" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontColor=#55efc4;" vertex="1" connectable="0" parent="arrow-aaren-pbs">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ==================== RAINBOW DQN ==================== -->
+        
+        <mxCell id="dqn-container" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2d3436;strokeColor=#0984e3;strokeWidth=3;" vertex="1" parent="1">
+          <mxGeometry x="660" y="100" width="320" height="420" as="geometry" />
+        </mxCell>
+        <mxCell id="dqn-title" value="&lt;b&gt;Rainbow DQN Network&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontColor=#74b9ff;" vertex="1" parent="1">
+          <mxGeometry x="720" y="110" width="200" height="25" as="geometry" />
+        </mxCell>
+        
+        <!-- Conv Encoder -->
+        <mxCell id="dqn-conv1" value="Conv2D (32)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#0984e3;strokeColor=#74b9ff;fontColor=#ffffff;" vertex="1" parent="1">
+          <mxGeometry x="685" y="145" width="120" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="dqn-conv2" value="Conv2D (64)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#0984e3;strokeColor=#74b9ff;fontColor=#ffffff;" vertex="1" parent="1">
+          <mxGeometry x="815" y="145" width="120" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="dqn-conv3" value="Conv2D (64)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#0984e3;strokeColor=#74b9ff;fontColor=#ffffff;" vertex="1" parent="1">
+          <mxGeometry x="750" y="185" width="120" height="30" as="geometry" />
+        </mxCell>
+        
+        <!-- Noisy Layers -->
+        <mxCell id="dqn-noisy-label" value="Noisy Linear Layers" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontColor=#ffeaa7;fontStyle=2" vertex="1" parent="1">
+          <mxGeometry x="750" y="225" width="120" height="20" as="geometry" />
+        </mxCell>
+        
+        <!-- Dueling Architecture -->
+        <mxCell id="dqn-dueling-box" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1e272e;strokeColor=#636e72;strokeWidth=1;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="680" y="250" width="280" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="dqn-dueling-title" value="&lt;i&gt;Dueling Architecture&lt;/i&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontColor=#b2bec3;" vertex="1" parent="1">
+          <mxGeometry x="755" y="255" width="130" height="20" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="dqn-value" value="Value Stream&#xa;V(s)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#00b894;strokeColor=#55efc4;fontColor=#ffffff;" vertex="1" parent="1">
+          <mxGeometry x="695" y="280" width="100" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="dqn-advantage" value="Advantage Stream&#xa;A(s,a)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d63031;strokeColor=#ff7675;fontColor=#ffffff;" vertex="1" parent="1">
+          <mxGeometry x="845" y="280" width="100" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="dqn-combine" value="Q(s,a) = V(s) + A(s,a) - mean(A)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#6c5ce7;strokeColor=#a29bfe;fontColor=#ffffff;" vertex="1" parent="1">
+          <mxGeometry x="720" y="340" width="200" height="30" as="geometry" />
+        </mxCell>
+        
+        <!-- C51 Distribution -->
+        <mxCell id="dqn-c51" value="Categorical DQN (C51)&#xa;51 Atoms: [Vₘᵢₙ, Vₘₐₓ] = [-10, 10]" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fdcb6e;strokeColor=#f39c12;fontColor=#2d3436;" vertex="1" parent="1">
+          <mxGeometry x="700" y="390" width="240" height="50" as="geometry" />
+        </mxCell>
+        
+        <!-- Action Output -->
+        <mxCell id="dqn-output" value="&lt;b&gt;Action Selection&lt;/b&gt;&#xa;a* = argmax Q(s,a)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e84393;strokeColor=#fd79a8;fontColor=#ffffff;" vertex="1" parent="1">
+          <mxGeometry x="720" y="455" width="200" height="50" as="geometry" />
+        </mxCell>
+
+        <!-- Arrow from State to DQN -->
+        <mxCell id="arrow-state-dqn" value="" style="endArrow=classic;html=1;strokeColor=#74b9ff;strokeWidth=2;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.2;entryDx=0;entryDy=0;" edge="1" parent="1" source="state-container" target="dqn-container">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Arrow from PBS to DQN -->
+        <mxCell id="arrow-pbs-dqn" value="" style="endArrow=classic;html=1;strokeColor=#a29bfe;strokeWidth=2;exitX=1;exitY=0.3;exitDx=0;exitDy=0;entryX=0;entryY=0.6;entryDx=0;entryDy=0;" edge="1" parent="1" source="pbs-container" target="dqn-container">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="arrow-pbs-dqn-label" value="Belief-Enhanced State" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontColor=#a29bfe;" vertex="1" connectable="0" parent="arrow-pbs-dqn">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ==================== TRAINING INFRASTRUCTURE ==================== -->
+        
+        <!-- League Training -->
+        <mxCell id="league-container" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2d3436;strokeColor=#00cec9;strokeWidth=3;" vertex="1" parent="1">
+          <mxGeometry x="40" y="580" width="280" height="220" as="geometry" />
+        </mxCell>
+        <mxCell id="league-title" value="&lt;b&gt;League Training System&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontColor=#81ecec;" vertex="1" parent="1">
+          <mxGeometry x="90" y="585" width="180" height="25" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="league-main" value="Main Agent&#xa;(Current Policy)" style="ellipse;whiteSpace=wrap;html=1;fillColor=#e84393;strokeColor=#fd79a8;fontColor=#ffffff;" vertex="1" parent="1">
+          <mxGeometry x="125" y="660" width="110" height="60" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="league-hist" value="Historical&#xa;Pool (50%)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0984e3;strokeColor=#74b9ff;fontColor=#ffffff;" vertex="1" parent="1">
+          <mxGeometry x="55" y="615" width="80" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="league-random" value="Random&#xa;(20%)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#00b894;strokeColor=#55efc4;fontColor=#ffffff;" vertex="1" parent="1">
+          <mxGeometry x="225" y="615" width="80" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="league-greedy" value="Greedy&#xa;(20%)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fdcb6e;strokeColor=#f39c12;fontColor=#2d3436;" vertex="1" parent="1">
+          <mxGeometry x="55" y="740" width="80" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="league-self" value="Self-Play&#xa;(10%)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#6c5ce7;strokeColor=#a29bfe;fontColor=#ffffff;" vertex="1" parent="1">
+          <mxGeometry x="225" y="740" width="80" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- Arrows to main agent -->
+        <mxCell id="arr-hist-main" value="" style="endArrow=classic;html=1;strokeColor=#74b9ff;entryX=0.2;entryY=0;entryDx=0;entryDy=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" edge="1" parent="1" source="league-hist" target="league-main">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="arr-rand-main" value="" style="endArrow=classic;html=1;strokeColor=#55efc4;entryX=0.8;entryY=0;entryDx=0;entryDy=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" edge="1" parent="1" source="league-random" target="league-main">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="arr-greed-main" value="" style="endArrow=classic;html=1;strokeColor=#f39c12;entryX=0.2;entryY=1;entryDx=0;entryDy=0;exitX=0.5;exitY=0;exitDx=0;exitDy=0;" edge="1" parent="1" source="league-greedy" target="league-main">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="arr-self-main" value="" style="endArrow=classic;html=1;strokeColor=#a29bfe;entryX=0.8;entryY=1;entryDx=0;entryDy=0;exitX=0.5;exitY=0;exitDx=0;exitDy=0;" edge="1" parent="1" source="league-self" target="league-main">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Replay Buffer -->
+        <mxCell id="replay-container" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2d3436;strokeColor=#636e72;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="360" y="580" width="260" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="replay-title" value="&lt;b&gt;Experience Replay&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontColor=#dfe6e9;" vertex="1" parent="1">
+          <mxGeometry x="410" y="585" width="160" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="replay-buffer" value="Standard Replay Buffer&#xa;100K Transitions&#xa;(Bₜ, aₜ, rₜ, Bₜ₊₁)" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=10;fillColor=#636e72;strokeColor=#b2bec3;fontColor=#ffffff;" vertex="1" parent="1">
+          <mxGeometry x="420" y="615" width="140" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- Reward Shaping -->
+        <mxCell id="reward-container" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2d3436;strokeColor=#d63031;strokeWidth=3;" vertex="1" parent="1">
+          <mxGeometry x="360" y="700" width="260" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="reward-title" value="&lt;b&gt;Reward Shaping&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontColor=#ff7675;" vertex="1" parent="1">
+          <mxGeometry x="420" y="705" width="140" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="reward-outcome" value="Outcome (1.0)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d63031;strokeColor=#ff7675;fontColor=#ffffff;" vertex="1" parent="1">
+          <mxGeometry x="375" y="730" width="80" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="reward-material" value="Material (0.5)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e17055;strokeColor=#fab1a0;fontColor=#ffffff;" vertex="1" parent="1">
+          <mxGeometry x="465" y="730" width="80" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="reward-epistemic" value="Epistemic (0.3)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fdcb6e;strokeColor=#f39c12;fontColor=#2d3436;" vertex="1" parent="1">
+          <mxGeometry x="375" y="760" width="80" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="reward-positional" value="Positional (0.2)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#00cec9;strokeColor=#81ecec;fontColor=#2d3436;" vertex="1" parent="1">
+          <mxGeometry x="465" y="760" width="80" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="reward-total" value="Σ → R_total" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e84393;strokeColor=#fd79a8;fontColor=#ffffff;" vertex="1" parent="1">
+          <mxGeometry x="555" y="740" width="55" height="35" as="geometry" />
+        </mxCell>
+
+        <!-- ==================== CURRICULUM LEARNING ==================== -->
+        
+        <mxCell id="curriculum-container" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2d3436;strokeColor=#ffeaa7;strokeWidth=3;" vertex="1" parent="1">
+          <mxGeometry x="660" y="580" width="320" height="220" as="geometry" />
+        </mxCell>
+        <mxCell id="curriculum-title" value="&lt;b&gt;Curriculum Learning Phases&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontColor=#ffeaa7;" vertex="1" parent="1">
+          <mxGeometry x="730" y="585" width="180" height="25" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="phase1" value="Phase 1: Full Observability&#xa;(500-2K episodes)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#00b894;strokeColor=#55efc4;fontColor=#ffffff;" vertex="1" parent="1">
+          <mxGeometry x="680" y="615" width="140" height="35" as="geometry" />
+        </mxCell>
+        <mxCell id="phase2" value="Phase 2: Partial Observability&#xa;(1K-3K episodes)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0984e3;strokeColor=#74b9ff;fontColor=#ffffff;" vertex="1" parent="1">
+          <mxGeometry x="830" y="615" width="140" height="35" as="geometry" />
+        </mxCell>
+        <mxCell id="phase3" value="Phase 3: Self-Play&#xa;(2K-5K episodes)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#6c5ce7;strokeColor=#a29bfe;fontColor=#ffffff;" vertex="1" parent="1">
+          <mxGeometry x="680" y="660" width="140" height="35" as="geometry" />
+        </mxCell>
+        <mxCell id="phase4" value="Phase 4: League Training&#xa;(5K+ episodes)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e17055;strokeColor=#fab1a0;fontColor=#ffffff;" vertex="1" parent="1">
+          <mxGeometry x="830" y="660" width="140" height="35" as="geometry" />
+        </mxCell>
+        <mxCell id="phase5" value="Phase 5: Scenario Drills&#xa;(Periodic)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d63031;strokeColor=#ff7675;fontColor=#ffffff;" vertex="1" parent="1">
+          <mxGeometry x="755" y="705" width="140" height="35" as="geometry" />
+        </mxCell>
+
+        <!-- Arrows between phases -->
+        <mxCell id="arr-p1-p2" value="" style="endArrow=classic;html=1;strokeColor=#ffeaa7;strokeWidth=2;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="phase1" target="phase2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="arr-p2-p3" value="" style="endArrow=classic;html=1;strokeColor=#ffeaa7;strokeWidth=2;exitX=0;exitY=1;exitDx=0;exitDy=0;entryX=1;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="phase2" target="phase3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="arr-p3-p4" value="" style="endArrow=classic;html=1;strokeColor=#ffeaa7;strokeWidth=2;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="phase3" target="phase4">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="arr-p4-p5" value="" style="endArrow=classic;html=1;strokeColor=#ffeaa7;strokeWidth=2;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="phase4" target="phase5">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Hyperparameters Box -->
+        <mxCell id="hyper-container" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2d3436;strokeColor=#b2bec3;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="660" y="755" width="320" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="hyper-title" value="&lt;b&gt;Key Hyperparameters&lt;/b&gt;: α=0.0001 | γ=0.99 | Batch=32 | Buffer=100K | Target Sync=5K steps" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontColor=#b2bec3;" vertex="1" parent="1">
+          <mxGeometry x="670" y="760" width="300" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- ==================== LEGEND ==================== -->
+        
+        <mxCell id="legend-container" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1e272e;strokeColor=#636e72;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="1020" y="100" width="180" height="200" as="geometry" />
+        </mxCell>
+        <mxCell id="legend-title" value="&lt;b&gt;Legend&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontColor=#dfe6e9;" vertex="1" parent="1">
+          <mxGeometry x="1070" y="105" width="80" height="20" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="leg-blue" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#74b9ff;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="1035" y="135" width="20" height="15" as="geometry" />
+        </mxCell>
+        <mxCell id="leg-blue-txt" value="State/Observation" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontColor=#dfe6e9;" vertex="1" parent="1">
+          <mxGeometry x="1060" y="130" width="130" height="25" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="leg-green" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#55efc4;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="1035" y="160" width="20" height="15" as="geometry" />
+        </mxCell>
+        <mxCell id="leg-green-txt" value="Belief Update" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontColor=#dfe6e9;" vertex="1" parent="1">
+          <mxGeometry x="1060" y="155" width="130" height="25" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="leg-purple" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#a29bfe;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="1035" y="185" width="20" height="15" as="geometry" />
+        </mxCell>
+        <mxCell id="leg-purple-txt" value="PBS/Belief State" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontColor=#dfe6e9;" vertex="1" parent="1">
+          <mxGeometry x="1060" y="180" width="130" height="25" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="leg-orange" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fab1a0;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="1035" y="210" width="20" height="15" as="geometry" />
+        </mxCell>
+        <mxCell id="leg-orange-txt" value="AAREN Attention" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontColor=#dfe6e9;" vertex="1" parent="1">
+          <mxGeometry x="1060" y="205" width="130" height="25" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="leg-yellow" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffeaa7;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="1035" y="235" width="20" height="15" as="geometry" />
+        </mxCell>
+        <mxCell id="leg-yellow-txt" value="Curriculum Flow" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontColor=#dfe6e9;" vertex="1" parent="1">
+          <mxGeometry x="1060" y="230" width="130" height="25" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="leg-pink" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fd79a8;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="1035" y="260" width="20" height="15" as="geometry" />
+        </mxCell>
+        <mxCell id="leg-pink-txt" value="Action Selection" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontColor=#dfe6e9;" vertex="1" parent="1">
+          <mxGeometry x="1060" y="255" width="130" height="25" as="geometry" />
+        </mxCell>
+
+        <!-- Connecting arrows from DQN to Environment (action loop) -->
+        <mxCell id="action-loop" value="" style="endArrow=classic;html=1;strokeColor=#fd79a8;strokeWidth=3;exitX=0.5;exitY=1;exitDx=0;exitDy=0;curved=1;" edge="1" parent="1" source="dqn-output">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="140" y="260" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="820" y="540" />
+              <mxPoint x="500" y="540" />
+              <mxPoint x="140" y="540" />
+              <mxPoint x="20" y="400" />
+              <mxPoint x="20" y="180" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="action-loop-label" value="Action Execution" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontColor=#fd79a8;fontStyle=1" vertex="1" connectable="0" parent="action-loop">
+          <mxGeometry x="-0.7" relative="1" as="geometry">
+            <mxPoint x="-10" y="-10" as="offset" />
+          </mxGeometry>
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
