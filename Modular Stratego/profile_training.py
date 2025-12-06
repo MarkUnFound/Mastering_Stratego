@@ -137,7 +137,7 @@ def profile_training(num_episodes=2):
         active_envs = np.ones(NUM_ENVS, dtype=bool)
         step_count = 0
         
-        while np.any(active_envs) and step_count < 500:  # Limit to prevent infinite loops
+        while np.any(active_envs) and step_count < 1000:  # Match train_dqn.py 1000 step limit
             # P1 Actions
             profiler.start("p1_act_batch")
             actions_p1 = agent1.act_batch(
@@ -205,21 +205,16 @@ def profile_training(num_episodes=2):
             step_count += 1
             global_step += 1
             
-            # Training step
             if global_step % REPLAY_UPDATE_INTERVAL == 0:
                 profiler.start("replay_p1")
                 agent1.replay()
                 profiler.stop("replay_p1")
-                
-                profiler.start("replay_p2")
-                agent2.replay()
-                profiler.stop("replay_p2")
+                # Note: Agent 2 does NOT train in train_dqn.py (opponent only)
             
-            # Target network update
             if global_step % TARGET_UPDATE_INTERVAL == 0:
                 profiler.start("target_update")
                 agent1.update_target_network()
-                agent2.update_target_network()
+                # Agent 2 doesn't train, so no target update
                 profiler.stop("target_update")
         
         print(f"  Steps: {step_count}")
@@ -229,6 +224,13 @@ def profile_training(num_episodes=2):
         agent1.train_pbs(epochs=5)
         agent2.train_pbs(epochs=5)
         profiler.stop("train_pbs")
+        
+        # New metrics tracking (matching train_dqn.py)
+        profiler.start("metrics_tracking")
+        # Q-value and entropy tracking
+        avg_q = agent1.get_average_q() if hasattr(agent1, 'get_average_q') else 0.0
+        entropy = agent1.get_exploration_entropy() if hasattr(agent1, 'get_exploration_entropy') else 0.0
+        profiler.stop("metrics_tracking")
     
     # Report results
     profiler.report()

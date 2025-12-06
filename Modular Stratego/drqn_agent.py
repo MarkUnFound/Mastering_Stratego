@@ -77,12 +77,30 @@ class RainbowAgent:
         self.pbs_instances = []
         self.action_pbs_buffer = {} 
         
+        # Import AAREN optimization settings
+        try:
+            from training_config import AAREN_HIDDEN_SIZE, AAREN_NUM_LAYERS, AAREN_USE_TORCHSCRIPT
+        except ImportError:
+            AAREN_HIDDEN_SIZE = 32
+            AAREN_NUM_LAYERS = 2
+            AAREN_USE_TORCHSCRIPT = True
+        
         if self.use_pbs:
             if num_envs > 1:
-                # Create shared models for parallel environments
+                # Create shared models for parallel environments with optimized settings
                 self.shared_aaren = PieceActionAaren(
-                    input_size=24, hidden_size=64, num_layers=3, output_size=12, device=device
+                    input_size=24, hidden_size=AAREN_HIDDEN_SIZE, 
+                    num_layers=AAREN_NUM_LAYERS, output_size=12, device=device
                 ).to(device)
+                
+                # TorchScript compilation for faster inference
+                if AAREN_USE_TORCHSCRIPT:
+                    try:
+                        self.shared_aaren = torch.jit.script(self.shared_aaren)
+                        print(f"✅ AAREN TorchScript compilation successful")
+                    except Exception as e:
+                        print(f"⚠️ AAREN TorchScript failed, using eager mode: {e}")
+                
                 self.shared_aaren_optimizer = optim.AdamW(self.shared_aaren.parameters(), lr=0.001, weight_decay=0.01)
                 
                 self.shared_evaluator = None
@@ -556,9 +574,20 @@ class RainbowAgent:
                 else:
                     batched_states = None
 
+                # Import FP16 setting
+                try:
+                    from training_config import AAREN_USE_FP16
+                except ImportError:
+                    AAREN_USE_FP16 = True
+
                 aaren_model.eval()
                 with torch.no_grad():
-                    probs, new_states = aaren_model.forward_sequential(batch_tensor, batched_states)
+                    # FP16 inference for ~30% speedup
+                    if AAREN_USE_FP16 and self.device.type == 'cuda':
+                        with torch.amp.autocast('cuda'):
+                            probs, new_states = aaren_model.forward_sequential(batch_tensor, batched_states)
+                    else:
+                        probs, new_states = aaren_model.forward_sequential(batch_tensor, batched_states)
                 aaren_model.train()
                 
                 # Apply Updates
@@ -726,6 +755,56 @@ class RainbowAgent:
             print(f"✅ Model loaded from {filepath} (Step: {self.step_count})")
         except Exception as e:
             print(f"❌ Failed to load model from {filepath}: {e}")
+
+    def get_average_q(self) -> float:
+        """
+        Get average Q-value from recent replay buffer samples.
+        Returns 0.0 if no experiences are available.
+        """
+        if len(self.memory) < self.batch_size:
+            return 0.0
+            
+        try:
+            # Sample a small batch to estimate average Q
+            states, actions, rewards, next_states, dones = self.memory.sample(min(64, len(self.memory)))
+            
+            self.q_network.eval()
+            with torch.no_grad():
+                log_probs = self.q_network(states)
+                probs = log_probs.exp()
+                expected_q = (probs * self.support).sum(dim=2)  # (batch, actions)
+                # Get max Q for each state
+                max_q = expected_q.max(dim=1)[0]
+                avg_q = max_q.mean().item()
+            self.q_network.train()
+            
+            return avg_q
+        except Exception:
+            return 0.0
+
+    def get_exploration_entropy(self) -> float:
+        """
+        Get exploration level proxy using noisy network sigma values.
+        Higher values indicate more exploration (larger noise).
+        Returns 0.0 if noisy networks are not available.
+        """
+        try:
+            total_sigma = 0.0
+            num_params = 0
+            
+            for name, module in self.q_network.named_modules():
+                if isinstance(module, NoisyLinear):
+                    # Get average sigma magnitude
+                    sigma_w = module.sigma_weight.abs().mean().item()
+                    sigma_b = module.sigma_bias.abs().mean().item()
+                    total_sigma += (sigma_w + sigma_b) / 2
+                    num_params += 1
+                    
+            if num_params > 0:
+                return total_sigma / num_params
+            return 0.0
+        except Exception:
+            return 0.0
 
 
     def _move_to_action_index(self, move):

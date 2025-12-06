@@ -36,6 +36,12 @@ PBS_UPDATE_INTERVAL = 2  # Update PBS every 2 steps (faster inference)
 PBS_SKIP_SIMPLE_MOVES = True  # Skip AAREN for obvious 1-square non-attack moves
 PBS_CACHE_UNCERTAINTY = True  # Cache uncertainty maps until beliefs change
 
+# AAREN Performance Optimizations
+AAREN_USE_FP16 = True           # Use half-precision inference (~30% faster)
+AAREN_USE_TORCHSCRIPT = False   # Disabled - AAREN uses dynamic ops that don't compile
+AAREN_HIDDEN_SIZE = 64          # Keep at 64 for checkpoint compatibility
+AAREN_NUM_LAYERS = 3            # Keep at 3 for checkpoint compatibility
+
 # League Training Settings (Opponent Diversity)
 LEAGUE_TRAINING_ENABLED = True
 LEAGUE_SAVE_INTERVAL = 500      # Save agent to league every N episodes

@@ -220,12 +220,33 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
 
     # Metrics
     metrics = {
+        # Core agent metrics
         'rewards_p1': [], 'rewards_p2': [],
         'wins_p1': 0, 'wins_p2': 0, 'draws': 0,
         'wins_p1_history': [], 'wins_p2_history': [],  # Track cumulative wins per episode
         'lengths': [],
-        'losses_p1': [], 'losses_p2': [],
-        'avg_loss_p1_history': [], 'avg_loss_p2_history': [], # Track avg loss per episode
+        'losses_p1': [],
+        'avg_loss_p1_history': [],  # Note: Agent 2 doesn't train, so no loss tracking
+        
+        # Setup agent metrics (rewards, losses, convergence)
+        'setup_agent1_rewards': [],
+        'setup_agent2_rewards': [],
+        'setup_agent1_losses': [],
+        'setup_agent2_losses': [],
+        
+        # PBS evaluator metrics
+        'pbs_eval1_losses': [],
+        'pbs_eval2_losses': [],
+        'pbs_eval1_buffer_sizes': [],
+        'pbs_eval2_buffer_sizes': [],
+        'pbs_eval1_accuracy': [],
+        'pbs_eval2_accuracy': [],
+        
+        # Additional informative metrics
+        'avg_q_values_p1': [],
+        'avg_entropy_p1': [],
+        'win_rate_100': [],  # Sliding window (last 100 episodes)
+        
         'pbs_accuracy': []
     }
     
@@ -333,7 +354,25 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
             p2_place = setup_agent2.place_pieces(p2_pieces, p2_pos)
             p2_placements.append(p2_place)
             
-        # 2. Reset Environments
+        # 2. Calculate setup agent evaluation rewards (before game starts)
+        episode_setup_reward1 = 0.0
+        episode_setup_reward2 = 0.0
+        for i in range(NUM_ENVS):
+            # Evaluate setup quality (flag protection, piece distribution, etc.)
+            try:
+                from setup_evaluation import evaluate_flag_protection, evaluate_piece_distribution
+                setup_score1 = (evaluate_flag_protection(p1_placements[i], 1) + 
+                               evaluate_piece_distribution(p1_placements[i], 1)) / 2.0
+                setup_score2 = (evaluate_flag_protection(p2_placements[i], -1) + 
+                               evaluate_piece_distribution(p2_placements[i], -1)) / 2.0
+                episode_setup_reward1 += setup_score1
+                episode_setup_reward2 += setup_score2
+            except Exception:
+                pass  # Silent fail to not impact training
+        episode_setup_reward1 /= max(NUM_ENVS, 1)
+        episode_setup_reward2 /= max(NUM_ENVS, 1)
+        
+        # 3. Reset Environments
         # parallel_env.reset returns (states, rewards, dones, infos, valid_moves)
         game_states, _, _, _, valid_moves = parallel_env.reset(p1_placements, p2_placements)
         
@@ -345,9 +384,8 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
         episode_rewards = {1: np.zeros(NUM_ENVS), -1: np.zeros(NUM_ENVS)}
         active_envs = np.ones(NUM_ENVS, dtype=bool)
         
-        # Track losses for this episode
+        # Track losses for this episode (Agent 1 only - Agent 2 doesn't train)
         episode_losses_p1 = []
-        episode_losses_p2 = []
         
         step_in_episode = 0
         
@@ -507,10 +545,63 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
         metrics['wins_p1_history'].append(metrics['wins_p1'])
         metrics['wins_p2_history'].append(metrics['wins_p2'])
         
+        # Agent 1 loss tracking (Agent 2 doesn't train)
         avg_loss_p1 = np.mean(episode_losses_p1) if episode_losses_p1 else 0
-        avg_loss_p2 = np.mean(episode_losses_p2) if episode_losses_p2 else 0
         metrics['avg_loss_p1_history'].append(avg_loss_p1)
-        metrics['avg_loss_p2_history'].append(avg_loss_p2)
+        
+        # Setup agent metrics
+        metrics['setup_agent1_rewards'].append(episode_setup_reward1)
+        metrics['setup_agent2_rewards'].append(episode_setup_reward2)
+        # Track setup agent losses if they have training losses
+        setup_loss1 = setup_agent1.get_average_policy_loss(window=10) if hasattr(setup_agent1, 'get_average_policy_loss') else 0.0
+        setup_loss2 = setup_agent2.get_average_policy_loss(window=10) if hasattr(setup_agent2, 'get_average_policy_loss') else 0.0
+        metrics['setup_agent1_losses'].append(setup_loss1)
+        metrics['setup_agent2_losses'].append(setup_loss2)
+        
+        # PBS evaluator metrics (use training_losses list and memory attribute)
+        if agent1.pbs and hasattr(agent1.pbs, 'evaluator') and agent1.pbs.evaluator:
+            eval1 = agent1.pbs.evaluator
+            # Get last training loss if available
+            last_loss1 = eval1.training_losses[-1] if hasattr(eval1, 'training_losses') and eval1.training_losses else 0.0
+            buffer_size1 = len(eval1.memory) if hasattr(eval1, 'memory') else 0
+            metrics['pbs_eval1_losses'].append(last_loss1)
+            metrics['pbs_eval1_buffer_sizes'].append(buffer_size1)
+            metrics['pbs_eval1_accuracy'].append(getattr(eval1, 'avg_accuracy', 0.0))
+        else:
+            metrics['pbs_eval1_losses'].append(0.0)
+            metrics['pbs_eval1_buffer_sizes'].append(0)
+            metrics['pbs_eval1_accuracy'].append(0.0)
+            
+        if agent2.pbs and hasattr(agent2.pbs, 'evaluator') and agent2.pbs.evaluator:
+            eval2 = agent2.pbs.evaluator
+            last_loss2 = eval2.training_losses[-1] if hasattr(eval2, 'training_losses') and eval2.training_losses else 0.0
+            buffer_size2 = len(eval2.memory) if hasattr(eval2, 'memory') else 0
+            metrics['pbs_eval2_losses'].append(last_loss2)
+            metrics['pbs_eval2_buffer_sizes'].append(buffer_size2)
+            metrics['pbs_eval2_accuracy'].append(getattr(eval2, 'avg_accuracy', 0.0))
+        else:
+            metrics['pbs_eval2_losses'].append(0.0)
+            metrics['pbs_eval2_buffer_sizes'].append(0)
+            metrics['pbs_eval2_accuracy'].append(0.0)
+        
+        # Additional informative metrics
+        # Average Q-value from agent1
+        avg_q = agent1.get_average_q() if hasattr(agent1, 'get_average_q') else 0.0
+        metrics['avg_q_values_p1'].append(avg_q)
+        
+        # Action entropy (exploration diversity) - use noisy network sigma as proxy
+        entropy = agent1.get_exploration_entropy() if hasattr(agent1, 'get_exploration_entropy') else 0.0
+        metrics['avg_entropy_p1'].append(entropy)
+        
+        # Sliding window win rate (last 100 episodes)
+        if len(metrics['wins_p1_history']) >= 100:
+            # Calculate wins in last 100 episodes
+            wins_100 = metrics['wins_p1_history'][-1] - metrics['wins_p1_history'][-100]
+            win_rate_100 = wins_100 / 100.0
+        else:
+            # Not enough episodes yet
+            win_rate_100 = metrics['wins_p1'] / max(len(metrics['wins_p1_history']), 1)
+        metrics['win_rate_100'].append(win_rate_100)
         
         # --- CURRICULUM METRICS UPDATE ---
         if curriculum and CURRICULUM_ENABLED:
@@ -610,11 +701,52 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                 episode_history=plot_episodes,
                 rewards_history={'agent1': metrics['rewards_p1'], 'agent2': metrics['rewards_p2']},
                 wins_history={'agent1': metrics['wins_p1_history'], 'agent2': metrics['wins_p2_history']},
-                policy_loss_history={'agent1': metrics['avg_loss_p1_history'], 'agent2': metrics['avg_loss_p2_history']},
+                policy_loss_history={'agent1': metrics['avg_loss_p1_history'], 'agent2': [0.0] * len(metrics['avg_loss_p1_history'])},  # Agent 2 doesn't train
                 save_path=os.path.join(model_save_path, f"training_progress_episode_{episode}.png"),
                 total_episodes=episode,
                 total_steps=global_step
             )
+            
+            # Plot Setup Agent Progress
+            try:
+                plot_setup_agent_progress(
+                    episode_history=plot_episodes,
+                    setup_agent1_rewards=metrics['setup_agent1_rewards'],
+                    setup_agent2_rewards=metrics['setup_agent2_rewards'],
+                    setup_agent1_losses=metrics['setup_agent1_losses'],
+                    setup_agent2_losses=metrics['setup_agent2_losses'],
+                    save_path=os.path.join(model_save_path, f"setup_agent_progress_episode_{episode}.png")
+                )
+            except Exception as e:
+                print(f"⚠️ Could not plot setup agent progress: {e}")
+            
+            # Plot PBS Evaluator Progress
+            try:
+                plot_pbs_evaluator_progress(
+                    episode_history=plot_episodes,
+                    evaluator1_losses=metrics['pbs_eval1_losses'],
+                    evaluator2_losses=metrics['pbs_eval2_losses'],
+                    evaluator1_buffer_sizes=metrics['pbs_eval1_buffer_sizes'],
+                    evaluator2_buffer_sizes=metrics['pbs_eval2_buffer_sizes'],
+                    save_path=os.path.join(model_save_path, f"pbs_evaluator_progress_episode_{episode}.png"),
+                    total_episodes=episode
+                )
+            except Exception as e:
+                print(f"⚠️ Could not plot PBS evaluator progress: {e}")
+            
+            # Plot Additional Metrics (Q-values, entropy, win rate)
+            try:
+                plot_additional_metrics(
+                    episode_history=plot_episodes,
+                    epsilon_history={'agent1': [0.0] * len(plot_episodes), 'agent2': [0.0] * len(plot_episodes)},  # Noisy networks, no epsilon
+                    pbs_buffer_sizes={'agent1': metrics['pbs_eval1_buffer_sizes'], 'agent2': metrics['pbs_eval2_buffer_sizes']},
+                    avg_q_history={'agent1': metrics['avg_q_values_p1'], 'agent2': [0.0] * len(metrics['avg_q_values_p1'])},
+                    entropy_history={'agent1': metrics['avg_entropy_p1'], 'agent2': [0.0] * len(metrics['avg_entropy_p1'])},
+                    save_path=os.path.join(model_save_path, f"additional_metrics_episode_{episode}.png")
+                )
+            except Exception as e:
+                print(f"⚠️ Could not plot additional metrics: {e}")
+            
             print(f"💾 Saved models and plots for episode {episode}")
             
             # Log piece value convergence (every 500 episodes)

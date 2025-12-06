@@ -121,13 +121,20 @@ def train_setup_league(model_save_path: str = "dqn_models"):
 def load_latest_dqn_model(agent: RainbowAgent, model_save_path: str):
     """Load the most recent DQN model to use as evaluator."""
     try:
-        # Look for agent1 models (assuming agent1 and agent2 are similar/symmetric enough for eval)
-        files = glob.glob(os.path.join(model_save_path, "agent1_dqn_episode_*.pth"))
+        # Look for agent1 Rainbow models
+        files = glob.glob(os.path.join(model_save_path, "agent1_rainbow_episode_*.pth"))
+        if not files:
+            # Fall back to dqn pattern for legacy compatibility
+            files = glob.glob(os.path.join(model_save_path, "agent1_dqn_episode_*.pth"))
         if not files:
             # Check for final
-            final_path = os.path.join(model_save_path, "agent1_dqn_final.pth")
+            final_path = os.path.join(model_save_path, "agent1_rainbow_final.pth")
             if os.path.exists(final_path):
                 files = [final_path]
+            else:
+                final_path = os.path.join(model_save_path, "agent1_dqn_final.pth")
+                if os.path.exists(final_path):
+                    files = [final_path]
         
         if files:
             # Sort by modification time to get the absolute latest file written

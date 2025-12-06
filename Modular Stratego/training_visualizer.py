@@ -128,28 +128,23 @@ def plot_training_progress(
     axs[1].set_title('Cumulative Wins (with Win Rate)')
     axs[1].grid(True, alpha=0.3)
 
-    # Plot 3: Policy Loss (with cumulative average)
+    # Plot 3: Policy Loss - Agent 1 Only (Agent 2 doesn't train)
     if len(episode_history) > 0 and len(policy_loss_history.get('agent1', [])) > 0:
-        # Plot discrete points for each episode
+        # Plot discrete points for each episode (Agent 1 only)
         axs[2].scatter(episode_history, policy_loss_history['agent1'], label='Agent 1 Policy Loss', 
                       color='blue', marker='o', s=30, alpha=0.5, zorder=3)
-        axs[2].scatter(episode_history, policy_loss_history['agent2'], label='Agent 2 Policy Loss', 
-                      color='red', marker='o', s=30, alpha=0.5, zorder=3)
         
         # Calculate and plot cumulative average from the start
         if len(episode_history) >= 1:
             # Cumulative average: average of all policy losses from episode 1 to current
             agent1_loss_avg = np.cumsum(policy_loss_history['agent1']) / np.arange(1, len(policy_loss_history['agent1']) + 1)
-            agent2_loss_avg = np.cumsum(policy_loss_history['agent2']) / np.arange(1, len(policy_loss_history['agent2']) + 1)
             
             axs[2].plot(episode_history, agent1_loss_avg, color='blue', linestyle='-', linewidth=2, 
                        label='Agent 1 Cumulative Avg', alpha=0.8, zorder=2)
-            axs[2].plot(episode_history, agent2_loss_avg, color='red', linestyle='-', linewidth=2, 
-                       label='Agent 2 Cumulative Avg', alpha=0.8, zorder=2)
     
     axs[2].set_xlabel('Episodes')
     axs[2].set_ylabel('Policy Loss')
-    axs[2].set_title('Policy Loss per Episode (with Cumulative Average)')
+    axs[2].set_title('Agent 1 Policy Loss (Agent 2 does not train)')
     axs[2].legend()
     axs[2].grid(True, alpha=0.3)
 
@@ -730,20 +725,18 @@ def plot_additional_metrics(
     fig, axs = plt.subplots(2, 2, figsize=(15, 12))
     fig.suptitle('Additional Training Metrics', fontsize=16)
     
-    # Plot 1: Epsilon
+    # Plot 1: Epsilon (Noisy Nets - shows 0 since we use learned exploration)
     if epsilon_history and 'agent1' in epsilon_history:
         axs[0, 0].plot(episode_history, epsilon_history['agent1'], label='Agent 1', color='blue', alpha=0.7)
-        axs[0, 0].plot(episode_history, epsilon_history['agent2'], label='Agent 2', color='red', alpha=0.7)
     axs[0, 0].set_xlabel('Episodes')
     axs[0, 0].set_ylabel('Epsilon')
-    axs[0, 0].set_title('Exploration Rate (Epsilon)')
+    axs[0, 0].set_title('Exploration Rate (Noisy Nets - No Epsilon)')
     axs[0, 0].legend()
     axs[0, 0].grid(True, alpha=0.3)
     
     # Plot 2: PBS Buffer Size
     if pbs_buffer_sizes and 'agent1' in pbs_buffer_sizes:
         axs[0, 1].plot(episode_history, pbs_buffer_sizes['agent1'], label='Agent 1', color='blue', alpha=0.7)
-        axs[0, 1].plot(episode_history, pbs_buffer_sizes['agent2'], label='Agent 2', color='red', alpha=0.7)
     axs[0, 1].set_xlabel('Episodes')
     axs[0, 1].set_ylabel('Buffer Size')
     axs[0, 1].set_title('PBS Experience Buffer Size')
@@ -753,20 +746,18 @@ def plot_additional_metrics(
     # Plot 3: Average Q-Value
     if avg_q_history and 'agent1' in avg_q_history:
         axs[1, 0].plot(episode_history, avg_q_history['agent1'], label='Agent 1', color='blue', alpha=0.7)
-        axs[1, 0].plot(episode_history, avg_q_history['agent2'], label='Agent 2', color='red', alpha=0.7)
     axs[1, 0].set_xlabel('Episodes')
     axs[1, 0].set_ylabel('Avg Q-Value')
-    axs[1, 0].set_title('Average Q-Value (Higher is Better) ↑')
+    axs[1, 0].set_title('Average Q-Value (Higher = Better Learning) ↑')
     axs[1, 0].legend()
     axs[1, 0].grid(True, alpha=0.3)
     
-    # Plot 4: Action Entropy
+    # Plot 4: Action Entropy (Noisy Net Sigma)
     if entropy_history and 'agent1' in entropy_history:
         axs[1, 1].plot(episode_history, entropy_history['agent1'], label='Agent 1', color='blue', alpha=0.7)
-        axs[1, 1].plot(episode_history, entropy_history['agent2'], label='Agent 2', color='red', alpha=0.7)
     axs[1, 1].set_xlabel('Episodes')
-    axs[1, 1].set_ylabel('Entropy')
-    axs[1, 1].set_title('Action Entropy (Higher = More Exploration) ↑')
+    axs[1, 1].set_ylabel('Entropy (Sigma)')
+    axs[1, 1].set_title('Exploration Entropy (Noisy Net Sigma) ↑')
     axs[1, 1].legend()
     axs[1, 1].grid(True, alpha=0.3)
     
