@@ -81,8 +81,17 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
     Train Rainbow DQN agent with league-based diverse opponents.
     Early training uses self-play, then transitions to historical opponents.
     """
-    # Set up device
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    # Set up device with robust CUDA check
+    # torch.cuda.is_available() can return True even if PyTorch wasn't compiled with CUDA
+    device = torch.device('cpu')  # Default to CPU
+    if torch.cuda.is_available():
+        try:
+            # Actually try to use CUDA to verify it works
+            _ = torch.tensor([1.0], device='cuda')
+            device = torch.device('cuda')
+        except (AssertionError, RuntimeError) as e:
+            print(f"⚠️ CUDA detected but not usable: {e}")
+            print("   Falling back to CPU. Install PyTorch with CUDA support for GPU acceleration.")
     print(f"Using device: {device}")
     
     # Optimize GPU settings for better performance
