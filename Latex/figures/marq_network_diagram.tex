@@ -1,0 +1,257 @@
+% MARQ Network Architecture - TikZ Diagram
+% DeepNash-style visualization for academic papers
+% Compile with: pdflatex marq_network_diagram.tex
+
+\documentclass[tikz,border=10pt]{standalone}
+\usepackage{tikz}
+\usetikzlibrary{positioning,shapes.geometric,arrows.meta,calc,fit,backgrounds,decorations.pathreplacing}
+\usepackage{xcolor}
+
+% Define MARQ color palette
+\definecolor{convblue}{RGB}{52,152,219}
+\definecolor{convblue2}{RGB}{41,128,185}
+\definecolor{attnorange}{RGB}{230,126,34}
+\definecolor{pbspurple}{RGB}{155,89,182}
+\definecolor{valugreen}{RGB}{46,204,113}
+\definecolor{advred}{RGB}{231,76,60}
+\definecolor{noisyyellow}{RGB}{241,196,15}
+\definecolor{darkbg}{RGB}{44,62,80}
+\definecolor{lightgray}{RGB}{189,195,199}
+
+\begin{document}
+\begin{tikzpicture}[
+    % Styles
+    convlayer/.style={
+        rectangle,
+        draw=convblue2,
+        fill=convblue,
+        minimum width=1.2cm,
+        minimum height=2cm,
+        text=white,
+        font=\footnotesize\bfseries,
+        rounded corners=2pt
+    },
+    convlayer3d/.style={
+        convlayer,
+        path picture={
+            \fill[convblue2] (path picture bounding box.north east) -- 
+                ++(0.15,-0.15) -- ++(0,-1.7) -- (path picture bounding box.south east) -- cycle;
+            \fill[convblue!70!black] (path picture bounding box.north west) -- 
+                (path picture bounding box.north east) -- ++(0.15,-0.15) -- ++(-1.2,0) -- cycle;
+        }
+    },
+    noisylayer/.style={
+        rectangle,
+        draw=noisyyellow!80!black,
+        fill=noisyyellow,
+        minimum width=0.8cm,
+        minimum height=1.5cm,
+        text=darkbg,
+        font=\tiny\bfseries,
+        rounded corners=2pt,
+        decorate,
+        decoration={random steps, segment length=2pt, amplitude=1pt}
+    },
+    valstream/.style={
+        rectangle,
+        draw=valugreen!80!black,
+        fill=valugreen,
+        minimum width=1.5cm,
+        minimum height=1.2cm,
+        text=white,
+        font=\footnotesize\bfseries,
+        rounded corners=3pt
+    },
+    advstream/.style={
+        rectangle,
+        draw=advred!80!black,
+        fill=advred,
+        minimum width=1.5cm,
+        minimum height=1.2cm,
+        text=white,
+        font=\footnotesize\bfseries,
+        rounded corners=3pt
+    },
+    attention/.style={
+        ellipse,
+        draw=attnorange!80!black,
+        fill=attnorange,
+        minimum width=2cm,
+        minimum height=1cm,
+        text=white,
+        font=\footnotesize\bfseries
+    },
+    pbsbox/.style={
+        rectangle,
+        draw=pbspurple!80!black,
+        fill=pbspurple,
+        minimum width=2.5cm,
+        minimum height=1.5cm,
+        text=white,
+        font=\footnotesize\bfseries,
+        rounded corners=3pt
+    },
+    inputbox/.style={
+        rectangle,
+        draw=lightgray,
+        fill=darkbg,
+        minimum width=1.8cm,
+        minimum height=1.8cm,
+        text=white,
+        font=\footnotesize
+    },
+    outputbox/.style={
+        rectangle,
+        draw=advred,
+        fill=advred!90!black,
+        minimum width=2cm,
+        minimum height=0.8cm,
+        text=white,
+        font=\footnotesize\bfseries,
+        rounded corners=5pt
+    },
+    arrow/.style={
+        ->,
+        >=Stealth,
+        thick,
+        draw=lightgray
+    },
+    label/.style={
+        font=\scriptsize,
+        text=darkbg
+    }
+]
+
+% ============ INPUT SECTION ============
+\node[inputbox, label=below:{\footnotesize Board State}] (board) at (0,0) {
+    \begin{tabular}{c}
+    \textbf{10×10}\\
+    Stratego
+    \end{tabular}
+};
+
+\node[inputbox, below=0.5cm of board, label=below:{\footnotesize PBS Beliefs}] (pbs) {
+    \begin{tabular}{c}
+    \textbf{12 ch}\\
+    P(type)
+    \end{tabular}
+};
+
+% Combine into 27-channel input
+\node[rectangle, draw=convblue, fill=convblue!20, minimum width=1.5cm, minimum height=4cm, 
+      right=1cm of $(board)!0.5!(pbs)$, rounded corners=3pt, label=above:{\footnotesize 27 Channels}] (input27) {};
+\node[font=\tiny, text=convblue2] at (input27) {
+    \begin{tabular}{c}
+    PBS (12)\\
+    +\\
+    Own (12)\\
+    +\\
+    Masks (3)
+    \end{tabular}
+};
+
+\draw[arrow] (board.east) -- (input27.west |- board);
+\draw[arrow] (pbs.east) -- (input27.west |- pbs);
+
+% ============ CONVOLUTIONAL ENCODER ============
+\node[convlayer3d, right=1.2cm of input27, minimum height=3cm, label=above:{\footnotesize Conv 32}] (conv1) {32};
+\node[convlayer3d, right=0.4cm of conv1, minimum height=2.5cm, minimum width=1cm, label=above:{\footnotesize Conv 64}] (conv2) {64};
+\node[convlayer3d, right=0.4cm of conv2, minimum height=2cm, minimum width=0.8cm, label=above:{\footnotesize Conv 64}] (conv3) {64};
+
+\draw[arrow] (input27.east) -- (conv1.west);
+\draw[arrow] (conv1.east) -- (conv2.west);
+\draw[arrow] (conv2.east) -- (conv3.west);
+
+% Flatten indicator
+\node[rectangle, draw=lightgray, dashed, minimum width=0.3cm, minimum height=1.5cm, 
+      right=0.3cm of conv3] (flatten) {};
+\node[font=\tiny, rotate=90] at (flatten) {Flatten};
+\draw[arrow] (conv3.east) -- (flatten.west);
+
+% ============ NOISY LAYERS ============
+\node[noisylayer, right=0.5cm of flatten, label=above:{\tiny Noisy FC}] (noisy1) {512};
+\node[noisylayer, right=0.3cm of noisy1, label=above:{\tiny Noisy FC}] (noisy2) {512};
+
+\draw[arrow] (flatten.east) -- (noisy1.west);
+\draw[arrow] (noisy1.east) -- (noisy2.west);
+
+% ============ DUELING ARCHITECTURE ============
+% Value stream
+\node[valstream, above right=0.5cm and 1cm of noisy2] (value) {
+    \begin{tabular}{c}
+    Value\\
+    $V(s)$
+    \end{tabular}
+};
+
+% Advantage stream
+\node[advstream, below right=0.5cm and 1cm of noisy2] (advantage) {
+    \begin{tabular}{c}
+    Advantage\\
+    $A(s,a)$
+    \end{tabular}
+};
+
+\draw[arrow] (noisy2.east) -- ++(0.3,0) |- (value.west);
+\draw[arrow] (noisy2.east) -- ++(0.3,0) |- (advantage.west);
+
+% Combine node
+\node[circle, draw=pbspurple, fill=pbspurple!30, minimum size=0.8cm, 
+      right=1.5cm of $(value)!0.5!(advantage)$, font=\footnotesize] (combine) {$+$};
+
+\draw[arrow] (value.east) -- ++(0.3,0) |- (combine.west);
+\draw[arrow] (advantage.east) -- ++(0.3,0) |- (combine.west);
+
+% Q-value output
+\node[rectangle, draw=pbspurple, fill=pbspurple!80, minimum width=2cm, minimum height=1cm,
+      right=0.8cm of combine, text=white, font=\footnotesize\bfseries, rounded corners=3pt] (qvalue) {
+    \begin{tabular}{c}
+    $Q(s,a)$\\
+    {\tiny 51 atoms}
+    \end{tabular}
+};
+
+\draw[arrow] (combine.east) -- (qvalue.west);
+
+% Action output
+\node[outputbox, right=0.8cm of qvalue] (action) {Action $a^*$};
+\draw[arrow, draw=advred] (qvalue.east) -- (action.west);
+
+% ============ AAREN MODULE (BELOW) ============
+\node[attention, below=2.5cm of conv2] (aaren) {AAREN};
+
+\node[rectangle, draw=attnorange!50, fill=attnorange!20, minimum width=3cm, minimum height=0.6cm,
+      left=1cm of aaren, font=\tiny, rounded corners=2pt] (history) {
+    Observation History $\{o_1, \ldots, o_t\}$
+};
+
+\node[pbsbox, right=1cm of aaren] (pbsupdate) {
+    \begin{tabular}{c}
+    PBS Update\\
+    $\mathcal{B}_t$
+    \end{tabular}
+};
+
+\draw[arrow, draw=attnorange] (history.east) -- (aaren.west);
+\draw[arrow, draw=attnorange] (aaren.east) -- (pbsupdate.west);
+\draw[arrow, draw=pbspurple, dashed] (pbsupdate.north) -- ++(0, 1.5) -| (input27.south);
+
+% ============ LABELS AND ANNOTATIONS ============
+% Main section labels
+\node[font=\small\bfseries, text=darkbg] at ($(conv1)!0.5!(conv3) + (0, 2)$) {Convolutional Encoder};
+\node[font=\small\bfseries, text=noisyyellow!80!black] at ($(noisy1)!0.5!(noisy2) + (0, 1.5)$) {Noisy Layers};
+\node[font=\small\bfseries, text=pbspurple] at ($(value)!0.5!(advantage) + (3, 0)$) {Dueling};
+
+% Decorative brace for dueling architecture
+\draw[decorate, decoration={brace, amplitude=5pt, raise=5pt}, draw=pbspurple!70]
+    (value.north east) -- (advantage.south east) 
+    node[midway, right=10pt, font=\tiny, text=pbspurple] {$Q = V + (A - \bar{A})$};
+
+% C51 label
+\node[font=\tiny, text=pbspurple, below=0.1cm of qvalue] {Categorical DQN};
+
+% Title
+\node[font=\Large\bfseries, text=darkbg] at ($(conv2) + (3, 4)$) {MARQ: Rainbow DQN Architecture};
+
+\end{tikzpicture}
+\end{document}
