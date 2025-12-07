@@ -84,3 +84,48 @@ REWARD_WEIGHT_MATERIAL = 0.5    # Combat/capture reward weight
 REWARD_WEIGHT_EPISTEMIC = 0.3   # Information gain reward weight
 REWARD_WEIGHT_POSITIONAL = 0.2  # Strategic positioning reward weight
 
+# =============================================================================
+# DISTRIBUTIONAL RL REWARD SHAPING (C51-Compatible Anti-Stall)
+# =============================================================================
+# These settings are NORMALIZED for C51 Distributional RL with V_MIN=-3, V_MAX=+3
+# All rewards are small so cumulative returns stay within the distribution support
+
+DISTRIBUTIONAL_REWARD_ENABLED = True  # Use distributional-compatible rewards
+DISTRIBUTIONAL_WEIGHT = 1.0           # Full weight on distributional rewards
+ENV_REWARD_WEIGHT = 0.0               # Disable environment rewards (use only shaped)
+
+# Anti-stall penalties (tiny to stay within bounds)
+DIST_STEP_PENALTY = -0.005            # -0.005 per step (~100 steps = -0.5)
+DIST_DRAW_PENALTY = -0.8              # Draw = WORSE than loss to force aggression
+
+# Terminal rewards (normalized, NOT at V_MIN/V_MAX bounds)
+DIST_WIN_REWARD = 1.0                 # Win (flag capture or elimination)
+DIST_LOSS_PENALTY = -1.0              # Loss
+
+# Combat rewards (material signal)
+DIST_CAPTURE_SCALE = 0.1              # +0.1 * (rank/10) = max +0.1 per capture
+DIST_LOSS_SCALE = -0.05               # -0.05 per piece lost
+
+# Information gain (crucial for variance learning in C51)
+DIST_REVEAL_BONUS = 0.02              # Bonus for revealing enemy rank
+DIST_FIRST_REVEAL_BONUS = 0.03        # Extra bonus for first reveal of a type
+
+# Strategic bonuses
+DIST_SPY_KILLS_MARSHAL = 0.15         # Spy kills Marshal (rare, valuable)
+DIST_MINER_DEFUSES_BOMB = 0.08        # Miner removes Bomb (strategic)
+
+# Legacy aliases for backwards compatibility
+AGGRESSION_ENABLED = DISTRIBUTIONAL_REWARD_ENABLED
+AGGRESSION_WEIGHT = DISTRIBUTIONAL_WEIGHT
+AGGRESSION_STEP_PENALTY = DIST_STEP_PENALTY
+AGGRESSION_DRAW_PENALTY = DIST_DRAW_PENALTY
+AGGRESSION_WIN_REWARD = DIST_WIN_REWARD
+AGGRESSION_LOSS_PENALTY = DIST_LOSS_PENALTY
+AGGRESSION_ATTACK_WIN_BASE = DIST_CAPTURE_SCALE
+AGGRESSION_ATTACK_LOSE_PENALTY = DIST_LOSS_SCALE
+AGGRESSION_INFO_BONUS = DIST_REVEAL_BONUS
+AGGRESSION_RANK_SCALE = 0.01  # Reduced for normalization
+AGGRESSION_TERRITORY_ADVANCE = 0.02
+AGGRESSION_RETREAT_PENALTY = -0.01
+AGGRESSION_SPY_CAPTURE = DIST_SPY_KILLS_MARSHAL
+AGGRESSION_MINER_CAPTURE = DIST_MINER_DEFUSES_BOMB

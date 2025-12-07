@@ -342,6 +342,7 @@ OUTPUT chapters\methodology.aux
 INPUT .\chapters\methodology.tex
 INPUT .\chapters\methodology.tex
 INPUT chapters\methodology.tex
+INPUT C:\Users\Mark Lawrence Quibot\AppData\Local\Programs\MiKTeX\fonts\tfm\public\cm\cmti10.tfm
 INPUT .\figures\DQN Architecture.png
 INPUT .\figures\DQN Architecture.png
 INPUT .\figures\DQN Architecture.png
@@ -498,7 +499,6 @@ INPUT .\sp.bbl
 INPUT .\sp.bbl
 INPUT sp.bbl
 INPUT C:\Users\Mark Lawrence Quibot\AppData\Local\Programs\MiKTeX\fonts\tfm\public\cm\cmcsc10.tfm
-INPUT C:\Users\Mark Lawrence Quibot\AppData\Local\Programs\MiKTeX\fonts\tfm\public\cm\cmti10.tfm
 INPUT .\misc\vita.tex
 INPUT .\misc\vita.tex
 OUTPUT misc\vita.aux

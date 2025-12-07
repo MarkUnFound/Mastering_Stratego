@@ -63,6 +63,9 @@ from reward_shaping import RewardCalculator, RewardWeights, create_move_info
 from exploiter_agents import get_random_exploiter, RusherAgent, TurtleAgent, FlankingAgent
 from scenario_drills import get_scenario_drill, get_random_scenario
 
+# Distributional RL-Compatible Reward Shaping (C51 Normalized Anti-Stall)
+from distributional_reward import create_distributional_reward_wrapper, DistributionalRewardConfig
+
 # Piece Value Tracking (for convergence analysis)
 try:
     from piece_value_tracker import PieceValueTracker, ANALYTICAL_VALUES
@@ -403,6 +406,11 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
         if opponent_uses_pbs:
             agent2.reset_pbs()
         
+        # Initialize/Reset Distributional RL Reward Shaping (C51-Compatible Anti-Stall)
+        # Creates a per-episode tracker for information gain and revealed pieces
+        dist_reward_p1 = create_distributional_reward_wrapper(player_id=1)
+        dist_reward_p1.reset()  # Reset tracker for new episode
+        
         episode_rewards = {1: np.zeros(NUM_ENVS), -1: np.zeros(NUM_ENVS)}
         active_envs = np.ones(NUM_ENVS, dtype=bool)
         
@@ -458,12 +466,37 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
             if should_update_p2_pbs and opponent_uses_pbs:
                 agent2.update_pbs_batch(actions_p1, game_states, acting_player=1)
             
+            # Apply Distributional RL Reward Shaping (C51-Compatible Anti-Stall)
+            # Uses normalized rewards that stay within V_MIN/V_MAX bounds
+            from training_config import DISTRIBUTIONAL_REWARD_ENABLED, DISTRIBUTIONAL_WEIGHT, ENV_REWARD_WEIGHT
+            shaped_rewards_p1 = []
+            for i in range(NUM_ENVS):
+                if active_envs[i]:
+                    if DISTRIBUTIONAL_REWARD_ENABLED:
+                        shaped_reward = dist_reward_p1(
+                            previous_state=game_states[i],
+                            action=actions_p1[i],
+                            current_state=next_states_p1[i],
+                            done=dones_p1[i],
+                            winner=infos_p1[i].get('winner'),
+                            info=infos_p1[i]
+                        )
+                        # Use ONLY distributional rewards (ENV_REWARD_WEIGHT=0 recommended)
+                        # This ensures rewards are properly normalized for C51
+                        combined_reward = ENV_REWARD_WEIGHT * rewards_p1[i] + DISTRIBUTIONAL_WEIGHT * shaped_reward
+                        shaped_rewards_p1.append(combined_reward)
+                    else:
+                        # Distributional shaping disabled - use raw environment rewards
+                        shaped_rewards_p1.append(rewards_p1[i])
+                else:
+                    shaped_rewards_p1.append(rewards_p1[i])
+            
             # Store P1 Experience (batched for efficiency)
             _t0 = _time.perf_counter()
             agent1.remember_batch(
                 [gs.board for gs in game_states],
                 actions_p1,
-                rewards_p1,
+                shaped_rewards_p1,  # Use shaped rewards instead of raw env rewards
                 [ns.board for ns in next_states_p1],
                 dones_p1,
                 active_envs,
@@ -475,7 +508,7 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
             # Update episode rewards and track wins
             for i in range(NUM_ENVS):
                 if active_envs[i]:
-                    episode_rewards[1][i] += rewards_p1[i]
+                    episode_rewards[1][i] += shaped_rewards_p1[i]  # Track shaped rewards
                     if dones_p1[i]:
                         active_envs[i] = False
                         if infos_p1[i]['winner'] == 1: metrics['wins_p1'] += 1

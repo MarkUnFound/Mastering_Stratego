@@ -135,13 +135,26 @@ Training follows a five-phase curriculum of increasing complexity. Phase 1 (Full
 \paragraph{Reward Shaping Weights.}
 The composite reward function uses configurable weights: outcome reward $w_o = 1.0$, material reward $w_m = 0.5$, epistemic reward $w_e = 0.3$, and positional reward $w_p = 0.2$. These weights prioritize terminal outcomes while providing dense learning signals through intermediate rewards.
 
+\paragraph{Distributional RL-Compatible Reward Normalization.}
+The C51 distributional architecture requires careful reward scaling to ensure cumulative returns fall within the value distribution support $[V_{min}, V_{max}]$. With a support of $[-3, +3]$ and 51 atoms, each atom spans 0.12 value units, providing sufficient resolution for learning the return distribution.
+
+To address reward hacking behavior---where the agent learns to stall games and force draws due to risk aversion toward unknown enemy piece ranks---the framework implements an anti-stall reward structure with normalized magnitudes. Terminal rewards are set to $+1.0$ for wins and $-1.0$ for losses, well within the distribution bounds. Draws and timeouts receive $-0.8$, deliberately \textit{worse} than a fighting loss, which creates a gradient toward aggressive play.
+
+A constant time-pressure penalty of $-0.005$ per step creates implicit preference for shorter games. Over a typical 100-step game, this accumulates to approximately $-0.5$, keeping cumulative returns within bounds.
+
+Combat rewards provide material signal through capture bonus $+0.1 \cdot (r_{enemy}/10)$, where $r_{enemy}$ is the captured piece's rank, yielding a maximum of $+0.1$ per capture. Losing a piece incurs $-0.05$, which is less severe than passive play to encourage probing attacks.
+
+A crucial component for distributional learning is the information gain bonus. Revealing an enemy piece rank through combat yields $+0.02$, with an additional $+0.03$ for the first reveal of each piece type. This helps the value distribution learn the \textit{variance} associated with attacking unknown pieces---unrevealed pieces have high uncertainty, while revealed pieces have low variance. The distributional approach naturally captures this risk-reward tradeoff that scalar Q-learning cannot represent.
+
+Strategic capture bonuses encode domain knowledge: eliminating the opponent's Spy while their Marshal survives grants $+0.15$, and removing enemy Miners while Bombs remain yields $+0.08$.
+
+
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=1\textwidth]{figures/DQN Architecture.png}
 \caption[MARQ Framework]{The MARQ System Architecture, which takes the Board State and PBS as input.}
 \label{fig:my_label}
 \end{figure}
-
 
 \subsection{Deployment}
 Upon completion of the training and validation cycles, the best-performing MARQ model weights will be saved and finalized for deployment. Deploy the trained model into the Stratego game environment described in Section 2 of the methodology.

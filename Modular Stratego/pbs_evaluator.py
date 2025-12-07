@@ -166,7 +166,9 @@ class BiasTracker:
             - > 1.0 if PBS under-predicts this type (increase probability)
             - 1.0 if no bias detected or insufficient data
         """
-        if self.prediction_counts[piece_type] < min_samples:
+        # Use .get() for safety in case defaultdict behavior is lost after loading
+        pred_count = self.prediction_counts.get(piece_type, 0)
+        if pred_count < min_samples:
             return 1.0  # No correction if insufficient data
         
         # Calculate prediction rate vs actual rate
@@ -176,12 +178,12 @@ class BiasTracker:
         if total_predictions == 0 or total_actuals == 0:
             return 1.0
         
-        predicted_rate = self.prediction_counts[piece_type] / total_predictions
-        actual_rate = self.actual_counts[piece_type] / total_actuals
+        predicted_rate = pred_count / total_predictions
+        actual_rate = self.actual_counts.get(piece_type, 0) / total_actuals
         
         # Calculate accuracy for this type
         correct = self.confusion_matrix[piece_type][piece_type]
-        total_predicted = self.prediction_counts[piece_type]
+        total_predicted = pred_count
         accuracy = correct / total_predicted if total_predicted > 0 else 0.0
         
         # Correction factor based on:
@@ -620,14 +622,14 @@ class PBSEvaluator:
                     act_type = PieceType[act_name]
                     self.bias_tracker.confusion_matrix[pred_type][act_type] = count
             
-            self.bias_tracker.prediction_counts = {PieceType[name]: count 
-                                                   for name, count in bias_data.get('prediction_counts', {}).items()}
-            self.bias_tracker.actual_counts = {PieceType[name]: count 
-                                              for name, count in bias_data.get('actual_counts', {}).items()}
-            self.bias_tracker.overconfidence_by_type = {PieceType[name]: confidences 
-                                                        for name, confidences in bias_data.get('overconfidence_by_type', {}).items()}
-            self.bias_tracker.underconfidence_by_type = {PieceType[name]: confidences 
-                                                         for name, confidences in bias_data.get('underconfidence_by_type', {}).items()}
+            self.bias_tracker.prediction_counts = defaultdict(int, {PieceType[name]: count 
+                                                   for name, count in bias_data.get('prediction_counts', {}).items()})
+            self.bias_tracker.actual_counts = defaultdict(int, {PieceType[name]: count 
+                                              for name, count in bias_data.get('actual_counts', {}).items()})
+            self.bias_tracker.overconfidence_by_type = defaultdict(list, {PieceType[name]: confidences 
+                                                        for name, confidences in bias_data.get('overconfidence_by_type', {}).items()})
+            self.bias_tracker.underconfidence_by_type = defaultdict(list, {PieceType[name]: confidences 
+                                                         for name, confidences in bias_data.get('underconfidence_by_type', {}).items()})
         
         # Load feature training data if available
         if 'feature_training_data' in checkpoint:

@@ -114,10 +114,11 @@
 \contentsline {paragraph}{League-Based Training.}{47}{}%
 \contentsline {paragraph}{Curriculum Learning.}{48}{}%
 \contentsline {paragraph}{Reward Shaping Weights.}{48}{}%
+\contentsline {paragraph}{Distributional RL-Compatible Reward Normalization.}{48}{}%
 \contentsline {subsection}{\numberline {4.3.1}Deployment}{49}{}%
-\contentsline {section}{\numberline {4.4}Evaluation}{50}{}%
-\contentsline {paragraph}{Quantitative Analysis.}{50}{}%
-\contentsline {paragraph}{Qualitative Analysis.}{50}{}%
-\contentsline {paragraph}{Model Iteration and Initial Results.}{50}{}%
+\contentsline {section}{\numberline {4.4}Evaluation}{51}{}%
+\contentsline {paragraph}{Quantitative Analysis.}{51}{}%
+\contentsline {paragraph}{Qualitative Analysis.}{51}{}%
+\contentsline {paragraph}{Model Iteration and Initial Results.}{51}{}%
 \contentsline {chapter}{\numberline {A}Gantt Chart}{52}{}%
 \contentsline {chapter}{\numberline {B}System UI and Training}{55}{}%

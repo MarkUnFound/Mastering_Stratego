@@ -29,9 +29,14 @@ if PBS_EVALUATOR_AVAILABLE:
 from critic import ExploitabilityCritic
 from prioritized_memory import StandardReplayBuffer, Experience
 
-# C51 Hyperparameters
-V_MIN = -100.0
-V_MAX = 100.0
+# C51 Hyperparameters - CRITICAL FOR DISTRIBUTIONAL RL
+# The support range must match the expected return scale!
+# With normalized rewards (terminal ±1.0, step -0.005, capture +0.1):
+#   - Max expected return: ~+1.5 (win + captures - steps)
+#   - Min expected return: ~-2.0 (loss + losses + steps)
+# Using [-3, +3] provides buffer room for the distribution to learn variance
+V_MIN = -3.0   # Previous: -100.0 (way too wide!)
+V_MAX = 3.0    # Previous: +100.0 (made each atom cover ~4 points)
 NUM_ATOMS = 51
 
 
@@ -172,6 +177,68 @@ class RainbowAgent:
                     pbs.reset()
             else:
                 self.pbs.reset()
+
+    def enable_pbs(self, num_envs: int = None):
+        """
+        Enable PBS for an agent that was created with use_pbs=False.
+        This is used during curriculum phase transitions to dynamically enable PBS.
+        
+        Args:
+            num_envs: Number of parallel environments (uses self.num_envs if not provided)
+        """
+        if self.use_pbs:
+            return  # Already enabled
+            
+        if num_envs is None:
+            num_envs = self.num_envs
+            
+        self.use_pbs = True
+        self.num_envs = num_envs
+        
+        # Import AAREN optimization settings
+        try:
+            from training_config import AAREN_HIDDEN_SIZE, AAREN_NUM_LAYERS, AAREN_USE_TORCHSCRIPT
+        except ImportError:
+            AAREN_HIDDEN_SIZE = 32
+            AAREN_NUM_LAYERS = 2
+            AAREN_USE_TORCHSCRIPT = True
+        
+        if num_envs > 1:
+            # Create shared models for parallel environments with optimized settings
+            self.shared_aaren = PieceActionAaren(
+                input_size=24, hidden_size=AAREN_HIDDEN_SIZE, 
+                num_layers=AAREN_NUM_LAYERS, output_size=12, device=self.device
+            ).to(self.device)
+            
+            # TorchScript compilation for faster inference
+            if AAREN_USE_TORCHSCRIPT:
+                try:
+                    self.shared_aaren = torch.jit.script(self.shared_aaren)
+                    print(f"✅ AAREN TorchScript compilation successful (enable_pbs)")
+                except Exception as e:
+                    print(f"⚠️ AAREN TorchScript failed, using eager mode: {e}")
+            
+            self.shared_aaren_optimizer = optim.AdamW(self.shared_aaren.parameters(), lr=0.001, weight_decay=0.01)
+            
+            self.shared_evaluator = None
+            if PBS_EVALUATOR_AVAILABLE:
+                self.shared_evaluator = PBSEvaluator(device=self.device)
+            
+            self.pbs_instances = []
+            for _ in range(num_envs):
+                pbs_instance = ProbabilisticBeliefState(
+                    self.player_id, self.device, 
+                    shared_aaren_model=self.shared_aaren,
+                    shared_evaluator=self.shared_evaluator
+                )
+                pbs_instance.aaren_optimizer = self.shared_aaren_optimizer
+                self.pbs_instances.append(pbs_instance)
+            self.pbs = self.pbs_instances[0]
+        else:
+            self.pbs = ProbabilisticBeliefState(self.player_id, self.device)
+            self.pbs_instances = [self.pbs]
+        
+        print(f"✅ PBS enabled for {self.name} ({num_envs} environments)")
 
     def update_target_network(self):
         """Soft update target network."""
