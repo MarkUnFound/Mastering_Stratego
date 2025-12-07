@@ -637,12 +637,12 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
         
         # Sliding window win rate (last 100 episodes)
         if len(metrics['wins_p1_history']) >= 100:
-            # Calculate wins in last 100 episodes
+            # Calculate wins in last 100 episodes (normalize by NUM_ENVS)
             wins_100 = metrics['wins_p1_history'][-1] - metrics['wins_p1_history'][-100]
-            win_rate_100 = wins_100 / 100.0
+            win_rate_100 = wins_100 / (100.0 * NUM_ENVS)
         else:
             # Not enough episodes yet
-            win_rate_100 = metrics['wins_p1'] / max(len(metrics['wins_p1_history']), 1)
+            win_rate_100 = metrics['wins_p1'] / (max(len(metrics['wins_p1_history']), 1) * NUM_ENVS)
         metrics['win_rate_100'].append(win_rate_100)
         
         # --- CURRICULUM METRICS UPDATE ---
@@ -749,7 +749,8 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                 policy_loss_history={'agent1': metrics['avg_loss_p1_history'], 'agent2': [0.0] * len(metrics['avg_loss_p1_history'])},  # Agent 2 doesn't train
                 save_path=os.path.join(model_save_path, f"training_progress_episode_{episode}.png"),
                 total_episodes=episode,
-                total_steps=global_step
+                total_steps=global_step,
+                num_envs=NUM_ENVS
             )
             
             # (Setup agent plotting removed - using HeuristicSetupAgent)\n            

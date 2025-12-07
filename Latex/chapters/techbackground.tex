@@ -1,7 +1,7 @@
 \chapter{Theoretical Frameworks}
-The main idea of MARQ, a Multi-Agent Rainbow Deep Q-Networks, is to employ self-play techniques and deep reinforcement learning to train agents capable of handling Stratego's large game state space and imperfect information. MARQ uses a league-based self-play system where agents learn by competing against a diverse pool of opponents, including their own previous versions and exploratory variants.
+The main idea of the MARQ framework, a Multi-Agent Rainbow Deep Q-Networks, is to employ self-play techniques and deep reinforcement learning to train agents capable of handling Stratego's large game state space and imperfect information. The MARQ framework uses a league-based self-play system where agents learn by competing against a diverse pool of opponents, including their own previous versions and exploratory variants.
 
-This approach addresses the fundamental challenge of Stratego: reasoning about hidden information without computing intractable common-knowledge sets. While the number of possible game states exceeds $10^{535}$ and initial setups alone reach $10^{66}$ per player \cite{RLStratego}, MARQ manages this complexity through belief state management, probabilistic reasoning, and strategic pattern recognition. The framework combines deep reinforcement learning for value estimation, attention mechanisms for processing game history, and controlled strategy mixing to prevent exploitation, while maintaining computational tractability even in this vast imperfect-information domain.
+This approach addresses the fundamental challenge of Stratego: reasoning about hidden information without computing intractable common-knowledge sets. While the number of possible game states exceeds $10^{535}$ and initial setups alone reach $10^{66}$ per player \cite{RLStratego}, the MARQ framework manages this complexity through belief state management, probabilistic reasoning, and strategic pattern recognition. The framework combines deep reinforcement learning for value estimation, attention mechanisms for processing game history, and controlled strategy mixing to prevent exploitation, while maintaining computational tractability even in this vast imperfect-information domain.
 
 
 \section{MARQ Architecture Integration}
@@ -14,7 +14,7 @@ Finally, the entire architecture is embedded within a league-based training para
 
 The league training system ensures improvement through three complementary mechanisms. First, the system maintains best response values against historical opponents, ensuring that the current policy remains competitive against the full distribution of strategies encountered during training. Second, promotion to the main agent pool requires a positive win rate against previous versions before replacement, preventing regression in overall performance. Third, diversity bonuses in the opponent selection distribution prevent premature convergence to strategies that may be exploitable by novel counter-strategies.
 
-These properties, combined with extensive validation, provide confidence that MARQ will achieve strong, robust play despite the theoretical compromises necessary for tractability.
+These properties, combined with extensive validation, provide confidence that the MARQ framework will achieve strong, robust play despite the theoretical compromises necessary for tractability.
 
 \begin{table}[htbp]
     \centering
@@ -234,7 +234,7 @@ These theoretical foundations provide confidence in the MARQ framework's ability
 
 
 \section{Deep Q-Network with Belief States}
-Deep Q-Networks in MARQ operate on belief states rather than complete game states. The network approximates Q-values for probability distributions over opponent configurations, $\mathcal{B}_t$:
+Deep Q-Networks in the MARQ framework operate on belief states rather than complete game states. The network approximates Q-values for probability distributions over opponent configurations, $\mathcal{B}_t$:
 $$Q(s, a) = \mathbb{E}_{s' \sim \mathcal{S}_t \subseteq \mathcal{B}_t}[Q_{network}(s', a)]$$
 
 The system uses a \textbf{Standard Replay Buffer} for experience storage, sampling transitions $(\mathcal{B}_t, a_t, r_t, \mathcal{B}_{t+1})$ uniformly to train the value function.

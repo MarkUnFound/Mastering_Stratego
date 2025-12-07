@@ -25,7 +25,8 @@ def plot_training_progress(
     policy_loss_history: Dict[str, List[float]],
     save_path: str,
     total_episodes: Optional[int] = None,
-    total_steps: Optional[int] = None
+    total_steps: Optional[int] = None,
+    num_envs: int = 1
 ):
     """
     Plots and saves the training progress of DQN agents.
@@ -38,6 +39,7 @@ def plot_training_progress(
         save_path: Path to save the plot image.
         total_episodes: Total episodes across all training runs (for display).
         total_steps: Total steps across all training runs (for display).
+        num_envs: Number of parallel environments (for win rate normalization).
     """
     # Validate input data
     if not episode_history or len(episode_history) == 0:
@@ -100,10 +102,12 @@ def plot_training_progress(
         
         # Calculate and plot cumulative average win rate from the start (on secondary y-axis)
         if len(episode_history) >= 1:
-            # Cumulative win rate: wins / total episodes
+            # Cumulative win rate: wins / (total episodes * num_envs)
             episode_nums = np.arange(1, len(wins_history['agent1']) + 1)
-            agent1_win_rate = np.array(wins_history['agent1'], dtype=float) / episode_nums
-            agent2_win_rate = np.array(wins_history['agent2'], dtype=float) / episode_nums
+            # Normalize by number of environments per episode
+            normalization_factor = episode_nums * num_envs
+            agent1_win_rate = np.array(wins_history['agent1'], dtype=float) / normalization_factor
+            agent2_win_rate = np.array(wins_history['agent2'], dtype=float) / normalization_factor
             
             # Create secondary y-axis for win rate
             axs1_twin = axs[1].twinx()
