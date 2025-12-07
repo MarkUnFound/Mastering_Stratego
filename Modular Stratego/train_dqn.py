@@ -34,9 +34,9 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from environment import StrategoEnvironment
 from parallel_environment import ParallelStrategoEnvironment
 from drqn_agent import RainbowAgent
-from setup_agent import SetupAgent
+from heuristic_setup import HeuristicSetupAgent
 from game_state import GameState
-from training_visualizer import plot_training_progress, create_training_gif, create_episode_gif, plot_setup_agent_progress, plot_pbs_evaluator_progress, plot_additional_metrics
+from training_visualizer import plot_training_progress, create_training_gif, create_episode_gif, plot_pbs_evaluator_progress, plot_additional_metrics
 from pbs_visualizer import visualize_pbs_state, create_pbs_gif
 from piece import PieceType, PIECE_RANKS
 from board import LAKE_SQUARE
@@ -52,11 +52,9 @@ except ImportError:
 # This helps balance training by randomizing which agent goes first
 from random_starting_player import should_swap_players, swap_placements, get_batch_swap_decisions
 from league import LeagueManager
-from setup_league import SetupLeague
 from opponents import RandomAgent, GreedyAgent, OpponentPool
 from training_config import *
 from training_utils import save_training_history, load_training_history
-from setup_evaluation import calculate_setup_agent_reward
 from preflight_checks import run_preflight_checks
 
 # Curriculum and Reward Shaping
@@ -82,7 +80,6 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
     Early training uses self-play, then transitions to historical opponents.
     """
     # Set up device with robust CUDA check
-    # torch.cuda.is_available() can return True even if PyTorch wasn't compiled with CUDA
     device = torch.device('cpu')  # Default to CPU
     if torch.cuda.is_available():
         try:
@@ -94,6 +91,36 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
             print("   Falling back to CPU. Install PyTorch with CUDA support for GPU acceleration.")
     print(f"Using device: {device}")
     
+    # Auto-adjust config based on available VRAM
+    from training_config import NUM_ENVS as DEFAULT_NUM_ENVS
+    from training_config import BATCH_SIZE as DEFAULT_BATCH_SIZE
+    from training_config import MEMORY_SIZE as DEFAULT_MEMORY_SIZE
+    
+    # Use defaults
+    num_envs = DEFAULT_NUM_ENVS
+    batch_size = DEFAULT_BATCH_SIZE
+    memory_size = DEFAULT_MEMORY_SIZE
+    
+    if device.type == 'cuda':
+        vram_gb = torch.cuda.get_device_properties(0).total_memory / (1024**3)
+        print(f"🎮 Detected GPU: {torch.cuda.get_device_name(0)} ({vram_gb:.1f} GB VRAM)")
+        
+        if vram_gb >= 12:
+            # High VRAM config (12GB+ / 16GB systems)
+            num_envs = 12
+            batch_size = 128
+            memory_size = 200000
+            print("⚡ Using HIGH VRAM config: NUM_ENVS=12, BATCH_SIZE=128, MEMORY=200k")
+        elif vram_gb >= 8:
+            # Medium VRAM config (8-12GB systems)  
+            num_envs = 8
+            batch_size = 64
+            memory_size = 150000
+            print("⚡ Using MEDIUM VRAM config: NUM_ENVS=8, BATCH_SIZE=64, MEMORY=150k")
+        else:
+            # Low VRAM config (6GB systems - use defaults)
+            print(f"⚡ Using LOW VRAM config: NUM_ENVS={num_envs}, BATCH_SIZE={batch_size}, MEMORY={memory_size//1000}k")
+    
     # Optimize GPU settings for better performance
     if device.type == 'cuda':
         torch.backends.cudnn.benchmark = True
@@ -103,18 +130,22 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
     os.makedirs(model_save_path, exist_ok=True)
     
     # Initialize Parallel Environment
-    print(f"Initializing {NUM_ENVS} parallel environments...")
-    parallel_env = ParallelStrategoEnvironment(num_envs=NUM_ENVS, device=device)
+    print(f"Initializing {num_envs} parallel environments...")
+    parallel_env = ParallelStrategoEnvironment(num_envs=num_envs, device=device)
     
     # Initialize Agents
     print("Initializing Rainbow Agents...")
-    agent1 = RainbowAgent(player_id=1, device=device, lr=LEARNING_RATE, batch_size=BATCH_SIZE, num_envs=NUM_ENVS, buffer_size=MEMORY_SIZE)
-    # Agent2 uses minimal buffer - mainly loads from league, doesn't train
-    agent2 = RainbowAgent(player_id=-1, device=device, lr=LEARNING_RATE, batch_size=BATCH_SIZE, num_envs=NUM_ENVS, buffer_size=10000)
+    agent1 = RainbowAgent(player_id=1, device=device, lr=LEARNING_RATE, batch_size=batch_size, num_envs=num_envs, buffer_size=memory_size)
+    # Agent2: minimal buffer, no PBS (saves ~18% training time in early phases)
+    # PBS will be enabled for Agent 2 when reaching Phase 4
+    agent2 = RainbowAgent(player_id=-1, device=device, lr=LEARNING_RATE, batch_size=batch_size, num_envs=num_envs, buffer_size=10000, use_pbs=False)
+    print("⚡ Agent 2 PBS disabled for early phases (will enable at Phase 4)")
     
-    # Initialize Setup Agents
-    setup_agent1 = SetupAgent(player_id=1, device=device)
-    setup_agent2 = SetupAgent(player_id=-1, device=device)
+    # Initialize Setup Agents (using fast heuristic instead of neural network)
+    # This saves ~2 seconds per episode while maintaining strategic setups
+    setup_agent1 = HeuristicSetupAgent(player_id=1, device=device)
+    setup_agent2 = HeuristicSetupAgent(player_id=-1, device=device)
+    print("📋 Using HeuristicSetupAgent (fast strategic placement)")
     
     # Initialize League Manager and Opponent Pool
     league_dir = os.path.join(model_save_path, "league")
@@ -193,19 +224,8 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
         except Exception as e:
             print(f"⚠️ Failed to load Agent 2 model: {e}")
 
-    # Load Setup Agents
-    setup1_files = glob.glob(os.path.join(model_save_path, "setup_agent1_episode_*.pth"))
-    setup2_files = glob.glob(os.path.join(model_save_path, "setup_agent2_episode_*.pth"))
-    
-    if setup1_files:
-        setup1_files.sort(key=extract_episode, reverse=True)
-        setup_agent1.load_model(setup1_files[0])
-        print(f"✅ Loaded Setup Agent 1 from {setup1_files[0]}")
-        
-    if setup2_files:
-        setup2_files.sort(key=extract_episode, reverse=True)
-        setup_agent2.load_model(setup2_files[0])
-        print(f"✅ Loaded Setup Agent 2 from {setup2_files[0]}")
+
+    # (HeuristicSetupAgent doesn't need model loading)
 
     # Load PBS Evaluators (if available)
     pbs_eval1_files = glob.glob(os.path.join(model_save_path, "pbs_evaluator1_episode_*.pth"))
@@ -237,19 +257,12 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
         'losses_p1': [],
         'avg_loss_p1_history': [],  # Note: Agent 2 doesn't train, so no loss tracking
         
-        # Setup agent metrics (rewards, losses, convergence)
-        'setup_agent1_rewards': [],
-        'setup_agent2_rewards': [],
-        'setup_agent1_losses': [],
-        'setup_agent2_losses': [],
+        # (Setup agent metrics removed - using HeuristicSetupAgent)
         
-        # PBS evaluator metrics
+        # PBS evaluator metrics (Agent 1 only - Agent 2 has use_pbs=False)
         'pbs_eval1_losses': [],
-        'pbs_eval2_losses': [],
         'pbs_eval1_buffer_sizes': [],
-        'pbs_eval2_buffer_sizes': [],
         'pbs_eval1_accuracy': [],
-        'pbs_eval2_accuracy': [],
         
         # Additional informative metrics
         'avg_q_values_p1': [],
@@ -401,21 +414,35 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
         # PBS optimization: track steps for interval-based updates
         from training_config import PBS_UPDATE_INTERVAL
         
+        # Profiling timers
+        import time as _time
+        _profile_act1 = 0.0
+        _profile_step1 = 0.0
+        _profile_remember1 = 0.0
+        _profile_act2 = 0.0
+        _profile_step2 = 0.0
+        _profile_remember2 = 0.0
+        _profile_replay = 0.0
+        
         while np.any(active_envs):
             # 3. Get Actions for P1
             # valid_moves currently holds moves for the current player (P1 at start of loop)
             
             # P1 Actions
+            _t0 = _time.perf_counter()
             actions_p1 = agent1.act_batch(
                 [gs.board for gs in game_states],
                 valid_moves,
                 game_states,
                 env_indices=list(range(NUM_ENVS))
             )
+            _profile_act1 += _time.perf_counter() - _t0
             
             # Step P1
             # parallel_env.step returns (next_states, rewards, dones, infos, valid_moves_for_next_player)
+            _t0 = _time.perf_counter()
             next_states_p1, rewards_p1, dones_p1, infos_p1, valid_moves = parallel_env.step(actions_p1)
+            _profile_step1 += _time.perf_counter() - _t0
             
             # UPDATE P2's PBS with P1's moves (interval-based)
             # Always update if any action is a Scout move (2+ tiles), otherwise use interval
@@ -432,6 +459,7 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                 agent2.update_pbs_batch(actions_p1, game_states, acting_player=1)
             
             # Store P1 Experience (batched for efficiency)
+            _t0 = _time.perf_counter()
             agent1.remember_batch(
                 [gs.board for gs in game_states],
                 actions_p1,
@@ -442,6 +470,7 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                 game_states,
                 next_states_p1
             )
+            _profile_remember1 += _time.perf_counter() - _t0
             
             # Update episode rewards and track wins
             for i in range(NUM_ENVS):
@@ -458,19 +487,26 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
             if not np.any(active_envs): break
             
             # P2 Actions (using current_opponent - may be league/random/greedy/self)
+            _t0 = _time.perf_counter()
             actions_p2 = current_opponent.act_batch(
                 [gs.board for gs in game_states],
                 valid_moves,
                 game_states,
                 env_indices=list(range(NUM_ENVS))
             )
+            _profile_act2 += _time.perf_counter() - _t0
             
             # Step P2
+            _t0 = _time.perf_counter()
             next_states_p2, rewards_p2, dones_p2, infos_p2, valid_moves = parallel_env.step(actions_p2)
+            _profile_step2 += _time.perf_counter() - _t0
             
             # UPDATE P1's PBS with P2's moves (interval-based)
-            should_update_p1_pbs = (step_in_episode % PBS_UPDATE_INTERVAL == 0)
-            if not should_update_p1_pbs:
+            # Skip PBS updates in full observability phases (Phase 1) - pieces are already visible
+            use_pbs_this_phase = not (curriculum and CURRICULUM_ENABLED and curriculum.should_use_full_observability())
+            
+            should_update_p1_pbs = use_pbs_this_phase and (step_in_episode % PBS_UPDATE_INTERVAL == 0)
+            if use_pbs_this_phase and not should_update_p1_pbs:
                 # Check for Scout moves (must be updated immediately)
                 for action in actions_p2:
                     if action:
@@ -527,7 +563,9 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
             
             # 4. Training Step (only Agent1 trains)
             if global_step % REPLAY_UPDATE_INTERVAL == 0:
+                _t0 = _time.perf_counter()
                 loss1 = agent1.replay()
+                _profile_replay += _time.perf_counter() - _t0
                 
                 if loss1: 
                     metrics['losses_p1'].append(loss1)
@@ -537,11 +575,25 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
             if global_step % TARGET_UPDATE_INTERVAL == 0:
                 agent1.update_target_network()
                 print("🔄 Target Network Updated")
+        
+        # Print profiling breakdown every 10 episodes
+        if episode % 10 == 0:
+            print(f"⏱️ Profile: act1={_profile_act1:.1f}s step1={_profile_step1:.1f}s rem1={_profile_remember1:.1f}s act2={_profile_act2:.1f}s step2={_profile_step2:.1f}s rem2={_profile_remember2:.1f}s replay={_profile_replay:.1f}s")
 
         # 5. Train PBS (AAREN) Models
-        # Train on data collected during this episode
-        agent1.train_pbs(epochs=5)
-        agent2.train_pbs(epochs=5)
+        # Skip PBS training in full observability phases (Phase 1) - no PBS data collected
+        if not (curriculum and CURRICULUM_ENABLED and curriculum.should_use_full_observability()):
+            # Train on data collected during this episode
+            agent1.train_pbs(epochs=5)
+            agent2.train_pbs(epochs=5)
+            
+            # 6. Train PBS Evaluator (for metrics tracking)
+            # This trains the evaluator network on revealed piece data
+            if agent1.pbs and hasattr(agent1.pbs, 'train_evaluator'):
+                try:
+                    agent1.pbs.train_evaluator(epochs=1)
+                except Exception as e:
+                    pass  # Silent fail to not impact training
 
         # End of Episode Logging
         avg_reward_p1 = np.mean(episode_rewards[1])
@@ -558,14 +610,7 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
         avg_loss_p1 = np.mean(episode_losses_p1) if episode_losses_p1 else 0
         metrics['avg_loss_p1_history'].append(avg_loss_p1)
         
-        # Setup agent metrics
-        metrics['setup_agent1_rewards'].append(episode_setup_reward1)
-        metrics['setup_agent2_rewards'].append(episode_setup_reward2)
-        # Track setup agent losses if they have training losses
-        setup_loss1 = setup_agent1.get_average_policy_loss(window=10) if hasattr(setup_agent1, 'get_average_policy_loss') else 0.0
-        setup_loss2 = setup_agent2.get_average_policy_loss(window=10) if hasattr(setup_agent2, 'get_average_policy_loss') else 0.0
-        metrics['setup_agent1_losses'].append(setup_loss1)
-        metrics['setup_agent2_losses'].append(setup_loss2)
+        # (Setup agent metrics removed - using HeuristicSetupAgent)
         
         # PBS evaluator metrics (use training_losses list and memory attribute)
         if agent1.pbs and hasattr(agent1.pbs, 'evaluator') and agent1.pbs.evaluator:
@@ -580,18 +625,6 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
             metrics['pbs_eval1_losses'].append(0.0)
             metrics['pbs_eval1_buffer_sizes'].append(0)
             metrics['pbs_eval1_accuracy'].append(0.0)
-            
-        if agent2.pbs and hasattr(agent2.pbs, 'evaluator') and agent2.pbs.evaluator:
-            eval2 = agent2.pbs.evaluator
-            last_loss2 = eval2.training_losses[-1] if hasattr(eval2, 'training_losses') and eval2.training_losses else 0.0
-            buffer_size2 = len(eval2.memory) if hasattr(eval2, 'memory') else 0
-            metrics['pbs_eval2_losses'].append(last_loss2)
-            metrics['pbs_eval2_buffer_sizes'].append(buffer_size2)
-            metrics['pbs_eval2_accuracy'].append(getattr(eval2, 'avg_accuracy', 0.0))
-        else:
-            metrics['pbs_eval2_losses'].append(0.0)
-            metrics['pbs_eval2_buffer_sizes'].append(0)
-            metrics['pbs_eval2_accuracy'].append(0.0)
         
         # Additional informative metrics
         # Average Q-value from agent1
@@ -650,6 +683,11 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                     
                     # Update environment observability for new phase
                     parallel_env.set_full_observability(curriculum.should_use_full_observability())
+                    
+                    # Enable Agent 2 PBS at Phase 4 (realistic opponent modeling)
+                    if curriculum.current_phase.value >= 4 and not agent2.use_pbs:
+                        agent2.enable_pbs(num_envs)
+                        print("⚡ Agent 2 PBS ENABLED for Phase 4+ (full opponent belief modeling)")
             
             # Save curriculum state periodically
             if episode % save_interval == 0:
@@ -680,9 +718,7 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
             if episode % LEAGUE_SAVE_INTERVAL == 0:
                 league_manager.save_agent(agent1_path, episode)
             
-            # Save Setup Agents
-            setup_agent1.save_model(os.path.join(model_save_path, f"setup_agent1_episode_{episode}.pth"))
-            setup_agent2.save_model(os.path.join(model_save_path, f"setup_agent2_episode_{episode}.pth"))
+            # (HeuristicSetupAgent doesn't need model saving)
             
             # Save PBS Evaluators (if available)
             if agent1.pbs and hasattr(agent1.pbs, 'evaluator') and agent1.pbs.evaluator:
@@ -716,27 +752,15 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                 total_steps=global_step
             )
             
-            # Plot Setup Agent Progress
-            try:
-                plot_setup_agent_progress(
-                    episode_history=plot_episodes,
-                    setup_agent1_rewards=metrics['setup_agent1_rewards'],
-                    setup_agent2_rewards=metrics['setup_agent2_rewards'],
-                    setup_agent1_losses=metrics['setup_agent1_losses'],
-                    setup_agent2_losses=metrics['setup_agent2_losses'],
-                    save_path=os.path.join(model_save_path, f"setup_agent_progress_episode_{episode}.png")
-                )
-            except Exception as e:
-                print(f"⚠️ Could not plot setup agent progress: {e}")
-            
-            # Plot PBS Evaluator Progress
+            # (Setup agent plotting removed - using HeuristicSetupAgent)\n            
+            # Plot PBS Evaluator Progress (Agent 1 only - Agent 2 has use_pbs=False)
             try:
                 plot_pbs_evaluator_progress(
                     episode_history=plot_episodes,
                     evaluator1_losses=metrics['pbs_eval1_losses'],
-                    evaluator2_losses=metrics['pbs_eval2_losses'],
+                    evaluator2_losses=[0.0] * len(metrics['pbs_eval1_losses']),  # Agent 2 has no PBS
                     evaluator1_buffer_sizes=metrics['pbs_eval1_buffer_sizes'],
-                    evaluator2_buffer_sizes=metrics['pbs_eval2_buffer_sizes'],
+                    evaluator2_buffer_sizes=[0] * len(metrics['pbs_eval1_buffer_sizes']),  # Agent 2 has no PBS
                     save_path=os.path.join(model_save_path, f"pbs_evaluator_progress_episode_{episode}.png"),
                     total_episodes=episode
                 )
@@ -748,7 +772,7 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                 plot_additional_metrics(
                     episode_history=plot_episodes,
                     epsilon_history={'agent1': [0.0] * len(plot_episodes), 'agent2': [0.0] * len(plot_episodes)},  # Noisy networks, no epsilon
-                    pbs_buffer_sizes={'agent1': metrics['pbs_eval1_buffer_sizes'], 'agent2': metrics['pbs_eval2_buffer_sizes']},
+                    pbs_buffer_sizes={'agent1': metrics['pbs_eval1_buffer_sizes'], 'agent2': [0] * len(metrics['pbs_eval1_buffer_sizes'])},  # Agent 2 has no PBS
                     avg_q_history={'agent1': metrics['avg_q_values_p1'], 'agent2': [0.0] * len(metrics['avg_q_values_p1'])},
                     entropy_history={'agent1': metrics['avg_entropy_p1'], 'agent2': [0.0] * len(metrics['avg_entropy_p1'])},
                     save_path=os.path.join(model_save_path, f"additional_metrics_episode_{episode}.png")

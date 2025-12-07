@@ -16,7 +16,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from environment import StrategoEnvironment
 from parallel_environment import ParallelStrategoEnvironment
 from drqn_agent import RainbowAgent
-from setup_agent import SetupAgent
+from heuristic_setup import HeuristicSetupAgent
 from game_state import GameState
 from training_config import *
 
@@ -75,12 +75,14 @@ def profile_training(num_episodes=2):
     
     profiler.start("init_agents")
     agent1 = RainbowAgent(player_id=1, device=device, lr=LEARNING_RATE, batch_size=BATCH_SIZE, num_envs=NUM_ENVS, buffer_size=MEMORY_SIZE)
-    agent2 = RainbowAgent(player_id=-1, device=device, lr=LEARNING_RATE, batch_size=BATCH_SIZE, num_envs=NUM_ENVS, buffer_size=MEMORY_SIZE)
+    # Agent 2: minimal buffer, no PBS (matching train_dqn.py for early phases)
+    agent2 = RainbowAgent(player_id=-1, device=device, lr=LEARNING_RATE, batch_size=BATCH_SIZE, num_envs=NUM_ENVS, buffer_size=10000, use_pbs=False)
     profiler.stop("init_agents")
     
+    # Use fast HeuristicSetupAgent (matching train_dqn.py)
     profiler.start("init_setup_agents")
-    setup_agent1 = SetupAgent(player_id=1, device=device)
-    setup_agent2 = SetupAgent(player_id=-1, device=device)
+    setup_agent1 = HeuristicSetupAgent(player_id=1, device=device)
+    setup_agent2 = HeuristicSetupAgent(player_id=-1, device=device)
     profiler.stop("init_setup_agents")
     
     # Load existing models if available

@@ -5,20 +5,20 @@ Configuration settings for DQN training.
 # Hyperparameters
 # Hyperparameters
 NUM_ENVS = 4 # Reduced to 4 for stability and speed
-BATCH_SIZE = 32
+BATCH_SIZE = 128
 TRACE_LENGTH = 8 # Unused for Rainbow
 GAMMA = 0.99
 EPSILON_START = 1.0
 EPSILON_MIN = 0.1
 EPSILON_DECAY = 0.99995
 TARGET_UPDATE = 1000
-MEMORY_SIZE = 100000 # Increased buffer size for transitions
+MEMORY_SIZE = 100000 # Increased buffer size for transitions (auto-scales by VRAM)
 LEARNING_RATE = 0.0001
 NUM_EPISODES = 35000
 SAVE_INTERVAL = 250
 EVAL_INTERVAL = 100
 PREFETCH_QUEUE_SIZE = 4
-REPLAY_UPDATE_INTERVAL = 4 # Train every 4 steps
+REPLAY_UPDATE_INTERVAL = 32 # Train every 32 steps (optimized for speed, replay ratio ~1.0)
 REPLAY_UPDATES_PER_STEP = 1 # Unused in current script
 TARGET_UPDATE_INTERVAL = 5000
 REWARD_SCALE = 1.0  # Scaling factor for reward calculations

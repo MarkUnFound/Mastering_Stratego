@@ -149,6 +149,9 @@ class RainbowAgent:
         # Mixed Precision
         self.scaler = torch.amp.GradScaler('cuda')
         self.amp_enabled = True
+        
+        # Cache for state tensors (to avoid redundant computation in remember_batch)
+        self._cached_state_tensor = None  # Cached from act_batch
 
     def reset(self):
         """Reset the agent"""
@@ -268,7 +271,14 @@ class RainbowAgent:
             next_game_states: List of next GameState objects
         """
         # Get batch state representation once (much more efficient)
-        state_tensors = self.get_batch_state_representation(states, game_states)
+        if self._cached_state_tensor is not None:
+            # Use cached tensor from act_batch
+            state_tensors = self._cached_state_tensor
+            self._cached_state_tensor = None # Clear cache
+        else:
+            # Recompute if not cached (should happen rarely, e.g. first step)
+            state_tensors = self.get_batch_state_representation(states, game_states)
+            
         next_state_tensors = self.get_batch_state_representation(next_states, next_game_states)
         
         # Add to memory for active environments only
@@ -373,9 +383,9 @@ class RainbowAgent:
         if env_indices is None:
             env_indices = list(range(batch_size))
         
-        # 1. Get batch state representation
+        # 1. Get batch state representation and cache it for remember_batch
         state_tensor = self.get_batch_state_representation(states, game_states)
-        # print(f"DEBUG: act_batch state_tensor shape: {state_tensor.shape}")
+        self._cached_state_tensor = state_tensor  # Cache for reuse in remember_batch
         
         # 2. Get uncertainty maps
         uncertainty_maps = []
@@ -795,8 +805,8 @@ class RainbowAgent:
             for name, module in self.q_network.named_modules():
                 if isinstance(module, NoisyLinear):
                     # Get average sigma magnitude
-                    sigma_w = module.sigma_weight.abs().mean().item()
-                    sigma_b = module.sigma_bias.abs().mean().item()
+                    sigma_w = module.weight_sigma.abs().mean().item()
+                    sigma_b = module.bias_sigma.abs().mean().item()
                     total_sigma += (sigma_w + sigma_b) / 2
                     num_params += 1
                     

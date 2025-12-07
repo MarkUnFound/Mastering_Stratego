@@ -70,7 +70,6 @@ def _test_plotting(save_path):
 def _test_game_simulation():
     # Initialize environment and agents
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    # device = torch.device('cpu') # Force CPU for debugging
     print(f"      Using device: {device}")
 
     # Create dummy agents (minimal config)
