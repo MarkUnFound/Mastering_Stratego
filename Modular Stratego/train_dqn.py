@@ -76,7 +76,6 @@ except ImportError:
 
 def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100, 
                      model_save_path: str = "dqn_models",
-                     use_setup_agents: bool = True,
                      generate_gifs: bool = True):
     """
     Train Rainbow DQN agent with league-based diverse opponents.
@@ -148,7 +147,7 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
     # This saves ~2 seconds per episode while maintaining strategic setups
     setup_agent1 = HeuristicSetupAgent(player_id=1, device=device)
     setup_agent2 = HeuristicSetupAgent(player_id=-1, device=device)
-    print("📋 Using HeuristicSetupAgent (fast strategic placement)")
+    # Using HeuristicSetupAgent (fast strategic placement)
     
     # Initialize League Manager and Opponent Pool
     league_dir = os.path.join(model_save_path, "league")
@@ -389,24 +388,14 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
             p2_pos = parallel_env.call_method('get_valid_placement_positions', -1)
             p2_place = setup_agent2.place_pieces(p2_pieces, p2_pos)
             p2_placements.append(p2_place)
-            
-        # 2. Calculate setup agent evaluation rewards (before game starts)
-        episode_setup_reward1 = 0.0
-        episode_setup_reward2 = 0.0
+        
+        # 2. Apply Random Starting Player (remove first-player bias)
+        # Each environment has 50% chance of swapping which eliminates the advantage
+        # of always going first as Player 1
+        swap_decisions = get_batch_swap_decisions(NUM_ENVS)
         for i in range(NUM_ENVS):
-            # Evaluate setup quality (flag protection, piece distribution, etc.)
-            try:
-                from setup_evaluation import evaluate_flag_protection, evaluate_piece_distribution
-                setup_score1 = (evaluate_flag_protection(p1_placements[i], 1) + 
-                               evaluate_piece_distribution(p1_placements[i], 1)) / 2.0
-                setup_score2 = (evaluate_flag_protection(p2_placements[i], -1) + 
-                               evaluate_piece_distribution(p2_placements[i], -1)) / 2.0
-                episode_setup_reward1 += setup_score1
-                episode_setup_reward2 += setup_score2
-            except Exception:
-                pass  # Silent fail to not impact training
-        episode_setup_reward1 /= max(NUM_ENVS, 1)
-        episode_setup_reward2 /= max(NUM_ENVS, 1)
+            if swap_decisions[i]:
+                p1_placements[i], p2_placements[i] = swap_placements(p1_placements[i], p2_placements[i])
         
         # 3. Reset Environments
         # parallel_env.reset returns (states, rewards, dones, infos, valid_moves)
@@ -603,7 +592,9 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
 
             game_states = next_states_p2
             step_in_episode += 1
-            global_step += 1
+            # Count Agent 1's actual steps across all active parallel environments
+            active_count = int(np.sum(active_envs))
+            global_step += active_count  # Only count Agent 1 (training agent) actions
             
             # 4. Training Step (only Agent1 trains)
             if global_step % REPLAY_UPDATE_INTERVAL == 0:
@@ -762,14 +753,16 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                 'W1': metrics['wins_p1'],
                 'W2': metrics['wins_p2'],
                 'Ph': curriculum.current_phase.value,
-                'Opp': opponent_type[:4]
+                'Opp': opponent_type[:4],
+                'Steps': f"{global_step//1000}k"
             })
         else:
             pbar.set_postfix({
                 'R1': f"{avg_reward_p1:.2f}",
                 'W1': metrics['wins_p1'],
                 'W2': metrics['wins_p2'],
-                'Opp': opponent_type[:4]
+                'Opp': opponent_type[:4],
+                'Steps': f"{global_step//1000}k"
             })
         
         # Save Models

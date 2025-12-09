@@ -10,7 +10,7 @@ from typing import List, Tuple, Dict, Optional
 # Import existing modules
 try:
     from drqn_agent import RainbowAgent
-    from setup_agent import SetupAgent
+    from heuristic_setup import HeuristicSetupAgent
     from environment import StrategoEnvironment
     from piece import PieceType
     from board import HIDDEN_PIECE, LAKE_SQUARE, BOARD_SIZE, EMPTY_SQUARE
@@ -96,10 +96,9 @@ class LiveVisualizer:
         self.agent_status = "Not Loaded"
         self._load_models(self.episode_num)
         
-        self.setup_agent1 = SetupAgent(1, self.device)
-        self.setup_agent2 = SetupAgent(-1, self.device)
-        self.setup_status = "Not Loaded"
-        self._load_setup_models(self.episode_num)
+        self.setup_agent1 = HeuristicSetupAgent(player_id=1, device=self.device)
+        self.setup_agent2 = HeuristicSetupAgent(player_id=-1, device=self.device)
+        self.setup_status = "Heuristic"
         
         self.pending_battle = None # Store battle info: {action, attacker, defender, time}
         self.use_pbs = True
@@ -190,34 +189,7 @@ class LiveVisualizer:
             
         self.agent_status = f"Loaded Ep {episode_num}"
 
-    def _load_setup_models(self, episode_num):
-        if episode_num == 0:
-            self.setup_status = "Random Init"
-            print("⚠️  No setup models found. Using Random/Heuristic Placement.")
-            return
 
-        print(f"🔄 Loading Setup Agents for Episode {episode_num}...")
-        models_dir = "dqn_models"
-        
-        try:
-            path1 = f"{models_dir}/setup_agent1_episode_{episode_num}.pth"
-            if os.path.exists(path1):
-                self.setup_agent1.load_model(path1)
-                print(f"  ✅ Setup Agent 1 loaded")
-            else:
-                print(f"  ❌ Setup Agent 1 file not found: {path1}")
-                
-            path2 = f"{models_dir}/setup_agent2_episode_{episode_num}.pth"
-            if os.path.exists(path2):
-                self.setup_agent2.load_model(path2)
-                print(f"  ✅ Setup Agent 2 loaded")
-            else:
-                print(f"  ❌ Setup Agent 2 file not found: {path2}")
-                
-            self.setup_status = f"Loaded Ep {episode_num}"
-        except Exception as e:
-            print(f"  ❌ Failed to load setup models: {e}")
-            self.setup_status = "Load Failed"
 
     def reset_game(self):
         # Generate placements using setup agents

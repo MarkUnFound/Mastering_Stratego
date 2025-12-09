@@ -18,7 +18,7 @@ class StandardReplayBuffer:
         self.buffer = deque(maxlen=capacity)
         self.store_on_gpu = (device != 'cpu' and device != torch.device('cpu'))
         if self.store_on_gpu:
-            print("Replay buffer storing on GPU")
+            pass  # Using GPU storage
         
     def add(self, state, action, reward, next_state, done):
         """Add a transition to the buffer."""

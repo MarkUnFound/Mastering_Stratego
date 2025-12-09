@@ -11,7 +11,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from parallel_environment import ParallelStrategoEnvironment
 from drqn_agent import DRQNAgent
-from setup_agent import SetupAgent
+from heuristic_setup import HeuristicSetupAgent
 from training_config import *
 
 def profile_training():
@@ -33,8 +33,8 @@ def profile_training():
     agent1 = DRQNAgent(player_id=1, device=device, lr=LEARNING_RATE, batch_size=BATCH_SIZE, num_envs=NUM_ENVS, buffer_size=MEMORY_SIZE)
     agent2 = DRQNAgent(player_id=-1, device=device, lr=LEARNING_RATE, batch_size=BATCH_SIZE, num_envs=NUM_ENVS, buffer_size=MEMORY_SIZE)
     
-    setup_agent1 = SetupAgent(player_id=1, device=device)
-    setup_agent2 = SetupAgent(player_id=-1, device=device)
+    setup_agent1 = HeuristicSetupAgent(player_id=1, device=device)
+    setup_agent2 = HeuristicSetupAgent(player_id=-1, device=device)
     
     # Timing stats
     stats = {

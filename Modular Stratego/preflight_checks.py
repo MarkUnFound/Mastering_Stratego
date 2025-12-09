@@ -2,7 +2,7 @@ import os
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
-from training_visualizer import plot_training_progress, plot_setup_agent_progress, plot_pbs_evaluator_progress, plot_additional_metrics
+from training_visualizer import plot_training_progress, plot_pbs_evaluator_progress, plot_additional_metrics
 from environment import StrategoEnvironment
 from drqn_agent import RainbowAgent
 from training_config import NUM_ENVS
@@ -46,12 +46,7 @@ def _test_plotting(save_path):
     # Test plot_training_progress
     plot_training_progress(episodes, rewards, wins, losses, f"{save_path}/test_training_progress.png")
     
-    # Test setup agent progress
-    setup_rewards1 = [0.2 * i for i in episodes]
-    setup_rewards2 = [0.15 * i for i in episodes]
-    setup_losses1 = [0.5 / i for i in episodes]
-    setup_losses2 = [0.4 / i for i in episodes]
-    plot_setup_agent_progress(episodes, setup_rewards1, setup_rewards2, setup_losses1, setup_losses2, f"{save_path}/test_setup_progress.png")
+
     
     # Test PBS evaluator progress
     pbs_losses1 = [0.3 / i for i in episodes]

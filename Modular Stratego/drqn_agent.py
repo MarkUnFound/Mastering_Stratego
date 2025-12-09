@@ -26,7 +26,6 @@ from aaren import PieceActionAaren
 
 if PBS_EVALUATOR_AVAILABLE:
     from pbs_evaluator import PBSEvaluator
-from critic import ExploitabilityCritic
 from prioritized_memory import StandardReplayBuffer, Experience
 
 # C51 Hyperparameters - CRITICAL FOR DISTRIBUTIONAL RL
