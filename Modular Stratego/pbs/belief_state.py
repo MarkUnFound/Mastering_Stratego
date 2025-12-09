@@ -133,6 +133,11 @@ class ProbabilisticBeliefState:
         # Stores tuples of (action_sequence, true_piece_type, position)
         self.aaren_training_buffer: deque = deque(maxlen=5000)
         
+        # AAREN Metrics Tracking
+        self.aaren_training_losses: List[float] = []  # Training loss history
+        self.aaren_predictions_correct: int = 0  # Correct predictions count
+        self.aaren_predictions_total: int = 0  # Total predictions count
+        
         # Cached Belief Tensor (Optimization)
         # Shape: (NUM_PIECE_TYPES, 10, 10)
         # We maintain this on the device to avoid re-creating it every step
@@ -538,6 +543,11 @@ class ProbabilisticBeliefState:
             was_correct = (predicted_type == piece_type)
             self.prediction_history.append((prediction.copy(), piece_type, was_correct))
             self.accuracy_by_piece_type[piece_type].append(was_correct)
+            
+            # Track AAREN prediction accuracy specifically
+            self.aaren_predictions_total += 1
+            if was_correct:
+                self.aaren_predictions_correct += 1
         
         # Set belief to 1.0 for revealed type
         self.belief_distributions[pos] = {
@@ -597,16 +607,16 @@ class ProbabilisticBeliefState:
     def train_aaren(self, action_sequences: List[List[List[float]]], 
                    true_piece_types: List[PieceType], 
                    epochs: int = 1,
-                   positions: Optional[List[Tuple[int, int]]] = None):
-        """Train the AAREN model on collected action sequences."""
+                   positions: Optional[List[Tuple[int, int]]] = None) -> Optional[float]:
+        """Train the AAREN model on collected action sequences. Returns final loss."""
         if not action_sequences or not self.aaren_model:
-            return
+            return None
             
         # Prepare batch data
         max_len = max(len(seq) for seq in action_sequences)
         batch_size = len(action_sequences)
         if batch_size == 0 or max_len == 0:
-            return
+            return None
             
         input_size = len(action_sequences[0][0])
         
@@ -630,6 +640,7 @@ class ProbabilisticBeliefState:
         
         # Training loop
         self.aaren_model.train()
+        final_loss = None
         for _ in range(epochs):
             self.aaren_optimizer.zero_grad()
             
@@ -644,8 +655,18 @@ class ProbabilisticBeliefState:
             loss.backward()
             torch.nn.utils.clip_grad_norm_(self.aaren_model.parameters(), max_norm=1.0)
             self.aaren_optimizer.step()
+            final_loss = loss.item()
             
         self.aaren_model.eval()
+        
+        # Track the final loss
+        if final_loss is not None:
+            self.aaren_training_losses.append(final_loss)
+            # Keep only last 1000 losses to avoid memory bloat
+            if len(self.aaren_training_losses) > 1000:
+                self.aaren_training_losses = self.aaren_training_losses[-1000:]
+        
+        return final_loss
     
     def get_uncertain_positions(self) -> set:
         """Get positions that need more information gathering."""
@@ -656,6 +677,23 @@ class ProbabilisticBeliefState:
         if self.evaluator is None:
             return None
         return self.evaluator.bias_tracker.get_bias_summary()
+    
+    def get_aaren_accuracy(self) -> float:
+        """Get AAREN prediction accuracy (0.0 to 1.0)."""
+        if self.aaren_predictions_total == 0:
+            return 0.0
+        return self.aaren_predictions_correct / self.aaren_predictions_total
+    
+    def get_aaren_avg_loss(self, window: int = 50) -> float:
+        """Get average AAREN training loss over recent window."""
+        if not self.aaren_training_losses:
+            return 0.0
+        recent = self.aaren_training_losses[-window:]
+        return sum(recent) / len(recent)
+    
+    def get_aaren_buffer_size(self) -> int:
+        """Get current AAREN training buffer size."""
+        return len(self.aaren_training_buffer)
     
     def get_belief_distribution(self, pos: Tuple[int, int]) -> Dict[PieceType, float]:
         """Get the belief distribution for a piece at a given position."""

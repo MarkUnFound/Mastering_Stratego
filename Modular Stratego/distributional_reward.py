@@ -84,6 +84,33 @@ class DistributionalRewardConfig:
     spy_kills_marshal: float = 0.15   # Spy kills Marshal (rare, valuable)
     miner_defuses_bomb: float = 0.08  # Miner removes Bomb (strategic)
     
+    @classmethod
+    def from_training_config(cls) -> 'DistributionalRewardConfig':
+        """Load configuration from training_config.py settings."""
+        try:
+            from training_config import (
+                DIST_STEP_PENALTY, DIST_DRAW_PENALTY,
+                DIST_WIN_REWARD, DIST_LOSS_PENALTY,
+                DIST_CAPTURE_SCALE, DIST_LOSS_SCALE,
+                DIST_REVEAL_BONUS, DIST_FIRST_REVEAL_BONUS,
+                DIST_SPY_KILLS_MARSHAL, DIST_MINER_DEFUSES_BOMB
+            )
+            return cls(
+                step_penalty=DIST_STEP_PENALTY,
+                draw_penalty=DIST_DRAW_PENALTY,
+                win_reward=DIST_WIN_REWARD,
+                loss_penalty=DIST_LOSS_PENALTY,
+                capture_scale=DIST_CAPTURE_SCALE,
+                loss_scale=DIST_LOSS_SCALE,
+                reveal_bonus=DIST_REVEAL_BONUS,
+                first_reveal_bonus=DIST_FIRST_REVEAL_BONUS,
+                spy_kills_marshal=DIST_SPY_KILLS_MARSHAL,
+                miner_defuses_bomb=DIST_MINER_DEFUSES_BOMB
+            )
+        except ImportError:
+            # Fall back to defaults if training_config doesn't have these
+            return cls()
+    
 
 class DistributionalRewardTracker:
     """
@@ -295,7 +322,8 @@ def create_distributional_reward_wrapper(player_id: int = 1, config: Optional[Di
         reward = reward_fn(prev_state, action, curr_state, done, winner, info)
     """
     if config is None:
-        config = DistributionalRewardConfig()
+        # Load from training_config.py for latest reward values
+        config = DistributionalRewardConfig.from_training_config()
     
     tracker = DistributionalRewardTracker()
     

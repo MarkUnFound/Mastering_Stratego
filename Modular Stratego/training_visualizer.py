@@ -26,7 +26,8 @@ def plot_training_progress(
     save_path: str,
     total_episodes: Optional[int] = None,
     total_steps: Optional[int] = None,
-    num_envs: int = 1
+    num_envs: int = 1,
+    phase_history: Optional[List[int]] = None
 ):
     """
     Plots and saves the training progress of DQN agents.
@@ -133,24 +134,104 @@ def plot_training_progress(
     axs[1].grid(True, alpha=0.3)
 
     # Plot 3: Policy Loss - Agent 1 Only (Agent 2 doesn't train)
+    # Uses LOG SCALE to properly show loss improvements across orders of magnitude
     if len(episode_history) > 0 and len(policy_loss_history.get('agent1', [])) > 0:
-        # Plot discrete points for each episode (Agent 1 only)
-        axs[2].scatter(episode_history, policy_loss_history['agent1'], label='Agent 1 Policy Loss', 
-                      color='blue', marker='o', s=30, alpha=0.5, zorder=3)
+        losses = policy_loss_history['agent1']
         
-        # Calculate and plot cumulative average from the start
-        if len(episode_history) >= 1:
-            # Cumulative average: average of all policy losses from episode 1 to current
-            agent1_loss_avg = np.cumsum(policy_loss_history['agent1']) / np.arange(1, len(policy_loss_history['agent1']) + 1)
+        # Filter out zero values (episodes where no loss was recorded)
+        # Zero values are NOT real losses - they occur when replay() returns None
+        valid_episodes = []
+        valid_losses = []
+        for ep, loss in zip(episode_history, losses):
+            if loss > 0:  # Only include actual non-zero losses
+                valid_episodes.append(ep)
+                valid_losses.append(loss)
+        
+        if valid_episodes:
+            # Plot discrete points for each episode (Agent 1 only)
+            axs[2].scatter(valid_episodes, valid_losses, label='Agent 1 Policy Loss', 
+                          color='blue', marker='o', s=30, alpha=0.5, zorder=3)
             
-            axs[2].plot(episode_history, agent1_loss_avg, color='blue', linestyle='-', linewidth=2, 
-                       label='Agent 1 Cumulative Avg', alpha=0.8, zorder=2)
+            # Calculate and plot WINDOWED moving average (last 50 non-zero values)
+            window_size = min(50, len(valid_losses) // 2) if len(valid_losses) > 1 else 1
+            if len(valid_losses) >= window_size and window_size > 1:
+                windowed_avg = []
+                windowed_episodes = []
+                for i in range(window_size, len(valid_losses) + 1):
+                    windowed_avg.append(np.mean(valid_losses[i-window_size:i]))
+                    windowed_episodes.append(valid_episodes[i-1])
+                
+                axs[2].plot(windowed_episodes, windowed_avg, color='blue', linestyle='-', linewidth=2, 
+                           label=f'Moving Avg ({window_size} samples)', alpha=0.8, zorder=2)
+            
+            # Use log scale for better visibility of loss changes
+            # Don't use symlog since we filtered out zeros
+            axs[2].set_yscale('log')
+        else:
+            axs[2].text(0.5, 0.5, 'No loss data recorded yet', ha='center', va='center', 
+                       transform=axs[2].transAxes, fontsize=12)
     
     axs[2].set_xlabel('Episodes')
-    axs[2].set_ylabel('Policy Loss')
+    axs[2].set_ylabel('Policy Loss (log scale)')
     axs[2].set_title('Agent 1 Policy Loss (Agent 2 does not train)')
     axs[2].legend()
     axs[2].grid(True, alpha=0.3)
+    
+    # Draw curriculum phase boundaries on all subplots
+    if phase_history is not None and len(phase_history) > 0:
+        # Phase colors and names
+        phase_colors = {
+            1: '#4CAF50',  # Phase 1: Green (Physics of War)
+            2: '#2196F3',  # Phase 2: Blue (Memory Gap)
+            3: '#FF9800',  # Phase 3: Orange (Self-Play)
+            4: '#9C27B0',  # Phase 4: Purple (League Training)
+            5: '#F44336',  # Phase 5: Red (Scenario Drills)
+        }
+        phase_names = {
+            1: 'P1: Physics',
+            2: 'P2: Memory',
+            3: 'P3: Self-Play',
+            4: 'P4: League',
+            5: 'P5: Drills',
+        }
+        
+        # Find phase transition points
+        transitions = []
+        current_phase = phase_history[0] if phase_history else 1
+        for i, phase in enumerate(phase_history):
+            if phase != current_phase:
+                transitions.append((episode_history[i], current_phase, phase))
+                current_phase = phase
+        
+        # Draw vertical lines at transitions on all subplots
+        for ax in axs:
+            for ep, from_phase, to_phase in transitions:
+                color = phase_colors.get(to_phase, 'gray')
+                ax.axvline(x=ep, color=color, linestyle='--', linewidth=1.5, alpha=0.7, zorder=1)
+        
+        # Add phase labels at top of first subplot
+        if transitions:
+            # Label starting phase
+            first_trans = transitions[0][0] if transitions else episode_history[-1]
+            start_phase = phase_history[0]
+            axs[0].text(episode_history[0] + (first_trans - episode_history[0])/2, 
+                       axs[0].get_ylim()[1] * 0.95, 
+                       phase_names.get(start_phase, f'P{start_phase}'),
+                       ha='center', fontsize=8, color=phase_colors.get(start_phase, 'gray'),
+                       fontweight='bold', alpha=0.8)
+            
+            # Label each phase after transitions
+            for i, (ep, from_phase, to_phase) in enumerate(transitions):
+                # Find end of this phase (next transition or end)
+                if i + 1 < len(transitions):
+                    next_ep = transitions[i + 1][0]
+                else:
+                    next_ep = episode_history[-1]
+                mid_ep = ep + (next_ep - ep) / 2
+                axs[0].text(mid_ep, axs[0].get_ylim()[1] * 0.95, 
+                           phase_names.get(to_phase, f'P{to_phase}'),
+                           ha='center', fontsize=8, color=phase_colors.get(to_phase, 'gray'),
+                           fontweight='bold', alpha=0.8)
 
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
     
@@ -456,10 +537,13 @@ def plot_pbs_evaluator_progress(
     evaluator1_buffer_sizes: List[int],
     evaluator2_buffer_sizes: List[int],
     save_path: str,
-    total_episodes: Optional[int] = None
+    total_episodes: Optional[int] = None,
+    aaren_losses: Optional[List[float]] = None,
+    aaren_accuracies: Optional[List[float]] = None,
+    aaren_buffer_sizes: Optional[List[int]] = None
 ):
     """
-    Plot PBS evaluator improvement metrics.
+    Plot PBS evaluator and AAREN improvement metrics.
     
     Args:
         episode_history: List of episode numbers
@@ -469,6 +553,9 @@ def plot_pbs_evaluator_progress(
         evaluator2_buffer_sizes: List of experience buffer sizes for evaluator 2
         save_path: Path to save the plot
         total_episodes: Total episodes across all training runs (for display)
+        aaren_losses: Optional list of AAREN training losses
+        aaren_accuracies: Optional list of AAREN prediction accuracies (0-1)
+        aaren_buffer_sizes: Optional list of AAREN buffer sizes
     """
     # Validate input data
     if not episode_history:
@@ -486,17 +573,25 @@ def plot_pbs_evaluator_progress(
     evaluator1_buffer_sizes = evaluator1_buffer_sizes[:min_len]
     evaluator2_buffer_sizes = evaluator2_buffer_sizes[:min_len]
     
-    # Create figure with subplots (2 rows, 1 column for cleaner vertical layout)
-    fig, axes = plt.subplots(2, 1, figsize=(12, 12))
+    # Check if AAREN data is available
+    has_aaren = (aaren_losses is not None and aaren_accuracies is not None and 
+                 len(aaren_losses) > 0 and len(aaren_accuracies) > 0)
+    
+    # Create figure with 2x2 grid if AAREN data available, else 2x1
+    if has_aaren:
+        fig, axes = plt.subplots(2, 2, figsize=(14, 12))
+        axes = axes.flatten()
+    else:
+        fig, axes = plt.subplots(2, 1, figsize=(12, 12))
     fig.patch.set_facecolor('white')
     
     # Title
-    title = 'PBS Evaluator Metrics'
+    title = 'PBS Evaluator & AAREN Metrics' if has_aaren else 'PBS Evaluator Metrics'
     if total_episodes is not None:
         title += f' | Total Episodes: {total_episodes:,}'
     fig.suptitle(title, fontsize=16, fontweight='bold')
     
-    # 1. Training Loss (Raw + Moving Average)
+    # 1. Evaluator Training Loss (Raw + Moving Average)
     ax1 = axes[0]
     
     # Filter out None values
@@ -550,7 +645,7 @@ def plot_pbs_evaluator_progress(
     ax1.legend()
     ax1.grid(True, alpha=0.3)
     
-    # 2. Buffer Size
+    # 2. Buffer Size (Evaluator)
     ax2 = axes[1]
     
     # Filter out None values
@@ -571,6 +666,78 @@ def plot_pbs_evaluator_progress(
     ax2.legend()
     ax2.grid(True, alpha=0.3)
     
+    # 3. AAREN Training Loss (if available)
+    if has_aaren:
+        ax3 = axes[2]
+        
+        # Filter out zero/None values (no training happened)
+        valid_aaren_eps = []
+        valid_aaren_losses = []
+        for ep, loss in zip(episode_history[:len(aaren_losses)], aaren_losses):
+            if loss is not None and loss > 0:
+                valid_aaren_eps.append(ep)
+                valid_aaren_losses.append(loss)
+        
+        if valid_aaren_losses:
+            # Plot raw loss with transparency
+            ax3.scatter(valid_aaren_eps, valid_aaren_losses, c='green', alpha=0.4, s=20, label='AAREN Loss')
+            
+            # Moving average
+            window = min(50, len(valid_aaren_losses) // 2) if len(valid_aaren_losses) > 1 else 1
+            if len(valid_aaren_losses) >= window and window > 1:
+                ma_losses = []
+                ma_eps = []
+                for i in range(window, len(valid_aaren_losses) + 1):
+                    ma_losses.append(np.mean(valid_aaren_losses[i-window:i]))
+                    ma_eps.append(valid_aaren_eps[i-1])
+                if ma_eps:
+                    ax3.plot(ma_eps, ma_losses, 'g-', linewidth=2.5, label=f'Moving Avg ({window} ep)')
+            
+            # Log scale for loss
+            ax3.set_yscale('log')
+        else:
+            ax3.text(0.5, 0.5, 'No AAREN loss data yet', ha='center', va='center', transform=ax3.transAxes)
+        
+        ax3.set_xlabel('Episodes')
+        ax3.set_ylabel('AAREN Loss (log)')
+        ax3.set_title('AAREN Training Loss (Lower is Better)')
+        ax3.legend()
+        ax3.grid(True, alpha=0.3)
+        
+        # 4. AAREN Prediction Accuracy
+        ax4 = axes[3]
+        
+        # Filter out zero values (no predictions yet)
+        valid_acc_eps = []
+        valid_accs = []
+        for ep, acc in zip(episode_history[:len(aaren_accuracies)], aaren_accuracies):
+            if acc is not None:
+                valid_acc_eps.append(ep)
+                valid_accs.append(acc * 100)  # Convert to percentage
+        
+        if valid_accs:
+            ax4.scatter(valid_acc_eps, valid_accs, c='purple', alpha=0.4, s=20, label='AAREN Accuracy')
+            
+            # Moving average
+            window = min(50, len(valid_accs) // 2) if len(valid_accs) > 1 else 1
+            if len(valid_accs) >= window and window > 1:
+                ma_accs = []
+                ma_eps = []
+                for i in range(window, len(valid_accs) + 1):
+                    ma_accs.append(np.mean(valid_accs[i-window:i]))
+                    ma_eps.append(valid_acc_eps[i-1])
+                if ma_eps:
+                    ax4.plot(ma_eps, ma_accs, 'purple', linewidth=2.5, label=f'Moving Avg ({window} ep)')
+        else:
+            ax4.text(0.5, 0.5, 'No accuracy data yet', ha='center', va='center', transform=ax4.transAxes)
+        
+        ax4.set_xlabel('Episodes')
+        ax4.set_ylabel('Accuracy (%)')
+        ax4.set_title('AAREN Prediction Accuracy (Higher is Better)')
+        ax4.set_ylim(0, 100)
+        ax4.legend()
+        ax4.grid(True, alpha=0.3)
+    
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
     
     # Ensure the directory exists
@@ -581,7 +748,7 @@ def plot_pbs_evaluator_progress(
     # Save the figure
     try:
         plt.savefig(save_path, dpi=150, bbox_inches='tight')
-        print(f"📊 PBS Evaluator progress plot saved to {save_path}")
+        print(f"📊 PBS/AAREN progress plot saved to {save_path}")
     except Exception as e:
         print(f"⚠️  Error saving PBS evaluator plot: {e}")
     

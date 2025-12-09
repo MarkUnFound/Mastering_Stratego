@@ -212,12 +212,29 @@ class CurriculumManager:
         """
         Get opponent selection probabilities for current phase.
         Returns dict mapping opponent type to probability.
+        
+        For Phase 1: Uses ADAPTIVE difficulty based on win rate against random.
+        - Win rate < 50%: 80% random, 20% heuristic (easy mode)
+        - Win rate >= 50%: 20% random, 80% heuristic (hard mode)
         """
         config = self.get_phase_config()
         opponents = config.opponents
+        metrics = self.metrics[self.current_phase]
         
         if self.current_phase == TrainingPhase.PHYSICS_OF_WAR:
-            return {"random": 0.6, "heuristic": 0.4}
+            # DYNAMIC OPPONENT SCALING based on win rate
+            win_rate = metrics.overall_win_rate
+            games_played = metrics.total_games
+            
+            # Need at least 50 games to have meaningful statistics
+            if games_played >= 50 and win_rate >= 0.50:
+                # Agent is dominating random - increase difficulty!
+                # 80% heuristic to make it struggle and learn
+                return {"random": 0.2, "heuristic": 0.8}
+            else:
+                # Still learning basics - keep it easy
+                return {"random": 0.6, "heuristic": 0.4}
+                
         elif self.current_phase == TrainingPhase.MEMORY_GAP:
             return {"frozen_heuristic": 1.0}
         elif self.current_phase == TrainingPhase.SELF_PLAY:

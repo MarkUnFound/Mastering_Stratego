@@ -7,13 +7,13 @@ Configuration settings for DQN training.
 NUM_ENVS = 4 # Reduced to 4 for stability and speed
 BATCH_SIZE = 128
 TRACE_LENGTH = 8 # Unused for Rainbow
-GAMMA = 0.99
+GAMMA = 0.95  # Reduced from 0.99 for faster credit assignment
 EPSILON_START = 1.0
 EPSILON_MIN = 0.1
 EPSILON_DECAY = 0.99995
 TARGET_UPDATE = 1000
 MEMORY_SIZE = 100000 # Increased buffer size for transitions (auto-scales by VRAM)
-LEARNING_RATE = 0.0001
+LEARNING_RATE = 0.0003  # Increased from 0.0001 for faster adaptation
 NUM_EPISODES = 35000
 SAVE_INTERVAL = 250
 EVAL_INTERVAL = 100
@@ -47,9 +47,10 @@ LEAGUE_TRAINING_ENABLED = True
 LEAGUE_SAVE_INTERVAL = 500      # Save agent to league every N episodes
 LEAGUE_MAX_AGENTS = 50          # Max historical agents to keep
 
-# Opponent Selection Probabilities
-OPPONENT_LEAGUE_PROB = 0.5      # 50% historical opponents
-OPPONENT_RANDOM_PROB = 0.2      # 20% random agent
+# Opponent Selection Probabilities (adjusted for early training)
+# More random opponents = easier learning; scale up difficulty as agent improves
+OPPONENT_LEAGUE_PROB = 0.1      # 10% historical opponents (reduced from 50%)
+OPPONENT_RANDOM_PROB = 0.6      # 60% random agent (increased from 20%)
 OPPONENT_GREEDY_PROB = 0.2      # 20% greedy agent
 OPPONENT_SELF_PROB = 0.1        # 10% self-play
 
@@ -96,11 +97,14 @@ ENV_REWARD_WEIGHT = 0.0               # Disable environment rewards (use only sh
 
 # Anti-stall penalties (tiny to stay within bounds)
 DIST_STEP_PENALTY = -0.005            # -0.005 per step (~100 steps = -0.5)
-DIST_DRAW_PENALTY = -0.8              # Draw = WORSE than loss to force aggression
+DIST_DRAW_PENALTY = -1.5              # Draw = WORSE than loss (was -0.8, now stronger)
 
-# Terminal rewards (normalized, NOT at V_MIN/V_MAX bounds)
-DIST_WIN_REWARD = 1.0                 # Win (flag capture or elimination)
-DIST_LOSS_PENALTY = -1.0              # Loss
+# Terminal rewards (INCREASED for stronger signal, still within V_MIN/V_MAX)
+# Old: ±1.0 → New: ±2.0
+# Win game (100 steps): +2.0 - 0.5 = +1.5 (within +3)
+# Loss game (100 steps): -2.0 - 0.5 = -2.5 (within -3)
+DIST_WIN_REWARD = 2.0                 # Win (flag capture or elimination)
+DIST_LOSS_PENALTY = -2.0              # Loss
 
 # Combat rewards (material signal)
 DIST_CAPTURE_SCALE = 0.1              # +0.1 * (rank/10) = max +0.1 per capture

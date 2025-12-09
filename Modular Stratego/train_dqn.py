@@ -267,10 +267,18 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
         'pbs_eval1_buffer_sizes': [],
         'pbs_eval1_accuracy': [],
         
+        # AAREN metrics (tracks belief state inference quality)
+        'aaren_loss': [],        # Per-episode AAREN training loss
+        'aaren_accuracy': [],    # Per-episode AAREN prediction accuracy
+        'aaren_buffer_size': [], # AAREN training buffer size
+        
         # Additional informative metrics
         'avg_q_values_p1': [],
         'avg_entropy_p1': [],
         'win_rate_100': [],  # Sliding window (last 100 episodes)
+        
+        # Curriculum phase tracking for visualization
+        'phase_history': [],  # Phase value (1-5) per episode
         
         'pbs_accuracy': []
     }
@@ -283,7 +291,10 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
 
     print(f"🚀 Starting training from episode {start_episode + 1}...")
     
-    global_step = 0
+    # Load global_step from metrics if resuming, otherwise start at 0
+    global_step = metrics.get('global_step', 0)
+    if start_episode > 0 and global_step > 0:
+        print(f"📊 Resuming from global step {global_step:,}")
     
     pbar = tqdm(range(start_episode + 1, num_episodes + 1), desc="Training Episodes")
     
@@ -659,6 +670,19 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
             metrics['pbs_eval1_buffer_sizes'].append(0)
             metrics['pbs_eval1_accuracy'].append(0.0)
         
+        # AAREN metrics collection (from PBS belief state)
+        if agent1.pbs:
+            aaren_loss = agent1.pbs.get_aaren_avg_loss() if hasattr(agent1.pbs, 'get_aaren_avg_loss') else 0.0
+            aaren_acc = agent1.pbs.get_aaren_accuracy() if hasattr(agent1.pbs, 'get_aaren_accuracy') else 0.0
+            aaren_buffer = agent1.pbs.get_aaren_buffer_size() if hasattr(agent1.pbs, 'get_aaren_buffer_size') else 0
+            metrics['aaren_loss'].append(aaren_loss)
+            metrics['aaren_accuracy'].append(aaren_acc)
+            metrics['aaren_buffer_size'].append(aaren_buffer)
+        else:
+            metrics['aaren_loss'].append(0.0)
+            metrics['aaren_accuracy'].append(0.0)
+            metrics['aaren_buffer_size'].append(0)
+        
         # Additional informative metrics
         # Average Q-value from agent1
         avg_q = agent1.get_average_q() if hasattr(agent1, 'get_average_q') else 0.0
@@ -677,6 +701,12 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
             # Not enough episodes yet
             win_rate_100 = metrics['wins_p1'] / (max(len(metrics['wins_p1_history']), 1) * NUM_ENVS)
         metrics['win_rate_100'].append(win_rate_100)
+        
+        # Track curriculum phase for graph segmentation
+        if curriculum and CURRICULUM_ENABLED:
+            metrics['phase_history'].append(curriculum.current_phase.value)
+        else:
+            metrics['phase_history'].append(1)  # Default Phase 1 if curriculum disabled
         
         # --- CURRICULUM METRICS UPDATE ---
         if curriculum and CURRICULUM_ENABLED:
@@ -764,6 +794,8 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                     agent2.pbs.evaluator.save_model(os.path.join(model_save_path, f"pbs_evaluator2_episode_{episode}.pth"))
                 except Exception as e:
                     print(f"⚠️ Could not save PBS Evaluator 2: {e}")
+            # Save global_step for continuity across restarts
+            metrics['global_step'] = global_step
             
             save_training_history(metrics, model_save_path)
             
@@ -783,7 +815,8 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                 save_path=os.path.join(model_save_path, f"training_progress_episode_{episode}.png"),
                 total_episodes=episode,
                 total_steps=global_step,
-                num_envs=NUM_ENVS
+                num_envs=NUM_ENVS,
+                phase_history=metrics.get('phase_history', [])
             )
             
             # (Setup agent plotting removed - using HeuristicSetupAgent)\n            
@@ -796,7 +829,10 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                     evaluator1_buffer_sizes=metrics['pbs_eval1_buffer_sizes'],
                     evaluator2_buffer_sizes=[0] * len(metrics['pbs_eval1_buffer_sizes']),  # Agent 2 has no PBS
                     save_path=os.path.join(model_save_path, f"pbs_evaluator_progress_episode_{episode}.png"),
-                    total_episodes=episode
+                    total_episodes=episode,
+                    aaren_losses=metrics.get('aaren_loss', []),
+                    aaren_accuracies=metrics.get('aaren_accuracy', []),
+                    aaren_buffer_sizes=metrics.get('aaren_buffer_size', [])
                 )
             except Exception as e:
                 print(f"⚠️ Could not plot PBS evaluator progress: {e}")
