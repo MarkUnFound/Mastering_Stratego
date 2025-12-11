@@ -244,11 +244,16 @@ class RainbowAgent:
         for target_param, local_param in zip(self.target_network.parameters(), self.q_network.parameters()):
             target_param.data.copy_(self.tau * local_param.data + (1.0 - self.tau) * target_param.data)
         
-    def get_state_representation(self, board, pbs_instance=None):
+    def get_state_representation(self, board, pbs_instance=None, full_observability=False):
         """
         Convert raw board to feature tensor.
         Now includes PBS belief tensor (12 channels).
         Total channels: 15 (Board) + 12 (PBS) = 27
+        
+        Args:
+            board: Game board tensor or GameState object
+            pbs_instance: PBS instance for belief channels (optional)
+            full_observability: If True, use ground truth enemy types instead of PBS
         """
         # Handle GameState object - extract the board tensor
         from game_state import GameState
@@ -282,9 +287,36 @@ class RainbowAgent:
         
         state_tensor = features
         
-        # --- FIX: INTEGRATE PBS BELIEFS ---
-        if pbs_instance is not None:
-            # PBS maintains a cached belief tensor: (12, 10, 10)
+        # --- PBS BELIEF CHANNELS (15-26) ---
+        if full_observability:
+            # FULL OBSERVABILITY: Create one-hot ground truth beliefs from actual board
+            # This lets the agent see true enemy piece types in Phase 1
+            belief_tensor = torch.zeros((12, 10, 10), device=self.device)
+            
+            if self.player_id == 1:
+                # Enemy pieces are negative (excluding lakes at -13)
+                enemy_mask = (board < 0) & (board > LAKE_SQUARE)
+                enemy_positions = torch.nonzero(enemy_mask)
+                for pos in enemy_positions:
+                    r, c = pos[0].item(), pos[1].item()
+                    piece_type_idx = abs(int(board[r, c].item())) - 1  # 0-11 index
+                    if 0 <= piece_type_idx < 12:
+                        belief_tensor[piece_type_idx, r, c] = 1.0
+            else:
+                # Enemy pieces are positive
+                enemy_mask = board > 0
+                enemy_positions = torch.nonzero(enemy_mask)
+                for pos in enemy_positions:
+                    r, c = pos[0].item(), pos[1].item()
+                    piece_type_idx = int(board[r, c].item()) - 1  # 0-11 index
+                    if 0 <= piece_type_idx < 12:
+                        belief_tensor[piece_type_idx, r, c] = 1.0
+            
+            full_state = torch.cat([state_tensor, belief_tensor], dim=0)
+            return full_state
+            
+        elif pbs_instance is not None:
+            # PARTIAL OBSERVABILITY: Use PBS belief distributions
             belief_tensor = pbs_instance.belief_tensor 
             
             # If belief_tensor is on a different device/dtype, fix it
@@ -296,7 +328,7 @@ class RainbowAgent:
             full_state = torch.cat([state_tensor, belief_tensor], dim=0)
             return full_state
         
-        # Fallback if no PBS (pad with zeros)
+        # Fallback if no PBS and not full observability (pad with zeros)
         else:
             padding = torch.zeros((12, 10, 10), device=self.device)
             full_state = torch.cat([state_tensor, padding], dim=0)
@@ -418,31 +450,45 @@ class RainbowAgent:
             
         return best_move
 
-    def get_batch_state_representation(self, states, game_states=None):
+    def get_batch_state_representation(self, states, game_states=None, full_observability=False):
         """
         Convert batch of states to tensor, integrating PBS beliefs if available.
+        
+        Args:
+            states: List of game board states
+            game_states: List of GameState objects (for PBS lookup)
+            full_observability: If True, use ground truth enemy types (Phase 1)
         """
         # Convert states to tensors
         state_tensors = []
         for i, state in enumerate(states):
             # Get PBS instance for this environment index if available
             pbs_instance = None
-            if self.pbs_instances and game_states and i < len(game_states) and game_states[i]:
-                pbs_instance = self.pbs_instances[i]
-            elif self.pbs and game_states and i < len(game_states) and game_states[i]:
-                # Fallback to single PBS instance if pbs_instances list not used
-                pbs_instance = self.pbs
+            if not full_observability:  # Only use PBS in partial observability mode
+                if self.pbs_instances and game_states and i < len(game_states) and game_states[i]:
+                    pbs_instance = self.pbs_instances[i]
+                elif self.pbs and game_states and i < len(game_states) and game_states[i]:
+                    # Fallback to single PBS instance if pbs_instances list not used
+                    pbs_instance = self.pbs
                 
             # Use get_state_representation for each state
             # This handles the 27-channel concatenation
-            state_tensor = self.get_state_representation(state, pbs_instance=pbs_instance)
+            state_tensor = self.get_state_representation(state, pbs_instance=pbs_instance, full_observability=full_observability)
             state_tensors.append(state_tensor)
             
         # Stack into batch
         return torch.stack(state_tensors)
 
-    def act_batch(self, states, valid_moves_list, game_states=None, env_indices=None) -> List[Optional[Tuple[Tuple[int, int], Tuple[int, int]]]]:
-        """Batch action selection"""
+    def act_batch(self, states, valid_moves_list, game_states=None, env_indices=None, full_observability=False) -> List[Optional[Tuple[Tuple[int, int], Tuple[int, int]]]]:
+        """Batch action selection
+        
+        Args:
+            states: List of game board states
+            valid_moves_list: List of valid moves for each environment
+            game_states: List of GameState objects
+            env_indices: Environment indices for PBS lookup
+            full_observability: If True, use ground truth enemy types (Phase 1)
+        """
         batch_size = len(states)
         actions = [None] * batch_size
         
@@ -450,7 +496,7 @@ class RainbowAgent:
             env_indices = list(range(batch_size))
         
         # 1. Get batch state representation and cache it for remember_batch
-        state_tensor = self.get_batch_state_representation(states, game_states)
+        state_tensor = self.get_batch_state_representation(states, game_states, full_observability=full_observability)
         self._cached_state_tensor = state_tensor  # Cache for reuse in remember_batch
         
         # 2. Get uncertainty maps

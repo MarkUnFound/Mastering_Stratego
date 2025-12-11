@@ -195,43 +195,50 @@ def plot_training_progress(
             5: 'P5: Drills',
         }
         
-        # Find phase transition points
+        # Find phase transition points and build phase regions
         transitions = []
+        regions = []  # (start_ep, end_ep, phase)
         current_phase = phase_history[0] if phase_history else 1
+        region_start = episode_history[0]
+        
         for i, phase in enumerate(phase_history):
             if phase != current_phase:
                 transitions.append((episode_history[i], current_phase, phase))
+                regions.append((region_start, episode_history[i], current_phase))
+                region_start = episode_history[i]
                 current_phase = phase
+        
+        # Add final region (from last transition to end)
+        regions.append((region_start, episode_history[-1], current_phase))
+        
+        # Draw colored background shading for each phase region on all subplots
+        for ax in axs:
+            for start_ep, end_ep, phase in regions:
+                color = phase_colors.get(phase, 'gray')
+                # Add semi-transparent colored background for phase region
+                ax.axvspan(start_ep, end_ep, alpha=0.1, color=color, zorder=0)
         
         # Draw vertical lines at transitions on all subplots
         for ax in axs:
             for ep, from_phase, to_phase in transitions:
                 color = phase_colors.get(to_phase, 'gray')
-                ax.axvline(x=ep, color=color, linestyle='--', linewidth=1.5, alpha=0.7, zorder=1)
+                ax.axvline(x=ep, color=color, linestyle='--', linewidth=2.5, alpha=0.8, zorder=1)
         
-        # Add phase labels at top of first subplot
-        if transitions:
-            # Label starting phase
-            first_trans = transitions[0][0] if transitions else episode_history[-1]
-            start_phase = phase_history[0]
-            axs[0].text(episode_history[0] + (first_trans - episode_history[0])/2, 
-                       axs[0].get_ylim()[1] * 0.95, 
-                       phase_names.get(start_phase, f'P{start_phase}'),
-                       ha='center', fontsize=8, color=phase_colors.get(start_phase, 'gray'),
-                       fontweight='bold', alpha=0.8)
+        # Add phase labels at top of first subplot with colored borders
+        for start_ep, end_ep, phase in regions:
+            mid_ep = (start_ep + end_ep) / 2
+            color = phase_colors.get(phase, 'gray')
+            # Get y position at top of plot
+            y_max = axs[0].get_ylim()[1]
+            y_min = axs[0].get_ylim()[0]
+            y_pos = y_max - (y_max - y_min) * 0.05  # 5% from top
             
-            # Label each phase after transitions
-            for i, (ep, from_phase, to_phase) in enumerate(transitions):
-                # Find end of this phase (next transition or end)
-                if i + 1 < len(transitions):
-                    next_ep = transitions[i + 1][0]
-                else:
-                    next_ep = episode_history[-1]
-                mid_ep = ep + (next_ep - ep) / 2
-                axs[0].text(mid_ep, axs[0].get_ylim()[1] * 0.95, 
-                           phase_names.get(to_phase, f'P{to_phase}'),
-                           ha='center', fontsize=8, color=phase_colors.get(to_phase, 'gray'),
-                           fontweight='bold', alpha=0.8)
+            axs[0].text(mid_ep, y_pos,
+                       phase_names.get(phase, f'P{phase}'),
+                       ha='center', va='top', fontsize=10, 
+                       color='white', fontweight='bold',
+                       bbox=dict(boxstyle='round,pad=0.4', facecolor=color, 
+                                edgecolor='white', alpha=0.9, linewidth=2))
 
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
     

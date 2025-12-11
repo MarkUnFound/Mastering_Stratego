@@ -84,6 +84,12 @@ class DistributionalRewardConfig:
     spy_kills_marshal: float = 0.15   # Spy kills Marshal (rare, valuable)
     miner_defuses_bomb: float = 0.08  # Miner removes Bomb (strategic)
     
+    # =========================================================================
+    # TERRITORY ADVANCEMENT (Forward progress bonus)
+    # =========================================================================
+    territory_advance: float = 0.02   # Bonus for moving toward enemy flag
+    center_control: float = 0.01      # Bonus for occupying center positions
+    
     @classmethod
     def from_training_config(cls) -> 'DistributionalRewardConfig':
         """Load configuration from training_config.py settings."""
@@ -93,7 +99,8 @@ class DistributionalRewardConfig:
                 DIST_WIN_REWARD, DIST_LOSS_PENALTY,
                 DIST_CAPTURE_SCALE, DIST_LOSS_SCALE,
                 DIST_REVEAL_BONUS, DIST_FIRST_REVEAL_BONUS,
-                DIST_SPY_KILLS_MARSHAL, DIST_MINER_DEFUSES_BOMB
+                DIST_SPY_KILLS_MARSHAL, DIST_MINER_DEFUSES_BOMB,
+                DIST_TERRITORY_ADVANCE, DIST_CENTER_CONTROL
             )
             return cls(
                 step_penalty=DIST_STEP_PENALTY,
@@ -105,7 +112,9 @@ class DistributionalRewardConfig:
                 reveal_bonus=DIST_REVEAL_BONUS,
                 first_reveal_bonus=DIST_FIRST_REVEAL_BONUS,
                 spy_kills_marshal=DIST_SPY_KILLS_MARSHAL,
-                miner_defuses_bomb=DIST_MINER_DEFUSES_BOMB
+                miner_defuses_bomb=DIST_MINER_DEFUSES_BOMB,
+                territory_advance=DIST_TERRITORY_ADVANCE,
+                center_control=DIST_CENTER_CONTROL
             )
         except ImportError:
             # Fall back to defaults if training_config doesn't have these
@@ -304,6 +313,27 @@ def calculate_distributional_reward(
                 # Extra bonus for first reveal of this piece type
                 # Helps with opponent modeling (now we know they have/had this piece)
                 reward += config.first_reveal_bonus
+    
+    # =========================================================================
+    # 4. TERRITORY ADVANCEMENT (Forward progress signal)
+    # =========================================================================
+    # This is CRUCIAL for Phase 1 with full observability
+    # Encourages the agent to push toward enemy flag
+    if action is not None:
+        (r_from, c_from), (r_to, c_to) = action
+        
+        if player_id == 1:
+            # Player 1 advances by moving to lower rows (toward enemy at top)
+            if r_to < r_from:
+                reward += config.territory_advance
+        else:
+            # Player -1 advances by moving to higher rows (toward enemy at bottom)
+            if r_to > r_from:
+                reward += config.territory_advance
+        
+        # Center control bonus (columns 3-6 and rows 4-5 are strategic center)
+        if 3 <= c_to <= 6 and 4 <= r_to <= 5:
+            reward += config.center_control
     
     return reward
 

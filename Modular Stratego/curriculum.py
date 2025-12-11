@@ -42,33 +42,34 @@ PHASE_CONFIGS = {
     TrainingPhase.PHYSICS_OF_WAR: PhaseConfig(
         name="Physics of War",
         full_observability=True,
-        min_episodes=500,
-        max_episodes=2000,
-        opponents=["random", "heuristic"],
+        min_episodes=5000,
+        max_episodes=10000,
+        opponents=["random", "heuristic", "smart_heuristic"],
         reward_focus="material",
         success_metrics={
-            "win_rate_vs_random": 0.90,
-            "win_rate_vs_heuristic": 0.60
+            "win_rate_vs_random": 0.95,
+            "win_rate_vs_heuristic": 0.75,
+            "win_rate_vs_smart_heuristic": 0.60
         }
     ),
     TrainingPhase.MEMORY_GAP: PhaseConfig(
         name="Memory Gap",
         full_observability=False,
-        min_episodes=1000,
-        max_episodes=3000,
-        opponents=["frozen_heuristic"],
+        min_episodes=5000,
+        max_episodes=10000,
+        opponents=["frozen_heuristic", "smart_heuristic"],
         reward_focus="epistemic",
         success_metrics={
-            "pbs_accuracy": 0.70,
-            "win_rate": 0.55
+            "pbs_accuracy": 0.75,
+            "win_rate": 0.60
         }
     ),
     TrainingPhase.SELF_PLAY: PhaseConfig(
         name="Simple Self-Play",
         full_observability=False,
-        min_episodes=2000,
-        max_episodes=5000,
-        opponents=["self_500"],  # Self from 500 episodes ago
+        min_episodes=5000,
+        max_episodes=15000,
+        opponents=["self_500", "smart_heuristic"],  # Mix with strong opponent
         reward_focus="material",
         success_metrics={
             "strategy_diversity": 0.3,  # Variance in win patterns
@@ -213,39 +214,56 @@ class CurriculumManager:
         Get opponent selection probabilities for current phase.
         Returns dict mapping opponent type to probability.
         
-        For Phase 1: Uses ADAPTIVE difficulty based on win rate against random.
-        - Win rate < 50%: 80% random, 20% heuristic (easy mode)
-        - Win rate >= 50%: 20% random, 80% heuristic (hard mode)
+        For Phase 1: Uses ADAPTIVE difficulty based on win rate.
+        Progressive opponent scaling:
+        - Win rate < 60%: 100% random (pure learning mode)
+        - Win rate 60-70%: 60% random, 40% heuristic (gradual introduction)
+        - Win rate 70-80%: 30% random, 50% heuristic, 20% smart_heuristic (moderate challenge)
+        - Win rate 80-90%: 10% random, 40% heuristic, 50% smart_heuristic (hard mode)
+        - Win rate >= 90%: 20% heuristic, 80% smart_heuristic (expert mode - learn optimal play)
         """
         config = self.get_phase_config()
         opponents = config.opponents
         metrics = self.metrics[self.current_phase]
         
         if self.current_phase == TrainingPhase.PHYSICS_OF_WAR:
-            # DYNAMIC OPPONENT SCALING based on win rate
+            # PROGRESSIVE OPPONENT SCALING based on win rate
             win_rate = metrics.overall_win_rate
             games_played = metrics.total_games
             
             # Need at least 50 games to have meaningful statistics
-            if games_played >= 50 and win_rate >= 0.50:
-                # Agent is dominating random - increase difficulty!
-                # 80% heuristic to make it struggle and learn
-                return {"random": 0.2, "heuristic": 0.8}
+            if games_played < 50:
+                # Still warming up - 100% random to learn basics
+                return {"random": 1.0, "heuristic": 0.0, "smart_heuristic": 0.0}
+            elif win_rate < 0.60:
+                # Agent struggling - keep it 100% random until 60% win rate
+                return {"random": 1.0, "heuristic": 0.0, "smart_heuristic": 0.0}
+            elif win_rate < 0.70:
+                # Just crossed 60% - gradual heuristic introduction (40%)
+                return {"random": 0.6, "heuristic": 0.4, "smart_heuristic": 0.0}
+            elif win_rate < 0.80:
+                # Strong against random - introduce smart_heuristic (20%)
+                return {"random": 0.3, "heuristic": 0.5, "smart_heuristic": 0.2}
+            elif win_rate < 0.90:
+                # Dominating heuristic - increase smart_heuristic (50%)
+                return {"random": 0.1, "heuristic": 0.4, "smart_heuristic": 0.5}
             else:
-                # Still learning basics - keep it easy
-                return {"random": 0.6, "heuristic": 0.4}
+                # Expert level - focus on optimal play against strongest (80%)
+                return {"random": 0.0, "heuristic": 0.2, "smart_heuristic": 0.8}
                 
         elif self.current_phase == TrainingPhase.MEMORY_GAP:
-            return {"frozen_heuristic": 1.0}
+            # Mix frozen heuristic with smart heuristic for better learning
+            return {"frozen_heuristic": 0.4, "smart_heuristic": 0.6}
         elif self.current_phase == TrainingPhase.SELF_PLAY:
-            return {"self_500": 1.0}
+            # Mix self-play with smart heuristic to prevent strategy collapse
+            return {"self_500": 0.6, "smart_heuristic": 0.4}
         elif self.current_phase == TrainingPhase.LEAGUE_TRAINING:
-            return {"league": 0.5, "random": 0.2, "greedy": 0.2, "self": 0.1}
+            return {"league": 0.4, "smart_heuristic": 0.3, "greedy": 0.2, "self": 0.1}
         elif self.current_phase == TrainingPhase.SCENARIO_DRILLS:
             return {"scenario": 1.0}
         
         # Default fallback
-        return {"self": 1.0}
+        return {"smart_heuristic": 1.0}
     
     def update_metrics(self, episode_result: Dict):
         """
@@ -464,6 +482,199 @@ class HeuristicOpponent:
     
     def reset_pbs(self):
         pass
+    
+    def update_pbs_batch(self, *args, **kwargs):
+        pass
+
+
+class SmartHeuristicOpponent:
+    """
+    Strong heuristic opponent for challenging the DQN agent.
+    Uses sophisticated multi-factor move scoring:
+    - Material advantage (rank comparison)
+    - Positional control (center, advancement)
+    - Piece protection (don't sacrifice high-value pieces)
+    - Flag hunting behavior
+    - Scout reconnaissance
+    - Miner prioritization for bombs
+    - Spy tactical deployment
+    """
+    
+    def __init__(self, device, player_id: int = -1):
+        self.device = device
+        self.player_id = player_id
+        self.name = "SmartHeuristic"
+        
+        # Piece value hierarchy (higher = more valuable)
+        self.piece_values = {
+            10: 100,  # Marshal
+            9: 80,    # General
+            8: 50,    # Colonel
+            7: 45,    # Major
+            6: 40,    # Captain
+            5: 30,    # Lieutenant
+            4: 25,    # Sergeant
+            3: 20,    # Miner
+            2: 15,    # Scout
+            1: 200,   # Flag (must protect!)
+            11: 0,    # Bomb (no movement value)
+            0: -10,   # Spy (special tactics)
+        }
+        
+        # Track revealed enemy pieces (simple memory)
+        self.revealed_enemies = {}  # position -> rank
+    
+    def act(self, board, valid_moves, game_state=None, **kwargs):
+        """Select move using sophisticated heuristics."""
+        if not valid_moves:
+            return None
+        
+        import torch
+        import random
+        
+        player_id = self.player_id
+        if game_state and hasattr(game_state, 'current_player'):
+            player_id = game_state.current_player
+        
+        scored_moves = []
+        for move in valid_moves:
+            score = self._score_move(move, board, valid_moves, player_id)
+            scored_moves.append((move, score))
+        
+        scored_moves.sort(key=lambda x: x[1], reverse=True)
+        
+        # Add small randomization among top moves to avoid predictability
+        top_score = scored_moves[0][1]
+        top_moves = [m for m, s in scored_moves if s >= top_score - 0.1]
+        
+        if len(top_moves) > 1:
+            return random.choice(top_moves)
+        return scored_moves[0][0]
+    
+    def _score_move(self, move, board, all_valid_moves, player_id):
+        """Multi-factor move scoring."""
+        import torch
+        
+        (r_from, c_from), (r_to, c_to) = move
+        score = 0.0
+        
+        if isinstance(board, torch.Tensor):
+            piece_val = board[r_from, c_from].item()
+            target_val = board[r_to, c_to].item()
+        else:
+            piece_val = board[r_from][c_from]
+            target_val = board[r_to][c_to]
+        
+        piece_rank = abs(piece_val)
+        target_rank = abs(target_val) if target_val != 0 else 0
+        my_value = self.piece_values.get(piece_rank, 10)
+        
+        # ===== 1. COMBAT EVALUATION =====
+        if target_rank > 0:
+            target_value = self.piece_values.get(target_rank, 10)
+            
+            # Winning combat: big bonus
+            if piece_rank > target_rank:
+                score += 2.0 + (target_value / 20)  # Higher value targets worth more
+                
+            # Equal combat: slight penalty (mutual destruction)
+            elif piece_rank == target_rank:
+                score += 0.3 - (my_value / 100)  # Avoid equal trades with valuable pieces
+                
+            # Losing combat: big penalty unless we're expendable
+            else:
+                score -= 1.5 + (my_value / 20)  # Don't sacrifice valuable pieces
+            
+            # Special: Spy vs Marshal
+            if piece_rank == 0 and target_rank == 10:  # Spy attacks Marshal
+                score += 5.0  # High priority kill
+            
+            # Special: Miner vs suspected Bomb location (back row enemy)
+            if piece_rank == 3:
+                if player_id == 1 and r_to >= 6:  # Enemy back row for P1
+                    score += 0.5  # Miners should probe back rows
+                elif player_id == -1 and r_to <= 3:
+                    score += 0.5
+        
+        # ===== 2. POSITIONAL EVALUATION =====
+        # Forward advancement (toward enemy flag)
+        if player_id == 1:
+            advancement = (r_from - r_to)  # Moving up (lower row number)
+        else:
+            advancement = (r_to - r_from)  # Moving down (higher row number)
+        
+        # Don't overvalue advancement for high-value pieces
+        advancement_weight = 0.15 if my_value < 50 else 0.05
+        score += advancement * advancement_weight
+        
+        # Center control (columns 4-5 are valuable mid-board)
+        center_bonus = 0.1 if 3 <= c_to <= 6 else 0
+        center_row_bonus = 0.1 if 3 <= r_to <= 6 else 0
+        score += center_bonus + center_row_bonus
+        
+        # ===== 3. PIECE PROTECTION =====
+        # Don't move high-value pieces into danger
+        if my_value >= 50:  # Marshal, General, Colonel
+            # Check if destination puts us at risk (enemy adjacent)
+            risk = self._check_adjacent_enemies(r_to, c_to, board, player_id)
+            score -= risk * (my_value / 40)
+        
+        # ===== 4. SCOUT TACTICS =====
+        if piece_rank == 2:  # Scout
+            move_distance = abs(r_to - r_from) + abs(c_to - c_from)
+            if move_distance > 1:
+                # Scouts should use multi-square moves for reconnaissance
+                score += 0.3 * move_distance
+                
+                # Prefer scouting enemy territory
+                if (player_id == 1 and r_to < 4) or (player_id == -1 and r_to > 5):
+                    score += 0.5
+        
+        # ===== 5. FLAG PROTECTION =====
+        # Penalize moves that leave flag area exposed
+        # (Implicit: if we're in back 2 rows, prefer staying near corners/edges)
+        if player_id == 1 and r_from >= 8:
+            if my_value >= 30:  # Keep defenders near flag
+                score -= 0.2
+        elif player_id == -1 and r_from <= 1:
+            if my_value >= 30:
+                score -= 0.2
+        
+        # ===== 6. MOBILITY FACTOR =====
+        # Slight bonus for moves that maintain piece flexibility
+        # (avoids getting cornered)
+        if c_to == 0 or c_to == 9:  # Edge columns
+            score -= 0.05
+        
+        return score
+    
+    def _check_adjacent_enemies(self, r, c, board, player_id):
+        """Check how many enemy pieces are adjacent to position."""
+        import torch
+        
+        enemy_sign = 1 if player_id == -1 else -1
+        adjacent = [(r-1, c), (r+1, c), (r, c-1), (r, c+1)]
+        
+        count = 0
+        for ar, ac in adjacent:
+            if 0 <= ar < 10 and 0 <= ac < 10:
+                if isinstance(board, torch.Tensor):
+                    val = board[ar, ac].item()
+                else:
+                    val = board[ar][ac]
+                
+                # Check if it's an enemy piece
+                if (enemy_sign > 0 and val > 0) or (enemy_sign < 0 and val < 0):
+                    count += 1
+        
+        return count
+    
+    def act_batch(self, boards, valid_moves_list, game_states=None, **kwargs):
+        return [self.act(b, vm, gs) for b, vm, gs in 
+                zip(boards, valid_moves_list, game_states or [None]*len(boards))]
+    
+    def reset_pbs(self):
+        self.revealed_enemies = {}
     
     def update_pbs_batch(self, *args, **kwargs):
         pass

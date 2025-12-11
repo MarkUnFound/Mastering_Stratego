@@ -2,26 +2,21 @@
 Configuration settings for DQN training.
 """
 
-# Hyperparameters
-# Hyperparameters
-NUM_ENVS = 4 # Reduced to 4 for stability and speed
-BATCH_SIZE = 128
-TRACE_LENGTH = 8 # Unused for Rainbow
-GAMMA = 0.95  # Reduced from 0.99 for faster credit assignment
-EPSILON_START = 1.0
-EPSILON_MIN = 0.1
-EPSILON_DECAY = 0.99995
-TARGET_UPDATE = 1000
-MEMORY_SIZE = 100000 # Increased buffer size for transitions (auto-scales by VRAM)
-LEARNING_RATE = 0.0003  # Increased from 0.0001 for faster adaptation
-NUM_EPISODES = 35000
-SAVE_INTERVAL = 250
-EVAL_INTERVAL = 100
-PREFETCH_QUEUE_SIZE = 4
-REPLAY_UPDATE_INTERVAL = 32 # Train every 32 steps (optimized for speed, replay ratio ~1.0)
-REPLAY_UPDATES_PER_STEP = 1 # Unused in current script
-TARGET_UPDATE_INTERVAL = 5000
-REWARD_SCALE = 1.0  # Scaling factor for reward calculations
+# =============================================================================
+# RAINBOW DQN HYPERPARAMETERS
+# =============================================================================
+NUM_ENVS = 4              # Parallel environments for training
+BATCH_SIZE = 128          # Batch size for experience replay
+GAMMA = 0.95              # Discount factor (reduced from 0.99 for faster credit assignment)
+MEMORY_SIZE = 80000      # Replay buffer size (auto-scales by VRAM)
+LEARNING_RATE = 0.0001    # Adam optimizer learning rate (reduced from 0.0005 to prevent collapse)
+NUM_EPISODES = 35000      # Total training episodes
+SAVE_INTERVAL = 250       # Save model every N episodes
+EVAL_INTERVAL = 100       # Evaluate agent every N episodes
+PREFETCH_QUEUE_SIZE = 4   # Prefetch queue for data loading
+REPLAY_UPDATE_INTERVAL = 32  # Train every N steps (replay ratio ~1.0)
+TARGET_UPDATE_INTERVAL = 5000  # Soft update target network every N steps
+REWARD_SCALE = 1.0        # Scaling factor for reward calculations
 
 # League Settings (Setup League)
 LEAGUE_INTERVAL = 500 # Run setup league every N episodes
@@ -67,12 +62,12 @@ PHASE_2_PBS_ACCURACY_THRESHOLD = 0.70   # 70% PBS prediction accuracy
 PHASE_2_WIN_THRESHOLD = 0.55            # 55% overall win rate
 
 # Phase Episode Limits (min, max)
-PHASE_1_MIN_EPISODES = 500
-PHASE_1_MAX_EPISODES = 2000
-PHASE_2_MIN_EPISODES = 1000
-PHASE_2_MAX_EPISODES = 3000
-PHASE_3_MIN_EPISODES = 2000
-PHASE_3_MAX_EPISODES = 5000
+PHASE_1_MIN_EPISODES = 5000
+PHASE_1_MAX_EPISODES = 10000
+PHASE_2_MIN_EPISODES = 5000
+PHASE_2_MAX_EPISODES = 10000
+PHASE_3_MIN_EPISODES = 5000
+PHASE_3_MAX_EPISODES = 15000
 
 # Scenario Drill Settings (Phase 5)
 SCENARIO_DRILL_INTERVAL = 1000  # Run scenario drills every N episodes during Phase 4
@@ -106,17 +101,22 @@ DIST_DRAW_PENALTY = -1.5              # Draw = WORSE than loss (was -0.8, now st
 DIST_WIN_REWARD = 2.0                 # Win (flag capture or elimination)
 DIST_LOSS_PENALTY = -2.0              # Loss
 
-# Combat rewards (material signal)
-DIST_CAPTURE_SCALE = 0.1              # +0.1 * (rank/10) = max +0.1 per capture
-DIST_LOSS_SCALE = -0.05               # -0.05 per piece lost
+# Combat rewards (material signal) - INCREASED for Phase 1 learning
+# With full observability, the agent should get stronger feedback for good captures
+DIST_CAPTURE_SCALE = 0.2              # +0.2 * (rank/10) = max +0.2 per capture (doubled)
+DIST_LOSS_SCALE = -0.03               # -0.03 per piece lost (reduced penalty to favor aggression)
 
 # Information gain (crucial for variance learning in C51)
-DIST_REVEAL_BONUS = 0.02              # Bonus for revealing enemy rank
-DIST_FIRST_REVEAL_BONUS = 0.03        # Extra bonus for first reveal of a type
+DIST_REVEAL_BONUS = 0.04              # Bonus for revealing enemy rank (doubled)
+DIST_FIRST_REVEAL_BONUS = 0.05        # Extra bonus for first reveal of a type (increased)
 
-# Strategic bonuses
-DIST_SPY_KILLS_MARSHAL = 0.15         # Spy kills Marshal (rare, valuable)
-DIST_MINER_DEFUSES_BOMB = 0.08        # Miner removes Bomb (strategic)
+# Strategic bonuses (INCREASED for stronger signal in Phase 1)
+DIST_SPY_KILLS_MARSHAL = 0.25         # Spy kills Marshal (rare, valuable) - was 0.15
+DIST_MINER_DEFUSES_BOMB = 0.15        # Miner removes Bomb (strategic) - was 0.08
+
+# Territory advancement bonus (forward progress)
+DIST_TERRITORY_ADVANCE = 0.02         # Bonus for moving toward enemy flag
+DIST_CENTER_CONTROL = 0.01            # Bonus for occupying center positions
 
 # Legacy aliases for backwards compatibility
 AGGRESSION_ENABLED = DISTRIBUTIONAL_REWARD_ENABLED
@@ -129,7 +129,7 @@ AGGRESSION_ATTACK_WIN_BASE = DIST_CAPTURE_SCALE
 AGGRESSION_ATTACK_LOSE_PENALTY = DIST_LOSS_SCALE
 AGGRESSION_INFO_BONUS = DIST_REVEAL_BONUS
 AGGRESSION_RANK_SCALE = 0.01  # Reduced for normalization
-AGGRESSION_TERRITORY_ADVANCE = 0.02
+AGGRESSION_TERRITORY_ADVANCE = DIST_TERRITORY_ADVANCE
 AGGRESSION_RETREAT_PENALTY = -0.01
 AGGRESSION_SPY_CAPTURE = DIST_SPY_KILLS_MARSHAL
 AGGRESSION_MINER_CAPTURE = DIST_MINER_DEFUSES_BOMB

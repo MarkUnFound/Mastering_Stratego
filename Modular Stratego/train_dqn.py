@@ -58,7 +58,7 @@ from training_utils import save_training_history, load_training_history
 from preflight_checks import run_preflight_checks
 
 # Curriculum and Reward Shaping
-from curriculum import CurriculumManager, TrainingPhase, HeuristicOpponent
+from curriculum import CurriculumManager, TrainingPhase, HeuristicOpponent, SmartHeuristicOpponent
 from reward_shaping import RewardCalculator, RewardWeights, create_move_info
 from exploiter_agents import get_random_exploiter, RusherAgent, TurtleAgent, FlankingAgent
 from scenario_drills import get_scenario_drill, get_random_scenario
@@ -81,7 +81,6 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
     Train Rainbow DQN agent with league-based diverse opponents.
     Early training uses self-play, then transitions to historical opponents.
     """
-    # Set up device with robust CUDA check
     device = torch.device('cpu')  # Default to CPU
     if torch.cuda.is_available():
         try:
@@ -166,6 +165,7 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
     random_agent = RandomAgent()
     greedy_agent = GreedyAgent(device=device, player_id=-1)
     heuristic_agent = HeuristicOpponent(device=device, player_id=-1)  # Frozen heuristic for Phase 2
+    smart_heuristic_agent = SmartHeuristicOpponent(device=device, player_id=-1)  # Strong heuristic opponent
     
     # Initialize Curriculum Manager
     curriculum = None
@@ -323,8 +323,12 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
             # Configure opponent based on type
             if opponent_type == "random":
                 current_opponent = random_agent
-            elif opponent_type in ["heuristic", "frozen_heuristic", "greedy"]:
+            elif opponent_type in ["heuristic", "frozen_heuristic"]:
                 current_opponent = heuristic_agent
+            elif opponent_type == "smart_heuristic":
+                current_opponent = smart_heuristic_agent  # Strong strategic opponent
+            elif opponent_type == "greedy":
+                current_opponent = greedy_agent
             elif opponent_type == "league":
                 path = league_manager.get_opponent()
                 if path:
@@ -351,8 +355,8 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                 # Scenario drills (Phase 5) - handled separately
                 current_opponent = heuristic_agent
             else:
-                # Default to greedy
-                current_opponent = greedy_agent
+                # Default to smart heuristic (strongest default)
+                current_opponent = smart_heuristic_agent
         else:
             # Legacy mode: use opponent pool
             opponent_type, opponent_data = opponent_pool.select_opponent()
@@ -438,11 +442,14 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
             
             # P1 Actions
             _t0 = _time.perf_counter()
+            # Check if full observability is enabled (Phase 1)
+            use_full_obs = curriculum and CURRICULUM_ENABLED and curriculum.should_use_full_observability()
             actions_p1 = agent1.act_batch(
                 [gs.board for gs in game_states],
                 valid_moves,
                 game_states,
-                env_indices=list(range(NUM_ENVS))
+                env_indices=list(range(NUM_ENVS)),
+                full_observability=use_full_obs
             )
             _profile_act1 += _time.perf_counter() - _t0
             
@@ -525,7 +532,8 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                 [gs.board for gs in game_states],
                 valid_moves,
                 game_states,
-                env_indices=list(range(NUM_ENVS))
+                env_indices=list(range(NUM_ENVS)),
+                full_observability=use_full_obs
             )
             _profile_act2 += _time.perf_counter() - _t0
             

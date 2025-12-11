@@ -125,7 +125,29 @@ Training the MARQ agent is computationally intensive due to the large state-acti
 MARQ employs a Rainbow DQN architecture that integrates several algorithmic improvements over the standard DQN. The implementation includes Categorical DQN (C51) for distributional value estimation with 51 atoms over the range $[V_{min}, V_{max}] = [-10, 10]$, Noisy Networks for learned exploration (replacing $\epsilon$-greedy), and Dueling Network Architecture separating state value and action advantage estimation. The noisy linear layers inject state-dependent stochasticity, enabling the agent to learn appropriate exploration levels for different game situations without manual scheduling.
 
 \paragraph{Network Structure.}
-The Q-network processes a 27-channel state tensor through a convolutional encoder consisting of two layers (32 filters and 64 filters, both with $3 \times 3$ kernels and ReLU activation) followed by dueling streams. The state representation consists of 12 channels for PBS belief distributions (one per piece type), plus additional channels encoding the player's known pieces, board validity masks, and positional features. The AAREN module uses 24-dimensional action feature vectors, 64 hidden units, and 3 layers to process action histories and output piece type probability distributions.
+The Q-network processes a 27-channel state tensor through a convolutional encoder consisting of two layers (32 filters and 64 filters, both with $3 \times 3$ kernels and ReLU activation) followed by dueling streams. The 27-channel state representation is partitioned into two components, as detailed in Table \ref{tab:state_channels}.
+
+\begin{table}[h]
+\centering
+\caption{State representation input channels for the Rainbow DQN.}
+\label{tab:state_channels}
+\begin{tabular}{clp{8cm}}
+\hline
+\textbf{Channel} & \textbf{Category} & \textbf{Description} \\
+\hline
+\multicolumn{3}{l}{\textit{Board Features (Channels 0--14)}} \\
+0--11 & Own Pieces & Binary spatial maps indicating positions of each piece type (Flag, Spy, Scout, Miner, Sergeant, Lieutenant, Captain, Major, Colonel, General, Marshal, Bomb) \\
+12 & Enemy Mask & Binary map indicating positions of all visible enemy pieces \\
+13 & Obstacles & Binary map of lake squares (impassable terrain) \\
+14 & Empty Squares & Binary map of unoccupied traversable positions \\
+\hline
+\multicolumn{3}{l}{\textit{Enemy Type Features (Channels 15--26)}} \\
+15--26 & Piece Type Probabilities & During full observability phases, these channels contain one-hot ground truth encodings of enemy piece types; during partial observability phases, they contain PBS probability distributions indicating the inferred likelihood of each piece type at enemy positions \\
+\hline
+\end{tabular}
+\end{table}
+
+The board feature channels provide deterministic knowledge of the agent's own piece positions and observed enemy locations. The enemy type channels encode information about hidden enemy piece identities, with the representation varying by training phase. During full observability training (Phase 1), these channels contain ground truth one-hot encodings that allow the agent to learn fundamental game mechanics and piece-type awareness without inference uncertainty. During partial observability phases, the channels contain probabilistic beliefs from the PBS module, updated through the AAREN attention mechanism based on observed opponent behavior. This dual-mode representation enables the network to first acquire robust combat and positional strategies before learning to operate under uncertainty. The AAREN module uses 24-dimensional action feature vectors, 64 hidden units, and 3 layers to process action histories and output piece type probability distributions.
 
 \paragraph{Training Hyperparameters.}
 The training configuration uses the following key parameters: learning rate $\alpha = 0.0001$ with Adam optimizer, discount factor $\gamma = 0.99$, batch size of 128 transitions, replay buffer capacity of 150,000 transitions, and target network synchronization every 5,000 steps. The model updates are performed every 32 steps to balance training stability with simulation throughput. The PBS is updated every 2 steps to balance inference accuracy with computational efficiency. Training proceeds for 35,000 episodes with model checkpoints saved every 250 episodes.
@@ -134,7 +156,11 @@ The training configuration uses the following key parameters: learning rate $\al
 To prevent policy cycling and ensure robustness, the agent trains against a diverse opponent pool. The opponent selection distribution allocates 50\% to historical league agents, 20\% to random agents, 20\% to greedy heuristic agents, and 10\% to self-play. Agent checkpoints are added to the league every 500 episodes, with a maximum pool size of 50 historical agents.
 
 \paragraph{Curriculum Learning.}
-Training follows a five-phase curriculum of increasing complexity. Phase 1 (Full Observability) allows the agent to see all piece identities, learning basic game mechanics against random and heuristic opponents for 500--2,000 episodes until achieving $\geq$90\% win rate against random. Phase 2 (Partial Observability) disables full observability, requiring reliance on PBS predictions for 1,000--3,000 episodes until PBS accuracy reaches $\geq$70\%. Phase 3 (Self-Play) trains against a delayed copy of the agent for 2,000--5,000 episodes to discover novel strategies. Phase 4 (League Training) activates the full opponent distribution for 5,000+ episodes. Phase 5 (Scenario Drills) introduces specialized board configurations every 1,000 episodes for targeted skill training.
+Training follows a five-phase curriculum of increasing complexity with extended episode counts to ensure thorough learning at each stage. Phase 1 (Full Observability) allows the agent to observe all piece identities, enabling acquisition of fundamental game mechanics. Training proceeds for 5,000--10,000 episodes against a progressively challenging opponent mix: initially random opponents, then basic heuristic agents, and finally a sophisticated multi-factor heuristic opponent that evaluates combat outcomes, piece protection, positional control, and tactical considerations such as Scout reconnaissance and Miner prioritization. Phase advancement requires $\geq$95\% win rate against random opponents, $\geq$75\% against the basic heuristic, and $\geq$60\% against the strategic heuristic.
+
+Phase 2 (Partial Observability) disables full observability, requiring reliance on PBS predictions for 5,000--10,000 episodes. The opponent distribution allocates 40\% to frozen heuristic agents and 60\% to the strategic heuristic opponent. Phase advancement requires PBS prediction accuracy $\geq$75\% and overall win rate $\geq$60\%.
+
+Phase 3 (Self-Play) trains against a mixture of delayed agent copies (60\%) and strategic heuristic opponents (40\%) for 5,000--15,000 episodes to discover novel strategies while preventing policy collapse. Phase 4 (League Training) activates the full opponent distribution with 40\% historical league agents, 30\% strategic heuristic, 20\% greedy agents, and 10\% self-play. Phase 5 (Scenario Drills) introduces specialized board configurations every 1,000 episodes for targeted skill training.
 
 \paragraph{Reward Shaping Weights.}
 The composite reward function uses configurable weights: outcome reward $w_o = 1.0$, material reward $w_m = 0.5$, epistemic reward $w_e = 0.3$, and positional reward $w_p = 0.2$. These weights prioritize terminal outcomes while providing dense learning signals through intermediate rewards.
