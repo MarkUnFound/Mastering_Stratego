@@ -30,12 +30,12 @@ from prioritized_memory import StandardReplayBuffer, Experience
 
 # C51 Hyperparameters - CRITICAL FOR DISTRIBUTIONAL RL
 # The support range must match the expected return scale!
-# With normalized rewards (terminal ±1.0, step -0.005, capture +0.1):
-#   - Max expected return: ~+1.5 (win + captures - steps)
-#   - Min expected return: ~-2.0 (loss + losses + steps)
-# Using [-3, +3] provides buffer room for the distribution to learn variance
-V_MIN = -3.0   # Previous: -100.0 (way too wide!)
-V_MAX = 3.0    # Previous: +100.0 (made each atom cover ~4 points)
+# With normalized rewards (terminal ±10.0, step -0.01, capture +0.1):
+#   - Max expected return: ~+10.5 (win + captures - steps)
+#   - Min expected return: ~-10.5 (loss + losses + steps)
+# Using [-12, +12] provides buffer room while keeping gradients strong
+V_MIN = -12.0   # Tightened to match reward scale
+V_MAX = 12.0    # Tightened to match reward scale
 NUM_ATOMS = 51
 
 
@@ -343,9 +343,8 @@ class RainbowAgent:
              # _move_to_action_index expects ((r1,c1), (r2,c2))
              action = self._move_to_action_index(action)
         
-        # Clip reward
-        if abs(reward) <= 5.0:
-            reward = max(-100.0, min(100.0, reward))
+        # Clip reward to C51 support range to avoid instability
+        reward = max(V_MIN, min(V_MAX, reward))
             
         # Process states
         state_processed = self.get_state_representation(state, pbs_instance=self.pbs)
@@ -392,10 +391,8 @@ class RainbowAgent:
             if isinstance(action, tuple) or isinstance(action, list):
                 action = self._move_to_action_index(action)
             
-            # Clip reward
-            reward = rewards[i]
-            if abs(reward) <= 5.0:
-                reward = max(-100.0, min(100.0, reward))
+            # Clip reward to C51 support range
+            reward = max(V_MIN, min(V_MAX, rewards[i]))
             
             # Add pre-processed state tensors to memory
             self.memory.add(state_tensors[i], action, reward, next_state_tensors[i], dones[i])

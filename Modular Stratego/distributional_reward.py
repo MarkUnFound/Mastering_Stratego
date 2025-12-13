@@ -93,32 +93,28 @@ class DistributionalRewardConfig:
     @classmethod
     def from_training_config(cls) -> 'DistributionalRewardConfig':
         """Load configuration from training_config.py settings."""
-        try:
-            from training_config import (
-                DIST_STEP_PENALTY, DIST_DRAW_PENALTY,
-                DIST_WIN_REWARD, DIST_LOSS_PENALTY,
-                DIST_CAPTURE_SCALE, DIST_LOSS_SCALE,
-                DIST_REVEAL_BONUS, DIST_FIRST_REVEAL_BONUS,
-                DIST_SPY_KILLS_MARSHAL, DIST_MINER_DEFUSES_BOMB,
-                DIST_TERRITORY_ADVANCE, DIST_CENTER_CONTROL
-            )
-            return cls(
-                step_penalty=DIST_STEP_PENALTY,
-                draw_penalty=DIST_DRAW_PENALTY,
-                win_reward=DIST_WIN_REWARD,
-                loss_penalty=DIST_LOSS_PENALTY,
-                capture_scale=DIST_CAPTURE_SCALE,
-                loss_scale=DIST_LOSS_SCALE,
-                reveal_bonus=DIST_REVEAL_BONUS,
-                first_reveal_bonus=DIST_FIRST_REVEAL_BONUS,
-                spy_kills_marshal=DIST_SPY_KILLS_MARSHAL,
-                miner_defuses_bomb=DIST_MINER_DEFUSES_BOMB,
-                territory_advance=DIST_TERRITORY_ADVANCE,
-                center_control=DIST_CENTER_CONTROL
-            )
-        except ImportError:
-            # Fall back to defaults if training_config doesn't have these
-            return cls()
+        from training_config import (
+            DIST_STEP_PENALTY, DIST_DRAW_PENALTY,
+            DIST_WIN_REWARD, DIST_LOSS_PENALTY,
+            DIST_CAPTURE_SCALE, DIST_LOSS_SCALE,
+            DIST_REVEAL_BONUS, DIST_FIRST_REVEAL_BONUS,
+            DIST_SPY_KILLS_MARSHAL, DIST_MINER_DEFUSES_BOMB,
+            DIST_TERRITORY_ADVANCE, DIST_CENTER_CONTROL
+        )
+        return cls(
+            step_penalty=DIST_STEP_PENALTY,
+            draw_penalty=DIST_DRAW_PENALTY,
+            win_reward=DIST_WIN_REWARD,
+            loss_penalty=DIST_LOSS_PENALTY,
+            capture_scale=DIST_CAPTURE_SCALE,
+            loss_scale=DIST_LOSS_SCALE,
+            reveal_bonus=DIST_REVEAL_BONUS,
+            first_reveal_bonus=DIST_FIRST_REVEAL_BONUS,
+            spy_kills_marshal=DIST_SPY_KILLS_MARSHAL,
+            miner_defuses_bomb=DIST_MINER_DEFUSES_BOMB,
+            territory_advance=DIST_TERRITORY_ADVANCE,
+            center_control=DIST_CENTER_CONTROL
+        )
     
 
 class DistributionalRewardTracker:

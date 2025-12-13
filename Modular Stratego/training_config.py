@@ -5,11 +5,11 @@ Configuration settings for DQN training.
 # =============================================================================
 # RAINBOW DQN HYPERPARAMETERS
 # =============================================================================
-NUM_ENVS = 4              # Parallel environments for training
+NUM_ENVS = 6              # Parallel environments for training
 BATCH_SIZE = 128          # Batch size for experience replay
 GAMMA = 0.95              # Discount factor (reduced from 0.99 for faster credit assignment)
 MEMORY_SIZE = 80000      # Replay buffer size (auto-scales by VRAM)
-LEARNING_RATE = 0.0001    # Adam optimizer learning rate (reduced from 0.0005 to prevent collapse)
+LEARNING_RATE = 0.00001    # Adam optimizer learning rate (1e-5 for faster Phase 1 learning)
 NUM_EPISODES = 35000      # Total training episodes
 SAVE_INTERVAL = 250       # Save model every N episodes
 EVAL_INTERVAL = 100       # Evaluate agent every N episodes
@@ -86,29 +86,31 @@ REWARD_WEIGHT_POSITIONAL = 0.2  # Strategic positioning reward weight
 # These settings are NORMALIZED for C51 Distributional RL with V_MIN=-3, V_MAX=+3
 # All rewards are small so cumulative returns stay within the distribution support
 
+# Rewards updated to strictly prioritize winning over material farming
+# New Range: Win/Loss = ±10.0 (Dominant Signal)
+# Material: Max ~3-4 points total (Subordinate Signal)
+
 DISTRIBUTIONAL_REWARD_ENABLED = True  # Use distributional-compatible rewards
 DISTRIBUTIONAL_WEIGHT = 1.0           # Full weight on distributional rewards
 ENV_REWARD_WEIGHT = 0.0               # Disable environment rewards (use only shaped)
 
 # Anti-stall penalties (tiny to stay within bounds)
-DIST_STEP_PENALTY = -0.005            # -0.005 per step (~100 steps = -0.5)
-DIST_DRAW_PENALTY = -1.5              # Draw = WORSE than loss (was -0.8, now stronger)
+DIST_STEP_PENALTY = -0.01             # -0.01 per step (~100 steps = -1.0)
+DIST_DRAW_PENALTY = -5.0              # Draw = Bad (but better than losing -10)
 
-# Terminal rewards (INCREASED for stronger signal, still within V_MIN/V_MAX)
-# Old: ±1.0 → New: ±2.0
-# Win game (100 steps): +2.0 - 0.5 = +1.5 (within +3)
-# Loss game (100 steps): -2.0 - 0.5 = -2.5 (within -3)
-DIST_WIN_REWARD = 2.0                 # Win (flag capture or elimination)
-DIST_LOSS_PENALTY = -2.0              # Loss
+# Terminal rewards (DRASTICALLY INCREASED)
+# Must overpower the sum of all potential captures (40 * 0.1 = 4.0)
+DIST_WIN_REWARD = 10.0                # Win (flag capture or elimination)
+DIST_LOSS_PENALTY = -10.0             # Loss
 
-# Combat rewards (material signal) - INCREASED for Phase 1 learning
-# With full observability, the agent should get stronger feedback for good captures
-DIST_CAPTURE_SCALE = 0.2              # +0.2 * (rank/10) = max +0.2 per capture (doubled)
-DIST_LOSS_SCALE = -0.03               # -0.03 per piece lost (reduced penalty to favor aggression)
+# Combat rewards (Reduced to prevent "farming")
+# Capturing pieces is a means to an end, not the goal
+DIST_CAPTURE_SCALE = 0.1              # +0.1 * (rank/10) = max +0.1 per capture
+DIST_LOSS_SCALE = -0.05               # -0.05 per piece lost
 
 # Information gain (crucial for variance learning in C51)
-DIST_REVEAL_BONUS = 0.04              # Bonus for revealing enemy rank (doubled)
-DIST_FIRST_REVEAL_BONUS = 0.05        # Extra bonus for first reveal of a type (increased)
+DIST_REVEAL_BONUS = 0.02              # Bonus for revealing enemy rank (reduced)
+DIST_FIRST_REVEAL_BONUS = 0.05        # Extra bonus for first reveal of a type
 
 # Strategic bonuses (INCREASED for stronger signal in Phase 1)
 DIST_SPY_KILLS_MARSHAL = 0.25         # Spy kills Marshal (rare, valuable) - was 0.15
