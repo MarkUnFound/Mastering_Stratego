@@ -122,7 +122,7 @@ During training, the PBS is compared against the true game state to provide supe
 Training the MARQ agent is computationally intensive due to the large state-action space and the need to learn accurate belief state representations over extended game histories.
 
 \paragraph{Rainbow DQN Architecture.}
-MARQ employs a Rainbow DQN architecture that integrates several algorithmic improvements over the standard DQN. The implementation includes Categorical DQN (C51) for distributional value estimation with 51 atoms over the range $[V_{min}, V_{max}] = [-10, 10]$, Noisy Networks for learned exploration (replacing $\epsilon$-greedy), and Dueling Network Architecture separating state value and action advantage estimation. The noisy linear layers inject state-dependent stochasticity, enabling the agent to learn appropriate exploration levels for different game situations without manual scheduling.
+MARQ employs a Rainbow DQN architecture that integrates several algorithmic improvements over the standard DQN. The implementation includes Categorical DQN (C51) for distributional value estimation with 51 atoms over the support $[V_{min}, V_{max}] = [-12, 12]$, Noisy Networks for learned exploration (replacing $\epsilon$-greedy), and Dueling Network Architecture separating state value and action advantage estimation. The noisy linear layers inject state-dependent stochasticity, enabling the agent to learn appropriate exploration levels for different game situations without manual scheduling.
 
 \paragraph{Network Structure.}
 The Q-network processes a 27-channel state tensor through a convolutional encoder consisting of two layers (32 filters and 64 filters, both with $3 \times 3$ kernels and ReLU activation) followed by dueling streams. The 27-channel state representation is partitioned into two components, as detailed in Table \ref{tab:state_channels}.
@@ -150,7 +150,7 @@ The Q-network processes a 27-channel state tensor through a convolutional encode
 The board feature channels provide deterministic knowledge of the agent's own piece positions and observed enemy locations. The enemy type channels encode information about hidden enemy piece identities, with the representation varying by training phase. During full observability training (Phase 1), these channels contain ground truth one-hot encodings that allow the agent to learn fundamental game mechanics and piece-type awareness without inference uncertainty. During partial observability phases, the channels contain probabilistic beliefs from the PBS module, updated through the AAREN attention mechanism based on observed opponent behavior. This dual-mode representation enables the network to first acquire robust combat and positional strategies before learning to operate under uncertainty. The AAREN module uses 24-dimensional action feature vectors, 64 hidden units, and 3 layers to process action histories and output piece type probability distributions.
 
 \paragraph{Training Hyperparameters.}
-The training configuration uses the following key parameters: learning rate $\alpha = 0.0001$ with Adam optimizer, discount factor $\gamma = 0.99$, batch size of 128 transitions, replay buffer capacity of 150,000 transitions, and target network synchronization every 5,000 steps. The model updates are performed every 32 steps to balance training stability with simulation throughput. The PBS is updated every 2 steps to balance inference accuracy with computational efficiency. Training proceeds for 35,000 episodes with model checkpoints saved every 250 episodes.
+The training configuration uses the following key parameters: learning rate $\alpha = 10^{-5}$ with AdamW optimizer and weight decay $\lambda = 0.01$, discount factor $\gamma = 0.95$, batch size of 256 transitions, replay buffer capacity of 80,000 transitions with prioritized sampling, and soft target network updates ($\tau = 0.001$) every 5,000 steps. The model updates are performed every 16 steps using 3-step returns to balance training throughput with sample efficiency. Training proceeds for 35,000 episodes with model checkpoints saved every 250 episodes.
 
 \paragraph{League-Based Training.}
 To prevent policy cycling and ensure robustness, the agent trains against a diverse opponent pool. The opponent selection distribution allocates 50\% to historical league agents, 20\% to random agents, 20\% to greedy heuristic agents, and 10\% to self-play. Agent checkpoints are added to the league every 500 episodes, with a maximum pool size of 50 historical agents.
@@ -166,7 +166,7 @@ Phase 3 (Self-Play) trains against a mixture of delayed agent copies (60\%) and 
 The composite reward function uses configurable weights: outcome reward $w_o = 1.0$, material reward $w_m = 0.5$, epistemic reward $w_e = 0.3$, and positional reward $w_p = 0.2$. These weights prioritize terminal outcomes while providing dense learning signals through intermediate rewards.
 
 \paragraph{Distributional RL-Compatible Reward Normalization.}
-The C51 distributional architecture requires careful reward scaling to ensure cumulative returns fall within the value distribution support $[V_{min}, V_{max}]$. With a support of $[-3, +3]$ and 51 atoms, each atom spans 0.12 value units, providing sufficient resolution for learning the return distribution.
+The C51 distributional architecture requires careful reward scaling to ensure cumulative returns fall within the value distribution support $[V_{min}, V_{max}] = [-12, +12]$. With 51 atoms, each atom spans approximately 0.48 value units ($\delta_z = 24/50$), providing sufficient resolution for learning the return distribution while accommodating terminal rewards of $\pm 10$.
 
 To address reward hacking behavior---where the agent learns to stall games and force draws due to risk aversion toward unknown enemy piece ranks---the framework implements an anti-stall reward structure with normalized magnitudes. Terminal rewards are set to $+1.0$ for wins and $-1.0$ for losses, well within the distribution bounds. Draws and timeouts receive $-0.8$, deliberately \textit{worse} than a fighting loss, which creates a gradient toward aggressive play.
 
@@ -177,6 +177,42 @@ Combat rewards provide material signal through capture bonus $+0.1 \cdot (r_{ene
 A crucial component for distributional learning is the information gain bonus. Revealing an enemy piece rank through combat yields $+0.02$, with an additional $+0.03$ for the first reveal of each piece type. This helps the value distribution learn the \textit{variance} associated with attacking unknown pieces---unrevealed pieces have high uncertainty, while revealed pieces have low variance. The distributional approach naturally captures this risk-reward tradeoff that scalar Q-learning cannot represent.
 
 Strategic capture bonuses encode domain knowledge: eliminating the opponent's Spy while their Marshal survives grants $+0.15$, and removing enemy Miners while Bombs remain yields $+0.08$.
+
+\paragraph{Positional Rewards.}
+Beyond combat and information rewards, two positional shaping components guide territorial behavior. The flag proximity bonus provides $+0.03$ for moves that position pieces within the opponent's back two rows, with higher weights for corner positions where flags are typically placed. This creates a gradient toward the objective without requiring explicit flag detection. Additionally, a mobility reward of $+0.001 \cdot n_{moves}$ encourages maintaining positions with high action availability, as pieces with more valid moves occupy strategically flexible positions.
+
+\paragraph{Experience Replay Optimization.}
+Standard uniform sampling from the replay buffer treats all transitions equally, which is sample-inefficient when important learning events (e.g., flag captures, high-value combat) occur infrequently. Prioritized Experience Replay (PER) addresses this by sampling transitions with probability proportional to their temporal-difference (TD) error magnitude:
+
+\begin{equation}
+P(i) = \frac{p_i^\alpha}{\sum_k p_k^\alpha}, \quad p_i = |\delta_i| + \epsilon
+\end{equation}
+
+\noindent where $\delta_i$ is the TD-error for transition $i$, $\alpha \in [0,1]$ controls the degree of prioritization (with $\alpha = 0.6$ used in this implementation), and $\epsilon = 10^{-6}$ prevents zero probability. To correct the bias introduced by non-uniform sampling, importance sampling weights are applied:
+
+\begin{equation}
+w_i = \left(\frac{1}{N \cdot P(i)}\right)^\beta
+\end{equation}
+
+\noindent where $\beta$ is annealed from 0.4 to 1.0 over training to gradually enforce unbiased updates. The implementation uses a sum-tree data structure for $O(\log N)$ sampling complexity. PER increases sample efficiency by focusing learning on transitions where the current value function is least accurate.
+
+\paragraph{Multi-Step Returns.}
+The standard one-step TD target $r_t + \gamma V(s_{t+1})$ can exhibit high variance and slow credit assignment for sparse rewards. Multi-step returns extend the bootstrapping horizon to $n$ steps:
+
+\begin{equation}
+G_t^{(n)} = \sum_{k=0}^{n-1} \gamma^k r_{t+k} + \gamma^n Q(s_{t+n}, a^*)
+\end{equation}
+
+\noindent where $a^* = \arg\max_a Q(s_{t+n}, a)$ under Double Q-learning. With $n=3$ and $\gamma = 0.95$, the effective discount for the bootstrapped value is $\gamma^3 = 0.857$. This configuration reduces the time constant for reward propagation while maintaining bias-variance balance. The three-step return collects actual rewards over a short trajectory before bootstrapping, which is particularly beneficial in Stratego where the consequences of tactical decisions often manifest over several moves.
+
+\paragraph{Learning Rate Scheduling.}
+Convergence can be accelerated through adaptive learning rate control. A step decay schedule reduces the learning rate by factor $\eta = 0.9$ every 5,000 episodes:
+
+\begin{equation}
+\alpha_e = \alpha_0 \cdot \eta^{\lfloor e / 5000 \rfloor}
+\end{equation}
+
+\noindent where $\alpha_0 = 10^{-5}$ is the initial learning rate and $e$ is the episode count. This schedule enables aggressive early learning while maintaining stability as the policy approaches convergence. The decay rate was selected to provide approximately 35\% learning rate reduction over 10,000 episodes.
 
 
 \begin{figure}[htbp]

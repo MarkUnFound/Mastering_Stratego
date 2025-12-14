@@ -90,6 +90,16 @@ class DistributionalRewardConfig:
     territory_advance: float = 0.02   # Bonus for moving toward enemy flag
     center_control: float = 0.01      # Bonus for occupying center positions
     
+    # =========================================================================
+    # FLAG PROXIMITY (Approach enemy flag)
+    # =========================================================================
+    flag_proximity_bonus: float = 0.03  # Bonus for moving toward enemy back corners
+    
+    # =========================================================================
+    # PIECE MOBILITY (Positional flexibility)
+    # =========================================================================
+    mobility_bonus: float = 0.001  # Small bonus per valid move available
+    
     @classmethod
     def from_training_config(cls) -> 'DistributionalRewardConfig':
         """Load configuration from training_config.py settings."""
@@ -99,7 +109,8 @@ class DistributionalRewardConfig:
             DIST_CAPTURE_SCALE, DIST_LOSS_SCALE,
             DIST_REVEAL_BONUS, DIST_FIRST_REVEAL_BONUS,
             DIST_SPY_KILLS_MARSHAL, DIST_MINER_DEFUSES_BOMB,
-            DIST_TERRITORY_ADVANCE, DIST_CENTER_CONTROL
+            DIST_TERRITORY_ADVANCE, DIST_CENTER_CONTROL,
+            DIST_FLAG_PROXIMITY_BONUS, DIST_MOBILITY_BONUS
         )
         return cls(
             step_penalty=DIST_STEP_PENALTY,
@@ -113,7 +124,9 @@ class DistributionalRewardConfig:
             spy_kills_marshal=DIST_SPY_KILLS_MARSHAL,
             miner_defuses_bomb=DIST_MINER_DEFUSES_BOMB,
             territory_advance=DIST_TERRITORY_ADVANCE,
-            center_control=DIST_CENTER_CONTROL
+            center_control=DIST_CENTER_CONTROL,
+            flag_proximity_bonus=DIST_FLAG_PROXIMITY_BONUS,
+            mobility_bonus=DIST_MOBILITY_BONUS
         )
     
 
@@ -330,6 +343,32 @@ def calculate_distributional_reward(
         # Center control bonus (columns 3-6 and rows 4-5 are strategic center)
         if 3 <= c_to <= 6 and 4 <= r_to <= 5:
             reward += config.center_control
+        
+        # =====================================================================
+        # 5. FLAG PROXIMITY BONUS (Approach likely flag positions)
+        # =====================================================================
+        # Flags are typically in back row, often in corners or edges
+        # P1's enemy flag is in rows 0-1, P2's enemy flag is in rows 8-9
+        if player_id == 1:
+            # P1 wants to reach rows 0-1 (enemy back row)
+            if r_to <= 1:
+                # Bonus for reaching enemy flag zone
+                corner_bonus = 1.0 if c_to in (0, 1, 8, 9) else 0.5
+                reward += config.flag_proximity_bonus * corner_bonus
+        else:
+            # P2 wants to reach rows 8-9 (enemy back row)
+            if r_to >= 8:
+                corner_bonus = 1.0 if c_to in (0, 1, 8, 9) else 0.5
+                reward += config.flag_proximity_bonus * corner_bonus
+    
+    # =========================================================================
+    # 6. MOBILITY REWARD (More options = better position)
+    # =========================================================================
+    # Note: Mobility is calculated at step time in train_dqn.py using valid_moves
+    # This placeholder allows the wrapper to add it if info contains num_valid_moves
+    if info and 'num_valid_moves' in info:
+        num_moves = info['num_valid_moves']
+        reward += config.mobility_bonus * num_moves
     
     return reward
 

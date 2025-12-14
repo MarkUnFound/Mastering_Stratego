@@ -115,10 +115,14 @@
 \contentsline {paragraph}{Curriculum Learning.}{48}{}%
 \contentsline {paragraph}{Reward Shaping Weights.}{49}{}%
 \contentsline {paragraph}{Distributional RL-Compatible Reward Normalization.}{49}{}%
-\contentsline {subsection}{\numberline {4.3.1}Deployment}{50}{}%
+\contentsline {paragraph}{Positional Rewards.}{50}{}%
+\contentsline {paragraph}{Experience Replay Optimization.}{50}{}%
+\contentsline {paragraph}{Multi-Step Returns.}{51}{}%
+\contentsline {paragraph}{Learning Rate Scheduling.}{51}{}%
+\contentsline {subsection}{\numberline {4.3.1}Deployment}{51}{}%
 \contentsline {section}{\numberline {4.4}Evaluation}{52}{}%
 \contentsline {paragraph}{Quantitative Analysis.}{52}{}%
-\contentsline {paragraph}{Qualitative Analysis.}{52}{}%
-\contentsline {paragraph}{Model Iteration and Initial Results.}{52}{}%
-\contentsline {chapter}{\numberline {A}Gantt Chart}{53}{}%
-\contentsline {chapter}{\numberline {B}System UI and Training}{56}{}%
+\contentsline {paragraph}{Qualitative Analysis.}{53}{}%
+\contentsline {paragraph}{Model Iteration and Initial Results.}{54}{}%
+\contentsline {chapter}{\numberline {A}Gantt Chart}{55}{}%
+\contentsline {chapter}{\numberline {B}System UI and Training}{58}{}%

@@ -26,7 +26,7 @@ from aaren import PieceActionAaren
 
 if PBS_EVALUATOR_AVAILABLE:
     from pbs_evaluator import PBSEvaluator
-from prioritized_memory import StandardReplayBuffer, Experience
+from prioritized_memory import StandardReplayBuffer, PrioritizedReplayBuffer, NStepBuffer, Experience
 
 # C51 Hyperparameters - CRITICAL FOR DISTRIBUTIONAL RL
 # The support range must match the expected return scale!
@@ -143,8 +143,46 @@ class RainbowAgent:
         
         self.optimizer = optim.AdamW(self.q_network.parameters(), lr=lr, weight_decay=0.01)
         
-        # Replay Buffer (Standard, no sequences)
-        self.memory = StandardReplayBuffer(buffer_size, device=device)
+        # Import PER and N-Step settings
+        try:
+            from training_config import (
+                PER_ENABLED, PER_ALPHA, PER_BETA_START, PER_BETA_END, PER_BETA_ANNEAL_EPISODES,
+                N_STEPS, GAMMA_N, LR_SCHEDULER_ENABLED, LR_SCHEDULER_STEP_SIZE, LR_SCHEDULER_GAMMA
+            )
+        except ImportError:
+            PER_ENABLED = False
+            N_STEPS = 1
+            GAMMA_N = gamma
+            LR_SCHEDULER_ENABLED = False
+        
+        # Replay Buffer (Prioritized or Standard)
+        self.per_enabled = PER_ENABLED
+        if PER_ENABLED:
+            self.memory = PrioritizedReplayBuffer(
+                buffer_size, device=device, alpha=PER_ALPHA,
+                beta_start=PER_BETA_START, beta_end=PER_BETA_END,
+                beta_anneal_episodes=PER_BETA_ANNEAL_EPISODES
+            )
+            print(f"✅ Prioritized Experience Replay enabled (alpha={PER_ALPHA})")
+        else:
+            self.memory = StandardReplayBuffer(buffer_size, device=device)
+        
+        # N-Step Buffer for multi-step returns
+        self.n_steps = N_STEPS
+        self.gamma_n = GAMMA_N
+        if N_STEPS > 1:
+            self.n_step_buffers = [NStepBuffer(n_steps=N_STEPS, gamma=gamma) for _ in range(max(num_envs, 1))]
+            print(f"✅ N-Step returns enabled (n={N_STEPS})")
+        else:
+            self.n_step_buffers = None
+        
+        # Learning Rate Scheduler
+        self.scheduler = None
+        if LR_SCHEDULER_ENABLED:
+            self.scheduler = optim.lr_scheduler.StepLR(
+                self.optimizer, step_size=LR_SCHEDULER_STEP_SIZE, gamma=LR_SCHEDULER_GAMMA
+            )
+            print(f"✅ LR Scheduler enabled (step={LR_SCHEDULER_STEP_SIZE}, gamma={LR_SCHEDULER_GAMMA})")
         
         # Metrics
         self.step_count = 0
@@ -356,6 +394,7 @@ class RainbowAgent:
     def remember_batch(self, states, actions, rewards, next_states, dones, active_mask, game_states=None, next_game_states=None):
         """
         Store multiple experiences efficiently with batched state processing.
+        Uses N-step returns if enabled.
         
         Args:
             states: List of game states (boards)
@@ -394,9 +433,30 @@ class RainbowAgent:
             # Clip reward to C51 support range
             reward = max(V_MIN, min(V_MAX, rewards[i]))
             
-            # Add pre-processed state tensors to memory
-            self.memory.add(state_tensors[i], action, reward, next_state_tensors[i], dones[i])
-            self.step_count += 1
+            # N-Step returns processing
+            if self.n_step_buffers is not None and i < len(self.n_step_buffers):
+                n_step_result = self.n_step_buffers[i].add(
+                    state_tensors[i], action, reward, next_state_tensors[i], dones[i]
+                )
+                
+                if n_step_result is not None:
+                    # Got n-step experience - add to replay
+                    n_state, n_action, n_reward, n_next_state, n_done = n_step_result
+                    self.memory.add(n_state, n_action, n_reward, n_next_state, n_done)
+                    self.step_count += 1
+                
+                # Flush remaining if episode done
+                if dones[i]:
+                    remaining = self.n_step_buffers[i].flush()
+                    for result in remaining:
+                        n_state, n_action, n_reward, n_next_state, n_done = result
+                        self.memory.add(n_state, n_action, n_reward, n_next_state, n_done)
+                        self.step_count += 1
+                    self.n_step_buffers[i].reset()
+            else:
+                # Standard 1-step: add directly to memory
+                self.memory.add(state_tensors[i], action, reward, next_state_tensors[i], dones[i])
+                self.step_count += 1
 
     def act(self, state, valid_moves: List[Tuple[Tuple[int, int], Tuple[int, int]]], game_state=None):
         """
@@ -760,18 +820,39 @@ class RainbowAgent:
             # Single Env
             self.pbs.train_aaren_with_evaluator_feedback(epochs=epochs)
 
-    def replay(self, batch_size=None) -> Optional[float]:
+    def replay(self, batch_size=None, episode=None) -> Optional[float]:
         """
         Train the Rainbow model using C51 Distributional Loss.
+        Supports PER and N-step returns.
+        
+        Args:
+            batch_size: Override batch size
+            episode: Current episode number (for PER beta annealing)
         """
         if batch_size is None:
             batch_size = self.batch_size
             
         if len(self.memory) < batch_size:
             return None
+        
+        # --- Sample Batch (PER or Standard) ---
+        indices = None
+        weights = None
+        
+        if self.per_enabled:
+            # Anneal beta
+            if episode is not None:
+                self.memory.anneal_beta(episode)
             
-        # Sample batch
-        states, actions, rewards, next_states, dones = self.memory.sample(batch_size)
+            sample_result = self.memory.sample(batch_size)
+            if sample_result is None:
+                return None
+            states, actions, rewards, next_states, dones, indices, weights = sample_result
+        else:
+            states, actions, rewards, next_states, dones = self.memory.sample(batch_size)
+        
+        # Use n-step gamma if available
+        gamma_to_use = self.gamma_n if hasattr(self, 'gamma_n') and self.n_steps > 1 else self.gamma
         
         # --- Distributional RL Target Calculation ---
         with torch.no_grad():
@@ -791,8 +872,8 @@ class RainbowAgent:
             next_action_probs = next_probs_target.gather(1, next_actions.view(-1, 1, 1).expand(-1, -1, self.num_atoms)).squeeze(1)
             
             # 3. Project Distribution (Categorical Algorithm)
-            # T_z = r + gamma * z (if not done)
-            T_z = rewards.unsqueeze(1) + (1 - dones.unsqueeze(1)) * self.gamma * self.support.unsqueeze(0)
+            # T_z = r + gamma^n * z (if not done) - uses n-step gamma
+            T_z = rewards.unsqueeze(1) + (1 - dones.unsqueeze(1)) * gamma_to_use * self.support.unsqueeze(0)
             T_z = T_z.clamp(min=self.v_min, max=self.v_max)
             
             # Compute L2 projection of T_z onto support
@@ -800,15 +881,18 @@ class RainbowAgent:
             l = b.floor().long()
             u = b.ceil().long()
             
+            # Handle batch size from actual sample (may differ due to PER)
+            actual_batch_size = states.size(0)
+            
             # Distribute probability mass
             # m is the projected distribution
-            m = torch.zeros(batch_size, self.num_atoms, device=self.device)
+            m = torch.zeros(actual_batch_size, self.num_atoms, device=self.device)
             
             # m_l = m_l + p(s', a') * (u - b)
             # m_u = m_u + p(s', a') * (b - l)
             
             # We need to use scatter_add because multiple atoms might project to same index
-            offset = torch.linspace(0, (batch_size - 1) * self.num_atoms, batch_size, device=self.device).long().unsqueeze(1).expand(batch_size, self.num_atoms)
+            offset = torch.linspace(0, (actual_batch_size - 1) * self.num_atoms, actual_batch_size, device=self.device).long().unsqueeze(1).expand(actual_batch_size, self.num_atoms)
             
             m.view(-1).scatter_add_(0, (l + offset).view(-1), (next_action_probs * (u.float() - b)).view(-1))
             m.view(-1).scatter_add_(0, (u + offset).view(-1), (next_action_probs * (b - l.float())).view(-1))
@@ -821,13 +905,24 @@ class RainbowAgent:
         # actions: (batch) -> (batch, 1, atoms)
         action_log_probs = current_log_probs.gather(1, actions.view(-1, 1, 1).expand(-1, -1, self.num_atoms)).squeeze(1)
         
-        # Cross Entropy Loss: - Sum(m * log_p)
-        loss = -(m * action_log_probs).sum(dim=1).mean()
+        # Calculate element-wise loss (for PER priority updates)
+        elementwise_loss = -(m * action_log_probs).sum(dim=1)
+        
+        # Apply importance sampling weights if PER
+        if weights is not None:
+            loss = (weights * elementwise_loss).mean()
+        else:
+            loss = elementwise_loss.mean()
         
         if torch.isnan(loss) or torch.isinf(loss):
              print(f"⚠️  Warning: NaN/Inf detected in loss. Skipping update.")
              self.optimizer.zero_grad()
              return None
+        
+        # Update PER priorities with TD-errors
+        if self.per_enabled and indices is not None:
+            td_errors = elementwise_loss.detach().cpu().numpy()
+            self.memory.update_priorities(indices, td_errors)
              
         self.optimizer.zero_grad()
         

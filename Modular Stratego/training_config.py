@@ -6,17 +6,33 @@ Configuration settings for DQN training.
 # RAINBOW DQN HYPERPARAMETERS
 # =============================================================================
 NUM_ENVS = 6              # Parallel environments for training
-BATCH_SIZE = 128          # Batch size for experience replay
+BATCH_SIZE = 128          # Reverted for faster early learning (was 256)
 GAMMA = 0.95              # Discount factor (reduced from 0.99 for faster credit assignment)
-MEMORY_SIZE = 80000      # Replay buffer size (auto-scales by VRAM)
-LEARNING_RATE = 0.00001    # Adam optimizer learning rate (1e-5 for faster Phase 1 learning)
+MEMORY_SIZE = 80000       # Replay buffer size (auto-scales by VRAM)
+LEARNING_RATE = 0.00005   # Increased to 5e-5 for faster Phase 1 learning
 NUM_EPISODES = 35000      # Total training episodes
 SAVE_INTERVAL = 250       # Save model every N episodes
 EVAL_INTERVAL = 100       # Evaluate agent every N episodes
 PREFETCH_QUEUE_SIZE = 4   # Prefetch queue for data loading
-REPLAY_UPDATE_INTERVAL = 32  # Train every N steps (replay ratio ~1.0)
+REPLAY_UPDATE_INTERVAL = 8    # Train every 8 steps (increased frequency for faster learning)
 TARGET_UPDATE_INTERVAL = 5000  # Soft update target network every N steps
 REWARD_SCALE = 1.0        # Scaling factor for reward calculations
+
+# Multi-Step Returns (N-Step DQN)
+N_STEPS = 1               # DISABLED for diagnosis (was 3)
+GAMMA_N = GAMMA ** N_STEPS  # Pre-computed gamma^n
+
+# Learning Rate Scheduler
+LR_SCHEDULER_ENABLED = True
+LR_SCHEDULER_STEP_SIZE = 5000   # Reduce LR every N episodes
+LR_SCHEDULER_GAMMA = 0.9        # Multiply LR by this factor
+
+# Prioritized Experience Replay
+PER_ENABLED = False             # DISABLED for diagnosis (was True)
+PER_ALPHA = 0.6                 # Priority exponent (0 = uniform, 1 = full prioritization)
+PER_BETA_START = 0.4            # Initial importance sampling weight
+PER_BETA_END = 1.0              # Final importance sampling weight
+PER_BETA_ANNEAL_EPISODES = 10000  # Episodes to anneal beta
 
 # League Settings (Setup League)
 LEAGUE_INTERVAL = 500 # Run setup league every N episodes
@@ -119,6 +135,13 @@ DIST_MINER_DEFUSES_BOMB = 0.15        # Miner removes Bomb (strategic) - was 0.0
 # Territory advancement bonus (forward progress)
 DIST_TERRITORY_ADVANCE = 0.02         # Bonus for moving toward enemy flag
 DIST_CENTER_CONTROL = 0.01            # Bonus for occupying center positions
+
+# Flag proximity bonus (reward for approaching likely flag positions)
+DIST_FLAG_PROXIMITY_BONUS = 0.03      # Bonus for moving toward enemy back row corners
+DIST_FLAG_ZONE_ROWS = (0, 1, 8, 9)    # Rows where flags are typically placed
+
+# Piece mobility reward (more valid moves = better position)
+DIST_MOBILITY_BONUS = 0.001           # Small bonus per valid move available
 
 # Legacy aliases for backwards compatibility
 AGGRESSION_ENABLED = DISTRIBUTIONAL_REWARD_ENABLED

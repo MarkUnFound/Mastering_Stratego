@@ -109,13 +109,13 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
         if vram_gb >= 12:
             # High VRAM config (12GB+ / 16GB systems)
             num_envs = 12
-            batch_size = 128
+            batch_size = 256
             memory_size = 200000
             print("⚡ Using HIGH VRAM config: NUM_ENVS=12, BATCH_SIZE=128, MEMORY=200k")
         elif vram_gb >= 8:
             # Medium VRAM config (8-12GB systems)  
             num_envs = 8
-            batch_size = 64
+            batch_size = 128
             memory_size = 150000
             print("⚡ Using MEDIUM VRAM config: NUM_ENVS=8, BATCH_SIZE=64, MEMORY=150k")
         else:
@@ -459,6 +459,12 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
             next_states_p1, rewards_p1, dones_p1, infos_p1, valid_moves = parallel_env.step(actions_p1)
             _profile_step1 += _time.perf_counter() - _t0
             
+            # Count Agent 1 steps IMMEDIATELY after P1 acts (before active_envs is modified)
+            # This ensures we count all P1 actions, including final turns that end the game
+            active_count_p1 = int(np.sum(active_envs))
+            global_step += active_count_p1
+            step_in_episode += 1
+            
             # UPDATE P2's PBS with P1's moves (interval-based)
             # Always update if any action is a Scout move (2+ tiles), otherwise use interval
             should_update_p2_pbs = (step_in_episode % PBS_UPDATE_INTERVAL == 0)
@@ -599,15 +605,12 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                                 pass  # Silent fail to not impact training
 
             game_states = next_states_p2
-            step_in_episode += 1
-            # Count Agent 1's actual steps across all active parallel environments
-            active_count = int(np.sum(active_envs))
-            global_step += active_count  # Only count Agent 1 (training agent) actions
+            # Note: step_in_episode and global_step are now counted after P1 acts (lines 466-468)
             
             # 4. Training Step (only Agent1 trains)
             if global_step % REPLAY_UPDATE_INTERVAL == 0:
                 _t0 = _time.perf_counter()
-                loss1 = agent1.replay()
+                loss1 = agent1.replay(episode=episode)  # Pass episode for PER beta annealing
                 _profile_replay += _time.perf_counter() - _t0
                 
                 if loss1: 
@@ -618,6 +621,10 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
             if global_step % TARGET_UPDATE_INTERVAL == 0:
                 agent1.update_target_network()
                 print("🔄 Target Network Updated")
+        
+        # Step LR Scheduler at end of episode
+        if agent1.scheduler:
+            agent1.scheduler.step()
         
         # Print profiling breakdown every 10 episodes
         if episode % 10 == 0:
