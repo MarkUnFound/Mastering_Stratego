@@ -5,7 +5,7 @@ Configuration settings for DQN training.
 # =============================================================================
 # RAINBOW DQN HYPERPARAMETERS
 # =============================================================================
-NUM_LANES = 10             # Number of parallel training lanes (each lane = independent game)
+NUM_LANES = 8             # Number of parallel training lanes (each lane = independent game)
 NUM_ENVS = NUM_LANES      # LEGACY alias - always equals NUM_LANES (kept for compatibility)
 BATCH_SIZE = 128          # Reverted for faster early learning (was 256)
 GAMMA = 0.95              # Discount factor (reduced from 0.99 for faster credit assignment)
@@ -114,36 +114,37 @@ ENV_REWARD_WEIGHT = 0.0               # Disable environment rewards (use only sh
 
 # Anti-stall penalties (tiny to stay within bounds)
 DIST_STEP_PENALTY = -0.01             # -0.01 per step (~100 steps = -1.0)
-DIST_DRAW_PENALTY = -5.0              # Draw = Bad (but better than losing -10)
+DIST_DRAW_PENALTY = -50.0             # Draw = Bad (half of loss, proportional to 100/-100 scale)
 
-# Terminal rewards (DRASTICALLY INCREASED)
-# Must overpower the sum of all potential captures (40 * 0.1 = 4.0)
-DIST_WIN_REWARD = 10.0                # Win (flag capture or elimination)
-DIST_LOSS_PENALTY = -10.0             # Loss
+# Terminal rewards (MASSIVELY INCREASED to prevent reward farming)
+# Win/Loss must dominate: max possible intermediate rewards ~15 over 300 steps
+# So terminal must be >> 15 to ensure winning matters more than farming
+DIST_WIN_REWARD = 100.0               # Win (flag capture or elimination) - 10x boost
+DIST_LOSS_PENALTY = -100.0            # Loss - symmetric penalty
 
-# Combat rewards (Reduced to prevent "farming")
-# Capturing pieces is a means to an end, not the goal
-DIST_CAPTURE_SCALE = 0.1              # +0.1 * (rank/10) = max +0.1 per capture
-DIST_LOSS_SCALE = -0.05               # -0.05 per piece lost
+# Combat rewards (DRASTICALLY reduced to prevent "farming" behavior)
+# Capturing pieces should be tactical, not a reward optimization strategy
+DIST_CAPTURE_SCALE = 0.02             # +0.02 * (rank/10) = max +0.02 per capture (5x reduction)
+DIST_LOSS_SCALE = -0.01               # -0.01 per piece lost (5x reduction)
 
-# Information gain (crucial for variance learning in C51)
-DIST_REVEAL_BONUS = 0.02              # Bonus for revealing enemy rank (reduced)
-DIST_FIRST_REVEAL_BONUS = 0.05        # Extra bonus for first reveal of a type
+# Information gain (minimal - don't incentivize probing over winning)
+DIST_REVEAL_BONUS = 0.005             # Bonus for revealing enemy rank (4x reduction)
+DIST_FIRST_REVEAL_BONUS = 0.01        # Extra bonus for first reveal of a type
 
-# Strategic bonuses (INCREASED for stronger signal in Phase 1)
-DIST_SPY_KILLS_MARSHAL = 0.25         # Spy kills Marshal (rare, valuable) - was 0.15
-DIST_MINER_DEFUSES_BOMB = 0.15        # Miner removes Bomb (strategic) - was 0.08
+# Strategic bonuses (reduced - winning is the strategy)
+DIST_SPY_KILLS_MARSHAL = 0.1          # Spy kills Marshal (still valuable but less so)
+DIST_MINER_DEFUSES_BOMB = 0.05        # Miner removes Bomb (reduced)
 
-# Territory advancement bonus (forward progress)
-DIST_TERRITORY_ADVANCE = 0.02         # Bonus for moving toward enemy flag
-DIST_CENTER_CONTROL = 0.01            # Bonus for occupying center positions
+# Territory advancement bonus (minimal - don't reward aimless advancing)
+DIST_TERRITORY_ADVANCE = 0.005        # Bonus for moving toward enemy flag (4x reduction)
+DIST_CENTER_CONTROL = 0.002           # Bonus for occupying center positions (5x reduction)
 
-# Flag proximity bonus (reward for approaching likely flag positions)
-DIST_FLAG_PROXIMITY_BONUS = 0.03      # Bonus for moving toward enemy back row corners
+# Flag proximity bonus (keep moderate - this directly relates to winning)
+DIST_FLAG_PROXIMITY_BONUS = 0.02      # Bonus for moving toward enemy back row corners
 DIST_FLAG_ZONE_ROWS = (0, 1, 8, 9)    # Rows where flags are typically placed
 
-# Piece mobility reward (more valid moves = better position)
-DIST_MOBILITY_BONUS = 0.001           # Small bonus per valid move available
+# Piece mobility reward (minimal)
+DIST_MOBILITY_BONUS = 0.0005          # Small bonus per valid move available (2x reduction)
 
 # Legacy aliases for backwards compatibility
 AGGRESSION_ENABLED = DISTRIBUTIONAL_REWARD_ENABLED

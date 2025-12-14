@@ -27,7 +27,8 @@ def plot_training_progress(
     total_episodes: Optional[int] = None,
     total_steps: Optional[int] = None,
     num_envs: int = 1,
-    phase_history: Optional[List[int]] = None
+    phase_history: Optional[List[int]] = None,
+    loss_steps: Optional[List[int]] = None
 ):
     """
     Plots and saves the training progress of DQN agents.
@@ -41,6 +42,8 @@ def plot_training_progress(
         total_episodes: Total episodes across all training runs (for display).
         total_steps: Total steps across all training runs (for display).
         num_envs: Number of parallel environments (for win rate normalization).
+        phase_history: List of curriculum phase values per episode.
+        loss_steps: List of global_step values when each loss was recorded (for uniform x-axis).
     """
     # Validate input data
     if not episode_history or len(episode_history) == 0:
@@ -134,49 +137,68 @@ def plot_training_progress(
     axs[1].grid(True, alpha=0.3)
 
     # Plot 3: Policy Loss - Agent 1 Only (Agent 2 doesn't train)
-    # Uses LOG SCALE to properly show loss improvements across orders of magnitude
-    if len(episode_history) > 0 and len(policy_loss_history.get('agent1', [])) > 0:
-        losses = policy_loss_history['agent1']
+    # Uses LINEAR SCALE with step-based x-axis for uniform spacing
+    losses = policy_loss_history.get('agent1', [])
+    
+    if losses and len(losses) > 0:
+        # Determine x-axis: use steps if available, otherwise fallback to indices
+        if loss_steps is not None and len(loss_steps) == len(losses):
+            x_values = loss_steps
+            x_label = 'Training Steps'
+            x_scale = 1000  # Convert to thousands for readability
+            x_values_scaled = [x / x_scale for x in x_values]
+            x_label = 'Training Steps (thousands)'
+        else:
+            # Fallback: use even spacing based on array index
+            x_values_scaled = list(range(1, len(losses) + 1))
+            x_label = 'Replay Updates'
         
-        # Filter out zero values (episodes where no loss was recorded)
-        # Zero values are NOT real losses - they occur when replay() returns None
-        valid_episodes = []
+        # Filter out zero/near-zero values (outliers that make graph unreadable)
+        non_zero_losses = [l for l in losses if l > 0.001]
+        if non_zero_losses:
+            threshold = max(0.001, np.percentile(non_zero_losses, 5))  # 5th percentile
+        else:
+            threshold = 0.001
+        
+        valid_x = []
         valid_losses = []
-        for ep, loss in zip(episode_history, losses):
-            if loss > 0:  # Only include actual non-zero losses
-                valid_episodes.append(ep)
+        for x, loss in zip(x_values_scaled, losses):
+            if loss > threshold:
+                valid_x.append(x)
                 valid_losses.append(loss)
         
-        if valid_episodes:
-            # Plot discrete points for each episode (Agent 1 only)
-            axs[2].scatter(valid_episodes, valid_losses, label='Agent 1 Policy Loss', 
-                          color='blue', marker='o', s=30, alpha=0.5, zorder=3)
+        if valid_x:
+            # Plot discrete points with uniform spacing
+            axs[2].scatter(valid_x, valid_losses, label='Agent 1 Policy Loss', 
+                          color='blue', marker='o', s=20, alpha=0.4, zorder=3)
             
-            # Calculate and plot WINDOWED moving average (last 50 non-zero values)
-            window_size = min(50, len(valid_losses) // 2) if len(valid_losses) > 1 else 1
+            # Calculate and plot WINDOWED moving average
+            window_size = min(50, max(10, len(valid_losses) // 10)) if len(valid_losses) > 1 else 1
             if len(valid_losses) >= window_size and window_size > 1:
                 windowed_avg = []
-                windowed_episodes = []
+                windowed_x = []
                 for i in range(window_size, len(valid_losses) + 1):
                     windowed_avg.append(np.mean(valid_losses[i-window_size:i]))
-                    windowed_episodes.append(valid_episodes[i-1])
+                    windowed_x.append(valid_x[i-1])
                 
-                axs[2].plot(windowed_episodes, windowed_avg, color='blue', linestyle='-', linewidth=2, 
+                axs[2].plot(windowed_x, windowed_avg, color='blue', linestyle='-', linewidth=2, 
                            label=f'Moving Avg ({window_size} samples)', alpha=0.8, zorder=2)
-            
-            # Use log scale for better visibility of loss changes
-            # Don't use symlog since we filtered out zeros
-            axs[2].set_yscale('log')
         else:
             axs[2].text(0.5, 0.5, 'No loss data recorded yet', ha='center', va='center', 
                        transform=axs[2].transAxes, fontsize=12)
+        
+        axs[2].set_xlabel(x_label)
+    else:
+        axs[2].text(0.5, 0.5, 'No loss data recorded yet', ha='center', va='center', 
+                   transform=axs[2].transAxes, fontsize=12)
+        axs[2].set_xlabel('Training Steps')
     
-    axs[2].set_xlabel('Episodes')
-    axs[2].set_ylabel('Policy Loss (log scale)')
+    axs[2].set_ylabel('Policy Loss')
     axs[2].set_title('Agent 1 Policy Loss (Agent 2 does not train)')
     axs[2].legend()
     axs[2].grid(True, alpha=0.3)
     
+
     # Draw curriculum phase boundaries on all subplots
     if phase_history is not None and len(phase_history) > 0:
         # Phase colors and names

@@ -45,16 +45,18 @@ def smart_heuristic_setup(pieces: List[PieceType],
     }
     
     # Determine back and front rows based on player
+    # BACK = farthest from enemy (where flag goes)
+    # FRONT = closest to enemy (where scouts go)
     if player_id == 1:
-        # Player 1: back row is 6, front row is 9
-        back_rows = [6, 7]
-        front_rows = [8, 9]
-        corner_positions = [(6, 0), (6, 9), (7, 0), (7, 9)]  # Corners
+        # Player 1: occupies rows 6-9. Row 9 is BACK (far from P2), row 6 is FRONT
+        back_rows = [8, 9]   # Farthest from enemy - flag goes here
+        front_rows = [6, 7]  # Closest to enemy - scouts go here
+        corner_positions = [(9, 0), (9, 9), (8, 0), (8, 9)]  # Back corners
     else:
-        # Player 2: back row is 3, front row is 0
-        back_rows = [2, 3]
-        front_rows = [0, 1]
-        corner_positions = [(3, 0), (3, 9), (2, 0), (2, 9)]  # Corners
+        # Player 2: occupies rows 0-3. Row 0 is BACK (far from P1), row 3 is FRONT
+        back_rows = [0, 1]   # Farthest from enemy - flag goes here
+        front_rows = [2, 3]  # Closest to enemy - scouts go here
+        corner_positions = [(0, 0), (0, 9), (1, 0), (1, 9)]  # Back corners
     
     def get_positions_in_rows(rows):
         return [p for p in remaining_positions if p[0] in rows]

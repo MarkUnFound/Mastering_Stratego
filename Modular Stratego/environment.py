@@ -349,7 +349,7 @@ class StrategoEnvironment:
             return self._get_game_state(), 0.0, True, {"winner": self.winner}
 
         # Check for max turns (draw) - reduced to encourage faster games
-        if self.turn_count >= 1000:
+        if self.turn_count >= 2000:
             self.game_over = True
             self.winner = 0
             return self._get_game_state(), -1.0, True, {"winner": 0, "revealed_in_step": [], "game_phase": "end", "turn_count": self.turn_count}
@@ -628,8 +628,8 @@ class StrategoEnvironment:
                 self.winner = 0
                 return
         
-        # Hard limit (1000 turns = draw)
-        if self.turn_count >= 1000:
+        # Hard limit (2000 turns = draw)
+        if self.turn_count >= 2000:
             self.game_over = True
             self.winner = 0
             

@@ -30,12 +30,12 @@ from prioritized_memory import StandardReplayBuffer, PrioritizedReplayBuffer, NS
 
 # C51 Hyperparameters - CRITICAL FOR DISTRIBUTIONAL RL
 # The support range must match the expected return scale!
-# With normalized rewards (terminal ±10.0, step -0.01, capture +0.1):
-#   - Max expected return: ~+10.5 (win + captures - steps)
-#   - Min expected return: ~-10.5 (loss + losses + steps)
-# Using [-12, +12] provides buffer room while keeping gradients strong
-V_MIN = -12.0   # Tightened to match reward scale
-V_MAX = 12.0    # Tightened to match reward scale
+# With normalized rewards (terminal ±100.0, step -0.01, capture +0.02):
+#   - Max expected return: ~+101 (win + captures - steps)
+#   - Min expected return: ~-101 (loss + losses + steps)
+# Using [-120, +120] provides buffer room while keeping gradients strong
+V_MIN = -120.0   # Scaled 10x for 100/-100 terminal rewards
+V_MAX = 120.0    # Scaled 10x for 100/-100 terminal rewards
 NUM_ATOMS = 51
 
 
