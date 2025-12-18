@@ -77,7 +77,7 @@ The final piece value is a weighted linear combination of the above components:
 V(p) = \alpha_1 \cdot \text{CDS}(p) + \alpha_2 \cdot \text{SR}(p) + \alpha_3 \cdot S(p) + \alpha_4 \cdot M(p) + \alpha_5 \cdot \text{SF}(p)
 \end{equation}
 
-\noindent where $S(p)$ is the strategic ability bonus, $M(p)$ is the mobility factor, and weights $\alpha = (0.40, 0.25, 0.20, 0.10, 0.05)$ were selected to prioritize combat capability while accounting for strategic factors. Values are normalized such that $V(\text{Scout}) = 1.0$, analogous to the convention in chess where the Pawn serves as the unit of measurement.
+\noindent where $S(p)$ is the strategic ability bonus and $M(p)$ is the mobility factor. The weights $\alpha = (0.40, 0.25, 0.20, 0.10, 0.05)$ are selected to prioritize combat capability while accounting for strategic factors. Values are normalized such that $V(\text{Scout}) = 1.0$, analogous to the convention in chess where the Pawn serves as the unit of measurement.
 
 \begin{table}[h]
 \centering
@@ -122,10 +122,10 @@ During training, the PBS is compared against the true game state to provide supe
 Training the MARQ agent is computationally intensive due to the large state-action space and the need to learn accurate belief state representations over extended game histories.
 
 \paragraph{Rainbow DQN Architecture.}
-MARQ employs a Rainbow DQN architecture that integrates several algorithmic improvements over the standard DQN. The implementation includes Categorical DQN (C51) for distributional value estimation with 51 atoms over the support $[V_{min}, V_{max}] = [-12, 12]$, Noisy Networks for learned exploration (replacing $\epsilon$-greedy), and Dueling Network Architecture separating state value and action advantage estimation. The noisy linear layers inject state-dependent stochasticity, enabling the agent to learn appropriate exploration levels for different game situations without manual scheduling.
+MARQ employs a Rainbow DQN architecture that integrates several algorithmic improvements over the standard DQN. The implementation includes Categorical DQN (C51) for distributional value estimation with 51 atoms over the support $[V_{min}, V_{max}] = [-3, 3]$, Noisy Networks for learned exploration (replacing $\epsilon$-greedy), and Dueling Network Architecture separating state value and action advantage estimation. The noisy linear layers inject state-dependent stochasticity, enabling the agent to learn appropriate exploration levels for different game situations without manual scheduling.
 
 \paragraph{Network Structure.}
-The Q-network processes a 27-channel state tensor through a convolutional encoder consisting of two layers (32 filters and 64 filters, both with $3 \times 3$ kernels and ReLU activation) followed by dueling streams. The 27-channel state representation is partitioned into two components, as detailed in Table \ref{tab:state_channels}.
+The Q-network employs a Deep Residual Network (ResNet) backbone to capture long-range spatial dependencies across the board. The architecture consists of an initial convolutional layer (64 filters, $3 \times 3$ kernel) followed by six residual blocks (twelve convolutional layers total), each containing two convolutional layers with Instance Normalization and ReLU activation. This deep feature extractor feeds into the dueling streams, allowing for more abstract strategic reasoning compared to shallow architectures. The 27-channel state representation is partitioned into two components, as detailed in Table \ref{tab:state_channels}.
 
 \begin{table}[h]
 \centering
@@ -150,36 +150,52 @@ The Q-network processes a 27-channel state tensor through a convolutional encode
 The board feature channels provide deterministic knowledge of the agent's own piece positions and observed enemy locations. The enemy type channels encode information about hidden enemy piece identities, with the representation varying by training phase. During full observability training (Phase 1), these channels contain ground truth one-hot encodings that allow the agent to learn fundamental game mechanics and piece-type awareness without inference uncertainty. During partial observability phases, the channels contain probabilistic beliefs from the PBS module, updated through the AAREN attention mechanism based on observed opponent behavior. This dual-mode representation enables the network to first acquire robust combat and positional strategies before learning to operate under uncertainty. The AAREN module uses 24-dimensional action feature vectors, 64 hidden units, and 3 layers to process action histories and output piece type probability distributions.
 
 \paragraph{Training Hyperparameters.}
-The training configuration uses the following key parameters: learning rate $\alpha = 10^{-5}$ with AdamW optimizer and weight decay $\lambda = 0.01$, discount factor $\gamma = 0.95$, batch size of 256 transitions, replay buffer capacity of 80,000 transitions with prioritized sampling, and soft target network updates ($\tau = 0.001$) every 5,000 steps. The model updates are performed every 16 steps using 3-step returns to balance training throughput with sample efficiency. Training proceeds for 35,000 episodes with model checkpoints saved every 250 episodes.
+The training configuration uses several key parameters: learning rate $\alpha = 10^{-4}$ with AdamW optimizer and weight decay $\lambda = 0.01$, and a discount factor $\gamma = 0.995$ to capture long-term strategic consequences. We utilize a batch size of 128 transitions and a replay buffer capacity of 80,000 transitions with prioritized sampling. Soft target network updates ($\tau = 0.001$) occur every 5,000 steps. Model updates are performed every 4 steps using 5-step returns to improve credit assignment. To improve sample efficiency, data augmentation is applied via 180-degree board rotation, exploiting the game's rotational symmetry. Training proceeds for 35,000 episodes with checkpoints saved every 500 episodes.
 
 \paragraph{League-Based Training.}
-To prevent policy cycling and ensure robustness, the agent trains against a diverse opponent pool. The opponent selection distribution allocates 50\% to historical league agents, 20\% to random agents, 20\% to greedy heuristic agents, and 10\% to self-play. Agent checkpoints are added to the league every 500 episodes, with a maximum pool size of 50 historical agents.
+To prevent policy cycling, the agent trains against a diverse opponent pool. The opponent selection distribution allocates 50\% to historical league agents, 20\% to random agents, 20\% to greedy heuristic agents, and 10\% to self-play. Agent checkpoints are added to the league every 500 episodes, with a maximum pool size of 50 historical agents.
 
 \paragraph{Curriculum Learning.}
-Training follows a five-phase curriculum of increasing complexity with extended episode counts to ensure thorough learning at each stage. Phase 1 (Full Observability) allows the agent to observe all piece identities, enabling acquisition of fundamental game mechanics. Training proceeds for 5,000--10,000 episodes against a progressively challenging opponent mix: initially random opponents, then basic heuristic agents, and finally a sophisticated multi-factor heuristic opponent that evaluates combat outcomes, piece protection, positional control, and tactical considerations such as Scout reconnaissance and Miner prioritization. Phase advancement requires $\geq$95\% win rate against random opponents, $\geq$75\% against the basic heuristic, and $\geq$60\% against the strategic heuristic.
+Training follows a five-phase curriculum of increasing complexity with extended episode counts to ensure thorough learning at each stage. Phase 1 (Full Observability) allows the agent to observe all piece identities, enabling acquisition of fundamental game mechanics. To mitigate the "observability cliff" when transitioning to Phase 2, a Mixed Observability mechanism is introduced: as the agent's win rate exceeds 85\% in Phase 1, a stochastic "Fog of War" randomly occludes 50\% of opponent pieces. This forces the agent to begin relying on probabilistic inference and PBS predictions before full occlusion occurs.
+
+Training proceeds for 5,000--10,000 episodes against a progressively challenging opponent mix: initially random opponents, then basic heuristic agents, and finally a sophisticated multi-factor heuristic opponent. Phase advancement requires $\geq$95\% win rate against random opponents, $\geq$75\% against the basic heuristic, and $\geq$60\% against the strategic heuristic.
 
 Phase 2 (Partial Observability) disables full observability, requiring reliance on PBS predictions for 5,000--10,000 episodes. The opponent distribution allocates 40\% to frozen heuristic agents and 60\% to the strategic heuristic opponent. Phase advancement requires PBS prediction accuracy $\geq$75\% and overall win rate $\geq$60\%.
 
 Phase 3 (Self-Play) trains against a mixture of delayed agent copies (60\%) and strategic heuristic opponents (40\%) for 5,000--15,000 episodes to discover novel strategies while preventing policy collapse. Phase 4 (League Training) activates the full opponent distribution with 40\% historical league agents, 30\% strategic heuristic, 20\% greedy agents, and 10\% self-play. Phase 5 (Scenario Drills) introduces specialized board configurations every 1,000 episodes for targeted skill training.
 
-\paragraph{Reward Shaping Weights.}
-The composite reward function uses configurable weights: outcome reward $w_o = 1.0$, material reward $w_m = 0.5$, epistemic reward $w_e = 0.3$, and positional reward $w_p = 0.2$. These weights prioritize terminal outcomes while providing dense learning signals through intermediate rewards.
+\subsection{Centralized Reward System and Defensive Normalization}
+The reward function is the primary driver of agent behavior, transforming tactical events into learning signals. To ensure consistency and numerical stability, the framework employs a centralized \texttt{UnifiedRewardShaper} that consolidates all reward logic.
 
-\paragraph{Distributional RL-Compatible Reward Normalization.}
-The C51 distributional architecture requires careful reward scaling to ensure cumulative returns fall within the value distribution support $[V_{min}, V_{max}] = [-12, +12]$. With 51 atoms, each atom spans approximately 0.48 value units ($\delta_z = 24/50$), providing sufficient resolution for learning the return distribution while accommodating terminal rewards of $\pm 10$.
+\paragraph{Composite Reward Mixing.}
+The framework aggregates four distinct reward categories using a weighted linear combination:
+\begin{equation}
+R_{total} = w_o R_{outcome} + w_m R_{material} + w_e R_{epistemic} + w_p R_{positional}
+\end{equation}
+where weights are established as $w_o = 1.0$, $w_m = 0.5$, $w_e = 0.3$, and $w_p = 0.2$. This hierarchy ensures that the primary objective (winning) remains paramount while intermediate tactical goals provide a dense signal to bridge the credit assignment gap.
 
-To address reward hacking behavior---where the agent learns to stall games and force draws due to risk aversion toward unknown enemy piece ranks---the framework implements an anti-stall reward structure with normalized magnitudes. Terminal rewards are set to $+1.0$ for wins and $-1.0$ for losses, well within the distribution bounds. Draws and timeouts receive $-0.8$, deliberately \textit{worse} than a fighting loss, which creates a gradient toward aggressive play.
+\paragraph{Rationale for Distributional Scaling.}
+The choice of a normalized range $[V_{min}, V_{max}] = [-3, 3]$ is fundamentally linked to the use of C51 distributional RL. A narrow, well-defined support allows the 51 atoms to resolve fine-grained differences in value estimates ($\delta_z \approx 0.12$). If rewards were not normalized, large cumulative returns would exceed the support bounds, leading to "saturation" where the agent cannot distinguish between varying high-value outcomes. Specifically:
+    \item \textbf{Terminal Outcomes}: Terminal rewards are normalized to $\pm 1.0$ for wins and losses. A draw receives $-1.5$, establishing it as a significantly worse outcome than a fighting loss to discourage stalling or piece-shuffling behaviors that prolong the game without strategic progress.
+    \item \textbf{High-Level Time Pressure}: To incentivize efficient victories, a non-linear step penalty is applied based on the episode duration. The penalty begins at $-0.001$ per step, increasing to $-0.002$ after 500 steps, and reaching a critical pressure of $-0.005$ after 1000 steps. This "urgency" signal forces the agent to resolve games before the penalty accumulation outweighs the potential win reward.
+    \item \textbf{Sparse Reward Mitigation}: In Stratego, a game can last hundreds of moves without a capture. Dense rewards for information gain and territory advancement (upgraded to $+0.02$ per forward step) provide a continuous gradient that guides the agent toward the enemy base even when the ultimate win reward is distant.
+    \item \textbf{Risk Sensitivity}: By including epistemic rewards (bonuses for revealing pieces), the distributional network learns the variance inherent in attacking unknown pieces, allowing for more risk-aware strategic decisions.
+\end{itemize}
 
-A constant time-pressure penalty of $-0.005$ per step creates implicit preference for shorter games. Over a typical 100-step game, this accumulates to approximately $-0.5$, keeping cumulative returns within bounds.
+\paragraph{Architectural Evolution and Implementation History.}
+The implementation of this reward system followed an iterative trajectory to resolve scaling anomalies and logic redundancy.
+\begin{itemize}
+    \item \textbf{Legacy Implementation}: Early versions performed reward calculations directly within the game environment (\texttt{environment.py}), supplemented by independent shaping modules (\texttt{reward\_shaping.py} and \texttt{aggression\_reward.py}). This led to logic fragmentation, where "hidden" step penalties and overlapping reward signals interfered with the training process, occasionally resulting in large reward spikes that overwhelmed the C51 distribution.
+    \item \textbf{Consolidated Shaper}: The current architecture utilizes a unified \texttt{UnifiedRewardShaper} module. By consolidating disparate shaping logic into a single point of truth, the framework ensures that all rewards are properly normalized and mutually consistent. The environment now acts as an objective state manager, returning only raw event data in an \textit{info} dictionary, which the shaper transforms into a stable learning signal aligned with the technical requirements of the Rainbow DQN.
+\end{itemize}
 
-Combat rewards provide material signal through capture bonus $+0.1 \cdot (r_{enemy}/10)$, where $r_{enemy}$ is the captured piece's rank, yielding a maximum of $+0.1$ per capture. Losing a piece incurs $-0.05$, which is less severe than passive play to encourage probing attacks.
-
-A crucial component for distributional learning is the information gain bonus. Revealing an enemy piece rank through combat yields $+0.02$, with an additional $+0.03$ for the first reveal of each piece type. This helps the value distribution learn the \textit{variance} associated with attacking unknown pieces---unrevealed pieces have high uncertainty, while revealed pieces have low variance. The distributional approach naturally captures this risk-reward tradeoff that scalar Q-learning cannot represent.
-
-Strategic capture bonuses encode domain knowledge: eliminating the opponent's Spy while their Marshal survives grants $+0.15$, and removing enemy Miners while Bombs remain yields $+0.08$.
-
-\paragraph{Positional Rewards.}
-Beyond combat and information rewards, two positional shaping components guide territorial behavior. The flag proximity bonus provides $+0.03$ for moves that position pieces within the opponent's back two rows, with higher weights for corner positions where flags are typically placed. This creates a gradient toward the objective without requiring explicit flag detection. Additionally, a mobility reward of $+0.001 \cdot n_{moves}$ encourages maintaining positions with high action availability, as pieces with more valid moves occupy strategically flexible positions.
+\paragraph{Positional and Anti-Stall Mechanisms.}
+Beyond combat, the system implements specific shaping to guide behavior:
+\begin{itemize}
+    \item \textbf{Time Pressure}: A constant step penalty of $-0.001$ creates a slight pressure toward efficiency.
+    \item \textbf{Stalemate Prevention}: Sudden mobility restrictions (dropping below 50\% of available moves) trigger a $-0.05$ penalty, discouraging the agent from boxing itself into immovable positions.
+    \item \textbf{Strategic Proximity}: Moving pieces toward the opponent's back rank (especially corners) grants a small $+0.05$ bonus, guiding the agent toward typical flag locations.
+\end{itemize}
 
 \paragraph{Experience Replay Optimization.}
 Standard uniform sampling from the replay buffer treats all transitions equally, which is sample-inefficient when important learning events (e.g., flag captures, high-value combat) occur infrequently. Prioritized Experience Replay (PER) addresses this by sampling transitions with probability proportional to their temporal-difference (TD) error magnitude:
@@ -203,7 +219,7 @@ The standard one-step TD target $r_t + \gamma V(s_{t+1})$ can exhibit high varia
 G_t^{(n)} = \sum_{k=0}^{n-1} \gamma^k r_{t+k} + \gamma^n Q(s_{t+n}, a^*)
 \end{equation}
 
-\noindent where $a^* = \arg\max_a Q(s_{t+n}, a)$ under Double Q-learning. With $n=3$ and $\gamma = 0.95$, the effective discount for the bootstrapped value is $\gamma^3 = 0.857$. This configuration reduces the time constant for reward propagation while maintaining bias-variance balance. The three-step return collects actual rewards over a short trajectory before bootstrapping, which is particularly beneficial in Stratego where the consequences of tactical decisions often manifest over several moves.
+\noindent where $a^* = \arg\max_a Q(s_{t+n}, a)$ under Double Q-learning. With $n=5$ and $\gamma = 0.995$, the effective discount for the bootstrapped value is $\gamma^5 \approx 0.975$. This configuration drastically reduces the time constant for reward propagation, enabling the terminal win/loss signals to influence early-game tactical decisions more effectively than shallow horizons.
 
 \paragraph{Learning Rate Scheduling.}
 Convergence can be accelerated through adaptive learning rate control. A step decay schedule reduces the learning rate by factor $\eta = 0.9$ every 5,000 episodes:
@@ -212,7 +228,7 @@ Convergence can be accelerated through adaptive learning rate control. A step de
 \alpha_e = \alpha_0 \cdot \eta^{\lfloor e / 5000 \rfloor}
 \end{equation}
 
-\noindent where $\alpha_0 = 10^{-5}$ is the initial learning rate and $e$ is the episode count. This schedule enables aggressive early learning while maintaining stability as the policy approaches convergence. The decay rate was selected to provide approximately 35\% learning rate reduction over 10,000 episodes.
+\noindent where $\alpha_0 = 10^{-4}$ is the initial learning rate and $e$ is the episode count. This schedule enables aggressive early learning while maintaining stability as the policy approaches convergence.
 
 
 \begin{figure}[htbp]

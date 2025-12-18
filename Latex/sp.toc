@@ -94,7 +94,7 @@
 \contentsline {paragraph}{Epistemic Rewards.}{40}{}%
 \contentsline {paragraph}{Positional Rewards.}{40}{}%
 \contentsline {paragraph}{Composite Reward.}{40}{}%
-\contentsline {section}{\numberline {3.18}Parallel Environment Architecture}{40}{}%
+\contentsline {section}{\numberline {3.18}Parallel Environment Architecture}{41}{}%
 \contentsline {chapter}{\numberline {4}Methodology}{42}{}%
 \contentsline {section}{\numberline {4.1}Project Planning}{42}{}%
 \contentsline {subsection}{\numberline {4.1.1}Community Introduction to Stratego}{43}{}%
@@ -112,17 +112,19 @@
 \contentsline {paragraph}{Network Structure.}{47}{}%
 \contentsline {paragraph}{Training Hyperparameters.}{48}{}%
 \contentsline {paragraph}{League-Based Training.}{48}{}%
-\contentsline {paragraph}{Curriculum Learning.}{48}{}%
-\contentsline {paragraph}{Reward Shaping Weights.}{49}{}%
-\contentsline {paragraph}{Distributional RL-Compatible Reward Normalization.}{49}{}%
-\contentsline {paragraph}{Positional Rewards.}{50}{}%
-\contentsline {paragraph}{Experience Replay Optimization.}{50}{}%
-\contentsline {paragraph}{Multi-Step Returns.}{51}{}%
-\contentsline {paragraph}{Learning Rate Scheduling.}{51}{}%
-\contentsline {subsection}{\numberline {4.3.1}Deployment}{51}{}%
-\contentsline {section}{\numberline {4.4}Evaluation}{52}{}%
-\contentsline {paragraph}{Quantitative Analysis.}{52}{}%
-\contentsline {paragraph}{Qualitative Analysis.}{53}{}%
+\contentsline {paragraph}{Curriculum Learning.}{49}{}%
+\contentsline {subsection}{\numberline {4.3.1}Centralized Reward System and Defensive Normalization}{49}{}%
+\contentsline {paragraph}{Composite Reward Mixing.}{49}{}%
+\contentsline {paragraph}{Rationale for Distributional Scaling.}{50}{}%
+\contentsline {paragraph}{Architectural Evolution and Implementation History.}{50}{}%
+\contentsline {paragraph}{Positional and Anti-Stall Mechanisms.}{51}{}%
+\contentsline {paragraph}{Experience Replay Optimization.}{51}{}%
+\contentsline {paragraph}{Multi-Step Returns.}{52}{}%
+\contentsline {paragraph}{Learning Rate Scheduling.}{52}{}%
+\contentsline {subsection}{\numberline {4.3.2}Deployment}{53}{}%
+\contentsline {section}{\numberline {4.4}Evaluation}{54}{}%
+\contentsline {paragraph}{Quantitative Analysis.}{54}{}%
+\contentsline {paragraph}{Qualitative Analysis.}{54}{}%
 \contentsline {paragraph}{Model Iteration and Initial Results.}{54}{}%
-\contentsline {chapter}{\numberline {A}Gantt Chart}{55}{}%
-\contentsline {chapter}{\numberline {B}System UI and Training}{58}{}%
+\contentsline {chapter}{\numberline {A}Gantt Chart}{56}{}%
+\contentsline {chapter}{\numberline {B}System UI and Training}{59}{}%

@@ -43,6 +43,10 @@ class StrategoEnvironment:
         self.revealed_pieces_p1 = {}
         self.revealed_pieces_p2 = {}
         
+        # Clear DQN visualizer history to prevent memory leak
+        # (Each move stores cloned board tensors)
+        self.dqn_visualizer.clear_history()
+        
         self._flag_positions = {1: None, -1: None}
         self._cached_piece_counts = {1: 40, -1: 40}
         self._previous_piece_value = {1: 0, -1: 0}
@@ -373,34 +377,8 @@ class StrategoEnvironment:
         
         reward = 0.0
         
-        # 1. Small step penalty (encourages efficiency, prevents infinite games)
-        reward -= 0.005
-        
-        # 2. Penalty for repeating moves (prevents deadlocks)
-        move_penalty = self.dqn_visualizer.get_move_penalty(action, self.current_player)
-        reward += move_penalty * 0.1  # Scale down
-        
         # Determine game phase
         game_phase = "early" if self.turn_count < 50 else ("mid" if self.turn_count < 200 else "end")
-        
-        # 3. Forward movement reward (scaled by phase)
-        row_change = r_to - r_from
-        is_forward = (self.current_player == 1 and row_change < 0) or \
-                     (self.current_player == -1 and row_change > 0)
-        if is_forward:
-            reward += 0.02 if game_phase == "early" else 0.01
-        
-        # 4. Strategic positioning (smaller rewards)
-        # Center control (rows 4-5, excluding lakes)
-        if 4 <= r_to <= 5:
-            is_lake = (c_to in [2, 3, 6, 7])
-            if not is_lake:
-                reward += 0.01
-        
-        # Territory control
-        if (self.current_player == 1 and r_to <= 3) or \
-           (self.current_player == -1 and r_to >= 6):
-            reward += 0.01
         
         # Handle battle or simple move
         if target_piece_value != EMPTY_SQUARE and target_piece_value != LAKE_SQUARE:
@@ -425,30 +403,11 @@ class StrategoEnvironment:
             attacker_rank = abs(moving_piece_value)
             defender_rank = abs(target_piece_value)
             
-            # 5. Tactical rewards (normalized)
-            if attacker_type == PieceType.MINER and defender_type == PieceType.BOMB:
-                reward += 0.15  # Miner defuses bomb
-            elif attacker_type == PieceType.SPY and defender_type == PieceType.MARSHAL:
-                reward += 0.2   # Spy kills Marshal
-            
-            # 6. Information value (discovering enemy pieces)
-            if defender_rank >= 8 and (r_to, c_to) not in self.revealed_pieces_p1:
-                reward += 0.05 * (defender_rank / 11.0)
-            
             if result == 1:  # Attacker wins
                 self.board.move_piece(self.current_player, (r_from, c_from), (r_to, c_to))
                 
                 if hasattr(self, '_cached_piece_counts'):
                     self._cached_piece_counts[-self.current_player] = max(0, self._cached_piece_counts[-self.current_player] - 1)
-                
-                # 7. Capture reward (normalized by piece value)
-                captured_value = abs(target_piece_value)
-                reward += 0.1 + 0.05 * (captured_value / 11.0)
-                
-                # Bonus for favorable trades
-                value_diff = defender_rank - attacker_rank
-                if value_diff > 0:
-                    reward += 0.05 * (value_diff / 11.0)
                 
                 if not hasattr(self, '_pending_exchanges'):
                     self._pending_exchanges = []
@@ -458,7 +417,6 @@ class StrategoEnvironment:
                 if defender_type == PieceType.FLAG:
                     self.game_over = True
                     self.winner = self.current_player
-                    reward += 1.0  # Normalized win reward (main reward comes from train_dqn.py)
                     if hasattr(self, '_flag_positions'):
                         self._flag_positions[-self.current_player] = None
                         
@@ -473,9 +431,6 @@ class StrategoEnvironment:
                 
                 if hasattr(self, '_cached_piece_counts'):
                     self._cached_piece_counts[self.current_player] = max(0, self._cached_piece_counts[self.current_player] - 1)
-                
-                # 8. Loss penalty (normalized by piece value)
-                reward -= 0.1 + 0.05 * (attacker_rank / 11.0)
                 
                 self._pending_loss = (self.current_player, attacker_rank, False)
                 
@@ -499,9 +454,6 @@ class StrategoEnvironment:
                 self._pending_exchanges.append(self.current_player)
                 self._pending_exchanges.append(-self.current_player)
                 
-                # 9. Mutual destruction penalty (both lose pieces)
-                reward -= 0.05 + 0.03 * (attacker_rank / 11.0)
-                
                 if not hasattr(self, '_pending_losses'):
                     self._pending_losses = []
                 self._pending_losses.append((self.current_player, attacker_rank, True))
@@ -510,57 +462,12 @@ class StrategoEnvironment:
         else:
             # Simple move (no battle)
             self.board.move_piece(self.current_player, (r_from, c_from), (r_to, c_to))
-            
-            # 10. Moving high-value pieces (small bonus in endgame)
-            moving_rank = abs(moving_piece_value)
-            if game_phase == "end" and moving_rank >= 8:
-                reward += 0.01
-            
-            # 11. Approaching enemy flag (endgame)
-            if game_phase == "end":
-                enemy_flag_pos = self._flag_positions.get(-self.current_player) if hasattr(self, '_flag_positions') else None
-                if enemy_flag_pos:
-                    dist_after = abs(r_to - enemy_flag_pos[0]) + abs(c_to - enemy_flag_pos[1])
-                    dist_before = abs(r_from - enemy_flag_pos[0]) + abs(c_from - enemy_flag_pos[1])
-                    if dist_after < dist_before:
-                        reward += 0.03
-                    if dist_after < 3:
-                        reward += 0.02
-            
-            # 12. Tactical Support (being near friendly pieces)
-            r_min, r_max = max(0, r_to-1), min(BOARD_SIZE, r_to+2)
-            c_min, c_max = max(0, c_to-1), min(BOARD_SIZE, c_to+2)
-            patch = actual_board[r_min:r_max, c_min:c_max]
-            
-            if self.current_player == 1:
-                friendly_count = torch.sum(patch > 0).item()
-            else:
-                friendly_count = torch.sum(patch < 0).item()
-            
-            friendly_count = max(0, friendly_count - 1)
-            
-            # Small bonus for tactical grouping
-            if friendly_count >= 2:
-                reward += 0.01 * min(friendly_count / 3.0, 1.0)
 
         self.turn_count += 1
         self.move_history.append(action)
         
-        # 13. Clamp reward to normalized range
-        reward = max(-1.0, min(1.0, reward))
-
-        # 11. Stalemate Prevention
-        if not hasattr(self, '_previous_move_count'):
-            self._previous_move_count = {1: 0, -1: 0}
-            
-        # Note: get_valid_moves is now vectorized and faster
+        # Stalemate Prevention tracking (Mobility)
         avail_moves = len(self.get_valid_moves())
-        prev_moves = self._previous_move_count.get(self.current_player, avail_moves)
-        
-        if avail_moves < prev_moves * 0.5 and prev_moves > 0:
-            reward -= 0.05 * REWARD_SCALE
-            
-        self._previous_move_count[self.current_player] = avail_moves
         
         # Process pending losses/exchanges
         if hasattr(self, '_pending_loss'):
@@ -587,9 +494,15 @@ class StrategoEnvironment:
         # Check for game end conditions
         self._check_game_end()
         
-        # Win/loss rewards are now only in train_dqn.py to avoid duplication
+        info = {
+            "winner": self.winner, 
+            "revealed_in_step": revealed_in_step, 
+            "game_phase": game_phase, 
+            "turn_count": self.turn_count,
+            "num_valid_moves": avail_moves
+        }
         
-        return self._get_game_state(), reward, self.game_over, {"winner": self.winner, "revealed_in_step": revealed_in_step, "game_phase": game_phase, "turn_count": self.turn_count}
+        return self._get_game_state(), 0.0, self.game_over, info
 
     def _check_game_end(self):
         # Checks for game-ending conditions.
@@ -661,11 +574,55 @@ class StrategoEnvironment:
         return len(moved_pieces) <= 3
             
     def _get_game_state(self) -> GameState:
-        # Use actual board if full_observability enabled (Phase 1 curriculum)
-        if self.full_observability:
-            board = self.board.actual_board
+        # Observability Logic
+        # 1. Full Observability (True or 1.0) -> Show actual board
+        # 2. No Observability (False or 0.0) -> Show visible board
+        # 3. Mixed Observability (float 0.0 < x < 1.0) -> Show visible + x% of hidden pieces
+        
+        observability = self.full_observability
+        if observability is True:
+            observability = 1.0
+        elif observability is False:
+            observability = 0.0
+            
+        if observability >= 1.0:
+            board = self.board.actual_board.clone()
+        elif observability <= 0.0:
+            board = self.board.get_visible_board(self.current_player).clone()
         else:
-            board = self.board.get_visible_board(self.current_player)
+            # Mixed Mode: Start with visible board
+            board = self.board.get_visible_board(self.current_player).clone() # Clone to avoid modifying cache
+            actual = self.board.actual_board
+            
+            # Identify hidden pieces (where board is 'unknown' but actual has a piece)
+            # Unknown is usually 0 (empty) or LAKE in visible board, but pieces are hidden.
+            # Actually, hidden pieces appear as 0 or simply don't appear?
+            # get_visible_board returns the board from perspective. Hidden pieces are 0 (empty) unless revealed.
+            # But empty squares are also 0.
+            # We want to reveal pieces that are NOT 0 in actual, but ARE 0 (or unknown) in visible.
+            
+            # Values in actual: +/- Rank (or Lake)
+            # Values in visible: +/- Rank (if known), or Lake, or 0 (if empty OR hidden)
+            
+            # Find pieces that are hidden
+            # (Actual != 0) AND (Actual != Lake) AND (Visible == 0)
+            hidden_mask = (actual != 0) & (actual != LAKE_SQUARE) & (board == 0)
+            
+            # Get indices of hidden pieces
+            hidden_indices = torch.nonzero(hidden_mask)
+            num_hidden = len(hidden_indices)
+            
+            if num_hidden > 0:
+                # Randomly select subset to reveal based on observability rate
+                num_to_reveal = int(num_hidden * observability)
+                if num_to_reveal > 0:
+                    # Shuffle indices to pick random ones
+                    perm = torch.randperm(num_hidden, device=self.device)
+                    indices_to_reveal = hidden_indices[perm[:num_to_reveal]]
+                    
+                    # Reveal them in the observation (copy from actual)
+                    r_rev, c_rev = indices_to_reveal[:, 0], indices_to_reveal[:, 1]
+                    board[r_rev, c_rev] = actual[r_rev, c_rev]
 
         game_state = GameState(
             board=board,
@@ -683,6 +640,13 @@ class StrategoEnvironment:
         game_state.actual_board = self.board.actual_board.clone()
         return game_state
     
-    def set_full_observability(self, enabled: bool):
-        """Set full observability mode (for curriculum Phase 1)."""
+    def set_full_observability(self, enabled: object):
+        """
+        Set full observability mode.
+        Args:
+            enabled: bool or float.
+                     True/1.0 = Full Observability
+                     False/0.0 = Partial Observability
+                     0.0 < x < 1.0 = Mixed Observability (reveal x% of hidden pieces)
+        """
         self.full_observability = enabled

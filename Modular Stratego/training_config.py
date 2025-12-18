@@ -8,33 +8,37 @@ Configuration settings for DQN training.
 NUM_LANES = 8             # Number of parallel training lanes (each lane = independent game)
 NUM_ENVS = NUM_LANES      # LEGACY alias - always equals NUM_LANES (kept for compatibility)
 BATCH_SIZE = 128          # Reverted for faster early learning (was 256)
-GAMMA = 0.95              # Discount factor (reduced from 0.99 for faster credit assignment)
+GAMMA = 0.995           # Discount factor (User requested 0.995 for long-term depth)
 MEMORY_SIZE = 80000       # Replay buffer size (auto-scales by VRAM)
-LEARNING_RATE = 0.00005   # Increased to 5e-5 for faster Phase 1 learning
+LEARNING_RATE = 0.0001    # Learning rate (increased for ±100 reward scale)
 NUM_EPISODES = 35000      # Total training episodes (individual games, not batches)
 SAVE_INTERVAL = 500       # Save model/export agent every N episodes
 PLOT_INTERVAL = 100       # Save metrics plots every N episodes
 EVAL_INTERVAL = 100       # Evaluate agent every N episodes
 PREFETCH_QUEUE_SIZE = 4   # Prefetch queue for data loading
-REPLAY_UPDATE_INTERVAL = 8    # Train every 8 steps (increased frequency for faster learning)
+REPLAY_UPDATE_INTERVAL = 4    # Train every 4 steps (increased frequency for faster learning)
 TARGET_UPDATE_INTERVAL = 5000  # Soft update target network every N steps
 REWARD_SCALE = 1.0        # Scaling factor for reward calculations
 
 # Multi-Step Returns (N-Step DQN)
-N_STEPS = 1               # DISABLED for diagnosis (was 3)
+N_STEPS = 5               # 5-step returns for better credit assignment in sparse rewards
 GAMMA_N = GAMMA ** N_STEPS  # Pre-computed gamma^n
 
 # Learning Rate Scheduler
-LR_SCHEDULER_ENABLED = True
+LR_SCHEDULER_ENABLED = False
 LR_SCHEDULER_STEP_SIZE = 5000   # Reduce LR every N episodes
 LR_SCHEDULER_GAMMA = 0.9        # Multiply LR by this factor
 
 # Prioritized Experience Replay
-PER_ENABLED = False             # DISABLED for diagnosis (was True)
+PER_ENABLED = True              # Prioritized Experience Replay enabled
 PER_ALPHA = 0.6                 # Priority exponent (0 = uniform, 1 = full prioritization)
 PER_BETA_START = 0.4            # Initial importance sampling weight
 PER_BETA_END = 1.0              # Final importance sampling weight
 PER_BETA_ANNEAL_EPISODES = 10000  # Episodes to anneal beta
+
+# Data Augmentation (State/Action Symmetry)
+ENABLE_DATA_AUGMENTATION = True # Double/Triple transitions by flipping/rotating board
+AUGMENTATION_TYPES = ["flip", "rotate"] # flip (left-right), rotate (180 deg)
 
 # League Settings (Setup League)
 LEAGUE_INTERVAL = 500 # Run setup league every N episodes
@@ -90,74 +94,4 @@ PHASE_3_MAX_EPISODES = 15000
 # Scenario Drill Settings (Phase 5)
 SCENARIO_DRILL_INTERVAL = 1000  # Run scenario drills every N episodes during Phase 4
 
-# =============================================================================
-# REWARD SHAPING WEIGHTS
-# =============================================================================
-REWARD_WEIGHT_OUTCOME = 1.0     # Win/Loss terminal reward weight
-REWARD_WEIGHT_MATERIAL = 0.5    # Combat/capture reward weight
-REWARD_WEIGHT_EPISTEMIC = 0.3   # Information gain reward weight
-REWARD_WEIGHT_POSITIONAL = 0.2  # Strategic positioning reward weight
-
-# =============================================================================
-# DISTRIBUTIONAL RL REWARD SHAPING (C51-Compatible Anti-Stall)
-# =============================================================================
-# These settings are NORMALIZED for C51 Distributional RL with V_MIN=-3, V_MAX=+3
-# All rewards are small so cumulative returns stay within the distribution support
-
-# Rewards updated to strictly prioritize winning over material farming
-# New Range: Win/Loss = ±10.0 (Dominant Signal)
-# Material: Max ~3-4 points total (Subordinate Signal)
-
-DISTRIBUTIONAL_REWARD_ENABLED = True  # Use distributional-compatible rewards
-DISTRIBUTIONAL_WEIGHT = 1.0           # Full weight on distributional rewards
-ENV_REWARD_WEIGHT = 0.0               # Disable environment rewards (use only shaped)
-
-# Anti-stall penalties (tiny to stay within bounds)
-DIST_STEP_PENALTY = -0.01             # -0.01 per step (~100 steps = -1.0)
-DIST_DRAW_PENALTY = -50.0             # Draw = Bad (half of loss, proportional to 100/-100 scale)
-
-# Terminal rewards (MASSIVELY INCREASED to prevent reward farming)
-# Win/Loss must dominate: max possible intermediate rewards ~15 over 300 steps
-# So terminal must be >> 15 to ensure winning matters more than farming
-DIST_WIN_REWARD = 100.0               # Win (flag capture or elimination) - 10x boost
-DIST_LOSS_PENALTY = -100.0            # Loss - symmetric penalty
-
-# Combat rewards (DRASTICALLY reduced to prevent "farming" behavior)
-# Capturing pieces should be tactical, not a reward optimization strategy
-DIST_CAPTURE_SCALE = 0.02             # +0.02 * (rank/10) = max +0.02 per capture (5x reduction)
-DIST_LOSS_SCALE = -0.01               # -0.01 per piece lost (5x reduction)
-
-# Information gain (minimal - don't incentivize probing over winning)
-DIST_REVEAL_BONUS = 0.005             # Bonus for revealing enemy rank (4x reduction)
-DIST_FIRST_REVEAL_BONUS = 0.01        # Extra bonus for first reveal of a type
-
-# Strategic bonuses (reduced - winning is the strategy)
-DIST_SPY_KILLS_MARSHAL = 0.1          # Spy kills Marshal (still valuable but less so)
-DIST_MINER_DEFUSES_BOMB = 0.05        # Miner removes Bomb (reduced)
-
-# Territory advancement bonus (minimal - don't reward aimless advancing)
-DIST_TERRITORY_ADVANCE = 0.005        # Bonus for moving toward enemy flag (4x reduction)
-DIST_CENTER_CONTROL = 0.002           # Bonus for occupying center positions (5x reduction)
-
-# Flag proximity bonus (keep moderate - this directly relates to winning)
-DIST_FLAG_PROXIMITY_BONUS = 0.02      # Bonus for moving toward enemy back row corners
-DIST_FLAG_ZONE_ROWS = (0, 1, 8, 9)    # Rows where flags are typically placed
-
-# Piece mobility reward (minimal)
-DIST_MOBILITY_BONUS = 0.0005          # Small bonus per valid move available (2x reduction)
-
-# Legacy aliases for backwards compatibility
-AGGRESSION_ENABLED = DISTRIBUTIONAL_REWARD_ENABLED
-AGGRESSION_WEIGHT = DISTRIBUTIONAL_WEIGHT
-AGGRESSION_STEP_PENALTY = DIST_STEP_PENALTY
-AGGRESSION_DRAW_PENALTY = DIST_DRAW_PENALTY
-AGGRESSION_WIN_REWARD = DIST_WIN_REWARD
-AGGRESSION_LOSS_PENALTY = DIST_LOSS_PENALTY
-AGGRESSION_ATTACK_WIN_BASE = DIST_CAPTURE_SCALE
-AGGRESSION_ATTACK_LOSE_PENALTY = DIST_LOSS_SCALE
-AGGRESSION_INFO_BONUS = DIST_REVEAL_BONUS
-AGGRESSION_RANK_SCALE = 0.01  # Reduced for normalization
-AGGRESSION_TERRITORY_ADVANCE = DIST_TERRITORY_ADVANCE
-AGGRESSION_RETREAT_PENALTY = -0.01
-AGGRESSION_SPY_CAPTURE = DIST_SPY_KILLS_MARSHAL
-AGGRESSION_MINER_CAPTURE = DIST_MINER_DEFUSES_BOMB
+# REWARDS ARE NOW CONSOLIDATED IN distributional_reward.py

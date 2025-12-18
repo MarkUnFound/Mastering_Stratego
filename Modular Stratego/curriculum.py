@@ -206,8 +206,41 @@ class CurriculumManager:
         return PHASE_CONFIGS[self.current_phase]
     
     def should_use_full_observability(self) -> bool:
-        """Check if current phase uses full observability."""
-        return self.get_phase_config().full_observability
+        """
+        Check if current phase uses full observability.
+        Legacy method - prefer get_observability_rate()
+        """
+        return self.get_observability_rate() > 0.0
+    
+    def get_observability_rate(self) -> float:
+        """
+        Get the percentage of hidden pieces to reveal (0.0 to 1.0).
+        - 1.0: Full Observability (Physics of War)
+        - 0.0: Partial Observability (Memory Gap+)
+        - 0.3-0.8: Mixed Observability (Transition/Fog)
+        """
+        config = self.get_phase_config()
+        
+        # Base setting from config
+        if not config.full_observability:
+            return 0.0
+            
+        # Refined Phase 1 Logic:
+        # If we are in Phase 1 (Physics of War) but getting good (win rate > 80%),
+        # start introducing "Fog of War" to prepare for Phase 2.
+        if self.current_phase == TrainingPhase.PHYSICS_OF_WAR:
+            metrics = self.metrics[self.current_phase]
+            win_rate = metrics.overall_win_rate
+            
+            # Transition Zone: 85% Win Rate -> Start hiding 50% of pieces
+            if win_rate > 0.85:
+                return 0.5  # 50% Fog
+            
+            # Late Stage: 75% Win Rate -> Start hiding 20% of pieces
+            if win_rate > 0.75:
+                return 0.8  # 20% Fog
+                
+        return 1.0
     
     def get_opponent_distribution(self) -> Dict[str, float]:
         """

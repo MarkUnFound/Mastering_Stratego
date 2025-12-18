@@ -56,11 +56,11 @@ def _test_plotting(save_path):
     plot_pbs_evaluator_progress(episodes, pbs_losses1, pbs_losses2, pbs_buffers1, pbs_buffers2, f"{save_path}/test_pbs_progress.png")
     
     # Test additional metrics
-    epsilon = {'agent1': [1.0 - 0.1 * i for i in episodes], 'agent2': [1.0 - 0.1 * i for i in episodes]}
+    episode_lengths = {'agent1': [100.0 + i * 5 for i in episodes], 'agent2': [100.0 + i * 5 for i in episodes]}
     avg_q = {'agent1': [0.5 * i for i in episodes], 'agent2': [0.4 * i for i in episodes]}
     entropy = {'agent1': [2.0 - 0.2 * i for i in episodes], 'agent2': [1.8 - 0.15 * i for i in episodes]}
     pbs_buffers = {'agent1': pbs_buffers1, 'agent2': pbs_buffers2}
-    plot_additional_metrics(episodes, epsilon, pbs_buffers, avg_q, entropy, f"{save_path}/test_metrics.png")
+    plot_additional_metrics(episodes, episode_lengths, pbs_buffers, avg_q, entropy, f"{save_path}/test_metrics.png")
 
 def _test_game_simulation():
     # Initialize environment and agents

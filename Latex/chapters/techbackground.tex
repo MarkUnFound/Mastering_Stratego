@@ -368,7 +368,7 @@ This active learning approach prioritizes scouting moves that can reduce uncerta
 
 The game's initial setup is handled by a specialized SetupAgent that learns optimal piece configurations by treating the placement phase as a sequential decision process. The state representation consists of a 3-channel input tensor encoding the current board state with already-placed pieces, a valid positions mask indicating legal placement locations, and a current piece type mask identifying which piece is being placed.
 
-The agent outputs a distributional Q-value for each of the 100 board positions, mapping $Q(s, pos) \rightarrow \text{Distribution over } [V_{min}, V_{max}]$. This distributional approach captures the inherent uncertainty in setup quality, as the true value of a placement depends on the unknown opponent configuration.
+The agent outputs a distributional Q-value for each of the 100 board positions, mapping $Q(s, pos)$ to a distribution over $[V_{min}, V_{max}]$. This distributional approach captures the inherent uncertainty in setup quality, where the true value of a placement depends on the unknown opponent configuration.
 
 To prevent creating static, easily countered setups, the agent includes an exploitability critic network that penalizes predictable placements. The total training loss combines the C51 distributional loss with a predictability penalty:
 
@@ -628,7 +628,9 @@ The phase transition logic follows:
 The reward function is carefully designed with four components to guide learning in the sparse-reward Stratego environment.
 
 \paragraph{Material Rewards.}
-Combat outcomes are weighted by piece strategic value according to $R_{material} = w_{capture} \cdot \text{CaptureReward} + w_{loss} \cdot \text{LossPenalty} + w_{special} \cdot \text{SpecialBonus}$. Special bonuses are awarded for tactically significant captures: a Miner defusing a Bomb receives $+0.5$ for enabling strategic flag access, a Spy assassinating the Marshal receives $+1.0$ reflecting the game-changing nature of eliminating the highest-ranked piece, and favorable trades receive $+0.1 \times (V_{captured} - V_{lost})$ based on the value differential.
+Combat outcomes are weighted by piece strategic value according to the following relationship: 
+\[ R_{material} = w_{capture} \cdot \text{CaptureReward} + w_{loss} \cdot \text{LossPenalty} + w_{special} \cdot \text{SpecialBonus} \]
+Special bonuses are awarded for tactically significant captures: a Miner defusing a Bomb receives $+0.5$ for enabling strategic flag access, a Spy assassinating the Marshal receives $+1.0$ reflecting the game-changing nature of eliminating the highest-ranked piece, and favorable trades receive $+0.1 \times (V_{captured} - V_{lost})$ based on the value differential.
 
 \paragraph{Epistemic Rewards.}
 Information gain is measured through entropy reduction: $R_{epistemic} = \alpha \cdot \Delta H(\mathcal{B}) + \beta \cdot \text{ScoutDeduction} + \gamma \cdot \text{BombIdentification}$, where $\Delta H(\mathcal{B}) = H(\mathcal{B}_{t-1}) - H(\mathcal{B}_t)$ represents the reduction in belief entropy. Scout identification provides immediate entropy reduction when multi-square movement is observed.
@@ -637,7 +639,7 @@ Information gain is measured through entropy reduction: $R_{epistemic} = \alpha 
 Territorial control is rewarded through potential-based reward shaping (PBRS): $R_{positional} = \gamma \Phi(s') - \Phi(s)$. The potential function $\Phi(s)$ combines flag proximity, center control, and Miner positioning near suspected Bombs. PBRS guarantees that the optimal policy remains unchanged while providing denser learning signals.
 
 \paragraph{Composite Reward.}
-Auxiliary prediction tasks provide additional learning signals through $R_{prediction} = \lambda_{piece} \cdot \text{PieceTypeAccuracy} + \lambda_{outcome} \cdot \text{BattleOutcomePrediction}$. The total reward combines all components with configurable weights:
+Auxiliary prediction tasks provide additional learning signals. This is achieved through $R_{prediction} = \lambda_{piece} \cdot \text{PieceTypeAccuracy} + \lambda_{outcome} \cdot \text{BattleOutcomePrediction}$. The total reward combines components with configurable weights:
 
 \begin{equation}
 R_{total} = w_o \cdot R_{outcome} + w_m \cdot R_{material} + w_e \cdot R_{epistemic} + w_p \cdot R_{positional}

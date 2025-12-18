@@ -13,10 +13,29 @@ from typing import Tuple
 from .noisy_linear import NoisyLinear
 
 
+class ResidualBlock(nn.Module):
+    """
+    Simple Residual Block for Stratego ResNet
+    """
+    def __init__(self, channels):
+        super(ResidualBlock, self).__init__()
+        self.conv1 = nn.Conv2d(channels, channels, kernel_size=3, padding=1)
+        self.bn1 = nn.InstanceNorm2d(channels) # InstanceNorm is often better for batch-size 1 or small batches
+        self.conv2 = nn.Conv2d(channels, channels, kernel_size=3, padding=1)
+        self.bn2 = nn.InstanceNorm2d(channels)
+        
+    def forward(self, x):
+        residual = x
+        out = F.relu(self.bn1(self.conv1(x)))
+        out = self.bn2(self.conv2(out))
+        out += residual
+        out = F.relu(out)
+        return out
+
 class RainbowDQN(nn.Module):
     """
-    Rainbow DQN Network
-    - Feed-Forward (CNN)
+    Rainbow DQN Network with ResNet Backbone
+    - ResNet-Lite Backbone (6 Residual Blocks)
     - Dueling Heads
     - Noisy Nets
     - C51 Distributional Output
@@ -28,57 +47,59 @@ class RainbowDQN(nn.Module):
         self.output_size = output_size
         self.num_atoms = num_atoms
         
-        # CNN Layers (Feature Extractor)
-        self.conv1 = nn.Conv2d(input_shape[0], 32, kernel_size=3, stride=1, padding=1)
-        self.conv2 = nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1)
+        # Initial Convolution
+        # Input: (15/27, 10, 10) -> Output: (64, 10, 10)
+        self.conv_in = nn.Conv2d(input_shape[0], 64, kernel_size=3, padding=1)
+        self.bn_in = nn.InstanceNorm2d(64)
         
-        # Calculate flattened size: 64 * 10 * 10 = 6400
-        self.flatten_size = 64 * 10 * 10
+        # Residual Backbone (6 Blocks)
+        # Keeps shape (64, 10, 10) but increases depth/abstraction
+        self.res_blocks = nn.ModuleList([ResidualBlock(64) for _ in range(6)])
         
-        # Dueling Architecture with Noisy Nets
-        # Value stream: State -> Value Distribution
-        self.value_fc = NoisyLinear(self.flatten_size, 512)
-        self.value_out = NoisyLinear(512, num_atoms)  # Output is distribution over atoms
+        # Value Head
+        # (64, 10, 10) -> (1, 10, 10) -> Flatten -> 100 -> NoisyLinear
+        self.value_conv = nn.Conv2d(64, 1, kernel_size=1)
+        self.value_bn = nn.InstanceNorm2d(1)
+        self.value_fc = NoisyLinear(10 * 10, 256)
+        self.value_out = NoisyLinear(256, num_atoms)
         
-        # Advantage stream: State -> Advantage Distribution
-        self.advantage_fc = NoisyLinear(self.flatten_size, 512)
-        self.advantage_out = NoisyLinear(512, output_size * num_atoms)  # Output is (Actions * Atoms)
+        # Advantage Head
+        # (64, 10, 10) -> (2, 10, 10) -> Flatten -> 200 -> NoisyLinear
+        self.advantage_conv = nn.Conv2d(64, 2, kernel_size=1)
+        self.advantage_bn = nn.InstanceNorm2d(2)
+        self.advantage_fc = NoisyLinear(2 * 10 * 10, 512)
+        self.advantage_out = NoisyLinear(512, output_size * num_atoms)
         
     def forward(self, x):
-        """
-        Forward pass
-        Args:
-            x: Input tensor (batch, C, H, W)
-        Returns:
-            log_probs: Log probabilities of shape (batch, action_size, num_atoms)
-        """
         batch_size = x.size(0)
         
-        # CNN Feature Extraction
-        x = F.relu(self.conv1(x))
-        x = F.relu(self.conv2(x))
-        x = x.view(batch_size, -1)  # Flatten
-        
+        # ResNet Backbone
+        x = F.relu(self.bn_in(self.conv_in(x)))
+        for block in self.res_blocks:
+            x = block(x)
+            
         # Dueling Heads
-        # Value stream
-        val_hidden = F.relu(self.value_fc(x))
-        val_out = self.value_out(val_hidden)  # (batch, num_atoms)
-        val_out = val_out.view(batch_size, 1, self.num_atoms)  # Reshape for broadcasting
         
-        # Advantage stream
-        adv_hidden = F.relu(self.advantage_fc(x))
-        adv_out = self.advantage_out(adv_hidden)  # (batch, action_size * num_atoms)
+        # Value Stream
+        val_x = F.relu(self.value_bn(self.value_conv(x)))
+        val_x = val_x.view(batch_size, -1)
+        val_hidden = F.relu(self.value_fc(val_x))
+        val_out = self.value_out(val_hidden)
+        val_out = val_out.view(batch_size, 1, self.num_atoms)
+        
+        # Advantage Stream
+        adv_x = F.relu(self.advantage_bn(self.advantage_conv(x)))
+        adv_x = adv_x.view(batch_size, -1)
+        adv_hidden = F.relu(self.advantage_fc(adv_x))
+        adv_out = self.advantage_out(adv_hidden)
         adv_out = adv_out.view(batch_size, self.output_size, self.num_atoms)
         
         # Combine: Q(s, a) = V(s) + (A(s, a) - mean(A(s, a)))
-        # In Distributional RL, we combine logits/probs
-        adv_mean = adv_out.mean(dim=1, keepdim=True)  # Mean over actions
-        
-        # Unnormalized logits
+        adv_mean = adv_out.mean(dim=1, keepdim=True)
         q_logits = val_out + (adv_out - adv_mean)
         
-        # Softmax to get probabilities (Log Softmax for stability with KL Div loss)
-        log_probs = F.log_softmax(q_logits, dim=2)  # Softmax over atoms dimension
+        # Log Softmax for C51
+        log_probs = F.log_softmax(q_logits, dim=2)
         
         return log_probs
     

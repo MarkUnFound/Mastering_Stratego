@@ -11,6 +11,7 @@ import torch
 import random
 from typing import List, Tuple, Optional
 from piece import PieceType, PIECE_RANKS
+from distributional_reward import StrategoRewardConfig
 
 
 class RandomAgent:
@@ -46,10 +47,11 @@ class GreedyAgent:
     - Avoids losing high-value pieces
     """
     
-    def __init__(self, device=None, player_id: int = -1):
+    def __init__(self, device=None, player_id: int = -1, config: Optional[StrategoRewardConfig] = None):
         self.name = "GreedyAgent"
         self.device = device
         self.player_id = player_id
+        self.config = config or StrategoRewardConfig.from_training_config()
     
     def _score_move(self, move: Tuple, board, player_id: int) -> float:
         """Score a move based on heuristics."""
@@ -66,33 +68,39 @@ class GreedyAgent:
         piece_rank = abs(piece_val)
         target_rank = abs(target_val) if target_val != 0 else 0
         
-        # Reward forward movement
+        # Reward forward movement using territory_advance
         if player_id == 1:
-            score += (r_from - r_to) * 0.1  # Moving up (decreasing row) is forward
+            if r_to < r_from:
+                score += self.config.territory_advance
         else:
-            score += (r_to - r_from) * 0.1  # Moving down (increasing row) is forward
+            if r_to > r_from:
+                score += self.config.territory_advance
         
-        # Reward attacking
+        # Reward attacking using capture_scale
         if target_rank > 0:
-            # Estimate win probability based on rank difference
-            if piece_rank > target_rank:
-                score += 0.5 + (piece_rank - target_rank) * 0.1
+            # Scale reward by piece rank similar to UnifiedRewardShaper
+            if piece_rank > target_rank or (piece_rank == 1 and target_rank == 10) or (piece_rank == 3 and target_rank == 11):
+                # We win this battle (or specialized win)
+                score += self.config.capture_scale * (target_rank / 10.0)
+                
+                # Bonus for tactical captures
+                if piece_rank == 1 and target_rank == 10:
+                    score += self.config.spy_marsh_bonus
+                if piece_rank == 3 and target_rank == 11:
+                    score += self.config.miner_bomb_bonus
             elif piece_rank == target_rank:
-                score += 0.1  # Neutral trade
+                # Trade
+                score += self.config.loss_scale * 0.5 
             else:
-                # Risky attack - penalize based on our piece value
-                score -= piece_rank * 0.1
-            
-            # Bonus for attacking with low-value scouts
-            if piece_rank <= 2:
-                score += 0.3
+                # Loss
+                score += self.config.loss_scale
         
-        # Penalize moving high-value pieces early
-        if piece_rank >= 8:
-            score -= 0.2
+        # Center control bonus
+        if 3 <= c_to <= 6 and 4 <= r_to <= 5:
+            score += self.config.center_control
         
         # Small random noise to break ties
-        score += random.uniform(0, 0.05)
+        score += random.uniform(0, 0.001)
         
         return score
     
@@ -138,7 +146,8 @@ class OpponentPool:
                  league_prob: float = 0.5,
                  random_prob: float = 0.2,
                  greedy_prob: float = 0.2,
-                 self_prob: float = 0.1):
+                 self_prob: float = 0.1,
+                 config: Optional[StrategoRewardConfig] = None):
         """
         Initialize opponent pool.
         
@@ -152,8 +161,9 @@ class OpponentPool:
         """
         self.league = league_manager
         self.device = device
+        self.config = config or StrategoRewardConfig.from_training_config()
         self.random_agent = RandomAgent()
-        self.greedy_agent = GreedyAgent(device=device)
+        self.greedy_agent = GreedyAgent(device=device, config=self.config)
         
         # Normalize probabilities
         total = league_prob + random_prob + greedy_prob + self_prob

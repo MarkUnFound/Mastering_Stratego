@@ -28,7 +28,8 @@ def plot_training_progress(
     total_steps: Optional[int] = None,
     num_envs: int = 1,
     phase_history: Optional[List[int]] = None,
-    loss_steps: Optional[List[int]] = None
+    loss_steps: Optional[List[int]] = None,
+    episode_end_steps: Optional[List[int]] = None
 ):
     """
     Plots and saves the training progress of DQN agents.
@@ -44,6 +45,7 @@ def plot_training_progress(
         num_envs: Number of parallel environments (for win rate normalization).
         phase_history: List of curriculum phase values per episode.
         loss_steps: List of global_step values when each loss was recorded (for uniform x-axis).
+        episode_end_steps: List of global_step values when each episode ended (for phase mapping).
     """
     # Validate input data
     if not episode_history or len(episode_history) == 0:
@@ -52,10 +54,32 @@ def plot_training_progress(
     if not rewards_history or not rewards_history.get('agent1') or not rewards_history.get('agent2'):
         raise ValueError("rewards_history is empty or missing agent data")
     
-    if len(episode_history) != len(rewards_history['agent1']) or len(episode_history) != len(rewards_history['agent2']):
-        raise ValueError(f"Length mismatch: episode_history={len(episode_history)}, "
-                        f"rewards_history agent1={len(rewards_history['agent1'])}, "
-                        f"rewards_history agent2={len(rewards_history['agent2'])}")
+    # Find minimum common length across all arrays for safe plotting
+    min_len = min(
+        len(episode_history),
+        len(rewards_history['agent1']),
+        len(rewards_history['agent2']),
+        len(wins_history.get('agent1', [])) if wins_history else 0,
+        len(wins_history.get('agent2', [])) if wins_history else 0,
+    )
+    
+    if min_len == 0:
+        raise ValueError("No data to plot - all history arrays are empty")
+    
+    # Truncate all arrays to minimum length to ensure alignment
+    episode_history = episode_history[:min_len]
+    rewards_history = {
+        'agent1': rewards_history['agent1'][:min_len],
+        'agent2': rewards_history['agent2'][:min_len]
+    }
+    wins_history = {
+        'agent1': wins_history['agent1'][:min_len] if wins_history.get('agent1') else [],
+        'agent2': wins_history['agent2'][:min_len] if wins_history.get('agent2') else []
+    }
+    if phase_history:
+        phase_history = phase_history[:min_len]
+    if episode_end_steps:
+        episode_end_steps = episode_end_steps[:min_len]
     
     fig, axs = plt.subplots(3, 1, figsize=(12, 18))
     
@@ -109,7 +133,7 @@ def plot_training_progress(
             # Cumulative win rate: wins / (total episodes * num_envs)
             episode_nums = np.arange(1, len(wins_history['agent1']) + 1)
             # Normalize by number of environments per episode
-            normalization_factor = episode_nums * num_envs
+            normalization_factor = episode_nums # num_envs not needed as episode_nums counts individual games
             agent1_win_rate = np.array(wins_history['agent1'], dtype=float) / normalization_factor
             agent2_win_rate = np.array(wins_history['agent2'], dtype=float) / normalization_factor
             
@@ -141,24 +165,20 @@ def plot_training_progress(
     losses = policy_loss_history.get('agent1', [])
     
     if losses and len(losses) > 0:
-        # Determine x-axis: use steps if available, otherwise fallback to indices
-        if loss_steps is not None and len(loss_steps) == len(losses):
-            x_values = loss_steps
-            x_label = 'Training Steps'
-            x_scale = 1000  # Convert to thousands for readability
-            x_values_scaled = [x / x_scale for x in x_values]
-            x_label = 'Training Steps (thousands)'
-        else:
-            # Fallback: use even spacing based on array index
-            x_values_scaled = list(range(1, len(losses) + 1))
-            x_label = 'Replay Updates'
+        # Determine x-axis: Use SEQUENTIAL UPDATE COUNT to remove gaps
+        # User requested: "move the x-axis of the graph per training not by episode"
+        # This removes gaps caused by non-training episodes (e.g. league, eval)
+        x_values_scaled = list(range(1, len(losses) + 1))
+        x_label = 'Training Updates (Sequential)'
         
         # Filter out zero/near-zero values (outliers that make graph unreadable)
-        non_zero_losses = [l for l in losses if l > 0.001]
+        # Relaxed threshold to show almost everything except true zeros (which imply no update)
+        non_zero_losses = [l for l in losses if l > 1e-6]
         if non_zero_losses:
-            threshold = max(0.001, np.percentile(non_zero_losses, 5))  # 5th percentile
+             # Just filter absolute zeros or NaNs
+             threshold = 1e-6
         else:
-            threshold = 0.001
+            threshold = 1e-6
         
         valid_x = []
         valid_losses = []
@@ -168,21 +188,21 @@ def plot_training_progress(
                 valid_losses.append(loss)
         
         if valid_x:
-            # Plot discrete points with uniform spacing
+            # Plot discrete points (scatter) for raw data distribution
             axs[2].scatter(valid_x, valid_losses, label='Agent 1 Policy Loss', 
-                          color='blue', marker='o', s=20, alpha=0.4, zorder=3)
+                          color='blue', marker='o', s=20, alpha=0.3, linewidths=0, zorder=1)
             
-            # Calculate and plot WINDOWED moving average
-            window_size = min(50, max(10, len(valid_losses) // 10)) if len(valid_losses) > 1 else 1
+            # Calculate and plot WINDOWED moving average line
+            window_size = min(50, max(5, len(valid_losses) // 20)) if len(valid_losses) > 5 else 1
             if len(valid_losses) >= window_size and window_size > 1:
-                windowed_avg = []
-                windowed_x = []
-                for i in range(window_size, len(valid_losses) + 1):
-                    windowed_avg.append(np.mean(valid_losses[i-window_size:i]))
-                    windowed_x.append(valid_x[i-1])
+                # Use convolution for smoother moving average
+                windowed_avg = np.convolve(valid_losses, np.ones(window_size)/window_size, mode='valid')
+                # Adjust x-axis to match valid convolution output (centered or trailing)
+                # We'll use trailing to match the data it averages
+                windowed_x = valid_x[window_size-1:]
                 
-                axs[2].plot(windowed_x, windowed_avg, color='blue', linestyle='-', linewidth=2, 
-                           label=f'Moving Avg ({window_size} samples)', alpha=0.8, zorder=2)
+                axs[2].plot(windowed_x, windowed_avg, color='blue', linestyle='-', linewidth=2.0, 
+                           label=f'Moving Avg ({window_size} samples)', alpha=0.9, zorder=2)
         else:
             axs[2].text(0.5, 0.5, 'No loss data recorded yet', ha='center', va='center', 
                        transform=axs[2].transAxes, fontsize=12)
@@ -195,6 +215,8 @@ def plot_training_progress(
     
     axs[2].set_ylabel('Policy Loss')
     axs[2].set_title('Agent 1 Policy Loss (Agent 2 does not train)')
+    # Use log scale if variation is high (optional, user image looked linear but log is often safer)
+    # axs[2].set_yscale('log') 
     axs[2].legend()
     axs[2].grid(True, alpha=0.3)
     
@@ -218,36 +240,105 @@ def plot_training_progress(
         }
         
         # Find phase transition points and build phase regions
-        transitions = []
-        regions = []  # (start_ep, end_ep, phase)
+        transitions_ep = []
+        regions_ep = []  # (start_ep, end_ep, phase)
         current_phase = phase_history[0] if phase_history else 1
         region_start = episode_history[0]
         
         for i, phase in enumerate(phase_history):
             if phase != current_phase:
-                transitions.append((episode_history[i], current_phase, phase))
-                regions.append((region_start, episode_history[i], current_phase))
+                transitions_ep.append((episode_history[i], current_phase, phase))
+                regions_ep.append((region_start, episode_history[i], current_phase))
                 region_start = episode_history[i]
                 current_phase = phase
         
         # Add final region (from last transition to end)
-        regions.append((region_start, episode_history[-1], current_phase))
+        regions_ep.append((region_start, episode_history[-1], current_phase))
         
-        # Draw colored background shading for each phase region on all subplots
-        for ax in axs:
-            for start_ep, end_ep, phase in regions:
+        # --- Apply shading to plots ---
+        
+        # 1. Episode-based Plots (Rewards, Wins)
+        for i in [0, 1]:  # axs[0] and axs[1] use Episode x-axis
+             for start_ep, end_ep, phase in regions_ep:
                 color = phase_colors.get(phase, 'gray')
-                # Add semi-transparent colored background for phase region
-                ax.axvspan(start_ep, end_ep, alpha=0.1, color=color, zorder=0)
-        
-        # Draw vertical lines at transitions on all subplots
-        for ax in axs:
-            for ep, from_phase, to_phase in transitions:
+                axs[i].axvspan(start_ep, end_ep, alpha=0.1, color=color, zorder=0)
+             for ep, _, to_phase in transitions_ep:
                 color = phase_colors.get(to_phase, 'gray')
-                ax.axvline(x=ep, color=color, linestyle='--', linewidth=2.5, alpha=0.8, zorder=1)
-        
+                axs[i].axvline(x=ep, color=color, linestyle='--', linewidth=2.5, alpha=0.8, zorder=1)
+
+        # 2. Update-based Plot (Loss)
+        # We need to map episode transitions to update indices
+        if losses and len(losses) > 0 and loss_steps:
+             # loss_steps contains the global_step for each update index
+             # We need to find the update index corresponding to the episode transition steps
+             
+             # Convert episode regions to update index regions
+             max_ep = episode_history[-1]
+             max_step = total_steps if total_steps else (loss_steps[-1] if loss_steps else 1)
+             
+             import bisect
+             
+             for start_ep, end_ep, phase in regions_ep:
+                 # Find approximate (or exact) global step bounds
+                 start_global_step = 0
+                 end_global_step = 0
+                 
+                 # Use exact tracking if available
+                 if episode_end_steps and len(episode_end_steps) == len(episode_history):
+                     # Find index of start_ep in episode_history
+                     # (Assumes episode_history corresponds 1:1 with episode_end_steps)
+                     try:
+                        idx_start = episode_history.index(start_ep)
+                        start_global_step = episode_end_steps[idx_start]
+                     except ValueError:
+                         start_global_step = (start_ep / max_ep) * max_step # Fallback
+                     
+                     try:
+                        idx_end = episode_history.index(end_ep)
+                        end_global_step = episode_end_steps[idx_end]
+                     except ValueError:
+                        end_global_step = (end_ep / max_ep) * max_step # Fallback
+                 else:
+                     # Linear interpolation fallback
+                     start_global_step = (start_ep / max_ep) * max_step
+                     end_global_step = (end_ep / max_ep) * max_step
+                 
+                 # Map global steps to update indices using bisect on loss_steps
+                 # x_values_scaled is 1-based index
+                 start_idx = bisect.bisect_left(loss_steps, start_global_step) + 1
+                 end_idx = bisect.bisect_left(loss_steps, end_global_step) + 1
+                 
+                 # Clamp
+                 start_idx = max(1, min(start_idx, len(losses)))
+                 end_idx = max(1, min(end_idx, len(losses)))
+                 
+                 color = phase_colors.get(phase, 'gray')
+                 axs[2].axvspan(start_idx, end_idx, alpha=0.1, color=color, zorder=0)
+             
+             # Vertical lines for loss plot (simpler loop over regions usually suffices, but being strict)
+             for start_ep, end_ep, phase in regions_ep:
+                 # We only draw the START line of a new phase (which is the previous phase's end, technically)
+                 # Actually, transitions loop is better
+                 pass
+
+             for ep, _, to_phase in transitions_ep:
+                 # Calculate transition step
+                 transition_step = 0
+                 if episode_end_steps and len(episode_end_steps) == len(episode_history):
+                     try:
+                        idx = episode_history.index(ep)
+                        transition_step = episode_end_steps[idx]
+                     except ValueError:
+                        transition_step = (ep / max_ep) * max_step
+                 else:
+                     transition_step = (ep / max_ep) * max_step
+                 
+                 trans_idx = bisect.bisect_left(loss_steps, transition_step) + 1
+                 color = phase_colors.get(to_phase, 'gray')
+                 axs[2].axvline(x=trans_idx, color=color, linestyle='--', linewidth=2.5, alpha=0.8, zorder=1)
+
         # Add phase labels at top of first subplot with colored borders
-        for start_ep, end_ep, phase in regions:
+        for start_ep, end_ep, phase in regions_ep:
             mid_ep = (start_ep + end_ep) / 2
             color = phase_colors.get(phase, 'gray')
             # Get y position at top of plot
@@ -789,8 +880,8 @@ def plot_pbs_evaluator_progress(
 
 def plot_additional_metrics(
     episode_history: List[int],
-    epsilon_history: Dict[str, List[float]],
-    pbs_buffer_sizes: Dict[str, List[int]],
+    episode_lengths: Dict[str, List[float]],
+    win_rate_history: Dict[str, List[float]],
     avg_q_history: Dict[str, List[float]],
     entropy_history: Dict[str, List[float]],
     save_path: str
@@ -800,7 +891,7 @@ def plot_additional_metrics(
     
     Args:
         episode_history: List of episode numbers.
-        epsilon_history: Dict containing lists of epsilon values.
+        episode_lengths: Dict containing lists of episode lengths.
         pbs_buffer_sizes: Dict containing lists of PBS buffer sizes.
         avg_q_history: Dict containing lists of average Q-values.
         entropy_history: Dict containing lists of action entropy values.
@@ -809,32 +900,62 @@ def plot_additional_metrics(
     # Validate input data
     if not episode_history or len(episode_history) == 0:
         return
+    
+    # Ensure all metric lists match episode_history length by PADDING with None at the front.
+    # This handles cases where new metrics (like Q-values) were added mid-training
+    # and don't have history for early episodes.
+    target_len = len(episode_history)
+    
+    def pad_history(history_dict):
+        if not history_dict:
+            return {}
+        padded_dict = {}
+        for key, val_list in history_dict.items():
+            if len(val_list) < target_len:
+                # Pad with None at the BEGINNING (assuming data corresponds to latest episodes)
+                padding = [None] * (target_len - len(val_list))
+                padded_dict[key] = padding + val_list
+            elif len(val_list) > target_len:
+                # Truncate from the BEGINNING if too long (unlikely, but safe)
+                # actually usually we trim from end if mismatch, but history grows...
+                # Let's assume simplest case: trim to match if longer
+                padded_dict[key] = val_list[:target_len]
+            else:
+                padded_dict[key] = val_list
+        return padded_dict
+
+    episode_lengths = pad_history(episode_lengths)
+    win_rate_history = pad_history(win_rate_history)
+    avg_q_history = pad_history(avg_q_history)
+    entropy_history = pad_history(entropy_history)
         
     # Create figure with 2x2 subplots
     fig, axs = plt.subplots(2, 2, figsize=(15, 12))
     fig.suptitle('Additional Training Metrics', fontsize=16)
     
-    # Plot 1: Epsilon (Noisy Nets - shows 0 since we use learned exploration)
-    if epsilon_history and 'agent1' in epsilon_history:
-        axs[0, 0].plot(episode_history, epsilon_history['agent1'], label='Agent 1', color='blue', alpha=0.7)
+    # Plot 1: Episode Length
+    if episode_lengths and 'agent1' in episode_lengths:
+        # Use dot markers (o) and line (-)
+        axs[0, 0].plot(episode_history, episode_lengths['agent1'], 'o-', label='Agent 1', color='green', alpha=0.7, markersize=3)
     axs[0, 0].set_xlabel('Episodes')
-    axs[0, 0].set_ylabel('Epsilon')
-    axs[0, 0].set_title('Exploration Rate (Noisy Nets - No Epsilon)')
+    axs[0, 0].set_ylabel('Steps')
+    axs[0, 0].set_title('Average Episode Length (Moving Avg)')
     axs[0, 0].legend()
     axs[0, 0].grid(True, alpha=0.3)
     
-    # Plot 2: PBS Buffer Size
-    if pbs_buffer_sizes and 'agent1' in pbs_buffer_sizes:
-        axs[0, 1].plot(episode_history, pbs_buffer_sizes['agent1'], label='Agent 1', color='blue', alpha=0.7)
+    # Plot 2: Win Rate Moving Average (Replaces PBS Buffer)
+    if win_rate_history and 'agent1' in win_rate_history:
+        axs[0, 1].plot(episode_history, win_rate_history['agent1'], 'o-', label='Agent 1 (100-ep Avg)', color='purple', alpha=0.7, markersize=3)
     axs[0, 1].set_xlabel('Episodes')
-    axs[0, 1].set_ylabel('Buffer Size')
-    axs[0, 1].set_title('PBS Experience Buffer Size')
+    axs[0, 1].set_ylabel('Win Rate (0-1)')
+    axs[0, 1].set_title('Run Win Rate (Last 100 Episodes)')
+    axs[0, 1].set_ylim(0, 1.0)
     axs[0, 1].legend()
     axs[0, 1].grid(True, alpha=0.3)
     
     # Plot 3: Average Q-Value
     if avg_q_history and 'agent1' in avg_q_history:
-        axs[1, 0].plot(episode_history, avg_q_history['agent1'], label='Agent 1', color='blue', alpha=0.7)
+        axs[1, 0].plot(episode_history, avg_q_history['agent1'], 'o-', label='Agent 1', color='blue', alpha=0.7, markersize=3)
     axs[1, 0].set_xlabel('Episodes')
     axs[1, 0].set_ylabel('Avg Q-Value')
     axs[1, 0].set_title('Average Q-Value (Higher = Better Learning) ↑')
@@ -843,7 +964,7 @@ def plot_additional_metrics(
     
     # Plot 4: Action Entropy (Noisy Net Sigma)
     if entropy_history and 'agent1' in entropy_history:
-        axs[1, 1].plot(episode_history, entropy_history['agent1'], label='Agent 1', color='blue', alpha=0.7)
+        axs[1, 1].plot(episode_history, entropy_history['agent1'], 'o-', label='Agent 1', color='orange', alpha=0.7, markersize=3)
     axs[1, 1].set_xlabel('Episodes')
     axs[1, 1].set_ylabel('Entropy (Sigma)')
     axs[1, 1].set_title('Exploration Entropy (Noisy Net Sigma) ↑')

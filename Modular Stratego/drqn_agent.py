@@ -30,12 +30,12 @@ from prioritized_memory import StandardReplayBuffer, PrioritizedReplayBuffer, NS
 
 # C51 Hyperparameters - CRITICAL FOR DISTRIBUTIONAL RL
 # The support range must match the expected return scale!
-# With normalized rewards (terminal ±100.0, step -0.01, capture +0.02):
-#   - Max expected return: ~+101 (win + captures - steps)
-#   - Min expected return: ~-101 (loss + losses + steps)
-# Using [-120, +120] provides buffer room while keeping gradients strong
-V_MIN = -120.0   # Scaled 10x for 100/-100 terminal rewards
-V_MAX = 120.0    # Scaled 10x for 100/-100 terminal rewards
+# With normalized rewards (terminal ±1.0):
+#   - Max expected return: ~+2.5 (win + captures + bonuses)
+#   - Min expected return: ~-2.5 (loss + losses + steps)
+# Using [-3.0, +3.0] covers the full range of likely updates
+V_MIN = -3.0   # Matches normalized scale
+V_MAX = 3.0    # Matches normalized scale
 NUM_ATOMS = 51
 
 
@@ -163,16 +163,25 @@ class RainbowAgent:
                 beta_start=PER_BETA_START, beta_end=PER_BETA_END,
                 beta_anneal_episodes=PER_BETA_ANNEAL_EPISODES
             )
-            print(f"✅ Prioritized Experience Replay enabled (alpha={PER_ALPHA})")
+            print(f"✅ [P{self.player_id}] Prioritized Experience Replay enabled (alpha={PER_ALPHA})")
         else:
             self.memory = StandardReplayBuffer(buffer_size, device=device)
+        
+        # Data Augmentation Settings
+        try:
+            from training_config import ENABLE_DATA_AUGMENTATION, AUGMENTATION_TYPES
+            self.aug_enabled = ENABLE_DATA_AUGMENTATION
+            self.aug_types = AUGMENTATION_TYPES
+        except ImportError:
+            self.aug_enabled = False
+            self.aug_types = []
         
         # N-Step Buffer for multi-step returns
         self.n_steps = N_STEPS
         self.gamma_n = GAMMA_N
         if N_STEPS > 1:
             self.n_step_buffers = [NStepBuffer(n_steps=N_STEPS, gamma=gamma) for _ in range(max(num_envs, 1))]
-            print(f"✅ N-Step returns enabled (n={N_STEPS})")
+            print(f"✅ [P{self.player_id}] N-Step returns enabled (n={N_STEPS})")
         else:
             self.n_step_buffers = None
         
@@ -182,7 +191,7 @@ class RainbowAgent:
             self.scheduler = optim.lr_scheduler.StepLR(
                 self.optimizer, step_size=LR_SCHEDULER_STEP_SIZE, gamma=LR_SCHEDULER_GAMMA
             )
-            print(f"✅ LR Scheduler enabled (step={LR_SCHEDULER_STEP_SIZE}, gamma={LR_SCHEDULER_GAMMA})")
+            print(f"✅ [P{self.player_id}] LR Scheduler enabled (step={LR_SCHEDULER_STEP_SIZE}, gamma={LR_SCHEDULER_GAMMA})")
         
         # Metrics
         self.step_count = 0
@@ -373,23 +382,64 @@ class RainbowAgent:
             return full_state
         
     def remember(self, state, action, reward, next_state, done):
-        """Store experience in replay buffer"""
-        # Process action (Tuple -> Index)
-        if isinstance(action, tuple) or isinstance(action, list):
-             # Check if it's a move tuple ((r1,c1), (r2,c2))
-             # It might be a list if loaded from JSON or something, but usually tuple.
-             # _move_to_action_index expects ((r1,c1), (r2,c2))
-             action = self._move_to_action_index(action)
-        
-        # Clip reward to C51 support range to avoid instability
-        reward = max(V_MIN, min(V_MAX, reward))
-            
+        """Store experience in replay buffer with automated augmentation"""
         # Process states
         state_processed = self.get_state_representation(state, pbs_instance=self.pbs)
         next_state_processed = self.get_state_representation(next_state, pbs_instance=self.pbs)
+        
+        self._add_experience(state_processed, action, reward, next_state_processed, done)
+
+    def _add_experience(self, state, action, reward, next_state, done):
+        """
+        Internal helper to add experience to memory with potential augmentation.
+        Always expects 'state' and 'next_state' to be processed tensors.
+        'action' can be a move tuple or index.
+        """
+        # 1. Convert action to index if it's a tuple
+        action_idx = action
+        move_tuple = None
+        if isinstance(action, (tuple, list)):
+            move_tuple = action
+            action_idx = self._move_to_action_index(action)
+        else:
+            # If we already have an index, we need to decode it for augmentation
+            move_tuple = self._action_index_to_move(action_idx)
             
-        self.memory.add(state_processed, action, reward, next_state_processed, done)
+        # 2. Add original experience
+        # Clip reward to C51 support range to avoid instability
+        reward_clipped = max(self.v_min, min(self.v_max, reward))
+        self.memory.add(state, action_idx, reward_clipped, next_state, done)
         self.step_count += 1
+        
+        # 3. Add Augmented Experiences
+        if self.aug_enabled and move_tuple:
+            (r1, c1), (r2, c2) = move_tuple
+            
+            # --- Horizontal Flip (Mirror) ---
+            if "flip" in self.aug_types:
+                # Flip columns of the tensor: (C, H, W) -> [:, :, ::-1]
+                state_flip = torch.flip(state, [2])
+                next_state_flip = torch.flip(next_state, [2])
+                
+                # Flip action coordinates: c -> (9-c)
+                move_flip = ((r1, 9-c1), (r2, 9-c2))
+                action_idx_flip = self._move_to_action_index(move_flip)
+                
+                self.memory.add(state_flip, action_idx_flip, reward_clipped, next_state_flip, done)
+                self.step_count += 1
+                
+            # --- Rotation 180 ---
+            if "rotate" in self.aug_types:
+                # Flip rows and columns: (C, H, W) -> [:, ::-1, ::-1]
+                state_rot = torch.flip(state, [1, 2])
+                next_state_rot = torch.flip(next_state, [1, 2])
+                
+                # Flip both coordinates: r -> (9-r), c -> (9-c)
+                move_rot = ((9-r1, 9-c1), (9-r2, 9-c2))
+                action_idx_rot = self._move_to_action_index(move_rot)
+                
+                self.memory.add(state_rot, action_idx_rot, reward_clipped, next_state_rot, done)
+                self.step_count += 1
 
     def remember_batch(self, states, actions, rewards, next_states, dones, active_mask, game_states=None, next_game_states=None):
         """
@@ -407,13 +457,10 @@ class RainbowAgent:
             next_game_states: List of next GameState objects
         """
         # Get batch state representation once (much more efficient)
-        if self._cached_state_tensor is not None:
-            # Use cached tensor from act_batch
-            state_tensors = self._cached_state_tensor
-            self._cached_state_tensor = None # Clear cache
-        else:
-            # Recompute if not cached (should happen rarely, e.g. first step)
-            state_tensors = self.get_batch_state_representation(states, game_states)
+        # Get batch state representation once (much more efficient)
+        # NOTE: Cannot use _cached_state_tensor because batch_states includes PENDING transitions
+        # from previous turns, which do not match the current states used in act_batch.
+        state_tensors = self.get_batch_state_representation(states, game_states)
             
         next_state_tensors = self.get_batch_state_representation(next_states, next_game_states)
         
@@ -426,37 +473,32 @@ class RainbowAgent:
             if action is None:
                 continue
                 
-            # Process action
-            if isinstance(action, tuple) or isinstance(action, list):
-                action = self._move_to_action_index(action)
-            
-            # Clip reward to C51 support range
-            reward = max(V_MIN, min(V_MAX, rewards[i]))
+            # Reward is in a list here
+            reward = rewards[i]
             
             # N-Step returns processing
             if self.n_step_buffers is not None and i < len(self.n_step_buffers):
+                # Buffers expect the action as it was taken (tuple or index)
+                # If N-step gives us a result, it returns the FIRST action in the sequence
                 n_step_result = self.n_step_buffers[i].add(
                     state_tensors[i], action, reward, next_state_tensors[i], dones[i]
                 )
                 
                 if n_step_result is not None:
-                    # Got n-step experience - add to replay
+                    # Got n-step experience - add to replay via central helper
                     n_state, n_action, n_reward, n_next_state, n_done = n_step_result
-                    self.memory.add(n_state, n_action, n_reward, n_next_state, n_done)
-                    self.step_count += 1
+                    self._add_experience(n_state, n_action, n_reward, n_next_state, n_done)
                 
                 # Flush remaining if episode done
                 if dones[i]:
                     remaining = self.n_step_buffers[i].flush()
                     for result in remaining:
                         n_state, n_action, n_reward, n_next_state, n_done = result
-                        self.memory.add(n_state, n_action, n_reward, n_next_state, n_done)
-                        self.step_count += 1
+                        self._add_experience(n_state, n_action, n_reward, n_next_state, n_done)
                     self.n_step_buffers[i].reset()
             else:
-                # Standard 1-step: add directly to memory
-                self.memory.add(state_tensors[i], action, reward, next_state_tensors[i], dones[i])
-                self.step_count += 1
+                # Standard 1-step: add directly using central helper
+                self._add_experience(state_tensors[i], action, reward, next_state_tensors[i], dones[i])
 
     def act(self, state, valid_moves: List[Tuple[Tuple[int, int], Tuple[int, int]]], game_state=None):
         """
@@ -558,13 +600,14 @@ class RainbowAgent:
         
         # 2. Get uncertainty maps
         uncertainty_maps = []
-        if self.pbs_instances and game_states:
+        if self.pbs_instances and game_states and not full_observability:
             for i, gs in enumerate(game_states):
                 if gs:
                     uncertainty_maps.append(self.pbs_instances[i].get_uncertainty_map(gs))
                 else:
                     uncertainty_maps.append({})
         else:
+            # Phase 1 (Full Obs) or No PBS: No uncertainty
             uncertainty_maps = [{}] * batch_size
             
         # 3. Network forward pass
@@ -854,6 +897,11 @@ class RainbowAgent:
         # Use n-step gamma if available
         gamma_to_use = self.gamma_n if hasattr(self, 'gamma_n') and self.n_steps > 1 else self.gamma
         
+        # --- Check for NaNs in Inputs ---
+        if torch.isnan(rewards).any():
+             tqdm.write("⚠️  Warning: NaN detected in rewards batch. Skipping update.")
+             return None
+
         # --- Distributional RL Target Calculation ---
         with torch.no_grad():
             # 1. Select best action in next state (Double DQN)
@@ -878,6 +926,10 @@ class RainbowAgent:
             
             # Compute L2 projection of T_z onto support
             b = (T_z - self.v_min) / self.delta_z
+            
+            # Safe Clamp to prevent Index Out of Bounds (floating point errors)
+            b = b.clamp(min=0.0, max=float(self.num_atoms - 1))
+            
             l = b.floor().long()
             u = b.ceil().long()
             
@@ -909,13 +961,17 @@ class RainbowAgent:
         elementwise_loss = -(m * action_log_probs).sum(dim=1)
         
         # Apply importance sampling weights if PER
+        # Apply importance sampling weights if PER
         if weights is not None:
             loss = (weights * elementwise_loss).mean()
         else:
             loss = elementwise_loss.mean()
         
-        if torch.isnan(loss) or torch.isinf(loss):
+        # Check for NaN/Inf (handle tensor properly)
+        if torch.isnan(loss).any() or torch.isinf(loss).any():
              print(f"⚠️  Warning: NaN/Inf detected in loss. Skipping update.")
+             self.optimizer.zero_grad()
+             return None
              self.optimizer.zero_grad()
              return None
         
@@ -980,7 +1036,11 @@ class RainbowAgent:
             
         try:
             # Sample a small batch to estimate average Q
-            states, actions, rewards, next_states, dones = self.memory.sample(min(64, len(self.memory)))
+            sample_data = self.memory.sample(min(64, len(self.memory)))
+            if len(sample_data) == 7:
+                 states, actions, rewards, next_states, dones, _, _ = sample_data
+            else:
+                 states, actions, rewards, next_states, dones = sample_data
             
             self.q_network.eval()
             with torch.no_grad():
@@ -1068,6 +1128,25 @@ class RainbowAgent:
         
         idx = (r1 * 10 + c1) * 4 + dir_idx
         return idx
+
+    def _action_index_to_move(self, index):
+        """Decode action index back to move coordinates."""
+        if not (0 <= index < 400):
+            return None
+        move_idx = index // 4
+        dir_idx = index % 4
+        
+        r1 = move_idx // 10
+        c1 = move_idx % 10
+        
+        # Directions: 0=Up, 1=Right, 2=Down, 3=Left
+        dr, dc = [(-1, 0), (0, 1), (1, 0), (0, -1)][dir_idx]
+        
+        r2, c2 = r1 + dr, c1 + dc
+        # Simple bounds check (though decoder assumes valid inputs)
+        if 0 <= r2 < 10 and 0 <= c2 < 10:
+            return (r1, c1), (r2, c2)
+        return None
 
     def get_move_uncertainty(self, move, uncertainty_map):
         """Get uncertainty for a move based on target square"""
