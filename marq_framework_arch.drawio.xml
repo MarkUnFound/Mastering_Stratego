@@ -1,0 +1,222 @@
+<mxfile host="app.diagrams.net" modified="2025-12-19T00:52:00.000Z" agent="Antigravity Agent" version="21.0.0" type="device">
+  <diagram id="marq-arch" name="MARQ Framework Architecture">
+    <mxGraphModel dx="1422" dy="794" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1100" pageHeight="850" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        
+        <!-- - SECTION: INPUT & AAREN - -->
+        
+        <!-- - SECTION: LEGEND & STYLES (INVISIBLE) - -->
+        <!-- Center Y is ~425. We move from Left to Right -->
+
+        <!-- - SECTION 1: INPUT PIPELINE - -->
+        
+        <!-- Input History -->
+        <mxCell id="input_history" value="&lt;b&gt;Move History&lt;/b&gt;&lt;br&gt;(Past Actions)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="20" y="405" width="100" height="40" as="geometry" />
+        </mxCell>
+        
+        <!-- AAREN Generator -->
+        <mxCell id="aaren_module" value="&lt;b&gt;AAREN&lt;/b&gt;&lt;br&gt;PBS Generator" style="shape=process;whiteSpace=wrap;html=1;backgroundOutline=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="150" y="405" width="100" height="40" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="line1" edge="1" parent="1" source="input_history" target="aaren_module">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Input Tensor (27 x 10 x 10) -->
+        <!-- Visual: Width=80 (H/W), Depth=30 (Channels) -->
+        <mxCell id="input_tensor" value="&lt;b&gt;Input Tensor&lt;/b&gt;&lt;br&gt;27 × 10 × 10" style="shape=cube;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;darkOpacity=0.1;fillColor=#dae8fc;strokeColor=#6c8ebf;opacity=90;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="280" y="380" width="30" height="90" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="line2" edge="1" parent="1" source="aaren_module" target="input_tensor">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- - SECTION 2: BACKBONE (UNROLLED RESNET) - -->
+
+        <!-- Initial Conv 3x3 (64 Channels) -->
+        <mxCell id="conv_in" value="&lt;b&gt;Conv 3x3&lt;/b&gt;&lt;br&gt;64 × 10 × 10" style="shape=cube;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;darkOpacity=0.1;fillColor=#ffe6cc;strokeColor=#d79b00;opacity=90;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="360" y="380" width="60" height="90" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="line3" edge="1" parent="1" source="input_tensor" target="conv_in">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Residual Blocks Loop (1 to 6) -->
+        <!-- We use a sequence of blocks -->
+        
+        <mxCell id="res_1" value="Res 1" style="shape=cube;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;darkOpacity=0.1;fillColor=#fff2cc;strokeColor=#d6b656;opacity=80;fontSize=9;" vertex="1" parent="1">
+          <mxGeometry x="460" y="380" width="40" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="res_2" value="Res 2" style="shape=cube;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;darkOpacity=0.1;fillColor=#fff2cc;strokeColor=#d6b656;opacity=80;fontSize=9;" vertex="1" parent="1">
+          <mxGeometry x="510" y="380" width="40" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="res_3" value="Res 3" style="shape=cube;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;darkOpacity=0.1;fillColor=#fff2cc;strokeColor=#d6b656;opacity=80;fontSize=9;" vertex="1" parent="1">
+          <mxGeometry x="560" y="380" width="40" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="res_4" value="Res 4" style="shape=cube;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;darkOpacity=0.1;fillColor=#fff2cc;strokeColor=#d6b656;opacity=80;fontSize=9;" vertex="1" parent="1">
+          <mxGeometry x="610" y="380" width="40" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="res_5" value="Res 5" style="shape=cube;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;darkOpacity=0.1;fillColor=#fff2cc;strokeColor=#d6b656;opacity=80;fontSize=9;" vertex="1" parent="1">
+          <mxGeometry x="660" y="380" width="40" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="res_6" value="Res 6" style="shape=cube;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;darkOpacity=0.1;fillColor=#fff2cc;strokeColor=#d6b656;opacity=80;fontSize=9;" vertex="1" parent="1">
+          <mxGeometry x="710" y="380" width="40" height="90" as="geometry" />
+        </mxCell>
+
+        <mxCell id="line4" edge="1" parent="1" source="conv_in" target="res_1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <!-- Implicit flow through res blocks shown by their proximity -->
+        
+        <mxCell id="resnet_label" value="&lt;i&gt;ResNet-Lite Backbone (Spatial 10×10)&lt;/i&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="460" y="480" width="290" height="20" as="geometry" />
+        </mxCell>
+
+        <!-- - SECTION 3: RAINBOW / DUELING FORK - -->
+        
+        <!-- Dueling Fork Point -->
+        <mxCell id="fork" value="" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="790" y="420" width="10" height="10" as="geometry" />
+        </mxCell>
+        <mxCell id="line5" edge="1" parent="1" source="res_6" target="fork">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- VALUE STREAM (UPPER) -->
+        <!-- Conv 1x1 (1 Channel) -->
+        <mxCell id="val_conv" value="Value Conv&lt;br&gt;1 × 10 × 10" style="shape=cube;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;darkOpacity=0.05;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;" vertex="1" parent="1">
+          <mxGeometry x="840" y="330" width="10" height="90" as="geometry" />
+        </mxCell>
+        <!-- Flatten + FC (256) -->
+        <mxCell id="val_fc" value="FC&lt;br&gt;256" style="shape=cube;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;darkOpacity=0.1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;" vertex="1" parent="1">
+          <mxGeometry x="900" y="345" width="50" height="60" as="geometry" />
+        </mxCell>
+        <!-- Output Atoms (51) -->
+        <mxCell id="val_out" value="V-Atoms&lt;br&gt;51" style="shape=cube;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;darkOpacity=0.1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="355" width="20" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- ADVANTAGE STREAM (LOWER) -->
+        <!-- Conv 1x1 (2 Channels) -->
+        <mxCell id="adv_conv" value="Adv Conv&lt;br&gt;2 × 10 × 10" style="shape=cube;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;darkOpacity=0.05;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=9;" vertex="1" parent="1">
+          <mxGeometry x="840" y="440" width="15" height="90" as="geometry" />
+        </mxCell>
+        <!-- Flatten + FC (512) -->
+        <mxCell id="adv_fc" value="FC&lt;br&gt;512" style="shape=cube;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;darkOpacity=0.1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=9;" vertex="1" parent="1">
+          <mxGeometry x="900" y="455" width="60" height="60" as="geometry" />
+        </mxCell>
+        <!-- Output Advantage (Actions x Atoms) -->
+        <mxCell id="adv_out" value="A-Atoms&lt;br&gt;1000 × 51" style="shape=cube;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;darkOpacity=0.1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=9;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="440" width="80" height="90" as="geometry" />
+        </mxCell>
+
+        <!-- Connections for heads -->
+        <mxCell id="f1" edge="1" parent="1" source="fork" target="val_conv">
+          <mxGeometry relative="1" as="geometry"><mxPoint x="820" y="380" as="targetPoint"/></mxGeometry>
+        </mxCell>
+        <mxCell id="f2" edge="1" parent="1" source="fork" target="adv_conv">
+          <mxGeometry relative="1" as="geometry"><mxPoint x="820" y="480" as="targetPoint"/></mxGeometry>
+        </mxCell>
+        <mxCell id="v1" edge="1" parent="1" source="val_conv" target="val_fc"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="v2" edge="1" parent="1" source="val_fc" target="val_out"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="a1" edge="1" parent="1" source="adv_conv" target="adv_fc"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="a2" edge="1" parent="1" source="adv_fc" target="adv_out"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <!-- - SECTION 4: MERGE & OUTPUT - -->
+        
+        <mxCell id="combine" value="&lt;b&gt;+&lt;/b&gt;" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fillColor=#f5f5f5;strokeColor=#666666;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="1120" y="415" width="30" height="30" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="line_merge_v" edge="1" parent="1" source="val_out" target="combine">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="line_merge_a" edge="1" parent="1" source="adv_out" target="combine">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Distributional Histogram Hint / Final Output -->
+        <!-- Slices to show distribution atoms -->
+        <mxCell id="dist_slice_1" value="" style="shape=cube;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;darkOpacity=0.1;fillColor=#f8cecc;strokeColor=#b85450;opacity=40;" vertex="1" parent="1">
+          <mxGeometry x="1190" y="390" width="10" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="dist_slice_2" value="" style="shape=cube;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;darkOpacity=0.1;fillColor=#f8cecc;strokeColor=#b85450;opacity=60;" vertex="1" parent="1">
+          <mxGeometry x="1205" y="390" width="10" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="dist_slice_3" value="&lt;b&gt;Q-Distribution&lt;/b&gt;&lt;br&gt;(51 Atoms)" style="shape=cube;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;darkOpacity=0.1;fillColor=#f8cecc;strokeColor=#b85450;opacity=90;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1220" y="390" width="30" height="80" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="line10" edge="1" parent="1" source="combine" target="dist_slice_1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="final_out" value="&lt;b&gt;Action Selection&lt;/b&gt;&lt;br&gt;(Argmax Q)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1310" y="410" width="100" height="40" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="line11" edge="1" parent="1" source="dist_slice_3" target="final_out">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- - SECTION 5: EXPERIENCE PIPELINE (FEEDBACK LOOP) - -->
+        
+        <!-- Environment Step -->
+        <mxCell id="env_step" value="&lt;b&gt;Stratego Environment&lt;/b&gt;&lt;br&gt;(Physics/Logic)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1310" y="550" width="100" height="40" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="line_to_env" edge="1" parent="1" source="final_out" target="env_step">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Data Augmentor (Symmetry Engine) -->
+        <mxCell id="augmentor" value="&lt;b&gt;Data Augmentor&lt;/b&gt;&lt;br&gt;(Horizontal Flip)" style="shape=process;whiteSpace=wrap;html=1;backgroundOutline=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1150" y="550" width="110" height="40" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="line_to_aug" edge="1" parent="1" source="env_step" target="augmentor">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Experience Multiplier Visual -->
+        <mxCell id="aug_exp1" value="Orig" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=8;" vertex="1" parent="1">
+          <mxGeometry x="1080" y="540" width="30" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="aug_exp2" value="Flip" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=8;" vertex="1" parent="1">
+          <mxGeometry x="1080" y="570" width="30" height="20" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="aug_branch1" edge="1" parent="1" source="augmentor" target="aug_exp1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="aug_branch2" edge="1" parent="1" source="augmentor" target="aug_exp2"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <!-- Replay Buffer -->
+        <mxCell id="replay_buffer" value="&lt;b&gt;Prioritized Replay Buffer&lt;/b&gt;&lt;br&gt;(500k Transitions)" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="930" y="530" width="100" height="80" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="buf_in1" edge="1" parent="1" source="aug_exp1" target="replay_buffer"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="buf_in2" edge="1" parent="1" source="aug_exp2" target="replay_buffer"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <!-- Training Pull (Update-to-Data loop back to network) -->
+        <mxCell id="training_pull" value="&lt;b&gt;Train Step&lt;/b&gt;&lt;br&gt;(PER Sampling)" style="shape=flexArrow;endArrow=classic;html=1;rounded=0;fontSize=9;fillColor=#f8cecc;strokeColor=#b85450;width=10;endSize=5;" edge="1" parent="1" source="replay_buffer">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="800" y="570" as="sourcePoint" />
+            <mxPoint x="730" y="475" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Legend Label for Augmentation -->
+        <mxCell id="aug_note" value="&lt;i&gt;Symmetry Augmentation multiplies learning data without requiring more game steps&lt;/i&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=9;fontColor=#0066CC;" vertex="1" parent="1">
+          <mxGeometry x="1080" y="610" width="330" height="20" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

@@ -172,12 +172,13 @@ The framework aggregates four distinct reward categories using a weighted linear
 \begin{equation}
 R_{total} = w_o R_{outcome} + w_m R_{material} + w_e R_{epistemic} + w_p R_{positional}
 \end{equation}
-where weights are established as $w_o = 1.0$, $w_m = 0.5$, $w_e = 0.3$, and $w_p = 0.2$. This hierarchy ensures that the primary objective (winning) remains paramount while intermediate tactical goals provide a dense signal to bridge the credit assignment gap.
+where weights are established as $w_o = 1.0$, $w_m = 0.5$, $w_e = 0.1$, and $w_p = 0.05$. This hierarchy ensures that the primary objective (winning) remains paramount, while auxiliary tactical signals are strictly limited to guidance and cannot accumulate to magnitudes that incentivise reward hacking.
 
 \paragraph{Rationale for Distributional Scaling.}
 The choice of a normalized range $[V_{min}, V_{max}] = [-3, 3]$ is fundamentally linked to the use of C51 distributional RL. A narrow, well-defined support allows the 51 atoms to resolve fine-grained differences in value estimates ($\delta_z \approx 0.12$). If rewards were not normalized, large cumulative returns would exceed the support bounds, leading to "saturation" where the agent cannot distinguish between varying high-value outcomes. Specifically:
-    \item \textbf{Terminal Outcomes}: Terminal rewards are normalized to $\pm 1.0$ for wins and losses. A draw receives $-1.5$, establishing it as a significantly worse outcome than a fighting loss to discourage stalling or piece-shuffling behaviors that prolong the game without strategic progress.
-    \item \textbf{High-Level Time Pressure}: To incentivize efficient victories, a non-linear step penalty is applied based on the episode duration. The penalty begins at $-0.001$ per step, increasing to $-0.002$ after 500 steps, and reaching a critical pressure of $-0.005$ after 1000 steps. This "urgency" signal forces the agent to resolve games before the penalty accumulation outweighs the potential win reward.
+    \item \textbf{Terminal Outcomes}: Terminal rewards are normalized to $\pm 1.0$ for wins and losses. A draw receives $-0.5$, establishing it as an outcome that is strategically inferior to a victory but superior to an outright loss, thereby providing a more nuanced gradient for games that reach the maximum step count.
+    \item \textbf{High-Level Time Pressure}: To incentivize efficient victories, a non-linear step penalty is applied based on the episode duration. The penalty begins at $-0.0001$ per step, increasing to $-0.0002$ after 500 steps, and reaching $-0.0005$ after 1000 steps. This refined scaling ensures that the "urgency" signal remains present without accumulating to a magnitude that overshadows the primary reward for winning.
+    \item \textbf{Positional Constraints}: To prevent "movement farming," positional rewards for territory advancement are state-based rather than move-based. The agent receives a one-time bonus of $+0.05$ only when it reaches a new row closer to the enemy base for the first time in an episode.
     \item \textbf{Sparse Reward Mitigation}: In Stratego, a game can last hundreds of moves without a capture. Dense rewards for information gain and territory advancement (upgraded to $+0.02$ per forward step) provide a continuous gradient that guides the agent toward the enemy base even when the ultimate win reward is distant.
     \item \textbf{Risk Sensitivity}: By including epistemic rewards (bonuses for revealing pieces), the distributional network learns the variance inherent in attacking unknown pieces, allowing for more risk-aware strategic decisions.
 \end{itemize}
@@ -192,8 +193,8 @@ The implementation of this reward system followed an iterative trajectory to res
 \paragraph{Positional and Anti-Stall Mechanisms.}
 Beyond combat, the system implements specific shaping to guide behavior:
 \begin{itemize}
-    \item \textbf{Time Pressure}: A constant step penalty of $-0.001$ creates a slight pressure toward efficiency.
-    \item \textbf{Stalemate Prevention}: Sudden mobility restrictions (dropping below 50\% of available moves) trigger a $-0.05$ penalty, discouraging the agent from boxing itself into immovable positions.
+    \item \textbf{Time Pressure}: A constant base step penalty of $-0.0001$ creates a slight pressure toward efficiency.
+    \item \textbf{Stalemate Prevention}: Sudden mobility restrictions (dropping below 5 moves) trigger a $-0.05$ penalty, discouraging the agent from boxing itself into immovable positions.
     \item \textbf{Strategic Proximity}: Moving pieces toward the opponent's back rank (especially corners) grants a small $+0.05$ bonus, guiding the agent toward typical flag locations.
 \end{itemize}
 

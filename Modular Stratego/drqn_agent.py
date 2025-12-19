@@ -53,7 +53,7 @@ class RainbowAgent:
     """Rainbow DQN Agent for Stratego"""
     
     def __init__(self, player_id: int, device, 
-                 state_size: int = 200, action_size: int = 1000,
+                 state_size: int = 200, action_size: int = 3600,
                  lr: float = 0.0001, gamma: float = 0.99, 
                  buffer_size: int = 10000, batch_size: int = 32,
                  use_pbs: bool = True, num_envs: int = 1):
@@ -166,6 +166,7 @@ class RainbowAgent:
             print(f"✅ [P{self.player_id}] Prioritized Experience Replay enabled (alpha={PER_ALPHA})")
         else:
             self.memory = StandardReplayBuffer(buffer_size, device=device)
+            print(f"✅ [P{self.player_id}] Standard Replay Buffer enabled")
         
         # Data Augmentation Settings
         try:
@@ -1083,67 +1084,62 @@ class RainbowAgent:
 
     def _move_to_action_index(self, move):
         """
-        Convert move ((r1, c1), (r2, c2)) to action index (0-999).
-        Start pos: 100 squares.
-        Target pos: 100 squares.
-        Total 100*100 = 10000? Too big.
+        Convert move ((r1, c1), (r2, c2)) to action index.
+        Total Actions: 3,600
+        Index = (StartPos[100]) * (Direction[4]) * (Distance-1[9])
         
-        Simplified Action Space:
-        Start Position (100) * Direction (4) = 400 actions?
-        Or Start (100) * Target (relative)?
-        
-        Let's use: Start (r*10 + c) * 10 + Direction Index?
-        No, let's use: (r1*10 + c1) * 10 + (Direction)
-        Directions: 0=Up, 1=Right, 2=Down, 3=Left.
-        Total 100 * 4 = 400 actions.
-        Wait, output_size is 1000.
-        
-        Let's check previous implementation or standard.
-        If we use (r1, c1) -> (r2, c2), we can map to index.
-        
-        Let's use: Index = (r1 * 10 + c1) * 4 + direction_idx
+        This uniquely identifies every legal move including multi-step Scout slides.
         """
         (r1, c1), (r2, c2) = move
         
         dr = r2 - r1
         dc = c2 - c1
         
-        if dr == -1 and dc == 0: dir_idx = 0 # Up
-        elif dr == 0 and dc == 1: dir_idx = 1 # Right
-        elif dr == 1 and dc == 0: dir_idx = 2 # Down
-        elif dr == 0 and dc == -1: dir_idx = 3 # Left
-        else: dir_idx = 0 # Should not happen for 1-step moves
+        # Determine direction and distance
+        if dr < 0 and dc == 0: 
+            dir_idx = 0 # Up
+            dist = abs(dr)
+        elif dr == 0 and dc > 0: 
+            dir_idx = 1 # Right
+            dist = abs(dc)
+        elif dr > 0 and dc == 0: 
+            dir_idx = 2 # Down
+            dist = abs(dr)
+        elif dr == 0 and dc < 0: 
+            dir_idx = 3 # Left
+            dist = abs(dc)
+        else:
+            # Should not happen in a valid move
+            dir_idx = 0
+            dist = 1
         
-        # Scout moves (multiple steps)?
-        # If scouts move multiple steps, this encoding fails.
-        # For Stratego, scouts move any distance.
-        # We need a better encoding or restrict to 1-step for now?
-        # The environment `get_valid_moves` returns start/end.
-        # If we support scouts, we need Start(100) * Target(100) = 10000 actions?
-        # Or Start(100) * (Direction(4) * Distance(10)) = 4000?
+        # Clip distance to 1-9
+        dist = max(1, min(9, dist))
         
-        # For this refactor, let's assume we stick to the existing action space size.
-        # If output_size is 1000, maybe it's something else.
-        # Let's assume 1-step moves for now or just map to 400.
-        
-        idx = (r1 * 10 + c1) * 4 + dir_idx
+        start_pos_idx = r1 * 10 + c1
+        idx = (start_pos_idx * 36) + (dir_idx * 9) + (dist - 1)
         return idx
 
     def _action_index_to_move(self, index):
-        """Decode action index back to move coordinates."""
-        if not (0 <= index < 400):
+        """Decode action index (0-3599) back to move coordinates."""
+        if not (0 <= index < 3600):
             return None
-        move_idx = index // 4
-        dir_idx = index % 4
+            
+        start_pos_idx = index // 36
+        rem = index % 36
         
-        r1 = move_idx // 10
-        c1 = move_idx % 10
+        dir_idx = rem // 9
+        dist = (rem % 9) + 1
+        
+        r1 = start_pos_idx // 10
+        c1 = start_pos_idx % 10
         
         # Directions: 0=Up, 1=Right, 2=Down, 3=Left
-        dr, dc = [(-1, 0), (0, 1), (1, 0), (0, -1)][dir_idx]
+        dr_unit, dc_unit = [(-1, 0), (0, 1), (1, 0), (0, -1)][dir_idx]
         
-        r2, c2 = r1 + dr, c1 + dc
-        # Simple bounds check (though decoder assumes valid inputs)
+        r2, c2 = r1 + dr_unit * dist, c1 + dc_unit * dist
+        
+        # Bounds check
         if 0 <= r2 < 10 and 0 <= c2 < 10:
             return (r1, c1), (r2, c2)
         return None

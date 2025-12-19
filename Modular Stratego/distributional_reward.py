@@ -53,22 +53,23 @@ class StrategoRewardConfig:
     # Weights for component mixing
     outcome_weight: float = 1.0     # Win/Loss/Draw
     material_weight: float = 0.5    # Combat rewards
-    epistemic_weight: float = 0.3   # Information gain
-    positional_weight: float = 0.2  # Territory/Proximity
+    epistemic_weight: float = 0.1   # Reduced to favor terminal outcome
+    positional_weight: float = 0.05 # Strictly guidance, not a primary objective
     
     # Terminal rewards (Normalized for [-3, +3] support)
-    win_reward: float = 1.0         # Flag capture
-    loss_penalty: float = -1.0      # Lost flag
-    draw_penalty: float = -1.5      # Draw / Timeout (Normalized for C51)
+    win_reward: float = 2.0         # Flag capture
+    loss_penalty: float = -2.0      # Lost flag
+    draw_penalty: float = -1.0      # Draw / Timeout (Improved for learning)
     
     # Per-step penalties (Non-linear progression)
-    step_penalty: float = -0.001    # Base: Steps 0-500
-    step_penalty_mid: float = -0.002 # Early-mid: Steps 500-1000
-    step_penalty_late: float = -0.005 # Late: Steps 1000+
+    # Scaled down to ensure net-positive wins in long games
+    step_penalty: float = -0.0001    # Base: Steps 0-500
+    step_penalty_mid: float = -0.00015 # Early-mid: Steps 500-1000
+    step_penalty_late: float = -0.0002 # Late: Steps 1000+
     stalemate_penalty: float = -0.05 # Penalty when mobility is suddenly restricted
     
     # Material rewards
-    capture_scale: float = 0.1      # Enemy rank * scale
+    capture_scale: float = 0.05     # Enemy rank * scale (Normalized)
     loss_scale: float = -0.05       # Flat piece loss penalty (negated for opponent)
     spy_marsh_bonus: float = 0.3    # Extra for Spy killing Marshal
     miner_bomb_bonus: float = 0.15  # Extra for Miner defusing Bomb
@@ -78,10 +79,9 @@ class StrategoRewardConfig:
     first_reveal_bonus: float = 0.02 # First time seeing this piece type
     
     # Positional rewards
-    territory_advance: float = 0.02
+    territory_advance: float = 0.05 # One-time reward for reaching a new row
     center_control: float = 0.005
     flag_proximity_bonus: float = 0.05
-    mobility_bonus: float = 0.001
 
 
 class UnifiedRewardShaper:
@@ -96,7 +96,7 @@ class UnifiedRewardShaper:
         """Reset per-episode tracking."""
         self.revealed_types: Set[PieceType] = set()
         self.revealed_positions: Set[Tuple[int, int]] = set()
-        self.prev_mobility = None
+        self.max_row_reached: int = 10 if self.player_id == 1 else -1 
         
     def __call__(self, previous_state: GameState, action: Optional[Tuple], 
                  current_state: GameState, done: bool, 
@@ -188,11 +188,21 @@ class UnifiedRewardShaper:
                 
             reward_components['epistemic'] = epistemic_r * self.config.epistemic_weight
             
-        # 4. Positional / Strategic
+        # 4. Positional / Strategic (State-based, not move-based)
         positional_r = 0.0
         
-        # Advance toward enemy base
-        if (self.player_id == 1 and r_to < r_from) or (self.player_id == -1 and r_to > r_from):
+        # Advance toward enemy base (One-time reward per row)
+        is_new_territory = False
+        if self.player_id == 1: # Red (moves up, row indices decrease)
+            if r_to < self.max_row_reached:
+                self.max_row_reached = r_to
+                is_new_territory = True
+        else: # Blue (moves down, row indices increase)
+            if r_to > self.max_row_reached:
+                self.max_row_reached = r_to
+                is_new_territory = True
+        
+        if is_new_territory:
             positional_r += self.config.territory_advance
             
         # Center control
@@ -206,15 +216,10 @@ class UnifiedRewardShaper:
             corner_mult = 1.0 if c_to in (0, 1, 8, 9) else 0.5
             positional_r += self.config.flag_proximity_bonus * corner_mult
             
-        # Mobility (Restriction check / Stalemate prevention)
-        # We only apply this to the actor of the current step
+        # Stalemate prevention (Penalty only, no positive mobility bonus)
         curr_mob = info.get('num_valid_moves', 0)
-        positional_r += self.config.mobility_bonus * curr_mob
-        
-        if self.prev_mobility is not None:
-            if curr_mob < self.prev_mobility * 0.5 and self.prev_mobility > 5:
-                reward_components['stalemate'] = self.config.stalemate_penalty
-        self.prev_mobility = curr_mob
+        if curr_mob < 5: # Critical mobility threshold
+            reward_components['stalemate'] = self.config.stalemate_penalty
             
         reward_components['positional'] = positional_r * self.config.positional_weight
         

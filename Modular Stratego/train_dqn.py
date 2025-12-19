@@ -110,14 +110,14 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
             # High VRAM config (12GB+ / 16GB systems)
             num_envs = 12
             batch_size = 256
-            memory_size = 200000
-            print("⚡ Using HIGH VRAM config: NUM_LANES=12, BATCH_SIZE=256, MEMORY=200k")
+            memory_size = 500000
+            print("⚡ Using HIGH VRAM config: NUM_LANES=12, BATCH_SIZE=256, MEMORY=500k")
         elif vram_gb >= 8:
             # Medium VRAM config (8-12GB systems)  
             num_envs = 8
             batch_size = 128
-            memory_size = 150000
-            print("⚡ Using MEDIUM VRAM config: NUM_LANES=8, BATCH_SIZE=128, MEMORY=150k")
+            memory_size = 300000
+            print("⚡ Using MEDIUM VRAM config: NUM_LANES=8, BATCH_SIZE=128, MEMORY=300k")
         else:
             # Low VRAM config (6GB systems - use defaults)
             print(f"⚡ Using LOW VRAM config: NUM_LANES={num_envs}, BATCH_SIZE={batch_size}, MEMORY={memory_size//1000}k")

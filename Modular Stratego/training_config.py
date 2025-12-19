@@ -5,18 +5,18 @@ Configuration settings for DQN training.
 # =============================================================================
 # RAINBOW DQN HYPERPARAMETERS
 # =============================================================================
-NUM_LANES = 8             # Number of parallel training lanes (each lane = independent game)
+NUM_LANES = 4             # Number of parallel training lanes (each lane = independent game)
 NUM_ENVS = NUM_LANES      # LEGACY alias - always equals NUM_LANES (kept for compatibility)
-BATCH_SIZE = 128          # Reverted for faster early learning (was 256)
-GAMMA = 0.995           # Discount factor (User requested 0.995 for long-term depth)
-MEMORY_SIZE = 80000       # Replay buffer size (auto-scales by VRAM)
+BATCH_SIZE = 128          # Increased to 256 to leverage augmented data throughput
+GAMMA = 0.99           # Discount factor (User requested 0.99 for long-term depth)
+MEMORY_SIZE = 500000       # Increased buffer to hold 500k transitions (~1000 games)
 LEARNING_RATE = 0.0001    # Learning rate (increased for ±100 reward scale)
 NUM_EPISODES = 35000      # Total training episodes (individual games, not batches)
 SAVE_INTERVAL = 500       # Save model/export agent every N episodes
 PLOT_INTERVAL = 100       # Save metrics plots every N episodes
 EVAL_INTERVAL = 100       # Evaluate agent every N episodes
 PREFETCH_QUEUE_SIZE = 4   # Prefetch queue for data loading
-REPLAY_UPDATE_INTERVAL = 4    # Train every 4 steps (increased frequency for faster learning)
+REPLAY_UPDATE_INTERVAL = 1    # Train every step (maximized for data augmentation)
 TARGET_UPDATE_INTERVAL = 5000  # Soft update target network every N steps
 REWARD_SCALE = 1.0        # Scaling factor for reward calculations
 
@@ -38,7 +38,7 @@ PER_BETA_ANNEAL_EPISODES = 10000  # Episodes to anneal beta
 
 # Data Augmentation (State/Action Symmetry)
 ENABLE_DATA_AUGMENTATION = True # Double/Triple transitions by flipping/rotating board
-AUGMENTATION_TYPES = ["flip", "rotate"] # flip (left-right), rotate (180 deg)
+AUGMENTATION_TYPES = ["flip"] # Reduced to flip only to minimize data pressure and noise
 
 # League Settings (Setup League)
 LEAGUE_INTERVAL = 500 # Run setup league every N episodes
