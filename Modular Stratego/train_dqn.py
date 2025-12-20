@@ -92,35 +92,10 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
             print("   Falling back to CPU. Install PyTorch with CUDA support for GPU acceleration.")
     print(f"Using device: {device}")
     
-    # Auto-adjust config based on available VRAM
-    from training_config import NUM_LANES as DEFAULT_NUM_LANES
-    from training_config import BATCH_SIZE as DEFAULT_BATCH_SIZE
-    from training_config import MEMORY_SIZE as DEFAULT_MEMORY_SIZE
-    
-    # Use defaults from config
-    num_envs = DEFAULT_NUM_LANES  # Each lane = independent parallel game
-    batch_size = DEFAULT_BATCH_SIZE
-    memory_size = DEFAULT_MEMORY_SIZE
-    
-    if device.type == 'cuda':
-        vram_gb = torch.cuda.get_device_properties(0).total_memory / (1024**3)
-        print(f"🎮 Detected GPU: {torch.cuda.get_device_name(0)} ({vram_gb:.1f} GB VRAM)")
-        
-        if vram_gb >= 12:
-            # High VRAM config (12GB+ / 16GB systems)
-            num_envs = 12
-            batch_size = 256
-            memory_size = 500000
-            print("⚡ Using HIGH VRAM config: NUM_LANES=12, BATCH_SIZE=256, MEMORY=500k")
-        elif vram_gb >= 8:
-            # Medium VRAM config (8-12GB systems)  
-            num_envs = 8
-            batch_size = 128
-            memory_size = 300000
-            print("⚡ Using MEDIUM VRAM config: NUM_LANES=8, BATCH_SIZE=128, MEMORY=300k")
-        else:
-            # Low VRAM config (6GB systems - use defaults)
-            print(f"⚡ Using LOW VRAM config: NUM_LANES={num_envs}, BATCH_SIZE={batch_size}, MEMORY={memory_size//1000}k")
+    # Use fixed configuration from training_config.py
+    num_envs = NUM_LANES
+    batch_size = BATCH_SIZE
+    memory_size = MEMORY_SIZE
     
     # Optimize GPU settings for better performance
     if device.type == 'cuda':

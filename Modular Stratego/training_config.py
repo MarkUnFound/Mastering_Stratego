@@ -3,9 +3,9 @@ Configuration settings for DQN training.
 """
 
 # =============================================================================
-# RAINBOW DQN HYPERPARAMETERS
+# HARDWARE & TRAINING SCALE CONFIGURATION (Fixed)
 # =============================================================================
-NUM_LANES = 4             # Number of parallel training lanes (each lane = independent game)
+NUM_LANES = 8             # Number of parallel training lanes (Fixed from 4 to 8 for balanced throughput)
 NUM_ENVS = NUM_LANES      # LEGACY alias - always equals NUM_LANES (kept for compatibility)
 BATCH_SIZE = 128          # Increased to 256 to leverage augmented data throughput
 GAMMA = 0.99           # Discount factor (User requested 0.99 for long-term depth)
