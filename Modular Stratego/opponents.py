@@ -228,3 +228,41 @@ class OpponentPool:
             "self_prob": self.self_prob,
             "current_type": self.current_opponent_type
         }
+
+
+class RandomSetupAgent:
+    """
+    Setup agent that places pieces completely randomly.
+    Matches the SetupAgent interface.
+    """
+    
+    def __init__(self, player_id: int):
+        self.player_id = player_id
+        self.name = "RandomSetup"
+        
+    def place_pieces(self, pieces: List[PieceType], 
+                     valid_positions: List[Tuple[int, int]]) -> List[Tuple[PieceType, Tuple[int, int]]]:
+        """Place pieces randomly."""
+        # Copy implementation from heuristic_setup logic but purely random
+        positions = list(valid_positions)
+        random.shuffle(positions)
+        
+        placement = []
+        # We assume pieces count <= valid_positions count (40 vs 40)
+        for i, piece in enumerate(pieces):
+            if i < len(positions):
+                placement.append((piece, positions[i]))
+                
+        return placement
+
+    def reset_noise(self):
+        """No-op for compatibility."""
+        pass
+    
+    def finish_episode(self, reward: float):
+        """No-op for compatibility."""
+        pass
+    
+    def replay(self):
+        """No-op for compatibility."""
+        return None

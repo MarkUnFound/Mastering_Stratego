@@ -5,7 +5,7 @@ DQN Agent Move Visualizer for Stratego Game
 import torch
 # Set matplotlib backend to non-interactive (thread-safe)
 import matplotlib
-matplotlib.use('Agg')  # Use non-interactive backend (no GUI required)
+# matplotlib.use('Agg')  # REMOVED: Managed by caller script (train_dqn.py or visual_train_dqn.py)
 
 import matplotlib.pyplot as plt
 import numpy as np

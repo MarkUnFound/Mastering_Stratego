@@ -41,7 +41,7 @@ class RainbowDQN(nn.Module):
     - C51 Distributional Output
     """
     
-    def __init__(self, input_shape: Tuple[int, int, int] = (15, 10, 10), output_size: int = 3600, num_atoms: int = 51):
+    def __init__(self, input_shape: Tuple[int, int, int] = (15, 10, 10), output_size: int = 400, num_atoms: int = 51):
         super(RainbowDQN, self).__init__()
         self.input_shape = input_shape
         self.output_size = output_size

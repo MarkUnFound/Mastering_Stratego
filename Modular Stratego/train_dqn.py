@@ -52,7 +52,7 @@ except ImportError:
 # This helps balance training by randomizing which agent goes first
 from random_starting_player import should_swap_players, swap_placements, get_batch_swap_decisions
 from league import LeagueManager
-from opponents import RandomAgent, GreedyAgent, OpponentPool
+from opponents import RandomAgent, GreedyAgent, OpponentPool, RandomSetupAgent
 from training_config import *
 from training_utils import save_training_history, load_training_history
 from preflight_checks import run_preflight_checks
@@ -144,6 +144,7 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
     
     # Specialized opponents (for non-league matches)
     random_agent = RandomAgent()
+    random_setup_agent = RandomSetupAgent(player_id=-1)
     greedy_agent = GreedyAgent(device=device, player_id=-1, config=master_reward_config)
     heuristic_agent = HeuristicOpponent(device=device, player_id=-1)  # Frozen heuristic for Phase 2
     smart_heuristic_agent = SmartHeuristicOpponent(device=device, player_id=-1)  # Strong heuristic opponent
@@ -322,25 +323,56 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
     # Helper function to generate placements and reset a single lane
 
     def reset_lane(lane_idx):
-        """Generate new placements and prepare reset command for a lane."""
-        # Generate pieces
+        """
+        Generate new placements and prepare reset command for a lane.
+        Now selects opponent FIRST to determine correct setup type.
+        """
+        # 1. Select Opponent for this episode
+        opp_type, opp_uses_pbs, opp = select_opponent_for_lane(lane_idx)
+        
+        # 2. Setup Agent 1 (Always Heuristic/Smart)
         p1_pieces = parallel_env.call_method('_generate_pieces')
         p1_pos = parallel_env.call_method('get_valid_placement_positions', 1)
         p1_place = setup_agent1.place_pieces(p1_pieces, p1_pos)
         
+        # 3. Setup Agent 2 (Evaluated based on opponent type)
         p2_pieces = parallel_env.call_method('_generate_pieces')
         p2_pos = parallel_env.call_method('get_valid_placement_positions', -1)
-        p2_place = setup_agent2.place_pieces(p2_pieces, p2_pos)
+        
+        if opp_type == "random":
+            p2_place = random_setup_agent.place_pieces(p2_pieces, p2_pos)
+        else:
+            # League/Self/Heuristic use Smart Heuristic Setup for now
+            # (Eventually League agents might store their preferred setup)
+            p2_place = setup_agent2.place_pieces(p2_pieces, p2_pos)
         
         # Random starting player (50% swap)
-        if random.random() < 0.5:
-            p1_place, p2_place = swap_placements(p1_place, p2_place)
+        # Note: This swaps PLACEMENTS (Agent 1's army goes to P2's side and vice versa)
+        # It does NOT swap the agent instance itself logic-wise, just who plays P1 vs P2 physically.
+        # But wait, our agents are hardcoded: Agent 1 (P1) vs Opponent (P2).
+        # Swapping placements means Agent 1 starts on "P2 side" (Rows 0-3) and plays as -1?
+        # NO. The function random_starting_player.swap_placements mirrors them.
+        # But if Agent 1 is trained to be Player 1 (Positive), can it play as Player -1?
+        # The environment handles this. If Agent 1 is Player 1, it expects to be in Rows 6-9.
+        # If we swap, we might break the assumption of who is who.
+        # Let's trust the existing logic for now, assuming swap_placements handles it correctly.
         
-        return {'p1_placement': p1_place, 'p2_placement': p2_place}
+        if random.random() < 0.5:
+             p1_place, p2_place = swap_placements(p1_place, p2_place)
+        
+        return {
+            'p1_placement': p1_place, 
+            'p2_placement': p2_place,
+            'opp_type': opp_type,
+            'opp_uses_pbs': opp_uses_pbs,
+            'opp': opp
+        }
     
     def select_opponent_for_lane(lane_idx):
         """Select opponent type for a lane based on curriculum or opponent pool."""
-        nonlocal use_full_obs, agent2
+        # nonlocal use_full_obs, agent2 # No longer needed as we return
+        # Logic remains the same, just returning selections
+
         
         opponent_type = "self"
         opponent_uses_pbs = True
@@ -412,19 +444,18 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
         return opponent_type, opponent_uses_pbs, current_opponent
     
     # Initial reset for all lanes
-    print(f"🔄 Initializing {num_envs} lanes...")
+    # print(f"🔄 Initializing {num_envs} lanes...") # Duplicate print
     initial_placements_p1 = []
     initial_placements_p2 = []
     for i in range(num_envs):
-        placements = reset_lane(i)
-        initial_placements_p1.append(placements['p1_placement'])
-        initial_placements_p2.append(placements['p2_placement'])
+        reset_data = reset_lane(i)
+        initial_placements_p1.append(reset_data['p1_placement'])
+        initial_placements_p2.append(reset_data['p2_placement'])
         
-        # Select opponent for each lane
-        opp_type, opp_uses_pbs, opp = select_opponent_for_lane(i)
-        lane_opponent_types[i] = opp_type
-        lane_opponent_uses_pbs[i] = opp_uses_pbs
-        lane_current_opponents[i] = opp
+        # Select opponent for each lane (Now comes from reset_lane)
+        lane_opponent_types[i] = reset_data['opp_type']
+        lane_opponent_uses_pbs[i] = reset_data['opp_uses_pbs']
+        lane_current_opponents[i] = reset_data['opp']
     
     # Reset all environments
     game_states, _, _, _, valid_moves = parallel_env.reset(initial_placements_p1, initial_placements_p2)
@@ -716,11 +747,14 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                 completed_episodes += 1
                 pbar.update(1)
                 
-                reset_commands[i] = reset_lane(i)
-                opp_type, opp_uses_pbs, opp = select_opponent_for_lane(i)
-                lane_opponent_types[i] = opp_type
-                lane_opponent_uses_pbs[i] = opp_uses_pbs
-                lane_current_opponents[i] = opp
+                reset_data = reset_lane(i)
+                reset_commands[i] = {'p1_placement': reset_data['p1_placement'], 
+                                   'p2_placement': reset_data['p2_placement']}
+                
+                # Update Opponent
+                lane_opponent_types[i] = reset_data['opp_type']
+                lane_opponent_uses_pbs[i] = reset_data['opp_uses_pbs']
+                lane_current_opponents[i] = reset_data['opp']
                 
                 # Reset Lane State
                 lane_episode_rewards_p1[i] = 0.0

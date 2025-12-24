@@ -541,8 +541,8 @@ class StrategoEnvironment:
                 self.winner = 0
                 return
         
-        # Hard limit (2000 turns = draw)
-        if self.turn_count >= 2000:
+        # Hard limit (1000 turns = draw)
+        if self.turn_count >= 1000:
             self.game_over = True
             self.winner = 0
             

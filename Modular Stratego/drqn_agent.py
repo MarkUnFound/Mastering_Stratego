@@ -53,7 +53,7 @@ class RainbowAgent:
     """Rainbow DQN Agent for Stratego"""
     
     def __init__(self, player_id: int, device, 
-                 state_size: int = 200, action_size: int = 3600,
+                 state_size: int = 200, action_size: int = 400,
                  lr: float = 0.0001, gamma: float = 0.99, 
                  buffer_size: int = 10000, batch_size: int = 32,
                  use_pbs: bool = True, num_envs: int = 1):
@@ -532,7 +532,14 @@ class RainbowAgent:
             
         # Filter valid moves
         valid_q_values = []
+        valid_moves_filtered = []
         for move in valid_moves:
+            (r1, c1), (r2, c2) = move
+            dist = abs(r2 - r1) + abs(c2 - c1)
+            # Filter for 400-action space: Only 1-step moves allowed
+            if dist > 1:
+                continue
+
             action_idx = self._move_to_action_index(move)
             q_val = base_q_values[action_idx].item()
             
@@ -541,9 +548,14 @@ class RainbowAgent:
             exploration_bonus = uncertainty * self.uncertainty_exploration_multiplier
             
             valid_q_values.append(q_val + exploration_bonus)
-            
+            valid_moves_filtered.append(move)
+                     
+        if not valid_moves_filtered:
+            # Fallback
+            return valid_moves[0] if valid_moves else None
+
         best_move_idx = np.argmax(valid_q_values)
-        best_move = valid_moves[best_move_idx]
+        best_move = valid_moves_filtered[best_move_idx]
         
         if self.pbs and game_state:
             self.store_action_pbs_state(best_move, base_q_values.unsqueeze(0), uncertainty_map, game_state)
@@ -632,17 +644,34 @@ class RainbowAgent:
                 
             # No epsilon check - Noisy Nets handle exploration
             
+            # Filter moves for 400-action space (Scouts act as normal pieces)
             valid_q_values = []
+            valid_moves_filtered = []
             for move in valid_moves:
+                (r1, c1), (r2, c2) = move
+                dist = abs(r2 - r1) + abs(c2 - c1)
+                # Filter for 400-action space: Only 1-step moves allowed
+                if dist > 1:
+                    continue
+                    
                 action_idx = self._move_to_action_index(move)
                 q_val = expected_q_values[i, action_idx].item()
                 
                 uncertainty = self.get_move_uncertainty(move, uncertainty_maps[i])
                 exploration_bonus = uncertainty * self.uncertainty_exploration_multiplier
                 valid_q_values.append(q_val + exploration_bonus)
+                # Also store the move itself to map back correctly
+                valid_moves_filtered.append(move)
             
+            if not valid_moves_filtered:
+                # If all moves were filtered (e.g. trapped scout?), pick random valid move or force length 1?
+                # This ensures we don't crash if only long moves exist (unlikely in Stratego)
+                if valid_moves:
+                     actions[i] = valid_moves[0] # Fallback
+                continue
+
             best_move_idx = np.argmax(valid_q_values)
-            actions[i] = valid_moves[best_move_idx]
+            actions[i] = valid_moves_filtered[best_move_idx]
             
             if self.pbs_instances and game_states and game_states[i]:
                 actual_env_idx = env_indices[i]
@@ -1085,59 +1114,50 @@ class RainbowAgent:
     def _move_to_action_index(self, move):
         """
         Convert move ((r1, c1), (r2, c2)) to action index.
-        Total Actions: 3,600
-        Index = (StartPos[100]) * (Direction[4]) * (Distance-1[9])
+        Total Actions: 400
+        Index = (StartPos[100]) * (Direction[4])
         
-        This uniquely identifies every legal move including multi-step Scout slides.
+        Directions: 0=Right, 1=Left, 2=Down, 3=Up
         """
         (r1, c1), (r2, c2) = move
         
         dr = r2 - r1
         dc = c2 - c1
         
-        # Determine direction and distance
-        if dr < 0 and dc == 0: 
-            dir_idx = 0 # Up
-            dist = abs(dr)
-        elif dr == 0 and dc > 0: 
-            dir_idx = 1 # Right
-            dist = abs(dc)
-        elif dr > 0 and dc == 0: 
-            dir_idx = 2 # Down
-            dist = abs(dr)
+        # Determine direction
+        if dr == 0 and dc > 0: 
+            dir_idx = 0 # Right (0, 1)
         elif dr == 0 and dc < 0: 
-            dir_idx = 3 # Left
-            dist = abs(dc)
+            dir_idx = 1 # Left (0, -1)
+        elif dr > 0 and dc == 0: 
+            dir_idx = 2 # Down (1, 0)
+        elif dr < 0 and dc == 0: 
+            dir_idx = 3 # Up (-1, 0)
         else:
-            # Should not happen in a valid move
+            # Fallback
             dir_idx = 0
-            dist = 1
-        
-        # Clip distance to 1-9
-        dist = max(1, min(9, dist))
         
         start_pos_idx = r1 * 10 + c1
-        idx = (start_pos_idx * 36) + (dir_idx * 9) + (dist - 1)
+        idx = (start_pos_idx * 4) + dir_idx
         return idx
 
     def _action_index_to_move(self, index):
-        """Decode action index (0-3599) back to move coordinates."""
-        if not (0 <= index < 3600):
+        """Decode action index (0-399) back to move coordinates (length 1)."""
+        if not (0 <= index < 400):
             return None
             
-        start_pos_idx = index // 36
-        rem = index % 36
-        
-        dir_idx = rem // 9
-        dist = (rem % 9) + 1
+        start_pos_idx = index // 4
+        dir_idx = index % 4
         
         r1 = start_pos_idx // 10
         c1 = start_pos_idx % 10
         
-        # Directions: 0=Up, 1=Right, 2=Down, 3=Left
-        dr_unit, dc_unit = [(-1, 0), (0, 1), (1, 0), (0, -1)][dir_idx]
+        # Directions: 0=Right, 1=Left, 2=Down, 3=Up
+        # Matching environment.py: 0:(0,1), 1:(0,-1), 2:(1,0), 3:(-1,0) - wait, check filtering logic
+        # My filter logic above used: Right(0), Left(1), Down(2), Up(3)
+        dr_unit, dc_unit = [(0, 1), (0, -1), (1, 0), (-1, 0)][dir_idx]
         
-        r2, c2 = r1 + dr_unit * dist, c1 + dc_unit * dist
+        r2, c2 = r1 + dr_unit, c1 + dc_unit
         
         # Bounds check
         if 0 <= r2 < 10 and 0 <= c2 < 10:

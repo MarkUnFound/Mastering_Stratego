@@ -56,16 +56,16 @@ class StrategoRewardConfig:
     epistemic_weight: float = 0.1   # Reduced to favor terminal outcome
     positional_weight: float = 0.05 # Strictly guidance, not a primary objective
     
-    # Terminal rewards (Normalized for [-3, +3] support)
-    win_reward: float = 2.0         # Flag capture
-    loss_penalty: float = -2.0      # Lost flag
-    draw_penalty: float = -1.0      # Draw / Timeout (Improved for learning)
+    # Terminal rewards (Normalized for [-1, +1] support)
+    win_reward: float = 1.0         # Normalized Win
+    loss_penalty: float = -1.0      # Normalized Loss
+    draw_penalty: float = -0.1      # Small penalty for draw (better than loss)
     
-    # Per-step penalties (Non-linear progression)
-    # Scaled down to ensure net-positive wins in long games
-    step_penalty: float = -0.0001    # Base: Steps 0-500
-    step_penalty_mid: float = -0.00015 # Early-mid: Steps 500-1000
-    step_penalty_late: float = -0.0002 # Late: Steps 1000+
+    # Per-step penalties (Linear for consistency)
+    # 1000 steps * 0.0002 = -0.2 total penalty
+    step_penalty: float = -0.0002    # Flat penalty
+    step_penalty_mid: float = -0.0002 # consistency
+    step_penalty_late: float = -0.0002 # consistency
     stalemate_penalty: float = -0.05 # Penalty when mobility is suddenly restricted
     
     # Material rewards
@@ -118,14 +118,8 @@ class UnifiedRewardShaper:
 
         (r_from, c_from), (r_to, c_to) = action
         
-        # 1.5 Non-linear Step Penalty
-        turn_count = info.get('turn_count', 0)
-        if turn_count > 1000:
-            current_step_penalty = self.config.step_penalty_late
-        elif turn_count > 500:
-            current_step_penalty = self.config.step_penalty_mid
-        else:
-            current_step_penalty = self.config.step_penalty
+        # 1.5 Linear Step Penalty
+        current_step_penalty = self.config.step_penalty
             
         reward_components = {'step': current_step_penalty}
         
