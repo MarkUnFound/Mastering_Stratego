@@ -5,11 +5,11 @@ Configuration settings for DQN training.
 # =============================================================================
 # HARDWARE & TRAINING SCALE CONFIGURATION (Fixed)
 # =============================================================================
-NUM_LANES = 16            # Increased to 16 for higher data throughput (VRAM allows)
+NUM_LANES = 16             # Reduced to 8 (Safe for 6GB VRAM)
 NUM_ENVS = NUM_LANES      # LEGACY alias - always equals NUM_LANES (kept for compatibility)
-BATCH_SIZE = 1024         # Increased to 1024 for GPU saturation and stable gradients
+BATCH_SIZE = 512          # Reduced to 256 (Safe for 6GB VRAM)
 GAMMA = 0.99           # Discount factor (User requested 0.99 for long-term depth)
-MEMORY_SIZE = 500000      # 250k on GPU (~5GB VRAM) to minimize CPU usage
+MEMORY_SIZE = 300000      # 200k on GPU (~2.2GB) to leave room for model and batches
 LEARNING_RATE = 0.0001    # Learning rate (increased for ±100 reward scale)
 NUM_EPISODES = 35000      # Total training episodes (individual games, not batches)
 SAVE_INTERVAL = 500       # Save model/export agent every N episodes

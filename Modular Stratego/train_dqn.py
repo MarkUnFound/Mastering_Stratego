@@ -265,10 +265,6 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
             metrics.update(loaded_metrics)
             print(f"Loaded training history.")
 
-    print(f"🚀 Starting MULTI-LANE training from episode {start_episode}...")
-    print(f"   🔀 Each environment is an independent lane - no idle time!")
-    print(f"   📊 Episode count = completed games (not batches)")
-    
     # Load global_step from metrics if resuming, otherwise start at 0
     global_step = metrics.get('global_step', 0)
     completed_episodes = start_episode  # Count of completed individual games
@@ -339,12 +335,8 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
         p2_pieces = parallel_env.call_method('_generate_pieces')
         p2_pos = parallel_env.call_method('get_valid_placement_positions', -1)
         
-        if opp_type == "random":
-            p2_place = random_setup_agent.place_pieces(p2_pieces, p2_pos)
-        else:
-            # League/Self/Heuristic use Smart Heuristic Setup for now
-            # (Eventually League agents might store their preferred setup)
-            p2_place = setup_agent2.place_pieces(p2_pieces, p2_pos)
+        # Always use Heuristic Setup for P2, even if opponent is RandomAgent
+        p2_place = setup_agent2.place_pieces(p2_pieces, p2_pos)
         
         # Random starting player (50% swap)
         # Note: This swaps PLACEMENTS (Agent 1's army goes to P2's side and vice versa)

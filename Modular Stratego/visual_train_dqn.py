@@ -354,10 +354,7 @@ def visual_train():
             p2_pieces = env._generate_pieces()
             p2_pos = env.get_valid_placement_positions(-1)
             
-            if opponent_type == "random":
-                p2_place = random_setup_agent.place_pieces(p2_pieces, p2_pos)
-            else:
-                p2_place = setup_agent2.place_pieces(p2_pieces, p2_pos)
+            p2_place = setup_agent2.place_pieces(p2_pieces, p2_pos)
                 
             # Random starting player swap (50%)
             if random.random() < 0.5:
