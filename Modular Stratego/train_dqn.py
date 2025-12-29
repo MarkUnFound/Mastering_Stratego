@@ -65,13 +65,16 @@ from scenario_drills import get_scenario_drill, get_random_scenario
 # Distributional RL-Compatible Reward Shaping (C51 Normalized Anti-Stall)
 from distributional_reward import create_unified_reward_shaper, StrategoRewardConfig
 
+# Extracted training modules (for future gradual migration)
+from training import LaneManager, MetricsTracker, Checkpointer
+
 # Piece Value Tracking (for convergence analysis)
 try:
     from piece_value_tracker import PieceValueTracker, ANALYTICAL_VALUES
     PIECE_VALUE_TRACKING = True
 except ImportError:
     PIECE_VALUE_TRACKING = False
-    print("⚠️ Piece value tracking disabled (module not found)")
+    print("[WARN] Piece value tracking disabled (module not found)")
 
 def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100, 
                      plot_interval: int = PLOT_INTERVAL,
@@ -88,7 +91,7 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
             _ = torch.tensor([1.0], device='cuda')
             device = torch.device('cuda')
         except (AssertionError, RuntimeError) as e:
-            print(f"⚠️ CUDA detected but not usable: {e}")
+            print(f"[WARN] CUDA detected but not usable: {e}")
             print("   Falling back to CPU. Install PyTorch with CUDA support for GPU acceleration.")
     print(f"Using device: {device}")
     
@@ -117,7 +120,7 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
     # Agent2: minimal buffer, no PBS (saves ~18% training time in early phases)
     # PBS will be enabled for Agent 2 when reaching Phase 4
     agent2 = RainbowAgent(player_id=-1, device=device, lr=LEARNING_RATE, batch_size=batch_size, num_envs=num_envs, buffer_size=10000, use_pbs=False)
-    print("⚡ Agent 2 PBS disabled for early phases (will enable at Phase 4)")
+    print("[INFO] Agent 2 PBS disabled for early phases (will enable at Phase 4)")
     
     # Initialize Setup Agents (using fast heuristic instead of neural network)
     # This saves ~2 seconds per episode while maintaining strategic setups
@@ -154,7 +157,7 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
     curriculum = None
     if CURRICULUM_ENABLED:
         curriculum = CurriculumManager(start_phase=CURRICULUM_START_PHASE, save_dir=model_save_path)
-        print(f"📚 Curriculum enabled: Phase {curriculum.current_phase.value} ({curriculum.get_phase_config().name})")
+        print(f"[INFO] Curriculum enabled: Phase {curriculum.current_phase.value} ({curriculum.get_phase_config().name})")
         
         # Set initial observability based on phase
         if curriculum.should_use_full_observability():
@@ -167,7 +170,7 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
     piece_tracker = None
     if PIECE_VALUE_TRACKING:
         piece_tracker = PieceValueTracker(save_path=os.path.join(model_save_path, "piece_value_tracking.json"))
-        print(f"📊 Piece value tracking enabled ({piece_tracker.games_tracked} games loaded)")
+        print(f"[INFO] Piece value tracking enabled ({piece_tracker.games_tracked} games loaded)")
     
     
     # --- Load Existing Models ---
@@ -189,18 +192,18 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
         try:
             agent1.load_model(latest_file)
             start_episode = extract_episode(latest_file)
-            print(f"✅ Loaded Agent 1 Rainbow model from {latest_file}")
+            print(f"[OK] Loaded Agent 1 Rainbow model from {latest_file}")
         except Exception as e:
-            print(f"⚠️ Failed to load Agent 1 model: {e}")
+            print(f"[WARN] Failed to load Agent 1 model: {e}")
             
     if agent2_files:
         agent2_files.sort(key=extract_episode, reverse=True)
         latest_file = agent2_files[0]
         try:
             agent2.load_model(latest_file)
-            print(f"✅ Loaded Agent 2 Rainbow model from {latest_file}")
+            print(f"[OK] Loaded Agent 2 Rainbow model from {latest_file}")
         except Exception as e:
-            print(f"⚠️ Failed to load Agent 2 model: {e}")
+            print(f"[WARN] Failed to load Agent 2 model: {e}")
 
 
     # (HeuristicSetupAgent doesn't need model loading)
@@ -213,64 +216,34 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
         pbs_eval1_files.sort(key=extract_episode, reverse=True)
         try:
             agent1.pbs.evaluator.load_model(pbs_eval1_files[0])
-            print(f"✅ Loaded PBS Evaluator 1 from {pbs_eval1_files[0]}")
+            print(f"[OK] Loaded PBS Evaluator 1 from {pbs_eval1_files[0]}")
         except Exception as e:
-            print(f"⚠️ Could not load PBS Evaluator 1: {e}")
+            print(f"[WARN] Could not load PBS Evaluator 1: {e}")
             
     if pbs_eval2_files and agent2.pbs and hasattr(agent2.pbs, 'evaluator') and agent2.pbs.evaluator:
         pbs_eval2_files.sort(key=extract_episode, reverse=True)
         try:
             agent2.pbs.evaluator.load_model(pbs_eval2_files[0])
-            print(f"✅ Loaded PBS Evaluator 2 from {pbs_eval2_files[0]}")
+            print(f"[OK] Loaded PBS Evaluator 2 from {pbs_eval2_files[0]}")
         except Exception as e:
-            print(f"⚠️ Could not load PBS Evaluator 2: {e}")
-
-    # Metrics
-    metrics = {
-        # Core agent metrics
-        'rewards_p1': [], 'rewards_p2': [],
-        'wins_p1': 0, 'wins_p2': 0, 'draws': 0,
-        'wins_p1_history': [], 'wins_p2_history': [],  # Track cumulative wins per episode
-        'lengths': [],
-        'losses_p1': [],
-        'loss_steps_p1': [],  # Track global_step when each loss was recorded (for proper x-axis)
-        'avg_loss_p1_history': [],  # Note: Agent 2 doesn't train, so no loss tracking
-        
-        # (Setup agent metrics removed - using HeuristicSetupAgent)
-        
-        # PBS evaluator metrics (Agent 1 only - Agent 2 has use_pbs=False)
-        'pbs_eval1_losses': [],
-        'pbs_eval1_buffer_sizes': [],
-        'pbs_eval1_accuracy': [],
-        
-        # AAREN metrics (tracks belief state inference quality)
-        'aaren_loss': [],        # Per-episode AAREN training loss
-        'aaren_accuracy': [],    # Per-episode AAREN prediction accuracy
-        'aaren_buffer_size': [], # AAREN training buffer size
-        
-        # Additional informative metrics
-        'avg_q_values_p1': [],
-        'avg_entropy_p1': [],
-        'win_rate_100': [],  # Sliding window (last 100 episodes)
-        
-        # Curriculum phase tracking for visualization
-        'phase_history': [],  # Phase value (1-5) per episode
-        
-        'pbs_accuracy': [],
-        'episode_end_steps': []  # Track global_step when episode ends
-    }
+            print(f"[WARN] Could not load PBS Evaluator 2: {e}")
+    # Initialize Checkpointer and MetricsTracker (extracted modules)
+    checkpointer = Checkpointer(save_dir=model_save_path)
+    metrics_tracker = MetricsTracker(save_dir=model_save_path)
     
+    # Load existing training history if resuming
     if start_episode > 0:
-        loaded_metrics = load_training_history(model_save_path)
-        if loaded_metrics:
-            metrics.update(loaded_metrics)
+        if metrics_tracker.load():
             print(f"Loaded training history.")
+    
+    # Metrics dict reference for backward compatibility (to be gradually removed)
+    metrics = metrics_tracker.metrics
 
     # Load global_step from metrics if resuming, otherwise start at 0
     global_step = metrics.get('global_step', 0)
     completed_episodes = start_episode  # Count of completed individual games
     if start_episode > 0 and global_step > 0:
-        print(f"📊 Resuming from global step {global_step:,}, episode {completed_episodes}")
+        print(f"[INFO] Resuming from global step {global_step:,}, episode {completed_episodes}")
     
     # ==========================================================================
     # MULTI-LANE STATE TRACKING
@@ -440,7 +413,7 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
         return opponent_type, opponent_uses_pbs, current_opponent
     
     # Initial reset for all lanes
-    # print(f"🔄 Initializing {num_envs} lanes...") # Duplicate print
+    # print(f"Initializing {num_envs} lanes...") # Duplicate print
     initial_placements_p1 = []
     initial_placements_p2 = []
     for i in range(num_envs):
@@ -476,7 +449,7 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
     pbar = tqdm(total=num_episodes, initial=completed_episodes, desc="Training Episodes")
     
     # ==========================================================================
-    # MAIN TRAINING LOOP - Step-based, not episode-based
+    # MAIN TRAINING LOOP
     # All lanes run in parallel, each at their own pace
     # ==========================================================================
     
@@ -664,6 +637,12 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                 # Metrics
                 if winner == 1:
                     metrics['wins_p1'] += 1
+                    # Track win type
+                    win_type = infos[i].get('win_type', 'unknown')
+                    if win_type == 'flag_capture':
+                        metrics['wins_by_flag'] = metrics.get('wins_by_flag', 0) + 1
+                    elif win_type == 'no_moves':
+                        metrics['wins_by_depletion'] = metrics.get('wins_by_depletion', 0) + 1
                 elif winner == -1:
                     metrics['wins_p2'] += 1
                 else:
@@ -677,6 +656,8 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                 
                 metrics['wins_p1_history'].append(metrics['wins_p1'])
                 metrics['wins_p2_history'].append(metrics['wins_p2'])
+                metrics['wins_by_flag_history'].append(metrics.get('wins_by_flag', 0))
+                metrics['wins_by_depletion_history'].append(metrics.get('wins_by_depletion', 0))
                 
                 if curriculum and CURRICULUM_ENABLED:
                     metrics['phase_history'].append(curriculum.current_phase.value)
@@ -731,7 +712,7 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                 # Q-value and entropy metrics
                 avg_q = agent1.get_average_q() if hasattr(agent1, 'get_average_q') else 0.0
                 if avg_q == 0.0 and hasattr(agent1, 'memory') and len(agent1.memory) > agent1.batch_size:
-                     tqdm.write(f"⚠️ Avg Q-Value is 0.0. Memory: {len(agent1.memory)}")
+                     tqdm.write(f"[WARN] Avg Q-Value is 0.0. Memory: {len(agent1.memory)}")
                 metrics['avg_q_values_p1'].append(avg_q)
                 
                 
@@ -834,7 +815,7 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
         # Use threshold check to prevent double updates or skips
         if global_step - last_target_update_step >= TARGET_UPDATE_INTERVAL:
             agent1.update_target_network()
-            tqdm.write(f"🔄 Target Network Updated (Step {global_step})")
+            tqdm.write(f"[INFO] Target Network Updated (Step {global_step})")
             last_target_update_step = global_step
         
         # --- CHECK CURRICULUM PHASE TRANSITION ---
@@ -842,7 +823,7 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
             if curriculum.check_phase_transition():
                 old_phase = curriculum.current_phase
                 if curriculum.advance_phase():
-                    tqdm.write(f"\n🎓 PHASE TRANSITION: {old_phase.name} → {curriculum.current_phase.name}")
+                    tqdm.write(f"\n[PHASE] TRANSITION: {old_phase.name} -> {curriculum.current_phase.name}")
                     
                     # Update observability
                     use_full_obs = curriculum.should_use_full_observability()
@@ -851,7 +832,7 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                     # Enable Agent 2 PBS at Phase 4
                     if curriculum.current_phase.value >= 4 and not agent2.use_pbs:
                         agent2.enable_pbs(num_envs)
-                        tqdm.write("⚡ Agent 2 PBS ENABLED for Phase 4+")
+                        tqdm.write("[INFO] Agent 2 PBS ENABLED for Phase 4+")
         
         # --- LR SCHEDULER STEP (per fixed step interval) ---
         if agent1.scheduler and global_step % 1000 == 0:
@@ -864,101 +845,50 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                 agent2.train_pbs(epochs=5)
         
         # --- PERIODIC PLOTTING (every plot_interval episodes) ---
-        # Robust check: trigger if we passed a new multiple of plot_interval
-        current_plot_milestone = (completed_episodes // plot_interval) * plot_interval
-        if completed_episodes > 0 and current_plot_milestone > metrics.get('last_plot_episode', 0):
-            plot_episode = current_plot_milestone
-            if True: # Preserve indentation for subsequent block
-                metrics['last_plot_episode'] = plot_episode
-                
-                # Q-value and entropy metrics
-                # Moved to per-episode block above for granularity
-                pass
-                
-                # Win rate
-                
-                # Win rate
-                if len(metrics['wins_p1_history']) >= 100:
-                    wins_100 = metrics['wins_p1_history'][-1] - metrics['wins_p1_history'][-100]
-                    win_rate = wins_100 / 100.0
-                else:
-                    win_rate = metrics['wins_p1'] / max(completed_episodes, 1)
-                metrics['win_rate_100'].append(win_rate)
-                
-                # Plot progress graphs
-
-                current_history_len = len(metrics['rewards_p1'])
-                plot_episodes = list(range(1, current_history_len + 1))
-                
-                try:
-                    plot_training_progress(
-                        episode_history=plot_episodes,
-                        rewards_history={'agent1': metrics['rewards_p1'], 'agent2': metrics['rewards_p2']},
-                        wins_history={'agent1': metrics['wins_p1_history'], 'agent2': metrics['wins_p2_history']},
-                        policy_loss_history={'agent1': metrics['losses_p1']},  # Raw losses (step-based)
-                        save_path=os.path.join(model_save_path, f"training_progress_episode_{plot_episode}.png"),
-                        total_episodes=plot_episode,
-                        total_steps=global_step,
-                        num_envs=num_envs,
-                        phase_history =metrics.get('phase_history', []),
-                        loss_steps=metrics.get('loss_steps_p1', None),  # Step numbers for uniform x-axis
-                        episode_end_steps=metrics.get('episode_end_steps', None)
-                    )
-                    
-                    # Plot additional metrics (Q-values, entropy, etc.)
-                    avg_entropy_hist = metrics.get('avg_entropy_p1', [0.0] * len(plot_episodes))
-                    
-                    plot_additional_metrics(
-                        episode_history=plot_episodes,
-                        episode_lengths={'agent1': metrics.get('lengths', [0] * len(plot_episodes))}, # Pass lengths instead of epsilon
-                        win_rate_history={'agent1': metrics.get('win_rate_100', [0.0] * len(plot_episodes))},
-                        avg_q_history={'agent1': metrics.get('avg_q_values_p1', [0.0] * len(plot_episodes))},
-                        entropy_history={'agent1': avg_entropy_hist},
-                        save_path=os.path.join(model_save_path, f"additional_metrics_episode_{plot_episode}.png")
-                    )
-                    
-                    tqdm.write(f"📊 Saved all plots for episode {plot_episode}")
-                except Exception as e:
-                    tqdm.write(f"⚠️ Could not plot training progress: {e}")
+        if metrics_tracker.should_plot(completed_episodes, plot_interval):
+            plot_episode = (completed_episodes // plot_interval) * plot_interval
+            metrics_tracker.mark_plotted(plot_episode)
+            
+            # Update win rate
+            metrics_tracker.update_win_rate()
+            
+            # Use Checkpointer for plotting
+            try:
+                checkpointer.plot_progress(
+                    episode=plot_episode,
+                    metrics_tracker=metrics_tracker,
+                    global_step=global_step,
+                    num_envs=num_envs
+                )
+                tqdm.write(f"[INFO] Saved plots for episode {plot_episode}")
+            except Exception as e:
+                tqdm.write(f"[WARN] Could not plot training progress: {e}")
         
 
         # --- PERIODIC MODEL SAVES (every SAVE_INTERVAL episodes) ---
         # Robust check: trigger if we passed a new multiple of save_interval
-        current_save_milestone = (completed_episodes // save_interval) * save_interval
-        if completed_episodes > 0 and current_save_milestone > metrics.get('last_save_episode', 0) and completed_episodes != start_episode:
-            save_episode = current_save_milestone
-            if True: # Preserve indentation for subsequent block
-                metrics['last_save_episode'] = save_episode
-                
-                # Save models
-                agent1_path = os.path.join(model_save_path, f"agent1_rainbow_episode_{save_episode}.pth")
-                agent1.save_model(agent1_path)
-                
-                # Export to league
-                if save_episode % LEAGUE_SAVE_INTERVAL == 0:
-                    league_manager.save_agent(agent1_path, save_episode)
-                
-                # Save PBS evaluators
-                if agent1.pbs and hasattr(agent1.pbs, 'evaluator') and agent1.pbs.evaluator:
-                    try:
-                        agent1.pbs.evaluator.save_model(os.path.join(model_save_path, f"pbs_evaluator1_episode_{save_episode}.pth"))
-                    except Exception:
-                        pass
-                
-                # Save curriculum
-                if curriculum and CURRICULUM_ENABLED:
-                    curriculum.save_state()
-                
-                # Save metrics history
-                metrics['global_step'] = global_step
-                save_training_history(metrics, model_save_path)
-                
-                tqdm.write(f"💾 Saved models for episode {save_episode}")
-                
-                # Piece value tracking
-                if piece_tracker is not None and save_episode % 500 == 0:
-                    piece_tracker.log_comparison(save_episode)
-                    piece_tracker.save()
+        if metrics_tracker.should_save(completed_episodes, save_interval, start_episode):
+            save_episode = (completed_episodes // save_interval) * save_interval
+            metrics_tracker.mark_saved(save_episode)
+            
+            # Use Checkpointer for save operations
+            checkpointer.save_checkpoint(
+                episode=save_episode,
+                agent1=agent1,
+                agent2=agent2,
+                league_manager=league_manager,
+                curriculum=curriculum if CURRICULUM_ENABLED else None,
+                metrics_tracker=metrics_tracker,
+                league_interval=LEAGUE_SAVE_INTERVAL
+            )
+            metrics_tracker.set_global_step(global_step)
+            
+            tqdm.write(f"[SAVE] Models saved for episode {save_episode}")
+            
+            # Piece value tracking
+            if piece_tracker is not None and save_episode % 500 == 0:
+                piece_tracker.log_comparison(save_episode)
+                piece_tracker.save()
                 
         # --- UPDATE PROGRESS BAR (only when episodes complete) ---
         if reset_commands:
@@ -975,11 +905,11 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
     
     pbar.close()
 
-    print(f"\\n🎉 Training complete! Completed {completed_episodes} episodes, {global_step:,} steps")
+    print(f"\n[DONE] Training complete! Completed {completed_episodes} episodes, {global_step:,} steps")
 
 
 if __name__ == "__main__":
-    print("🎮 DQN Agent Training for Stratego")
+    print("DQN Agent Training for Stratego")
     print("==================================================")
     print()
     
@@ -990,4 +920,4 @@ if __name__ == "__main__":
             generate_gifs=GENERATE_GIFS
         )
     else:
-        print("❌ Pre-flight checks failed. Aborting training.")
+        print("[ERROR] Pre-flight checks failed. Aborting training.")

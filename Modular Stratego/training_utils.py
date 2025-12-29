@@ -58,7 +58,7 @@ def save_counters(total_episodes_file, total_steps_file, total_episodes, total_s
         f.write(str(total_episodes))
     with open(total_steps_file, 'w') as f:
         f.write(str(total_steps))
-    print(f"💾 Saved persistent counters: {total_episodes} episodes, {total_steps:,} steps")
+    print(f"[INFO] Saved persistent counters: {total_episodes} episodes, {total_steps:,} steps")
 
 
 def save_training_history(metrics: dict, model_save_path: str):
@@ -69,7 +69,7 @@ def save_training_history(metrics: dict, model_save_path: str):
         with open(history_file, 'w') as f:
             json.dump(metrics, f, indent=2, cls=NumpyEncoder)
     except Exception as e:
-        print(f"⚠️  Could not save training history: {e}")
+        print(f"[WARN] Could not save training history: {e}")
 
 
 def load_training_history(model_save_path: str) -> Optional[dict]:
@@ -82,8 +82,8 @@ def load_training_history(model_save_path: str) -> Optional[dict]:
     try:
         with open(history_file, 'r') as f:
             history_data = json.load(f)
-        print(f"📊 Loaded training history: {len(history_data.get('episode_history', []))} episodes")
+        print(f"[INFO] Loaded training history: {len(history_data.get('episode_history', []))} episodes")
         return history_data
     except (json.JSONDecodeError, IOError) as e:
-        print(f"⚠️  Could not load training history: {e}, starting fresh")
+        print(f"[WARN] Could not load training history: {e}, starting fresh")
         return None

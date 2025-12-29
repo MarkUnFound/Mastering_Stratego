@@ -8,16 +8,16 @@ from drqn_agent import RainbowAgent
 from training_config import NUM_ENVS
 
 def run_preflight_checks(model_save_path: str):
-    print("\n✈️  Running Pre-Flight Checks...")
+    print("\n   Running Pre-Flight Checks...")
     os.makedirs(model_save_path, exist_ok=True)
 
     # 1. Test Plotting Functions
     print("   Testing plotting functions...")
     try:
         _test_plotting(model_save_path)
-        print("   ✅ Plotting functions verified.")
+        print("   [OK] Plotting functions verified.")
     except Exception as e:
-        print(f"   ❌ Plotting check failed: {e}")
+        print(f"   [ERROR] Plotting check failed: {e}")
         import traceback
         traceback.print_exc()
         raise
@@ -26,14 +26,14 @@ def run_preflight_checks(model_save_path: str):
     print("   Testing game logic (simulation)...")
     try:
         _test_game_simulation()
-        print("   ✅ Game logic verified (no illegal moves in demo).")
+        print("   [OK] Game logic verified (no illegal moves in demo).")
     except Exception as e:
-        print(f"   ❌ Game logic check failed: {e}")
+        print(f"   [ERROR] Game logic check failed: {e}")
         import traceback
         traceback.print_exc()
         raise
 
-    print("✅ All Pre-Flight Checks Passed!")
+    print("[OK] All Pre-Flight Checks Passed!")
     return True
 
 def _test_plotting(save_path):

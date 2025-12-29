@@ -18,6 +18,7 @@ class StrategoEnvironment:
         self.current_player = 1
         self.game_over = False
         self.winner = None
+        self.win_type = None  # Track win type: 'flag_capture', 'no_moves', 'timeout'
         self.revealed_pieces_p2 = {}
         
         self._flag_positions = {1: None, -1: None}
@@ -38,6 +39,7 @@ class StrategoEnvironment:
         self.current_player = 1
         self.game_over = False
         self.winner = None
+        self.win_type = None  # Reset win type tracking
         self.turn_count = 0
         self.move_history = []
         self.revealed_pieces_p1 = {}
@@ -350,20 +352,22 @@ class StrategoEnvironment:
         revealed_in_step = []
 
         if self.game_over:
-            return self._get_game_state(), 0.0, True, {"winner": self.winner}
+            return self._get_game_state(), 0.0, True, {"winner": self.winner, "win_type": self.win_type}
 
-        # Check for max turns (draw) - increased to 4000 for longer games
-        if self.turn_count >= 4000:
+        # Check for max turns (draw) - reduced to 1000 for faster, more decisive games
+        if self.turn_count >= 1000:
             self.game_over = True
             self.winner = 0
-            return self._get_game_state(), -1.0, True, {"winner": 0, "revealed_in_step": [], "game_phase": "end", "turn_count": self.turn_count}
+            self.win_type = 'timeout'
+            return self._get_game_state(), -1.0, True, {"winner": 0, "win_type": "timeout", "revealed_in_step": [], "game_phase": "end", "turn_count": self.turn_count}
             
         if action is None:
             # No valid moves possible - DRAW (both agents lose)
             # This prevents learning to win by starving opponent of moves
             self.game_over = True
             self.winner = 0  # Draw instead of opponent win
-            return self._get_game_state(), -1.0, True, {"winner": 0, "revealed_in_step": [], "game_phase": "end", "turn_count": self.turn_count}
+            self.win_type = 'timeout'
+            return self._get_game_state(), -1.0, True, {"winner": 0, "win_type": "timeout", "revealed_in_step": [], "game_phase": "end", "turn_count": self.turn_count}
 
         (r_from, c_from), (r_to, c_to) = action
         
@@ -418,6 +422,7 @@ class StrategoEnvironment:
                 if defender_type == PieceType.FLAG:
                     self.game_over = True
                     self.winner = self.current_player
+                    self.win_type = 'flag_capture'  # Track flag capture win
                     if hasattr(self, '_flag_positions'):
                         self._flag_positions[-self.current_player] = None
                         
@@ -497,6 +502,7 @@ class StrategoEnvironment:
         
         info = {
             "winner": self.winner, 
+            "win_type": self.win_type,
             "revealed_in_step": revealed_in_step, 
             "game_phase": game_phase, 
             "turn_count": self.turn_count,
@@ -528,6 +534,7 @@ class StrategoEnvironment:
                 # Player who cannot move loses - opponent wins
                 # This follows standard Stratego rules and rewards material dominance
                 self.winner = -self.current_player
+                self.win_type = 'no_moves'  # Track immobilization win
         
         # Early draw detection (start checking after 100 turns to catch deadlocks faster)
         if self.turn_count > 100:
@@ -542,12 +549,14 @@ class StrategoEnvironment:
             if self._is_stalemate():
                 self.game_over = True
                 self.winner = 0
+                self.win_type = 'timeout'
                 return
         
-        # Hard limit (4000 turns = draw)
-        if self.turn_count >= 4000:
+        # Hard limit (1000 turns = draw) - reduced from 4000
+        if self.turn_count >= 1000:
             self.game_over = True
             self.winner = 0
+            self.win_type = 'timeout'
             
     def _is_position_repetitive(self):
         # Check if the same position has occurred multiple times (aggressive detection)

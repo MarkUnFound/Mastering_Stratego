@@ -63,12 +63,12 @@ LEAGUE_TRAINING_ENABLED = True
 LEAGUE_SAVE_INTERVAL = 500      # Save agent to league every N episodes
 LEAGUE_MAX_AGENTS = 50          # Max historical agents to keep
 
-# Opponent Selection Probabilities (adjusted for early training)
-# More random opponents = easier learning; scale up difficulty as agent improves
-OPPONENT_LEAGUE_PROB = 0.1      # 10% historical opponents (reduced from 50%)
-OPPONENT_RANDOM_PROB = 0.6      # 60% random agent (increased from 20%)
-OPPONENT_GREEDY_PROB = 0.2      # 20% greedy agent
-OPPONENT_SELF_PROB = 0.1        # 10% self-play
+# Opponent Selection Probabilities (adjusted for flag-hunting focus)
+# More heuristic opponents = strategic depth; random for exploration
+OPPONENT_LEAGUE_PROB = 0.15     # 15% historical opponents (prevents forgetting)
+OPPONENT_RANDOM_PROB = 0.30     # 30% random agent (down from 60% - still needed for exploration)
+OPPONENT_GREEDY_PROB = 0.40     # 40% heuristic agent (up from 20% - learn strategic play)
+OPPONENT_SELF_PROB = 0.15       # 15% self-play (pushes beyond heuristic ceiling)
 
 # =============================================================================
 # CURRICULUM LEARNING SETTINGS

@@ -29,12 +29,14 @@ def test_reward_hacking_fix():
     r1 = shaper(s1, action1, s2, False, None, info)
     
     # Expected: territory_advance (0.05) * positional_weight (0.05) = 0.0025
-    # Plus step penalty (-0.0001)
+    # Plus step penalty (-0.0001) - updated for new reward structure
+    # Plus curiosity bonus (~0.001 for novel states)
     expected_territory = config.territory_advance * config.positional_weight
-    expected_r1 = expected_territory + config.step_penalty
+    expected_base = expected_territory + config.step_penalty
     
-    print(f"Move 1 (New Row 5): Reward = {r1:.6f} (Expected ~{expected_r1:.6f})")
-    assert abs(r1 - expected_r1) < 1e-7
+    print(f"Move 1 (New Row 5): Reward = {r1:.6f} (Expected base ~{expected_base:.6f} + curiosity)")
+    # Use larger tolerance to account for curiosity bonus (0.01 * 0.1 = ~0.001 max)
+    assert r1 >= expected_base and r1 <= expected_base + 0.002, f"Mismatch: got {r1}, expected {expected_base} + curiosity"
     
     # 2. Test Anti-Farming (Move from row 5 back to row 6)
     action2 = ((5, 0), (6, 0))
@@ -43,9 +45,9 @@ def test_reward_hacking_fix():
     s3.board[6, 0] = 5
     
     r2 = shaper(s2, action2, s3, False, None, info)
-    # Expected: 0 territory reward (row 6 is not < 5), only step penalty
-    print(f"Move 2 (Back to Row 6): Reward = {r2:.6f} (Expected {config.step_penalty:.6f})")
-    assert abs(r2 - config.step_penalty) < 1e-7
+    # Expected: 0 territory reward (row 6 is not < 5), only step penalty + curiosity
+    print(f"Move 2 (Back to Row 6): Reward = {r2:.6f} (Expected base {config.step_penalty:.6f} + curiosity)")
+    assert r2 >= config.step_penalty and r2 <= config.step_penalty + 0.002
     
     # 3. Test One-time Row Reward (Move back up to row 5 - ALREADY VISITED)
     action3 = ((6, 0), (5, 0))
@@ -53,9 +55,9 @@ def test_reward_hacking_fix():
     s4.board[6, 0] = 0
     s4.board[5, 0] = 5
     r3 = shaper(s3, action3, s4, False, None, info)
-    # Expected: 0 territory reward (row 5 is not < current max_row 5), only step penalty
-    print(f"Move 3 (Back to Row 5 - Visited): Reward = {r3:.6f} (Expected {config.step_penalty:.6f})")
-    assert abs(r3 - config.step_penalty) < 1e-7
+    # Expected: 0 territory reward (row 5 is not < current max_row 5), only step penalty + curiosity
+    print(f"Move 3 (Back to Row 5 - Visited): Reward = {r3:.6f} (Expected base {config.step_penalty:.6f} + curiosity)")
+    assert r3 >= config.step_penalty and r3 <= config.step_penalty + 0.002
     
     # 4. Test New Territory (Move to row 4)
     action4 = ((5, 0), (4, 0))
@@ -63,15 +65,17 @@ def test_reward_hacking_fix():
     s5.board[5, 0] = 0
     s5.board[4, 0] = 5
     r4 = shaper(s4, action4, s5, False, None, info)
-    # Expected: territory_advance again
-    print(f"Move 4 (New Row 4): Reward = {r4:.6f} (Expected ~{expected_r1:.6f})")
-    assert abs(r4 - expected_r1) < 1e-7
+    # Expected: territory_advance again + curiosity
+    print(f"Move 4 (New Row 4): Reward = {r4:.6f} (Expected base ~{expected_base:.6f} + curiosity)")
+    assert r4 >= expected_base and r4 <= expected_base + 0.002
     
     # 5. Test Mobility removal (Change 'num_valid_moves' in info)
+    # Note: Curiosity bonus decays between calls, so we can't get exact equality.
+    # Instead, verify that CHANGING mobility doesn't affect the CORE reward.
+    # The difference should only be due to curiosity decay, not mobility.
     info_high = {'num_valid_moves': 100, 'turn_count': 10}
     info_low = {'num_valid_moves': 10, 'turn_count': 11}
     
-    # These should give identical step-based rewards if mobility_bonus is gone
     # Using a neutral move (staying in same row if row reward wasn't state-based, but we just check diff)
     action_neutral = ((4, 0), (4, 1))
     s6 = s5.clone()
@@ -82,7 +86,10 @@ def test_reward_hacking_fix():
     r_low = shaper(s5, action_neutral, s6, False, None, info_low)
     
     print(f"High Mobility Reward: {r_high:.6f}, Low Mobility Reward: {r_low:.6f}")
-    assert abs(r_high - r_low) < 1e-7, "Mobility should not affect rewards anymore!"
+    # Both should have step_penalty as base. Difference is only curiosity decay (< 0.001).
+    # Verify neither reward is boosted by high mobility (no mobility bonus in play)
+    assert r_high >= config.step_penalty and r_high <= config.step_penalty + 0.002, "High mobility reward out of expected range!"
+    assert r_low >= config.step_penalty and r_low <= config.step_penalty + 0.002, "Low mobility reward out of expected range!"
     
     print("✅ Reward hacking fix verification passed!")
 

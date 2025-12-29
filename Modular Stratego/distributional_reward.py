@@ -55,20 +55,21 @@ class StrategoRewardConfig:
             return cls()
     # Weights for component mixing
     outcome_weight: float = 1.0     # Win/Loss/Draw
-    material_weight: float = 0.5    # Combat rewards
+    material_weight: float = 0.2    # Combat rewards (REDUCED from 0.5 to discourage grinding)
     epistemic_weight: float = 0.1   # Reduced to favor terminal outcome
     positional_weight: float = 0.05 # Strictly guidance, not a primary objective
     
-    # Terminal rewards (BOOSTED for sparse reward problem)
-    win_reward: float = 10.0        # 10x boost for clearer learning signal
+    # Terminal rewards - DIFFERENTIATED by win type
+    win_reward_flag: float = 15.0   # Flag capture = primary objective (BOOSTED)
+    win_reward_depletion: float = 5.0  # Opponent immobilized = secondary
+    win_reward: float = 10.0        # Fallback if win_type not specified
     loss_penalty: float = -10.0     # Symmetric loss penalty
     draw_penalty: float = -1.0      # Small penalty for draw (better than loss)
     
-    # Per-step penalties (REDUCED to prevent drowning out win signal)
-    # 1000 steps * 0.00005 = -0.05 total penalty (was -0.2)
-    step_penalty: float = -0.00005    # Flat penalty (reduced 4x)
-    step_penalty_mid: float = -0.00005 # consistency
-    step_penalty_late: float = -0.00005 # consistency
+    # Per-step penalties (scaled for 1000 step max)
+    step_penalty: float = -0.0001   # Slightly increased to encourage faster wins
+    step_penalty_mid: float = -0.0001 # consistency
+    step_penalty_late: float = -0.0001 # consistency
     stalemate_penalty: float = -0.05 # Penalty when mobility is suddenly restricted
     
     # Material rewards
@@ -85,6 +86,9 @@ class StrategoRewardConfig:
     territory_advance: float = 0.05 # One-time reward for reaching a new row
     center_control: float = 0.005
     flag_proximity_bonus: float = 0.05
+    
+    # Scout penetration bonus (encourage flag hunting)
+    scout_penetration_bonus: float = 0.3  # Scout reaching enemy back rank
     
     # Intrinsic Curiosity (exploration bonus)
     curiosity_weight: float = 0.1   # Weight for novelty bonus
@@ -120,10 +124,16 @@ class UnifiedRewardShaper:
                  winner: Optional[int], info: Dict[str, Any]) -> float:
         """Calculate the total normalized reward for this step."""
         
-        # 1. Terminal Outcomes
+        # 1. Terminal Outcomes - differentiated by win type
         if done:
             if winner == self.player_id:
-                return self.config.outcome_weight * self.config.win_reward
+                win_type = info.get('win_type', 'unknown')
+                if win_type == 'flag_capture':
+                    return self.config.outcome_weight * self.config.win_reward_flag
+                elif win_type == 'no_moves':
+                    return self.config.outcome_weight * self.config.win_reward_depletion
+                else:
+                    return self.config.outcome_weight * self.config.win_reward
             elif winner == -self.player_id:
                 return self.config.outcome_weight * self.config.loss_penalty
             elif winner == 0:
@@ -226,6 +236,16 @@ class UnifiedRewardShaper:
         if is_p1_near_top or is_p2_near_bot:
             corner_mult = 1.0 if c_to in (0, 1, 8, 9) else 0.5
             positional_r += self.config.flag_proximity_bonus * corner_mult
+        
+        # Scout penetration bonus (encourage flag hunting)
+        moving_piece_type = abs(int(prev_board[r_from, c_from].item()))
+        if moving_piece_type == PieceType.SCOUT.value:
+            # P1 scouts reaching rows 0-3 (enemy back rank)
+            if self.player_id == 1 and r_to <= 3:
+                positional_r += self.config.scout_penetration_bonus
+            # P2 scouts reaching rows 6-9 (enemy back rank)
+            elif self.player_id == -1 and r_to >= 6:
+                positional_r += self.config.scout_penetration_bonus
             
         # Stalemate prevention (Penalty only, no positive mobility bonus)
         curr_mob = info.get('num_valid_moves', 0)

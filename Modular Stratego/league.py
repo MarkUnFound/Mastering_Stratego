@@ -33,7 +33,7 @@ class LeagueManager:
         """Refresh the list of available agents from disk."""
         self.agents = glob.glob(os.path.join(self.league_dir, "agent_episode_*.pth"))
         self.agents.sort(key=lambda x: int(os.path.basename(x).split('_episode_')[1].split('.')[0]))
-        print(f"🏆 League Manager initialized with {len(self.agents)} historical agents.")
+        print(f"[INFO] League Manager initialized with {len(self.agents)} historical agents.")
         
     def save_agent(self, agent_path: str, episode: int):
         """
@@ -44,14 +44,14 @@ class LeagueManager:
             episode: Current episode number
         """
         if not os.path.exists(agent_path):
-            print(f"⚠️  Cannot save to league: Agent file {agent_path} not found.")
+            print(f"[WARN] Cannot save to league: Agent file {agent_path} not found.")
             return
             
         league_path = os.path.join(self.league_dir, f"agent_episode_{episode}.pth")
         
         try:
             shutil.copy2(agent_path, league_path)
-            print(f"🏆 Added agent to league: {league_path}")
+            print(f"[INFO] Added agent to league: {league_path}")
             self.agents.append(league_path)
             
             # Prune if too many agents (keep recent + random old ones)
@@ -59,7 +59,7 @@ class LeagueManager:
                 self._prune_league()
                 
         except Exception as e:
-            print(f"⚠️  Failed to save agent to league: {e}")
+            print(f"[WARN] Failed to save agent to league: {e}")
             
     def _prune_league(self):
         """Remove excess agents to keep league size manageable."""
@@ -75,9 +75,9 @@ class LeagueManager:
         try:
             os.remove(to_remove)
             self.agents.remove(to_remove)
-            print(f"🗑️  Pruned agent from league: {to_remove}")
+            print(f"[INFO] Pruned agent from league: {to_remove}")
         except Exception as e:
-            print(f"⚠️  Failed to prune agent: {e}")
+            print(f"[WARN] Failed to prune agent: {e}")
             
     def get_opponent(self) -> Optional[str]:
         """

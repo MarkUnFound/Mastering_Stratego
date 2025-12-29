@@ -104,9 +104,9 @@ class RainbowAgent:
                 if AAREN_USE_TORCHSCRIPT:
                     try:
                         self.shared_aaren = torch.jit.script(self.shared_aaren)
-                        print(f"✅ AAREN TorchScript compilation successful")
+                        print(f"[OK] AAREN TorchScript compilation successful")
                     except Exception as e:
-                        print(f"⚠️ AAREN TorchScript failed, using eager mode: {e}")
+                        print(f"[WARN] AAREN TorchScript failed, using eager mode: {e}")
                 
                 self.shared_aaren_optimizer = optim.AdamW(self.shared_aaren.parameters(), lr=0.001, weight_decay=0.01)
                 
@@ -166,10 +166,10 @@ class RainbowAgent:
                 beta_start=PER_BETA_START, beta_end=PER_BETA_END,
                 beta_anneal_episodes=PER_BETA_ANNEAL_EPISODES
             )
-            print(f"✅ [P{self.player_id}] Prioritized Experience Replay enabled (alpha={PER_ALPHA})")
+            print(f"[OK] [P{self.player_id}] Prioritized Experience Replay enabled (alpha={PER_ALPHA})")
         else:
             self.memory = StandardReplayBuffer(buffer_size, device=device)
-            print(f"✅ [P{self.player_id}] Standard Replay Buffer enabled")
+            print(f"[OK] [P{self.player_id}] Standard Replay Buffer enabled")
         
         # Data Augmentation Settings
         try:
@@ -185,7 +185,7 @@ class RainbowAgent:
         self.gamma_n = GAMMA_N
         if N_STEPS > 1:
             self.n_step_buffers = [NStepBuffer(n_steps=N_STEPS, gamma=gamma) for _ in range(max(num_envs, 1))]
-            print(f"✅ [P{self.player_id}] N-Step returns enabled (n={N_STEPS})")
+            print(f"[OK] [P{self.player_id}] N-Step returns enabled (n={N_STEPS})")
         else:
             self.n_step_buffers = None
         
@@ -195,7 +195,7 @@ class RainbowAgent:
             self.scheduler = optim.lr_scheduler.StepLR(
                 self.optimizer, step_size=LR_SCHEDULER_STEP_SIZE, gamma=LR_SCHEDULER_GAMMA
             )
-            print(f"✅ [P{self.player_id}] LR Scheduler enabled (step={LR_SCHEDULER_STEP_SIZE}, gamma={LR_SCHEDULER_GAMMA})")
+            print(f"[OK] [P{self.player_id}] LR Scheduler enabled (step={LR_SCHEDULER_STEP_SIZE}, gamma={LR_SCHEDULER_GAMMA})")
         
         # Metrics
         self.step_count = 0
@@ -270,9 +270,9 @@ class RainbowAgent:
             if AAREN_USE_TORCHSCRIPT:
                 try:
                     self.shared_aaren = torch.jit.script(self.shared_aaren)
-                    print(f"✅ AAREN TorchScript compilation successful (enable_pbs)")
+                    print(f"[OK] AAREN TorchScript compilation successful (enable_pbs)")
                 except Exception as e:
-                    print(f"⚠️ AAREN TorchScript failed, using eager mode: {e}")
+                    print(f"[WARN] AAREN TorchScript failed, using eager mode: {e}")
             
             self.shared_aaren_optimizer = optim.AdamW(self.shared_aaren.parameters(), lr=0.001, weight_decay=0.01)
             
@@ -294,7 +294,7 @@ class RainbowAgent:
             self.pbs = ProbabilisticBeliefState(self.player_id, self.device)
             self.pbs_instances = [self.pbs]
         
-        print(f"✅ PBS enabled for {self.name} ({num_envs} environments)")
+        print(f"[OK] PBS enabled for {self.name} ({num_envs} environments)")
 
     def update_target_network(self):
         """Soft update target network."""
@@ -513,8 +513,22 @@ class RainbowAgent:
     def act(self, state, valid_moves: List[Tuple[Tuple[int, int], Tuple[int, int]]], game_state=None):
         """
         Choose action using Noisy Nets (Exploration is implicit).
-        Calculates expected value from distribution.
+        Uses HeuristicMoveFilter to reduce action space for faster decisions.
         """
+        if not valid_moves:
+            return None
+            
+        # Pre-filter moves using heuristic filter for faster decisions
+        # This reduces action space from potentially 200+ to top 100 moves
+        if len(valid_moves) > 100:
+            filtered_scored = self.move_filter.get_filtered_actions(
+                state.actual_board if hasattr(state, 'actual_board') else state.board,
+                valid_moves, 
+                self.player_id,
+                max_moves=100
+            )
+            valid_moves = [move for move, score in filtered_scored]
+        
         state_tensor = self.get_state_representation(state, pbs_instance=self.pbs)
         if state_tensor.dim() == 3:
             state_tensor = state_tensor.unsqueeze(0)
@@ -979,7 +993,7 @@ class RainbowAgent:
         
         # --- Check for NaNs in Inputs ---
         if torch.isnan(rewards).any():
-             tqdm.write("⚠️  Warning: NaN detected in rewards batch. Skipping update.")
+             tqdm.write("[WARN] Warning: NaN detected in rewards batch. Skipping update.")
              return None
 
         # --- Distributional RL Target Calculation ---
@@ -1049,7 +1063,7 @@ class RainbowAgent:
         
         # Check for NaN/Inf (handle tensor properly)
         if torch.isnan(loss).any() or torch.isinf(loss).any():
-             print(f"⚠️  Warning: NaN/Inf detected in loss. Skipping update.")
+             print(f"[WARN] Warning: NaN/Inf detected in loss. Skipping update.")
              self.optimizer.zero_grad()
              return None
              self.optimizer.zero_grad()
@@ -1100,11 +1114,11 @@ class RainbowAgent:
             
             if self.pbs and 'pbs_state_dict' in checkpoint:
                 self.pbs.load_state_dict(checkpoint['pbs_state_dict'])
-                print(f"✅ PBS state loaded from {filepath}")
+                print(f"[OK] PBS state loaded from {filepath}")
                 
-            print(f"✅ Model loaded from {filepath} (Step: {self.step_count})")
+            print(f"[OK] Model loaded from {filepath} (Step: {self.step_count})")
         except Exception as e:
-            print(f"❌ Failed to load model from {filepath}: {e}")
+            print(f"[ERROR] Failed to load model from {filepath}: {e}")
 
     def get_average_q(self) -> float:
         """

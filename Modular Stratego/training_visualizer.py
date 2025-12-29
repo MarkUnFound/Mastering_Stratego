@@ -403,7 +403,7 @@ def create_training_gif(model_save_path: str, episode: int, gif_duration: int = 
                      if int(img.split('_')[-1].split('.')[0]) <= episode]
         
         if not progress_images and not pbs_images:
-            print(f"⚠️  No images found for GIF creation at episode {episode}")
+            print(f"[WARN] No images found for GIF creation at episode {episode}")
             return
         
         # Combine and sort by episode number
@@ -456,7 +456,7 @@ def create_training_gif(model_save_path: str, episode: int, gif_duration: int = 
                 frames.append(Image.open(image_dict[ep_num]['pbs']))
         
         if not frames:
-            print(f"⚠️  No frames to create GIF at episode {episode}")
+            print(f"[WARN] No frames to create GIF at episode {episode}")
             return
         
         # Save GIF
@@ -470,10 +470,10 @@ def create_training_gif(model_save_path: str, episode: int, gif_duration: int = 
             optimize=True
         )
         
-        print(f"🎬 Training GIF saved to {gif_path} ({len(frames)} frames)")
+        print(f"[INFO] Training GIF saved to {gif_path} ({len(frames)} frames)")
         
     except Exception as e:
-        print(f"⚠️  Error creating training GIF at episode {episode}: {e}")
+        print(f"[WARN] Error creating training GIF at episode {episode}: {e}")
         import traceback
         traceback.print_exc()
 
@@ -614,7 +614,7 @@ def create_episode_gif(game_states: List[Dict], episode: int, save_path: str,
     """
     try:
         if not game_states:
-            print(f"⚠️  No game states to create GIF for episode {episode}")
+            print(f"[WARN] No game states to create GIF for episode {episode}")
             return
         
         frames = []
@@ -628,7 +628,7 @@ def create_episode_gif(game_states: List[Dict], episode: int, save_path: str,
             frames.append(img)
         
         if not frames:
-            print(f"⚠️  No frames created for episode {episode}")
+            print(f"[WARN] No frames created for episode {episode}")
             return
         
         # Save GIF
@@ -642,10 +642,10 @@ def create_episode_gif(game_states: List[Dict], episode: int, save_path: str,
             optimize=True
         )
         
-        print(f"🎬 Episode GIF saved to {save_path} ({len(frames)} frames, {frame_duration}ms per frame)")
+        print(f"[INFO] Episode GIF saved to {save_path} ({len(frames)} frames, {frame_duration}ms per frame)")
         
     except Exception as e:
-        print(f"⚠️  Error creating episode GIF for episode {episode}: {e}")
+        print(f"[WARN] Error creating episode GIF for episode {episode}: {e}")
         import traceback
         traceback.print_exc()
 
@@ -868,9 +868,9 @@ def plot_pbs_evaluator_progress(
     # Save the figure
     try:
         plt.savefig(save_path, dpi=150, bbox_inches='tight')
-        print(f"📊 PBS/AAREN progress plot saved to {save_path}")
+        print(f"[INFO] PBS/AAREN progress plot saved to {save_path}")
     except Exception as e:
-        print(f"⚠️  Error saving PBS evaluator plot: {e}")
+        print(f"[WARN] Error saving PBS evaluator plot: {e}")
     
     plt.close(fig)
 
