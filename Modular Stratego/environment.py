@@ -352,17 +352,18 @@ class StrategoEnvironment:
         if self.game_over:
             return self._get_game_state(), 0.0, True, {"winner": self.winner}
 
-        # Check for max turns (draw) - reduced to encourage faster games
-        if self.turn_count >= 2000:
+        # Check for max turns (draw) - increased to 4000 for longer games
+        if self.turn_count >= 4000:
             self.game_over = True
             self.winner = 0
             return self._get_game_state(), -1.0, True, {"winner": 0, "revealed_in_step": [], "game_phase": "end", "turn_count": self.turn_count}
             
         if action is None:
-            # No valid moves possible - player loses
+            # No valid moves possible - DRAW (both agents lose)
+            # This prevents learning to win by starving opponent of moves
             self.game_over = True
-            self.winner = -self.current_player
-            return self._get_game_state(), -1.0, True, {"winner": self.winner, "revealed_in_step": [], "game_phase": "end", "turn_count": self.turn_count}
+            self.winner = 0  # Draw instead of opponent win
+            return self._get_game_state(), -1.0, True, {"winner": 0, "revealed_in_step": [], "game_phase": "end", "turn_count": self.turn_count}
 
         (r_from, c_from), (r_to, c_to) = action
         
@@ -524,7 +525,9 @@ class StrategoEnvironment:
             # Check if current player has any valid moves
             if not self.get_valid_moves():
                 self.game_over = True
-                self.winner = -self.current_player # Player who cannot move loses
+                # Player who cannot move loses - opponent wins
+                # This follows standard Stratego rules and rewards material dominance
+                self.winner = -self.current_player
         
         # Early draw detection (start checking after 100 turns to catch deadlocks faster)
         if self.turn_count > 100:
@@ -541,8 +544,8 @@ class StrategoEnvironment:
                 self.winner = 0
                 return
         
-        # Hard limit (1000 turns = draw)
-        if self.turn_count >= 1000:
+        # Hard limit (4000 turns = draw)
+        if self.turn_count >= 4000:
             self.game_over = True
             self.winner = 0
             

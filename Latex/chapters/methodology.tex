@@ -122,7 +122,7 @@ During training, the PBS is compared against the true game state to provide supe
 Training the MARQ agent is computationally intensive due to the large state-action space and the need to learn accurate belief state representations over extended game histories.
 
 \paragraph{Rainbow DQN Architecture.}
-MARQ employs a Rainbow DQN architecture that integrates several algorithmic improvements over the standard DQN. The implementation includes Categorical DQN (C51) for distributional value estimation with 51 atoms over the support $[V_{min}, V_{max}] = [-3, 3]$, Noisy Networks for learned exploration (replacing $\epsilon$-greedy), and Dueling Network Architecture separating state value and action advantage estimation. The noisy linear layers inject state-dependent stochasticity, enabling the agent to learn appropriate exploration levels for different game situations without manual scheduling.
+MARQ employs a Rainbow DQN architecture that integrates several algorithmic improvements over the standard DQN. The implementation includes Categorical DQN (C51) for distributional value estimation with 51 atoms over the support $[V_{min}, V_{max}] = [-15, 15]$, Noisy Networks for learned exploration (replacing $\epsilon$-greedy), and Dueling Network Architecture separating state value and action advantage estimation. The noisy linear layers inject state-dependent stochasticity, enabling the agent to learn appropriate exploration levels for different game situations without manual scheduling.
 
 \paragraph{Network Structure.}
 The Q-network employs a Deep Residual Network (ResNet) backbone to capture long-range spatial dependencies across the board. The architecture consists of an initial convolutional layer (64 filters, $3 \times 3$ kernel) followed by six residual blocks (twelve convolutional layers total), each containing two convolutional layers with Instance Normalization and ReLU activation. This deep feature extractor feeds into the dueling streams, allowing for more abstract strategic reasoning compared to shallow architectures. The 27-channel state representation is partitioned into two components, as detailed in Table \ref{tab:state_channels}.
@@ -175,12 +175,12 @@ R_{total} = w_o R_{outcome} + w_m R_{material} + w_e R_{epistemic} + w_p R_{posi
 where weights are established as $w_o = 1.0$, $w_m = 0.5$, $w_e = 0.1$, and $w_p = 0.05$. This hierarchy ensures that the primary objective (winning) remains paramount, while auxiliary tactical signals are strictly limited to guidance and cannot accumulate to magnitudes that incentivise reward hacking.
 
 \paragraph{Rationale for Distributional Scaling.}
-The choice of a normalized range $[V_{min}, V_{max}] = [-3, 3]$ is fundamentally linked to the use of C51 distributional RL. A narrow, well-defined support allows the 51 atoms to resolve fine-grained differences in value estimates ($\delta_z \approx 0.12$). If rewards were not normalized, large cumulative returns would exceed the support bounds, leading to "saturation" where the agent cannot distinguish between varying high-value outcomes. Specifically:
-    \item \textbf{Terminal Outcomes}: Terminal rewards are normalized to $\pm 1.0$ for wins and losses. A draw receives $-0.5$, establishing it as an outcome that is strategically inferior to a victory but superior to an outright loss, thereby providing a more nuanced gradient for games that reach the maximum step count.
-    \item \textbf{High-Level Time Pressure}: To incentivize efficient victories, a non-linear step penalty is applied based on the episode duration. The penalty begins at $-0.0001$ per step, increasing to $-0.0002$ after 500 steps, and reaching $-0.0005$ after 1000 steps. This refined scaling ensures that the "urgency" signal remains present without accumulating to a magnitude that overshadows the primary reward for winning.
-    \item \textbf{Positional Constraints}: To prevent "movement farming," positional rewards for territory advancement are state-based rather than move-based. The agent receives a one-time bonus of $+0.05$ only when it reaches a new row closer to the enemy base for the first time in an episode.
-    \item \textbf{Sparse Reward Mitigation}: In Stratego, a game can last hundreds of moves without a capture. Dense rewards for information gain and territory advancement (upgraded to $+0.02$ per forward step) provide a continuous gradient that guides the agent toward the enemy base even when the ultimate win reward is distant.
-    \item \textbf{Risk Sensitivity}: By including epistemic rewards (bonuses for revealing pieces), the distributional network learns the variance inherent in attacking unknown pieces, allowing for more risk-aware strategic decisions.
+The choice of support range $[V_{min}, V_{max}] = [-15, 15]$ is calibrated to accommodate boosted terminal rewards. With 51 atoms, the distribution resolution is $\delta_z = 0.6$, providing sufficient granularity while allowing the full range of expected returns to be represented:
+\begin{itemize}
+    \item \textbf{Terminal Outcomes}: Win and loss rewards are set to $\pm 10.0$ to provide a strong learning signal in this sparse reward environment. A draw receives $-1.0$, indicating it is preferable to a loss but inferior to a win.
+    \item \textbf{Step Penalty}: A constant penalty of $-0.00005$ per step provides light time pressure. Over a 4000-step game, this accumulates to $-0.2$, which does not overwhelm the terminal reward.
+    \item \textbf{Positional Constraints}: To prevent movement farming, positional rewards for territory advancement are state-based. The agent receives a one-time bonus of $+0.05$ when reaching a new row closer to the enemy base.
+    \item \textbf{Sparse Reward Mitigation}: Dense rewards for information gain (revealing enemy pieces) and center control provide guidance when the terminal reward is distant.
 \end{itemize}
 
 \paragraph{Architectural Evolution and Implementation History.}
@@ -230,6 +230,42 @@ Convergence can be accelerated through adaptive learning rate control. A step de
 \end{equation}
 
 \noindent where $\alpha_0 = 10^{-4}$ is the initial learning rate and $e$ is the episode count. This schedule enables aggressive early learning while maintaining stability as the policy approaches convergence.
+
+\subsection{Action Space Reduction via Heuristic Filtering}
+The full action space in Stratego consists of 400 discrete actions, encoding each starting position on the $10 \times 10$ board paired with four cardinal directions. However, many of these actions are either illegal (moving off-board or into lakes) or strategically irrelevant at any given game state. Presenting all 400 outputs to the network, even with invalid action masking, introduces noise into the learning process as the network must learn to distinguish between many low-value alternatives.
+
+\paragraph{Heuristic Move Scoring.}
+To address this, a heuristic pre-filter scores all legal moves and selects the top-$k$ candidates (where $k=100$ by default) for consideration. The scoring function assigns points based on the following criteria:
+
+\begin{table}[h]
+\centering
+\caption{Heuristic scoring criteria for move filtering.}
+\label{tab:heuristic_scoring}
+\begin{tabular}{lcp{7cm}}
+\hline
+\textbf{Criterion} & \textbf{Score} & \textbf{Rationale} \\
+\hline
+Attack (target is enemy) & $+100$ & Captures are always strategically relevant \\
+Forward advancement & $+5/\text{row}$ & Territorial progress toward enemy base \\
+Center control (cols 3--6) & $+10$ & Central positioning provides flexibility \\
+Retreat & $-20$ & Backward movement is generally defensive \\
+Scout distance ($>1$ square) & $+2/\text{sq}$ & Long-range reconnaissance value \\
+\hline
+\end{tabular}
+\end{table}
+
+\paragraph{Action Masking Integration.}
+Rather than modifying the network architecture, the filtering is implemented through action masking at inference time. The network retains its 400-dimensional output, preserving consistent action semantics throughout training. For each decision:
+
+\begin{enumerate}
+    \item All legal moves are scored using the heuristic function.
+    \item Moves above a threshold (score $> 50$) are unconditionally included.
+    \item The remaining positions are filled from the next highest-scoring moves until 100 actions are selected.
+    \item A binary mask is constructed where selected actions receive weight 0 and excluded actions receive $-\infty$.
+    \item The mask is added to the Q-value output before argmax selection.
+\end{enumerate}
+
+This approach ensures that attack moves and forward advances are always available for selection, while low-value shuffling moves are pruned. The fixed output dimensionality prevents the representational instability that would occur if the network had to learn different action encodings across game states.
 
 
 \begin{figure}[htbp]

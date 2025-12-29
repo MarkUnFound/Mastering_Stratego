@@ -28,14 +28,17 @@ if PBS_EVALUATOR_AVAILABLE:
     from pbs_evaluator import PBSEvaluator
 from prioritized_memory import StandardReplayBuffer, PrioritizedReplayBuffer, NStepBuffer, Experience
 
+# Heuristic Action Filter for Top-100 move selection
+from heuristic_filter import HeuristicMoveFilter
+
 # C51 Hyperparameters - CRITICAL FOR DISTRIBUTIONAL RL
 # The support range must match the expected return scale!
-# With normalized rewards (terminal ±1.0):
-#   - Max expected return: ~+2.5 (win + captures + bonuses)
-#   - Min expected return: ~-2.5 (loss + losses + steps)
-# Using [-3.0, +3.0] covers the full range of likely updates
-V_MIN = -3.0   # Matches normalized scale
-V_MAX = 3.0    # Matches normalized scale
+# With boosted rewards (win_reward=±10.0):
+#   - Max expected return: ~+15 (win + captures + bonuses)
+#   - Min expected return: ~-15 (loss + losses + penalties)
+# Using [-15.0, +15.0] covers the full range with margin
+V_MIN = -15.0   # Expanded to match boosted reward scale
+V_MAX = 15.0    # Expanded to match boosted reward scale
 NUM_ATOMS = 51
 
 
@@ -202,8 +205,14 @@ class RainbowAgent:
         self.scaler = torch.amp.GradScaler('cuda')
         self.amp_enabled = True
         
+        # Heuristic Action Filter for Top-100 move selection
+        self.move_filter = HeuristicMoveFilter()
+        self.use_heuristic_filter = True  # Can be disabled for debugging
+        self.max_filtered_moves = 100
+        
         # Cache for state tensors (to avoid redundant computation in remember_batch)
         self._cached_state_tensor = None  # Cached from act_batch
+
 
     def reset(self):
         """Reset the agent"""
@@ -636,42 +645,83 @@ class RainbowAgent:
             
         self.q_network.train()
         
-        # 4. Process each env
+        # 4. Process each env with HEURISTIC ACTION MASKING
         for i in range(batch_size):
             valid_moves = valid_moves_list[i]
             if not valid_moves:
                 continue
-                
-            # No epsilon check - Noisy Nets handle exploration
             
-            # Filter moves for 400-action space (Scouts act as normal pieces)
-            valid_q_values = []
-            valid_moves_filtered = []
-            for move in valid_moves:
-                (r1, c1), (r2, c2) = move
-                dist = abs(r2 - r1) + abs(c2 - c1)
-                # Filter for 400-action space: Only 1-step moves allowed
-                if dist > 1:
+            # Get board for heuristic scoring
+            board = states[i]
+            if hasattr(board, 'board'):
+                board = board.board
+            
+            if self.use_heuristic_filter:
+                # ============================================================
+                # HEURISTIC ACTION MASKING
+                # 1. Score all moves using strategic heuristics
+                # 2. Create mask that only allows Top-100 moves
+                # 3. Apply mask to Q-values before argmax
+                # ============================================================
+                action_mask, filtered_moves = self.move_filter.get_action_mask(
+                    board=board,
+                    legal_moves=valid_moves,
+                    player_id=self.player_id,
+                    action_size=self.action_size,
+                    max_moves=self.max_filtered_moves,
+                    device=self.device
+                )
+                
+                if not filtered_moves:
+                    # Fallback if filter returned nothing (shouldn't happen)
+                    if valid_moves:
+                        actions[i] = valid_moves[0]
                     continue
-                    
-                action_idx = self._move_to_action_index(move)
-                q_val = expected_q_values[i, action_idx].item()
                 
-                uncertainty = self.get_move_uncertainty(move, uncertainty_maps[i])
-                exploration_bonus = uncertainty * self.uncertainty_exploration_multiplier
-                valid_q_values.append(q_val + exploration_bonus)
-                # Also store the move itself to map back correctly
-                valid_moves_filtered.append(move)
-            
-            if not valid_moves_filtered:
-                # If all moves were filtered (e.g. trapped scout?), pick random valid move or force length 1?
-                # This ensures we don't crash if only long moves exist (unlikely in Stratego)
-                if valid_moves:
-                     actions[i] = valid_moves[0] # Fallback
-                continue
-
-            best_move_idx = np.argmax(valid_q_values)
-            actions[i] = valid_moves_filtered[best_move_idx]
+                # Apply mask to Q-values: masked actions get -inf
+                masked_q = expected_q_values[i] + action_mask
+                
+                # Add uncertainty bonus (only for unmasked actions)
+                if uncertainty_maps[i]:
+                    for move in filtered_moves:
+                        action_idx = self._move_to_action_index(move)
+                        if action_idx is not None and action_mask[action_idx] == 0.0:
+                            uncertainty = self.get_move_uncertainty(move, uncertainty_maps[i])
+                            masked_q[action_idx] += uncertainty * self.uncertainty_exploration_multiplier
+                
+                # Select best action from masked Q-values
+                best_action_idx = masked_q.argmax().item()
+                best_move = self._action_index_to_move(best_action_idx)
+                
+                if best_move is not None:
+                    actions[i] = best_move
+                elif filtered_moves:
+                    actions[i] = filtered_moves[0]  # Fallback
+            else:
+                # LEGACY: Original filtering (no heuristics)
+                valid_q_values = []
+                valid_moves_filtered = []
+                for move in valid_moves:
+                    (r1, c1), (r2, c2) = move
+                    dist = abs(r2 - r1) + abs(c2 - c1)
+                    if dist > 1:
+                        continue
+                    
+                    action_idx = self._move_to_action_index(move)
+                    q_val = expected_q_values[i, action_idx].item()
+                    
+                    uncertainty = self.get_move_uncertainty(move, uncertainty_maps[i])
+                    exploration_bonus = uncertainty * self.uncertainty_exploration_multiplier
+                    valid_q_values.append(q_val + exploration_bonus)
+                    valid_moves_filtered.append(move)
+                
+                if not valid_moves_filtered:
+                    if valid_moves:
+                        actions[i] = valid_moves[0]
+                    continue
+                
+                best_move_idx = np.argmax(valid_q_values)
+                actions[i] = valid_moves_filtered[best_move_idx]
             
             if self.pbs_instances and game_states and game_states[i]:
                 actual_env_idx = env_indices[i]

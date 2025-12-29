@@ -58,7 +58,7 @@ from training_utils import save_training_history, load_training_history
 from preflight_checks import run_preflight_checks
 
 # Curriculum and Reward Shaping
-from curriculum import CurriculumManager, TrainingPhase, HeuristicOpponent, SmartHeuristicOpponent
+from curriculum import CurriculumManager, TrainingPhase, HeuristicOpponent, SmartHeuristicOpponent, TrueRandomOpponent
 from exploiter_agents import get_random_exploiter, RusherAgent, TurtleAgent, FlankingAgent
 from scenario_drills import get_scenario_drill, get_random_scenario
 
@@ -148,6 +148,7 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
     greedy_agent = GreedyAgent(device=device, player_id=-1, config=master_reward_config)
     heuristic_agent = HeuristicOpponent(device=device, player_id=-1)  # Frozen heuristic for Phase 2
     smart_heuristic_agent = SmartHeuristicOpponent(device=device, player_id=-1)  # Strong heuristic opponent
+    true_random_agent = TrueRandomOpponent(device=device, player_id=-1)  # Truly random opponent (easiest)
     
     # Initialize Curriculum Manager
     curriculum = None
@@ -381,7 +382,10 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                     break
             
             # Configure opponent based on type
-            if opponent_type == "random":
+            if opponent_type == "true_random":
+                current_opponent = true_random_agent
+                opponent_uses_pbs = False
+            elif opponent_type == "random":
                 current_opponent = random_agent
                 opponent_uses_pbs = False
             elif opponent_type in ["heuristic", "frozen_heuristic"]:
@@ -860,10 +864,11 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                 agent2.train_pbs(epochs=5)
         
         # --- PERIODIC PLOTTING (every plot_interval episodes) ---
-        if completed_episodes > 0 and completed_episodes % plot_interval == 0:
-            plot_episode = (completed_episodes // plot_interval) * plot_interval
-            
-            if plot_episode != metrics.get('last_plot_episode', 0):
+        # Robust check: trigger if we passed a new multiple of plot_interval
+        current_plot_milestone = (completed_episodes // plot_interval) * plot_interval
+        if completed_episodes > 0 and current_plot_milestone > metrics.get('last_plot_episode', 0):
+            plot_episode = current_plot_milestone
+            if True: # Preserve indentation for subsequent block
                 metrics['last_plot_episode'] = plot_episode
                 
                 # Q-value and entropy metrics
@@ -918,10 +923,11 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
         
 
         # --- PERIODIC MODEL SAVES (every SAVE_INTERVAL episodes) ---
-        if completed_episodes > 0 and completed_episodes % save_interval == 0 and completed_episodes != start_episode:
-            save_episode = (completed_episodes // save_interval) * save_interval
-            
-            if save_episode != metrics.get('last_save_episode', 0):
+        # Robust check: trigger if we passed a new multiple of save_interval
+        current_save_milestone = (completed_episodes // save_interval) * save_interval
+        if completed_episodes > 0 and current_save_milestone > metrics.get('last_save_episode', 0) and completed_episodes != start_episode:
+            save_episode = current_save_milestone
+            if True: # Preserve indentation for subsequent block
                 metrics['last_save_episode'] = save_episode
                 
                 # Save models
@@ -954,17 +960,17 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                     piece_tracker.log_comparison(save_episode)
                     piece_tracker.save()
                 
-        # --- UPDATE PROGRESS BAR ---
-
-        recent_reward = np.mean(metrics['rewards_p1'][-10:]) if metrics['rewards_p1'] else 0.0
-        phase_val = curriculum.current_phase.value if curriculum and CURRICULUM_ENABLED else 1
-        pbar.set_postfix({
-            'R1': f"{recent_reward:.2f}",
-            'W1': metrics['wins_p1'],
-            'W2': metrics['wins_p2'],
-            'Ph': phase_val,
-            'Steps': f"{global_step//1000}k"
-        })
+        # --- UPDATE PROGRESS BAR (only when episodes complete) ---
+        if reset_commands:
+            recent_reward = np.mean(metrics['rewards_p1'][-10:]) if metrics['rewards_p1'] else 0.0
+            phase_val = curriculum.current_phase.value if curriculum and CURRICULUM_ENABLED else 1
+            pbar.set_postfix({
+                'R1': f"{recent_reward:.2f}",
+                'W1': metrics['wins_p1'],
+                'W2': metrics['wins_p2'],
+                'Ph': phase_val,
+                'Steps': f"{global_step//1000}k"
+            })
         
     
     pbar.close()

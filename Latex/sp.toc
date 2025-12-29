@@ -119,12 +119,15 @@
 \contentsline {paragraph}{Architectural Evolution and Implementation History.}{50}{}%
 \contentsline {paragraph}{Positional and Anti-Stall Mechanisms.}{51}{}%
 \contentsline {paragraph}{Experience Replay Optimization.}{51}{}%
-\contentsline {paragraph}{Multi-Step Returns.}{52}{}%
+\contentsline {paragraph}{Multi-Step Returns.}{51}{}%
 \contentsline {paragraph}{Learning Rate Scheduling.}{52}{}%
-\contentsline {subsection}{\numberline {4.3.2}Deployment}{53}{}%
-\contentsline {section}{\numberline {4.4}Evaluation}{54}{}%
-\contentsline {paragraph}{Quantitative Analysis.}{54}{}%
-\contentsline {paragraph}{Qualitative Analysis.}{54}{}%
-\contentsline {paragraph}{Model Iteration and Initial Results.}{54}{}%
-\contentsline {chapter}{\numberline {A}Gantt Chart}{56}{}%
-\contentsline {chapter}{\numberline {B}System UI and Training}{59}{}%
+\contentsline {subsection}{\numberline {4.3.2}Action Space Reduction via Heuristic Filtering}{52}{}%
+\contentsline {paragraph}{Heuristic Move Scoring.}{52}{}%
+\contentsline {paragraph}{Action Masking Integration.}{52}{}%
+\contentsline {subsection}{\numberline {4.3.3}Deployment}{54}{}%
+\contentsline {section}{\numberline {4.4}Evaluation}{55}{}%
+\contentsline {paragraph}{Quantitative Analysis.}{55}{}%
+\contentsline {paragraph}{Qualitative Analysis.}{55}{}%
+\contentsline {paragraph}{Model Iteration and Initial Results.}{55}{}%
+\contentsline {chapter}{\numberline {A}Gantt Chart}{57}{}%
+\contentsline {chapter}{\numberline {B}System UI and Training}{60}{}%

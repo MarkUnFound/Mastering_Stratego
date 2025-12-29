@@ -5,19 +5,18 @@ Configuration settings for DQN training.
 # =============================================================================
 # HARDWARE & TRAINING SCALE CONFIGURATION (Fixed)
 # =============================================================================
-NUM_LANES = 16             # Reduced to 8 (Safe for 6GB VRAM)
+NUM_LANES = 8             # Reduced to 8 (Safe for 6GB VRAM)
 NUM_ENVS = NUM_LANES      # LEGACY alias - always equals NUM_LANES (kept for compatibility)
-BATCH_SIZE = 512          # Reduced to 256 (Safe for 6GB VRAM)
-GAMMA = 0.99           # Discount factor (User requested 0.99 for long-term depth)
-MEMORY_SIZE = 300000      # 200k on GPU (~2.2GB) to leave room for model and batches
+BATCH_SIZE = 256          # Reduced to 256 (Safe for 6GB VRAM)
+GAMMA = 0.995           # Discount factor (User requested 0.99 for long-term depth)
+MEMORY_SIZE = 150000      # 200k on GPU (~2.2GB) to leave room for model and batches
 LEARNING_RATE = 0.0001    # Learning rate (increased for ±100 reward scale)
 NUM_EPISODES = 35000      # Total training episodes (individual games, not batches)
-SAVE_INTERVAL = 500       # Save model/export agent every N episodes
+SAVE_INTERVAL = 250       # Save model/export agent every N episodes
 PLOT_INTERVAL = 100       # Save metrics plots every N episodes
 EVAL_INTERVAL = 100       # Evaluate agent every N episodes
-PREFETCH_QUEUE_SIZE = 4   # Prefetch queue for data loading
 REPLAY_UPDATE_INTERVAL = 1    # Train every step (maximized for data augmentation)
-TARGET_UPDATE_INTERVAL = 5000  # Soft update target network every N steps
+TARGET_UPDATE_INTERVAL = 10000  # Soft update target network every N steps
 REWARD_SCALE = 1.0        # Scaling factor for reward calculations
 
 # Multi-Step Returns (N-Step DQN)

@@ -6,5 +6,6 @@
 \contentsline {table}{\numberline {4.1}{\ignorespaces Strategic ability bonuses for pieces with special capabilities.}}{45}{}%
 \contentsline {table}{\numberline {4.2}{\ignorespaces Computed piece values with associated combat and survival metrics.}}{46}{}%
 \contentsline {table}{\numberline {4.3}{\ignorespaces State representation input channels for the Rainbow DQN.}}{48}{}%
+\contentsline {table}{\numberline {4.4}{\ignorespaces Heuristic scoring criteria for move filtering.}}{52}{}%
 \addvspace {10\p@ }
 \addvspace {10\p@ }

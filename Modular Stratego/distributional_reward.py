@@ -12,6 +12,9 @@ from dataclasses import dataclass
 from piece import PieceType
 from game_state import GameState
 
+# Intrinsic Curiosity for exploration
+from intrinsic_curiosity import StateNoveltyTracker
+
 # Piece rank values for reward calculations (1-10 scale)
 PIECE_RANKS = {
     PieceType.FLAG: 0,
@@ -56,16 +59,16 @@ class StrategoRewardConfig:
     epistemic_weight: float = 0.1   # Reduced to favor terminal outcome
     positional_weight: float = 0.05 # Strictly guidance, not a primary objective
     
-    # Terminal rewards (Normalized for [-1, +1] support)
-    win_reward: float = 1.0         # Normalized Win
-    loss_penalty: float = -1.0      # Normalized Loss
-    draw_penalty: float = -0.1      # Small penalty for draw (better than loss)
+    # Terminal rewards (BOOSTED for sparse reward problem)
+    win_reward: float = 10.0        # 10x boost for clearer learning signal
+    loss_penalty: float = -10.0     # Symmetric loss penalty
+    draw_penalty: float = -1.0      # Small penalty for draw (better than loss)
     
-    # Per-step penalties (Linear for consistency)
-    # 1000 steps * 0.0002 = -0.2 total penalty
-    step_penalty: float = -0.0002    # Flat penalty
-    step_penalty_mid: float = -0.0002 # consistency
-    step_penalty_late: float = -0.0002 # consistency
+    # Per-step penalties (REDUCED to prevent drowning out win signal)
+    # 1000 steps * 0.00005 = -0.05 total penalty (was -0.2)
+    step_penalty: float = -0.00005    # Flat penalty (reduced 4x)
+    step_penalty_mid: float = -0.00005 # consistency
+    step_penalty_late: float = -0.00005 # consistency
     stalemate_penalty: float = -0.05 # Penalty when mobility is suddenly restricted
     
     # Material rewards
@@ -82,21 +85,35 @@ class StrategoRewardConfig:
     territory_advance: float = 0.05 # One-time reward for reaching a new row
     center_control: float = 0.005
     flag_proximity_bonus: float = 0.05
+    
+    # Intrinsic Curiosity (exploration bonus)
+    curiosity_weight: float = 0.1   # Weight for novelty bonus
+    curiosity_bonus_scale: float = 0.01  # Max bonus per novel state
 
 
 class UnifiedRewardShaper:
     """Standardized reward calculator for all Stratego RL components."""
     
-    def __init__(self, player_id: int, config: Optional[StrategoRewardConfig] = None):
+    def __init__(self, player_id: int, config: Optional[StrategoRewardConfig] = None, device: str = 'cuda'):
         self.player_id = player_id
         self.config = config or StrategoRewardConfig()
+        self.device = device
+        
+        # Initialize novelty tracker for intrinsic curiosity
+        self.novelty_tracker = StateNoveltyTracker(
+            bonus_scale=self.config.curiosity_bonus_scale,
+            decay_rate=0.5,
+            device=device
+        )
         self.reset()
         
     def reset(self):
         """Reset per-episode tracking."""
         self.revealed_types: Set[PieceType] = set()
         self.revealed_positions: Set[Tuple[int, int]] = set()
-        self.max_row_reached: int = 10 if self.player_id == 1 else -1 
+        self.max_row_reached: int = 10 if self.player_id == 1 else -1
+        # Note: We don't reset novelty_tracker - it persists across episodes
+        # to encourage exploration of truly novel states 
         
     def __call__(self, previous_state: GameState, action: Optional[Tuple], 
                  current_state: GameState, done: bool, 
@@ -217,12 +234,17 @@ class UnifiedRewardShaper:
             
         reward_components['positional'] = positional_r * self.config.positional_weight
         
+        # 5. Intrinsic Curiosity (Novelty Bonus)
+        state_tensor = current_state.board
+        novelty_bonus = self.novelty_tracker.get_novelty_bonus(state_tensor)
+        reward_components['curiosity'] = novelty_bonus * self.config.curiosity_weight
+        
         total_reward = sum(reward_components.values())
         return total_reward
 
-def create_unified_reward_shaper(player_id: int = 1, config: Optional[StrategoRewardConfig] = None):
+def create_unified_reward_shaper(player_id: int = 1, config: Optional[StrategoRewardConfig] = None, device: str = 'cuda'):
     """Factory function for creating the shaper."""
-    return UnifiedRewardShaper(player_id=player_id, config=config)
+    return UnifiedRewardShaper(player_id=player_id, config=config, device=device)
 
 # Legacy aliases for compatibility
 DistributionalRewardConfig = StrategoRewardConfig

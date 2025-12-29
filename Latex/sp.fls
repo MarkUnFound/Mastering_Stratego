@@ -198,6 +198,33 @@ INPUT C:\Users\Mark Lawrence Quibot\AppData\Local\Programs\MiKTeX\tex\latex\l3ba
 INPUT .\sp.aux
 INPUT .\sp.aux
 INPUT sp.aux
+INPUT .\misc\dedication.aux
+INPUT .\misc\dedication.aux
+INPUT misc\dedication.aux
+INPUT .\misc\acknowledgements.aux
+INPUT .\misc\acknowledgements.aux
+INPUT misc\acknowledgements.aux
+INPUT .\chapters\introduction.aux
+INPUT .\chapters\introduction.aux
+INPUT chapters\introduction.aux
+INPUT .\chapters\review.aux
+INPUT .\chapters\review.aux
+INPUT chapters\review.aux
+INPUT .\chapters\techbackground.aux
+INPUT .\chapters\techbackground.aux
+INPUT chapters\techbackground.aux
+INPUT .\chapters\methodology.aux
+INPUT .\chapters\methodology.aux
+INPUT chapters\methodology.aux
+INPUT .\chapters\AppendixA.aux
+INPUT .\chapters\AppendixA.aux
+INPUT chapters\AppendixA.aux
+INPUT .\chapters\AppendixB.aux
+INPUT .\chapters\AppendixB.aux
+INPUT chapters\AppendixB.aux
+INPUT .\misc\vita.aux
+INPUT .\misc\vita.aux
+INPUT misc\vita.aux
 OUTPUT sp.aux
 INPUT C:\Users\Mark Lawrence Quibot\AppData\Local\Programs\MiKTeX\tex\context\base\mkii\supp-pdf.mkii
 INPUT C:\Users\Mark Lawrence Quibot\AppData\Local\Programs\MiKTeX\tex\context\base\mkii\supp-pdf.mkii
@@ -254,8 +281,17 @@ INPUT .\misc\acknowledgements.tex
 INPUT misc\acknowledgements.tex
 INPUT C:\Users\Mark Lawrence Quibot\AppData\Local\Programs\MiKTeX\fonts\tfm\public\cm\cmr17.tfm
 INPUT C:\Users\Mark Lawrence Quibot\AppData\Local\Programs\MiKTeX\fonts\tfm\public\cm\cmbx12.tfm
+INPUT .\sp.toc
+INPUT .\sp.toc
+INPUT sp.toc
 OUTPUT sp.toc
+INPUT .\sp.lof
+INPUT .\sp.lof
+INPUT sp.lof
 OUTPUT sp.lof
+INPUT .\sp.lot
+INPUT .\sp.lot
+INPUT sp.lot
 OUTPUT sp.lot
 INPUT .\chapters\introduction.tex
 INPUT .\chapters\introduction.tex

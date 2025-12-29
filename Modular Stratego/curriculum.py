@@ -266,23 +266,26 @@ class CurriculumManager:
             
             # Need at least 50 games to have meaningful statistics
             if games_played < 50:
-                # Still warming up - 100% random to learn basics
-                return {"random": 1.0, "heuristic": 0.0, "smart_heuristic": 0.0}
+                # Still warming up - 100% true_random to learn basics
+                return {"true_random": 1.0, "random": 0.0, "heuristic": 0.0, "smart_heuristic": 0.0}
+            elif win_rate < 0.40:
+                # Agent struggling badly - keep 100% true_random until 40% win rate
+                return {"true_random": 1.0, "random": 0.0, "heuristic": 0.0, "smart_heuristic": 0.0}
             elif win_rate < 0.60:
-                # Agent struggling - keep it 100% random until 60% win rate
-                return {"random": 1.0, "heuristic": 0.0, "smart_heuristic": 0.0}
+                # Crossed 40% - mix true_random with random
+                return {"true_random": 0.5, "random": 0.5, "heuristic": 0.0, "smart_heuristic": 0.0}
             elif win_rate < 0.70:
                 # Just crossed 60% - gradual heuristic introduction (40%)
-                return {"random": 0.6, "heuristic": 0.4, "smart_heuristic": 0.0}
+                return {"true_random": 0.0, "random": 0.6, "heuristic": 0.4, "smart_heuristic": 0.0}
             elif win_rate < 0.80:
                 # Strong against random - introduce smart_heuristic (20%)
-                return {"random": 0.3, "heuristic": 0.5, "smart_heuristic": 0.2}
+                return {"true_random": 0.0, "random": 0.3, "heuristic": 0.5, "smart_heuristic": 0.2}
             elif win_rate < 0.90:
                 # Dominating heuristic - increase smart_heuristic (50%)
-                return {"random": 0.1, "heuristic": 0.4, "smart_heuristic": 0.5}
+                return {"true_random": 0.0, "random": 0.1, "heuristic": 0.4, "smart_heuristic": 0.5}
             else:
                 # Expert level - focus on optimal play against strongest (80%)
-                return {"random": 0.0, "heuristic": 0.2, "smart_heuristic": 0.8}
+                return {"true_random": 0.0, "random": 0.0, "heuristic": 0.2, "smart_heuristic": 0.8}
                 
         elif self.current_phase == TrainingPhase.MEMORY_GAP:
             # Mix frozen heuristic with smart heuristic for better learning
@@ -316,14 +319,16 @@ class CurriculumManager:
         if winner == 1:  # Agent1 wins
             metrics.total_wins += 1
             
-            if opponent_type == 'random':
+            # Track wins by opponent type (true_random counts as random for curriculum purposes)
+            if opponent_type in ['random', 'true_random']:
                 metrics.wins_vs_random += 1
-            elif opponent_type in ['heuristic', 'greedy', 'frozen_heuristic']:
+            elif opponent_type in ['heuristic', 'greedy', 'frozen_heuristic', 'smart_heuristic']:
                 metrics.wins_vs_heuristic += 1
                 
-        if opponent_type == 'random':
+        # Track games played by opponent type
+        if opponent_type in ['random', 'true_random']:
             metrics.games_vs_random += 1
-        elif opponent_type in ['heuristic', 'greedy', 'frozen_heuristic']:
+        elif opponent_type in ['heuristic', 'greedy', 'frozen_heuristic', 'smart_heuristic']:
             metrics.games_vs_heuristic += 1
             
         # PBS accuracy tracking
@@ -442,6 +447,35 @@ class CurriculumManager:
             'win_rate_vs_heuristic': metrics.win_rate_vs_heuristic,
             'pbs_accuracy': metrics.avg_pbs_accuracy
         }
+
+
+class TrueRandomOpponent:
+    """
+    Truly random opponent - picks uniformly from valid moves.
+    Easier than HeuristicOpponent for early training.
+    """
+    
+    def __init__(self, device, player_id: int = -1):
+        self.device = device
+        self.player_id = player_id
+        self.name = "TrueRandom"
+        
+    def act(self, board, valid_moves, game_state=None, **kwargs):
+        """Select a uniformly random valid move."""
+        import random
+        if not valid_moves:
+            return None
+        return random.choice(valid_moves)
+    
+    def act_batch(self, boards, valid_moves_list, game_states=None, **kwargs):
+        import random
+        return [random.choice(vm) if vm else None for vm in valid_moves_list]
+    
+    def reset_pbs(self):
+        pass
+    
+    def update_pbs_batch(self, *args, **kwargs):
+        pass
 
 
 class HeuristicOpponent:
