@@ -166,19 +166,11 @@ def plot_training_progress(
     
     if losses and len(losses) > 0:
         # Determine x-axis: Use SEQUENTIAL UPDATE COUNT to remove gaps
-        # User requested: "move the x-axis of the graph per training not by episode"
-        # This removes gaps caused by non-training episodes (e.g. league, eval)
         x_values_scaled = list(range(1, len(losses) + 1))
         x_label = 'Training Updates (Sequential)'
         
         # Filter out zero/near-zero values (outliers that make graph unreadable)
-        # Relaxed threshold to show almost everything except true zeros (which imply no update)
-        non_zero_losses = [l for l in losses if l > 1e-6]
-        if non_zero_losses:
-             # Just filter absolute zeros or NaNs
-             threshold = 1e-6
-        else:
-            threshold = 1e-6
+        threshold = 1e-6
         
         valid_x = []
         valid_losses = []
@@ -188,21 +180,26 @@ def plot_training_progress(
                 valid_losses.append(loss)
         
         if valid_x:
-            # Plot discrete points (scatter) for raw data distribution
-            axs[2].scatter(valid_x, valid_losses, label='Agent 1 Policy Loss', 
-                          color='blue', marker='o', s=20, alpha=0.3, linewidths=0, zorder=1)
+            # Plot discrete points (scatter) for raw data - very faint
+            axs[2].scatter(valid_x, valid_losses, label='Raw Loss', 
+                          color='blue', marker='o', s=10, alpha=0.15, linewidths=0, zorder=1)
             
-            # Calculate and plot WINDOWED moving average line
-            window_size = min(50, max(5, len(valid_losses) // 20)) if len(valid_losses) > 5 else 1
-            if len(valid_losses) >= window_size and window_size > 1:
-                # Use convolution for smoother moving average
-                windowed_avg = np.convolve(valid_losses, np.ones(window_size)/window_size, mode='valid')
-                # Adjust x-axis to match valid convolution output (centered or trailing)
-                # We'll use trailing to match the data it averages
-                windowed_x = valid_x[window_size-1:]
-                
-                axs[2].plot(windowed_x, windowed_avg, color='blue', linestyle='-', linewidth=2.0, 
-                           label=f'Moving Avg ({window_size} samples)', alpha=0.9, zorder=2)
+            # SMOOTHED CURVE 1: Rolling average (short window for local trends)
+            window_short = min(50, max(5, len(valid_losses) // 20)) if len(valid_losses) > 5 else 1
+            if len(valid_losses) >= window_short and window_short > 1:
+                windowed_avg = np.convolve(valid_losses, np.ones(window_short)/window_short, mode='valid')
+                windowed_x = valid_x[window_short-1:]
+                axs[2].plot(windowed_x, windowed_avg, color='dodgerblue', linestyle='-', linewidth=1.5, 
+                           label=f'Moving Avg ({window_short})', alpha=0.7, zorder=2)
+            
+            # SMOOTHED CURVE 2: Exponential Moving Average (for overall trend)
+            if len(valid_losses) >= 20:
+                alpha_ema = 0.01  # Smoothing factor (smaller = smoother)
+                ema = [valid_losses[0]]
+                for loss in valid_losses[1:]:
+                    ema.append(alpha_ema * loss + (1 - alpha_ema) * ema[-1])
+                axs[2].plot(valid_x, ema, color='darkblue', linestyle='-', linewidth=2.5, 
+                           label='EMA Trend (α=0.01)', alpha=0.9, zorder=3)
         else:
             axs[2].text(0.5, 0.5, 'No loss data recorded yet', ha='center', va='center', 
                        transform=axs[2].transAxes, fontsize=12)
@@ -215,8 +212,6 @@ def plot_training_progress(
     
     axs[2].set_ylabel('Policy Loss')
     axs[2].set_title('Agent 1 Policy Loss (Agent 2 does not train)')
-    # Use log scale if variation is high (optional, user image looked linear but log is often safer)
-    # axs[2].set_yscale('log') 
     axs[2].legend()
     axs[2].grid(True, alpha=0.3)
     
