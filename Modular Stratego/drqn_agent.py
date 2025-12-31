@@ -553,17 +553,32 @@ class RainbowAgent:
         if self.pbs and game_state:
             uncertainty_map = self.pbs.get_uncertainty_map(game_state)
             
-        # Filter valid moves
+        # Filter valid moves - now includes Scout multi-step moves
         valid_q_values = []
         valid_moves_filtered = []
         for move in valid_moves:
             (r1, c1), (r2, c2) = move
             dist = abs(r2 - r1) + abs(c2 - c1)
-            # Filter for 400-action space: Only 1-step moves allowed
+            
+            # For Scout moves (dist > 1), map to 1-step direction action
+            # This allows Scout to use its special ability
             if dist > 1:
+                # Calculate direction unit vector
+                if r2 != r1:
+                    dr = 1 if r2 > r1 else -1
+                    dc = 0
+                else:
+                    dr = 0
+                    dc = 1 if c2 > c1 else -1
+                # Create a "virtual" 1-step move for action indexing
+                virtual_move = ((r1, c1), (r1 + dr, c1 + dc))
+                action_idx = self._move_to_action_index(virtual_move)
+            else:
+                action_idx = self._move_to_action_index(move)
+            
+            if action_idx is None:
                 continue
-
-            action_idx = self._move_to_action_index(move)
+                
             q_val = base_q_values[action_idx].item()
             
             # Add uncertainty bonus
@@ -712,16 +727,29 @@ class RainbowAgent:
                 elif filtered_moves:
                     actions[i] = filtered_moves[0]  # Fallback
             else:
-                # LEGACY: Original filtering (no heuristics)
+                # LEGACY: Original filtering (now includes Scout moves)
                 valid_q_values = []
                 valid_moves_filtered = []
                 for move in valid_moves:
                     (r1, c1), (r2, c2) = move
                     dist = abs(r2 - r1) + abs(c2 - c1)
-                    if dist > 1:
-                        continue
                     
-                    action_idx = self._move_to_action_index(move)
+                    # For Scout moves (dist > 1), map to 1-step direction action
+                    if dist > 1:
+                        if r2 != r1:
+                            dr = 1 if r2 > r1 else -1
+                            dc = 0
+                        else:
+                            dr = 0
+                            dc = 1 if c2 > c1 else -1
+                        virtual_move = ((r1, c1), (r1 + dr, c1 + dc))
+                        action_idx = self._move_to_action_index(virtual_move)
+                    else:
+                        action_idx = self._move_to_action_index(move)
+                    
+                    if action_idx is None:
+                        continue
+                        
                     q_val = expected_q_values[i, action_idx].item()
                     
                     uncertainty = self.get_move_uncertainty(move, uncertainty_maps[i])
@@ -960,7 +988,7 @@ class RainbowAgent:
     def replay(self, batch_size=None, episode=None) -> Optional[float]:
         """
         Train the Rainbow model using C51 Distributional Loss.
-        Supports PER and N-step returns.
+        Supports PER and N-step returns. Enforces warmup period.
         
         Args:
             batch_size: Override batch size
@@ -968,8 +996,14 @@ class RainbowAgent:
         """
         if batch_size is None:
             batch_size = self.batch_size
-            
-        if len(self.memory) < batch_size:
+        
+        # Warmup check - don't train until we have enough experiences
+        try:
+            from training_config import WARMUP_STEPS
+        except ImportError:
+            WARMUP_STEPS = 0
+        
+        if len(self.memory) < max(batch_size, WARMUP_STEPS):
             return None
         
         # --- Sample Batch (PER or Standard) ---

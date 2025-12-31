@@ -194,16 +194,24 @@ class HeuristicMoveFilter:
         for move, score in filtered:
             (r_from, c_from), (r_to, c_to) = move
             
-            # Only handle 1-step moves for 400 action space
+            # Calculate distance
             distance = abs(r_to - r_from) + abs(c_to - c_from)
-            if distance != 1:
-                continue
-                
-            # Encode move to action index
-            # Direction: Right(0), Left(1), Down(2), Up(3)
-            dr = r_to - r_from
-            dc = c_to - c_from
             
+            # For Scout moves (dist > 1), map to 1-step direction action
+            if distance > 1:
+                if r_to != r_from:
+                    dr = 1 if r_to > r_from else -1
+                    dc = 0
+                else:
+                    dr = 0
+                    dc = 1 if c_to > c_from else -1
+            elif distance == 1:
+                dr = r_to - r_from
+                dc = c_to - c_from
+            else:
+                continue  # Invalid (distance 0)
+                
+            # Encode direction to index
             if (dr, dc) == (0, 1):
                 dir_idx = 0  # Right
             elif (dr, dc) == (0, -1):

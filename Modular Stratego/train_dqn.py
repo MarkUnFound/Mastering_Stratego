@@ -48,9 +48,7 @@ try:
 except ImportError:
     RESET_AVAILABLE = False
 
-# Import random starting player utilities
-# This helps balance training by randomizing which agent goes first
-from random_starting_player import should_swap_players, swap_placements, get_batch_swap_decisions
+# Random starting player removed - was only swapping positions, not turn order
 from league import LeagueManager
 from opponents import RandomAgent, GreedyAgent, OpponentPool, RandomSetupAgent
 from training_config import *
@@ -66,7 +64,7 @@ from scenario_drills import get_scenario_drill, get_random_scenario
 from distributional_reward import create_unified_reward_shaper, StrategoRewardConfig
 
 # Extracted training modules (for future gradual migration)
-from training import LaneManager, MetricsTracker, Checkpointer
+from training import LaneManager, MetricsTracker, Checkpointer, get_random_starting_player
 
 # Piece Value Tracking (for convergence analysis)
 try:
@@ -312,26 +310,17 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
         # Always use Heuristic Setup for P2, even if opponent is RandomAgent
         p2_place = setup_agent2.place_pieces(p2_pieces, p2_pos)
         
-        # Random starting player (50% swap)
-        # Note: This swaps PLACEMENTS (Agent 1's army goes to P2's side and vice versa)
-        # It does NOT swap the agent instance itself logic-wise, just who plays P1 vs P2 physically.
-        # But wait, our agents are hardcoded: Agent 1 (P1) vs Opponent (P2).
-        # Swapping placements means Agent 1 starts on "P2 side" (Rows 0-3) and plays as -1?
-        # NO. The function random_starting_player.swap_placements mirrors them.
-        # But if Agent 1 is trained to be Player 1 (Positive), can it play as Player -1?
-        # The environment handles this. If Agent 1 is Player 1, it expects to be in Rows 6-9.
-        # If we swap, we might break the assumption of who is who.
-        # Let's trust the existing logic for now, assuming swap_placements handles it correctly.
-        
-        if random.random() < 0.5:
-             p1_place, p2_place = swap_placements(p1_place, p2_place)
+        # Random starting player (50% chance for each player to move first)
+        # This balances first-mover advantage during training
+        starting_player = get_random_starting_player()
         
         return {
             'p1_placement': p1_place, 
             'p2_placement': p2_place,
             'opp_type': opp_type,
             'opp_uses_pbs': opp_uses_pbs,
-            'opp': opp
+            'opp': opp,
+            'starting_player': starting_player
         }
     
     def select_opponent_for_lane(lane_idx):
@@ -428,10 +417,23 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
     
     # Reset all environments
     game_states, _, _, _, valid_moves = parallel_env.reset(initial_placements_p1, initial_placements_p2)
+    # Track starting players for initial setup
+    initial_starting_players = []
+    for i in range(num_envs):
+        reset_data = reset_lane(i)
+        initial_starting_players.append(reset_data.get('starting_player', 1))
+        initial_placements_p1[i] = reset_data['p1_placement']
+        initial_placements_p2[i] = reset_data['p2_placement']
+        lane_opponent_types[i] = reset_data['opp_type']
+        lane_opponent_uses_pbs[i] = reset_data['opp_uses_pbs']
+        lane_current_opponents[i] = reset_data['opp']
+    
+    # Reset environments with placements
+    game_states, _, _, _, valid_moves = parallel_env.reset(initial_placements_p1, initial_placements_p2)
     for i in range(num_envs):
         lane_game_states[i] = game_states[i]
         lane_valid_moves[i] = valid_moves[i]
-        lane_current_player[i] = 1  # P1 always starts
+        lane_current_player[i] = initial_starting_players[i]  # Random starting player
     
     # Loss tracking arrays
     lane_episode_loss_sum_p1 = np.zeros(num_envs)
@@ -739,7 +741,7 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                 lane_episode_loss_sum_p1[i] = 0.0 # Reset loss sum
                 lane_episode_loss_count_p1[i] = 0 # Reset loss count
                 lane_step_counts[i] = 0
-                lane_current_player[i] = 1
+                lane_current_player[i] = reset_data.get('starting_player', 1)  # Random starting player
                 lane_dist_rewards[i].reset()
                 lane_p2_shapers[i].reset()
                 lane_pending_transitions[i] = None

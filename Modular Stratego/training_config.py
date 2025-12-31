@@ -10,7 +10,7 @@ NUM_ENVS = NUM_LANES      # LEGACY alias - always equals NUM_LANES (kept for com
 BATCH_SIZE = 256          # Reduced to 256 (Safe for 6GB VRAM)
 GAMMA = 0.995           # Discount factor (User requested 0.99 for long-term depth)
 MEMORY_SIZE = 150000      # 200k on GPU (~2.2GB) to leave room for model and batches
-LEARNING_RATE = 0.0001    # Learning rate (increased for ±100 reward scale)
+LEARNING_RATE = 0.00003    # Reduced from 0.0001 for stable distributional RL
 NUM_EPISODES = 35000      # Total training episodes (individual games, not batches)
 SAVE_INTERVAL = 250       # Save model/export agent every N episodes
 PLOT_INTERVAL = 100       # Save metrics plots every N episodes
@@ -18,6 +18,9 @@ EVAL_INTERVAL = 100       # Evaluate agent every N episodes
 REPLAY_UPDATE_INTERVAL = 1    # Train every step (maximized for data augmentation)
 TARGET_UPDATE_INTERVAL = 10000  # Soft update target network every N steps
 REWARD_SCALE = 1.0        # Scaling factor for reward calculations
+
+# Warmup Period (must collect this many experiences before training starts)
+WARMUP_STEPS = 10000      # 10k steps warmup for stable learning
 
 # Multi-Step Returns (N-Step DQN)
 N_STEPS = 5               # 5-step returns for better credit assignment in sparse rewards
@@ -63,12 +66,12 @@ LEAGUE_TRAINING_ENABLED = True
 LEAGUE_SAVE_INTERVAL = 500      # Save agent to league every N episodes
 LEAGUE_MAX_AGENTS = 50          # Max historical agents to keep
 
-# Opponent Selection Probabilities (adjusted for flag-hunting focus)
-# More heuristic opponents = strategic depth; random for exploration
-OPPONENT_LEAGUE_PROB = 0.15     # 15% historical opponents (prevents forgetting)
-OPPONENT_RANDOM_PROB = 0.30     # 30% random agent (down from 60% - still needed for exploration)
-OPPONENT_GREEDY_PROB = 0.40     # 40% heuristic agent (up from 20% - learn strategic play)
-OPPONENT_SELF_PROB = 0.15       # 15% self-play (pushes beyond heuristic ceiling)
+# Opponent Selection Probabilities (SIMPLIFIED for early training)
+# Phase 1: Easy opponents to learn basics, will be adjusted as training progresses
+OPPONENT_LEAGUE_PROB = 0.0      # 0% historical opponents (disabled for now)
+OPPONENT_RANDOM_PROB = 1.0      # 100% random agent (easy to beat)
+OPPONENT_GREEDY_PROB = 0.0      # 0% heuristic agent (too hard for now)
+OPPONENT_SELF_PROB = 0.0        # 0% self-play (disabled for now)
 
 # =============================================================================
 # CURRICULUM LEARNING SETTINGS

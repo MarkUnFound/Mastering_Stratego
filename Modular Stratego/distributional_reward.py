@@ -64,7 +64,7 @@ class StrategoRewardConfig:
     win_reward_depletion: float = 5.0  # Opponent immobilized = secondary
     win_reward: float = 10.0        # Fallback if win_type not specified
     loss_penalty: float = -10.0     # Symmetric loss penalty
-    draw_penalty: float = -3.0      # Draws (timeouts) are failures - agent must find flag
+    draw_penalty: float = -0.5      # Mild penalty - too harsh (-3.0) caused learning collapse
     
     # Per-step penalties (scaled for 1000 step max)
     step_penalty: float = -0.0001   # Slightly increased to encourage faster wins
