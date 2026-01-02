@@ -161,6 +161,13 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
         if curriculum.should_use_full_observability():
             parallel_env.set_full_observability(True)
             print("   Full observability mode: ENABLED (Phase 1)")
+        
+        # Set max turns based on curriculum phase
+        from training_config import PHASE_1_MAX_TURNS, PHASE_2_MAX_TURNS, PHASE_3_MAX_TURNS, PHASE_4_MAX_TURNS, DEFAULT_MAX_TURNS
+        phase_max_turns = {1: PHASE_1_MAX_TURNS, 2: PHASE_2_MAX_TURNS, 3: PHASE_3_MAX_TURNS, 4: PHASE_4_MAX_TURNS}
+        max_turns = phase_max_turns.get(curriculum.current_phase.value, DEFAULT_MAX_TURNS)
+        parallel_env.set_max_turns(max_turns)
+        print(f"   Max turns per game: {max_turns} (Phase {curriculum.current_phase.value})")
     
     # Reward shaper is initialized per lane later
     
@@ -841,6 +848,13 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                     # Update observability
                     use_full_obs = curriculum.should_use_full_observability()
                     parallel_env.set_full_observability(use_full_obs)
+                    
+                    # Update max turns for new phase
+                    from training_config import PHASE_1_MAX_TURNS, PHASE_2_MAX_TURNS, PHASE_3_MAX_TURNS, PHASE_4_MAX_TURNS, DEFAULT_MAX_TURNS
+                    phase_max_turns = {1: PHASE_1_MAX_TURNS, 2: PHASE_2_MAX_TURNS, 3: PHASE_3_MAX_TURNS, 4: PHASE_4_MAX_TURNS}
+                    new_max_turns = phase_max_turns.get(curriculum.current_phase.value, DEFAULT_MAX_TURNS)
+                    parallel_env.set_max_turns(new_max_turns)
+                    tqdm.write(f"[INFO] Max turns updated to {new_max_turns}")
                     
                     # Enable Agent 2 PBS at Phase 4
                     if curriculum.current_phase.value >= 4 and not agent2.use_pbs:

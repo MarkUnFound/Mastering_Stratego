@@ -53,6 +53,11 @@ def worker(remote, parent_remote, env_idx, device):
                         remote.send(result)
                     else:
                         remote.send(None)
+                        
+                elif cmd == 'set_attr':
+                    attr_name, value = data
+                    setattr(env, attr_name, value)
+                    remote.send(True)  # Acknowledge
                 else:
                     print(f"Worker {env_idx}: Unknown command {cmd}")
                     remote.close()
@@ -233,6 +238,17 @@ class ParallelStrategoEnvironment:
         """
         for remote in self.remotes:
             remote.send(('call_method', ('set_full_observability', (enabled,))))
+        # Receive acknowledgments
+        for remote in self.remotes:
+            remote.recv()
+    
+    def set_max_turns(self, max_turns: int):
+        """
+        Set max turns limit for all environments.
+        Used for curriculum-based game length limits.
+        """
+        for remote in self.remotes:
+            remote.send(('set_attr', ('max_turns', max_turns)))
         # Receive acknowledgments
         for remote in self.remotes:
             remote.recv()

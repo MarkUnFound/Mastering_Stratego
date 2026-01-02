@@ -266,36 +266,21 @@ class CurriculumManager:
         metrics = self.metrics[self.current_phase]
         
         if self.current_phase == TrainingPhase.PHYSICS_OF_WAR:
-            # PROGRESSIVE OPPONENT SCALING based on win rate
-            # LOWERED THRESHOLDS: Introduce heuristic opponents much earlier
-            win_rate = metrics.overall_win_rate
-            games_played = metrics.total_games
-            
-            # Need at least 50 games to have meaningful statistics
-            if games_played < 50:
-                # Still warming up - 100% true_random to learn basics
-                return {"true_random": 1.0, "random": 0.0, "heuristic": 0.0, "smart_heuristic": 0.0}
-            elif win_rate < 0.05:
-                # Agent struggling badly - keep 100% true_random until 5% win rate
-                return {"true_random": 1.0, "random": 0.0, "heuristic": 0.0, "smart_heuristic": 0.0}
-            elif win_rate < 0.10:
-                # Crossed 5% - mix true_random with random
-                return {"true_random": 0.5, "random": 0.5, "heuristic": 0.0, "smart_heuristic": 0.0}
-            elif win_rate < 0.20:
-                # Crossed 10% - introduce heuristic (15%) earlier
-                return {"true_random": 0.0, "random": 0.85, "heuristic": 0.15, "smart_heuristic": 0.0}
-            elif win_rate < 0.40:
-                # Crossed 20% - increase heuristic (40%)
-                return {"true_random": 0.0, "random": 0.6, "heuristic": 0.4, "smart_heuristic": 0.0}
-            elif win_rate < 0.60:
-                # Strong against random - introduce smart_heuristic (20%)
-                return {"true_random": 0.0, "random": 0.3, "heuristic": 0.5, "smart_heuristic": 0.2}
-            elif win_rate < 0.80:
-                # Dominating heuristic - increase smart_heuristic (50%)
-                return {"true_random": 0.0, "random": 0.1, "heuristic": 0.4, "smart_heuristic": 0.5}
-            else:
-                # Expert level - focus on optimal play against strongest (80%)
-                return {"true_random": 0.0, "random": 0.0, "heuristic": 0.2, "smart_heuristic": 0.8}
+            # PHASE 1: Use configured opponent split from training_config.py
+            # NO ADAPTIVE SCALING - agent needs heuristic exposure from the start
+            try:
+                from training_config import OPPONENT_RANDOM_PROB, OPPONENT_GREEDY_PROB
+                # Map training_config names to curriculum names
+                # OPPONENT_GREEDY_PROB = heuristic probability in Phase 1
+                return {
+                    "random": OPPONENT_RANDOM_PROB,  # 85% from config
+                    "heuristic": OPPONENT_GREEDY_PROB,  # 15% from config
+                    "smart_heuristic": 0.0,
+                    "true_random": 0.0
+                }
+            except ImportError:
+                # Fallback: 85/15 split
+                return {"random": 0.85, "heuristic": 0.15, "smart_heuristic": 0.0, "true_random": 0.0}
                 
         elif self.current_phase == TrainingPhase.MEMORY_GAP:
             # Mix frozen heuristic with smart heuristic for better learning

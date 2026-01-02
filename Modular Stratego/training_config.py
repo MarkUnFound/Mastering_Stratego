@@ -23,7 +23,7 @@ REWARD_SCALE = 1.0        # Scaling factor for reward calculations
 # EXPLORATION SETTINGS (Aggressive for Early Training)
 # =============================================================================
 # Epsilon-greedy exploration (combined with Noisy Networks for hybrid exploration)
-EXPLORATION_EPSILON_START = 0.30  # 30% random actions initially
+EXPLORATION_EPSILON_START = 0.50  # 50% random actions initially (more aggressive)
 EXPLORATION_EPSILON_END = 0.01    # Decay to 1% over training
 EXPLORATION_EPSILON_DECAY = 20000 # Episodes to decay epsilon
 
@@ -31,7 +31,7 @@ EXPLORATION_EPSILON_DECAY = 20000 # Episodes to decay epsilon
 # CURRICULUM TURN LIMITS (Shorter games for faster learning)
 # =============================================================================
 # Start with shorter games to force faster decisions, increase as agent improves
-PHASE_1_MAX_TURNS = 200   # Short games force quick learning (was 500)
+PHASE_1_MAX_TURNS = 100   # Reduced from 200 to force faster decisions
 PHASE_2_MAX_TURNS = 300   # Medium games for memory testing
 PHASE_3_MAX_TURNS = 400   # Longer for self-play strategy
 PHASE_4_MAX_TURNS = 500   # Full length for league training

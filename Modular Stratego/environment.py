@@ -356,8 +356,8 @@ class StrategoEnvironment:
         if self.game_over:
             return self._get_game_state(), 0.0, True, {"winner": self.winner, "win_type": self.win_type}
 
-        # Check for max turns (draw) - reduced to 500 for faster, more decisive games
-        if self.turn_count >= 500:
+        # Check for max turns (draw) - uses curriculum-based max_turns
+        if self.turn_count >= self.max_turns:
             self.game_over = True
             self.winner = 0
             self.win_type = 'timeout'

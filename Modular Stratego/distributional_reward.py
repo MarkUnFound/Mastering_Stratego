@@ -64,7 +64,7 @@ class StrategoRewardConfig:
     win_reward_depletion: float = 5.0  # Opponent immobilized = secondary
     win_reward: float = 10.0        # Fallback if win_type not specified
     loss_penalty: float = -10.0     # Symmetric loss penalty
-    draw_penalty: float = -3.0      # Base penalty for draws
+    draw_penalty: float = -5.0      # Increased from -3.0 to discourage passive draws
     
     # MATERIAL-ADVANTAGE DRAWS: Adjust draw reward based on piece count
     # If agent has more pieces at draw, reduce penalty (agent was winning)
@@ -72,14 +72,15 @@ class StrategoRewardConfig:
     draw_material_bonus: float = 2.0  # Max bonus for having more pieces at draw
     
     # Per-step penalties (scaled for 1000 step max)
-    step_penalty: float = -0.0001   # Slightly increased to encourage faster wins
-    step_penalty_mid: float = -0.0001 # consistency
-    step_penalty_late: float = -0.0001 # consistency
+    step_penalty: float = -0.001    # 10x increase to encourage faster games
+    step_penalty_mid: float = -0.001 # consistency
+    step_penalty_late: float = -0.001 # consistency
     stalemate_penalty: float = -0.05 # Penalty when mobility is suddenly restricted
     
     # Material rewards
     capture_scale: float = 0.05     # Enemy rank * scale (Normalized)
     loss_scale: float = -0.05       # Flat piece loss penalty (negated for opponent)
+    attack_bonus: float = 0.03      # Bonus for initiating combat (encourages aggression)
     spy_marsh_bonus: float = 0.3    # Extra for Spy killing Marshal
     miner_bomb_bonus: float = 0.15  # Extra for Miner defusing Bomb
     
@@ -202,6 +203,10 @@ class UnifiedRewardShaper:
             we_lost = (source_val == 0 and result_val != 0 and not we_won)
             
             material_r = 0.0
+            
+            # Attack bonus: reward for initiating combat (encourages aggression)
+            material_r += self.config.attack_bonus
+            
             if we_won:
                 material_r += self.config.capture_scale * (defender_rank / 10.0)
                 # Strategic bonuses
