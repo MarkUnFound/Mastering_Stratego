@@ -71,6 +71,18 @@ class RainbowAgent:
         self.num_envs = num_envs
         self.use_pbs = use_pbs
         
+        # Epsilon-greedy exploration (hybrid with Noisy Nets)
+        try:
+            from training_config import EXPLORATION_EPSILON_START, EXPLORATION_EPSILON_END, EXPLORATION_EPSILON_DECAY
+            self.epsilon_start = EXPLORATION_EPSILON_START
+            self.epsilon_end = EXPLORATION_EPSILON_END
+            self.epsilon_decay = EXPLORATION_EPSILON_DECAY
+        except ImportError:
+            self.epsilon_start = 0.3
+            self.epsilon_end = 0.01
+            self.epsilon_decay = 20000
+        self.current_episode = 0  # Updated externally for epsilon decay
+        
         # C51 Support (Atoms)
         self.num_atoms = NUM_ATOMS
         self.v_min = V_MIN
@@ -418,7 +430,16 @@ class RainbowAgent:
         # 2. Add original experience
         # Clip reward to C51 support range to avoid instability
         reward_clipped = max(self.v_min, min(self.v_max, reward))
-        self.memory.add(state, action_idx, reward_clipped, next_state, done)
+        
+        # SELF-IMITATION LEARNING: Detect winning experiences for priority boost
+        # Win rewards are 10-15, so use 10.0 as threshold
+        is_winning_experience = (reward_clipped >= 10.0 and done)
+        
+        # Pass is_winning_experience for PER priority boost (ignored by StandardBuffer)
+        if hasattr(self.memory, 'add') and 'is_winning_experience' in self.memory.add.__code__.co_varnames:
+            self.memory.add(state, action_idx, reward_clipped, next_state, done, is_winning_experience=is_winning_experience)
+        else:
+            self.memory.add(state, action_idx, reward_clipped, next_state, done)
         self.step_count += 1
         
         # 3. Add Augmented Experiences
@@ -630,7 +651,7 @@ class RainbowAgent:
         return torch.stack(state_tensors)
 
     def act_batch(self, states, valid_moves_list, game_states=None, env_indices=None, full_observability=False) -> List[Optional[Tuple[Tuple[int, int], Tuple[int, int]]]]:
-        """Batch action selection
+        """Batch action selection with epsilon-greedy exploration
         
         Args:
             states: List of game board states
@@ -639,11 +660,20 @@ class RainbowAgent:
             env_indices: Environment indices for PBS lookup
             full_observability: If True, use ground truth enemy types (Phase 1)
         """
+        import random
         batch_size = len(states)
         actions = [None] * batch_size
         
         if env_indices is None:
             env_indices = list(range(batch_size))
+        
+        # EPSILON-GREEDY EXPLORATION: Random action with probability epsilon
+        # Epsilon decays over training from epsilon_start to epsilon_end
+        epsilon = self.epsilon_end + (self.epsilon_start - self.epsilon_end) * \
+                  max(0, 1 - self.current_episode / self.epsilon_decay)
+        
+        # Check which environments will take random actions
+        random_action_mask = [random.random() < epsilon for _ in range(batch_size)]
         
         # 1. Get batch state representation and cache it for remember_batch
         state_tensor = self.get_batch_state_representation(states, game_states, full_observability=full_observability)
@@ -678,6 +708,11 @@ class RainbowAgent:
         for i in range(batch_size):
             valid_moves = valid_moves_list[i]
             if not valid_moves:
+                continue
+            
+            # EPSILON-GREEDY: Random action with probability epsilon
+            if random_action_mask[i]:
+                actions[i] = random.choice(valid_moves)
                 continue
             
             # Get board for heuristic scoring

@@ -37,65 +37,71 @@ class PhaseConfig:
     success_metrics: Dict[str, float]
 
 
-# Default phase configurations with episode durations
+# DYNAMIC PHASE CONFIGURATIONS
+# All transitions are PERFORMANCE-BASED, not episode-count based.
+# min_episodes and max_episodes are kept for reference but NOT enforced.
 PHASE_CONFIGS = {
     TrainingPhase.PHYSICS_OF_WAR: PhaseConfig(
         name="Physics of War",
         full_observability=True,
-        min_episodes=5000,
-        max_episodes=10000,
+        min_episodes=0,  # NOT ENFORCED - dynamic transition
+        max_episodes=0,  # NOT ENFORCED - dynamic transition
         opponents=["random", "heuristic", "smart_heuristic"],
         reward_focus="material",
         success_metrics={
-            "win_rate_vs_random": 0.95,
-            "win_rate_vs_heuristic": 0.75,
-            "win_rate_vs_smart_heuristic": 0.60
+            # Dynamic criteria: 70% vs random, 50% vs heuristic
+            "win_rate_vs_random": 0.70,
+            "win_rate_vs_heuristic": 0.50
         }
     ),
     TrainingPhase.MEMORY_GAP: PhaseConfig(
         name="Memory Gap",
         full_observability=False,
-        min_episodes=5000,
-        max_episodes=10000,
+        min_episodes=0,  # NOT ENFORCED
+        max_episodes=0,  # NOT ENFORCED
         opponents=["frozen_heuristic", "smart_heuristic"],
         reward_focus="epistemic",
         success_metrics={
-            "pbs_accuracy": 0.75,
-            "win_rate": 0.60
+            # Dynamic criteria: PBS accuracy + win rate
+            "pbs_accuracy": 0.70,
+            "win_rate": 0.55
         }
     ),
     TrainingPhase.SELF_PLAY: PhaseConfig(
         name="Simple Self-Play",
         full_observability=False,
-        min_episodes=5000,
-        max_episodes=15000,
-        opponents=["self_500", "smart_heuristic"],  # Mix with strong opponent
+        min_episodes=0,  # NOT ENFORCED
+        max_episodes=0,  # NOT ENFORCED
+        opponents=["self_500", "smart_heuristic"],
         reward_focus="material",
         success_metrics={
-            "strategy_diversity": 0.3,  # Variance in win patterns
-            "win_rate_stable": True
+            # Dynamic criteria: stable win rate (low variance)
+            "win_rate_variance_max": 0.1,
+            "recent_games_required": 100
         }
     ),
     TrainingPhase.LEAGUE_TRAINING: PhaseConfig(
         name="League Training",
         full_observability=False,
-        min_episodes=5000,
-        max_episodes=50000,  # Main training phase
+        min_episodes=0,  # NOT ENFORCED
+        max_episodes=0,  # NOT ENFORCED
         opponents=["league", "exploiters", "random", "greedy"],
         reward_focus="balanced",
         success_metrics={
+            # Dynamic criteria: ELO-based
             "league_elo": 1500,
-            "no_exploit_vulnerability": True
+            "win_rate_stable": True
         }
     ),
     TrainingPhase.SCENARIO_DRILLS: PhaseConfig(
         name="Scenario Drills",
         full_observability=False,
-        min_episodes=500,
-        max_episodes=1000,  # Periodic, not continuous
+        min_episodes=0,  # NOT ENFORCED
+        max_episodes=0,  # NOT ENFORCED
         opponents=["scenario_specific"],
         reward_focus="positional",
         success_metrics={
+            # Dynamic criteria: scenario completion
             "scenario_completion_rate": 0.80
         }
     )
@@ -261,6 +267,7 @@ class CurriculumManager:
         
         if self.current_phase == TrainingPhase.PHYSICS_OF_WAR:
             # PROGRESSIVE OPPONENT SCALING based on win rate
+            # LOWERED THRESHOLDS: Introduce heuristic opponents much earlier
             win_rate = metrics.overall_win_rate
             games_played = metrics.total_games
             
@@ -268,19 +275,22 @@ class CurriculumManager:
             if games_played < 50:
                 # Still warming up - 100% true_random to learn basics
                 return {"true_random": 1.0, "random": 0.0, "heuristic": 0.0, "smart_heuristic": 0.0}
-            elif win_rate < 0.40:
-                # Agent struggling badly - keep 100% true_random until 40% win rate
+            elif win_rate < 0.05:
+                # Agent struggling badly - keep 100% true_random until 5% win rate
                 return {"true_random": 1.0, "random": 0.0, "heuristic": 0.0, "smart_heuristic": 0.0}
-            elif win_rate < 0.60:
-                # Crossed 40% - mix true_random with random
+            elif win_rate < 0.10:
+                # Crossed 5% - mix true_random with random
                 return {"true_random": 0.5, "random": 0.5, "heuristic": 0.0, "smart_heuristic": 0.0}
-            elif win_rate < 0.70:
-                # Just crossed 60% - gradual heuristic introduction (40%)
+            elif win_rate < 0.20:
+                # Crossed 10% - introduce heuristic (15%) earlier
+                return {"true_random": 0.0, "random": 0.85, "heuristic": 0.15, "smart_heuristic": 0.0}
+            elif win_rate < 0.40:
+                # Crossed 20% - increase heuristic (40%)
                 return {"true_random": 0.0, "random": 0.6, "heuristic": 0.4, "smart_heuristic": 0.0}
-            elif win_rate < 0.80:
+            elif win_rate < 0.60:
                 # Strong against random - introduce smart_heuristic (20%)
                 return {"true_random": 0.0, "random": 0.3, "heuristic": 0.5, "smart_heuristic": 0.2}
-            elif win_rate < 0.90:
+            elif win_rate < 0.80:
                 # Dominating heuristic - increase smart_heuristic (50%)
                 return {"true_random": 0.0, "random": 0.1, "heuristic": 0.4, "smart_heuristic": 0.5}
             else:
@@ -345,28 +355,31 @@ class CurriculumManager:
         """
         Check if we should advance to the next phase.
         
+        DYNAMIC PHASE TRANSITIONS: Based purely on performance metrics.
+        No hard min/max episode counts - agent advances when ready.
+        
         Returns:
             True if phase transition should occur
         """
-        config = self.get_phase_config()
         metrics = self.metrics[self.current_phase]
         
-        # Always require minimum episodes
-        if metrics.episodes_in_phase < config.min_episodes:
+        # Require minimum sample size for statistical reliability (not time-based)
+        MIN_GAMES_FOR_STATS = 100  # Need at least 100 games for reliable metrics
+        
+        if metrics.total_games < MIN_GAMES_FOR_STATS:
             return False
         
-        # Force transition after max episodes
-        if metrics.episodes_in_phase >= config.max_episodes:
-            return True
-        
-        # Phase-specific success criteria
+        # Phase-specific success criteria (PURELY PERFORMANCE BASED)
         if self.current_phase == TrainingPhase.PHYSICS_OF_WAR:
-            return (metrics.win_rate_vs_random >= 0.90 and 
-                    metrics.win_rate_vs_heuristic >= 0.60 and
-                    metrics.games_vs_random >= 100 and
-                    metrics.games_vs_heuristic >= 100)
+            # Need to dominate random AND beat heuristic
+            return (metrics.win_rate_vs_random >= 0.70 and 
+                    metrics.games_vs_random >= 50 and
+                    (metrics.games_vs_heuristic < 10 or  # Haven't faced heuristic yet
+                     (metrics.win_rate_vs_heuristic >= 0.50 and 
+                      metrics.games_vs_heuristic >= 50)))
                     
         elif self.current_phase == TrainingPhase.MEMORY_GAP:
+            # Need PBS accuracy AND overall win rate
             return (metrics.avg_pbs_accuracy >= 0.70 and
                     metrics.overall_win_rate >= 0.55 and
                     metrics.pbs_accuracy_count >= 50)

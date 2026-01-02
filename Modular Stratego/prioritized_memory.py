@@ -159,8 +159,14 @@ class PrioritizedReplayBuffer:
         self.tree = SumTree(capacity)
         self.store_on_gpu = (device != 'cpu' and device != torch.device('cpu'))
         
-    def add(self, state, action, reward, next_state, done, priority=None):
-        """Add experience with max priority (will be updated after first replay)."""
+    def add(self, state, action, reward, next_state, done, priority=None, is_winning_experience=False):
+        """Add experience with priority boost for winning experiences (self-imitation learning).
+        
+        Args:
+            state, action, reward, next_state, done: Standard experience tuple
+            priority: Optional explicit priority (if None, uses max_priority)
+            is_winning_experience: If True, boost priority 10x for self-imitation learning
+        """
         if self.store_on_gpu:
             state_t = state.to(self.device) if isinstance(state, torch.Tensor) else torch.tensor(state, device=self.device)
             next_state_t = next_state.to(self.device) if isinstance(next_state, torch.Tensor) else torch.tensor(next_state, device=self.device)
@@ -177,6 +183,11 @@ class PrioritizedReplayBuffer:
         # Use max priority for new experiences
         if priority is None:
             priority = self.max_priority ** self.alpha
+        
+        # SELF-IMITATION LEARNING: Boost priority for winning experiences
+        # This makes the agent learn more from its successes
+        if is_winning_experience:
+            priority *= 10.0  # 10x priority boost for wins
         
         self.tree.add(priority, exp)
     

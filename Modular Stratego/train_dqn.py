@@ -647,8 +647,17 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                         metrics['wins_by_depletion'] = metrics.get('wins_by_depletion', 0) + 1
                 elif winner == -1:
                     metrics['wins_p2'] += 1
+                    # Track loss type (how P1 lost = how P2 won)
+                    win_type = infos[i].get('win_type', 'unknown')
+                    if win_type == 'flag_capture':
+                        metrics['losses_by_flag'] = metrics.get('losses_by_flag', 0) + 1
+                    elif win_type == 'no_moves':
+                        metrics['losses_by_depletion'] = metrics.get('losses_by_depletion', 0) + 1
                 else:
                     metrics['draws'] += 1
+                    # Track draw type
+                    win_type = infos[i].get('win_type', 'timeout')
+                    metrics['draws_by_timeout'] = metrics.get('draws_by_timeout', 0) + 1
                 
                 metrics['rewards_p1'].append(lane_episode_rewards_p1[i])
                 metrics['rewards_p2'].append(lane_episode_rewards_p2[i])
@@ -660,6 +669,8 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                 metrics['wins_p2_history'].append(metrics['wins_p2'])
                 metrics['wins_by_flag_history'].append(metrics.get('wins_by_flag', 0))
                 metrics['wins_by_depletion_history'].append(metrics.get('wins_by_depletion', 0))
+                metrics['losses_by_flag_history'].append(metrics.get('losses_by_flag', 0))
+                metrics['losses_by_depletion_history'].append(metrics.get('losses_by_depletion', 0))
                 
                 if curriculum and CURRICULUM_ENABLED:
                     metrics['phase_history'].append(curriculum.current_phase.value)

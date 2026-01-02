@@ -15,15 +15,33 @@ NUM_EPISODES = 35000      # Total training episodes (individual games, not batch
 SAVE_INTERVAL = 250       # Save model/export agent every N episodes
 PLOT_INTERVAL = 100       # Save metrics plots every N episodes
 EVAL_INTERVAL = 100       # Evaluate agent every N episodes
-REPLAY_UPDATE_INTERVAL = 1    # Train every step (maximized for data augmentation)
-TARGET_UPDATE_INTERVAL = 10000  # Soft update target network every N steps
+REPLAY_UPDATE_INTERVAL = 2    # Train every 2 steps (balances data diversity vs update frequency)
+TARGET_UPDATE_INTERVAL = 5000   # Faster target updates for early learning (was 10000)
 REWARD_SCALE = 1.0        # Scaling factor for reward calculations
 
+# =============================================================================
+# EXPLORATION SETTINGS (Aggressive for Early Training)
+# =============================================================================
+# Epsilon-greedy exploration (combined with Noisy Networks for hybrid exploration)
+EXPLORATION_EPSILON_START = 0.30  # 30% random actions initially
+EXPLORATION_EPSILON_END = 0.01    # Decay to 1% over training
+EXPLORATION_EPSILON_DECAY = 20000 # Episodes to decay epsilon
+
+# =============================================================================
+# CURRICULUM TURN LIMITS (Shorter games for faster learning)
+# =============================================================================
+# Start with shorter games to force faster decisions, increase as agent improves
+PHASE_1_MAX_TURNS = 200   # Short games force quick learning (was 500)
+PHASE_2_MAX_TURNS = 300   # Medium games for memory testing
+PHASE_3_MAX_TURNS = 400   # Longer for self-play strategy
+PHASE_4_MAX_TURNS = 500   # Full length for league training
+DEFAULT_MAX_TURNS = 500   # Fallback
+
 # Warmup Period (must collect this many experiences before training starts)
-WARMUP_STEPS = 10000      # 10k steps warmup for stable learning
+WARMUP_STEPS = 3000       # Reduced from 10k for faster training start
 
 # Multi-Step Returns (N-Step DQN)
-N_STEPS = 5               # 5-step returns for better credit assignment in sparse rewards
+N_STEPS = 3               # Reduced from 5 for faster, more stable credit assignment
 GAMMA_N = GAMMA ** N_STEPS  # Pre-computed gamma^n
 
 # Learning Rate Scheduler
@@ -66,11 +84,11 @@ LEAGUE_TRAINING_ENABLED = True
 LEAGUE_SAVE_INTERVAL = 500      # Save agent to league every N episodes
 LEAGUE_MAX_AGENTS = 50          # Max historical agents to keep
 
-# Opponent Selection Probabilities (SIMPLIFIED for early training)
-# Phase 1: Easy opponents to learn basics, will be adjusted as training progresses
+# Opponent Selection Probabilities (ADJUSTED for faster learning)
+# Phase 1: Mix of easy and medium opponents to learn basics AND winning strategy
 OPPONENT_LEAGUE_PROB = 0.0      # 0% historical opponents (disabled for now)
-OPPONENT_RANDOM_PROB = 1.0      # 100% random agent (easy to beat)
-OPPONENT_GREEDY_PROB = 0.0      # 0% heuristic agent (too hard for now)
+OPPONENT_RANDOM_PROB = 0.85     # 85% random agent (easy to beat)
+OPPONENT_GREEDY_PROB = 0.15     # 15% heuristic agent (learning pressure)
 OPPONENT_SELF_PROB = 0.0        # 0% self-play (disabled for now)
 
 # =============================================================================
@@ -79,9 +97,9 @@ OPPONENT_SELF_PROB = 0.0        # 0% self-play (disabled for now)
 CURRICULUM_ENABLED = True       # Enable 5-phase curriculum learning
 CURRICULUM_START_PHASE = 1      # Start from Phase 1 (or resume from saved state)
 
-# Phase Transition Thresholds
-PHASE_1_WIN_THRESHOLD_RANDOM = 0.90     # 90% win rate vs random
-PHASE_1_WIN_THRESHOLD_HEURISTIC = 0.60  # 60% win rate vs heuristic
+# Phase Transition Thresholds (LOWERED for faster progression)
+PHASE_1_WIN_THRESHOLD_RANDOM = 0.70     # 70% win rate vs random (was 90%)
+PHASE_1_WIN_THRESHOLD_HEURISTIC = 0.50  # 50% win rate vs heuristic (was 60%)
 PHASE_2_PBS_ACCURACY_THRESHOLD = 0.70   # 70% PBS prediction accuracy
 PHASE_2_WIN_THRESHOLD = 0.55            # 55% overall win rate
 

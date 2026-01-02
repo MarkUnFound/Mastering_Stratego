@@ -42,6 +42,12 @@ class MetricsTracker:
             'wins_by_flag_history': [],
             'wins_by_depletion_history': [],
             
+            # Loss type tracking (how P1 lost)
+            'losses_by_flag': 0,
+            'losses_by_depletion': 0,
+            'losses_by_flag_history': [],
+            'losses_by_depletion_history': [],
+            
             # PBS evaluator metrics
             'pbs_eval1_losses': [],
             'pbs_eval1_buffer_sizes': [],

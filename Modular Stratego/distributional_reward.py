@@ -64,7 +64,12 @@ class StrategoRewardConfig:
     win_reward_depletion: float = 5.0  # Opponent immobilized = secondary
     win_reward: float = 10.0        # Fallback if win_type not specified
     loss_penalty: float = -10.0     # Symmetric loss penalty
-    draw_penalty: float = -0.5      # Mild penalty - too harsh (-3.0) caused learning collapse
+    draw_penalty: float = -3.0      # Base penalty for draws
+    
+    # MATERIAL-ADVANTAGE DRAWS: Adjust draw reward based on piece count
+    # If agent has more pieces at draw, reduce penalty (agent was winning)
+    # If agent has fewer pieces, increase penalty (agent was losing)
+    draw_material_bonus: float = 2.0  # Max bonus for having more pieces at draw
     
     # Per-step penalties (scaled for 1000 step max)
     step_penalty: float = -0.0001   # Slightly increased to encourage faster wins
@@ -86,6 +91,10 @@ class StrategoRewardConfig:
     territory_advance: float = 0.05 # One-time reward for reaching a new row
     center_control: float = 0.005
     flag_proximity_bonus: float = 0.05
+    
+    # FLAG DISTANCE REWARD: Continuous reward for moving pieces toward enemy flag
+    # This teaches the agent that getting closer to the objective is good
+    flag_distance_reward: float = 0.02  # Per-step reward for reducing distance to enemy back rank
     
     # Scout penetration bonus (encourage flag hunting)
     scout_penetration_bonus: float = 0.3  # Scout reaching enemy back rank
@@ -137,7 +146,18 @@ class UnifiedRewardShaper:
             elif winner == -self.player_id:
                 return self.config.outcome_weight * self.config.loss_penalty
             elif winner == 0:
-                return self.config.outcome_weight * self.config.draw_penalty
+                # MATERIAL-ADVANTAGE DRAWS: Adjust based on piece count
+                # Count pieces for both players
+                board = current_state.board
+                my_pieces = ((board > 0) & (board < 13)).sum().item() if self.player_id == 1 else ((board < 0) & (board > -13)).sum().item()
+                enemy_pieces = ((board < 0) & (board > -13)).sum().item() if self.player_id == 1 else ((board > 0) & (board < 13)).sum().item()
+                
+                # Material advantage: +1 if we have more, -1 if they have more, 0 if equal
+                piece_diff = my_pieces - enemy_pieces
+                material_bonus = min(max(piece_diff / 10.0, -1.0), 1.0) * self.config.draw_material_bonus
+                
+                draw_reward = self.config.draw_penalty + material_bonus
+                return self.config.outcome_weight * draw_reward
             return 0.0
 
         if action is None:
@@ -225,6 +245,19 @@ class UnifiedRewardShaper:
         
         if is_new_territory:
             positional_r += self.config.territory_advance
+        
+        # FLAG DISTANCE REWARD: Continuous small reward for moving toward enemy flag
+        # This gives immediate feedback that approaching objective is good
+        if self.player_id == 1:  # P1 wants to go UP (lower row number)
+            old_dist = r_from  # Distance from row 0 (enemy back rank)
+            new_dist = r_to
+            if new_dist < old_dist:  # Moving toward enemy
+                positional_r += self.config.flag_distance_reward
+        else:  # P2 wants to go DOWN (higher row number)
+            old_dist = 9 - r_from  # Distance from row 9 (enemy back rank)
+            new_dist = 9 - r_to
+            if new_dist < old_dist:  # Moving toward enemy
+                positional_r += self.config.flag_distance_reward
             
         # Center control
         if 3 <= c_to <= 6 and 4 <= r_to <= 5:

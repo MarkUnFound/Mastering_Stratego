@@ -10,11 +10,13 @@ from game_state import GameState
 from training_config import REWARD_SCALE
 
 class StrategoEnvironment:
-    def __init__(self, device, record_game=False, episode_num=None, full_observability=False):
+    def __init__(self, device, record_game=False, episode_num=None, full_observability=False, enable_anti_stall=False, max_turns=500):
         self.device = device
         self.record_game = record_game
         self.episode_num = episode_num
         self.full_observability = full_observability  # For Phase 1 curriculum (cheating mode)
+        self.enable_anti_stall = enable_anti_stall  # Only enable for agent-vs-agent games
+        self.max_turns = max_turns  # Curriculum-based turn limit
         self.current_player = 1
         self.game_over = False
         self.winner = None
@@ -354,8 +356,8 @@ class StrategoEnvironment:
         if self.game_over:
             return self._get_game_state(), 0.0, True, {"winner": self.winner, "win_type": self.win_type}
 
-        # Check for max turns (draw) - reduced to 1000 for faster, more decisive games
-        if self.turn_count >= 1000:
+        # Check for max turns (draw) - reduced to 500 for faster, more decisive games
+        if self.turn_count >= 500:
             self.game_over = True
             self.winner = 0
             self.win_type = 'timeout'
@@ -536,24 +538,26 @@ class StrategoEnvironment:
                 self.winner = -self.current_player
                 self.win_type = 'no_moves'  # Track immobilization win
         
-        # Early draw detection (start checking after 100 turns to catch deadlocks faster)
-        if self.turn_count > 100:
+        # Early draw detection - ONLY if anti_stall is enabled (agent-vs-agent)
+        # Disabled for random opponents since they don't cause intentional stalls
+        if self.enable_anti_stall and self.turn_count > 100:
             # Check for repetitive positions (aggressive check)
             if self._is_position_repetitive():
                 self.game_over = True
                 self.winner = 0
+                self.win_type = 'stall_repetition'
                 return
         
-        # Stalemate check (after 200 turns - few pieces moving)
-        if self.turn_count > 200:
+        # Stalemate check - ONLY if anti_stall is enabled
+        if self.enable_anti_stall and self.turn_count > 200:
             if self._is_stalemate():
                 self.game_over = True
                 self.winner = 0
-                self.win_type = 'timeout'
+                self.win_type = 'stall_few_pieces'
                 return
         
-        # Hard limit (1000 turns = draw) - reduced from 4000
-        if self.turn_count >= 1000:
+        # Hard limit - uses curriculum-based max_turns
+        if self.turn_count >= self.max_turns:
             self.game_over = True
             self.winner = 0
             self.win_type = 'timeout'
