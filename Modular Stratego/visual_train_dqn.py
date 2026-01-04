@@ -41,6 +41,7 @@ from heuristic_setup import HeuristicSetupAgent
 from league import LeagueManager
 from random_starting_player import swap_placements
 from distributional_reward import StrategoRewardConfig
+from policy_search import PolicyRefinedSearch, SearchConfig
 
 # Helper to capture gradients
 class GradientCatcher:
@@ -61,6 +62,8 @@ class VisualRainbowAgent(RainbowAgent):
         self.last_top_moves = []
         self.last_uncertainty_map = None
         self.gradient_catcher = GradientCatcher()
+        self.last_search_info = None  # Search visualization data
+        self.search_engine = None  # Will be set externally
         
         # Register hook on the first convolutional layer to catch input gradients (Saliency)
         self._register_hooks()
@@ -82,12 +85,14 @@ class VisualRainbowAgent(RainbowAgent):
             'q_values': self.last_q_values,
             'top_moves': self.last_top_moves,
             'uncertainty': self.last_uncertainty_map,
-            'gradients': self.gradient_catcher.grads.get('input_grad')
+            'gradients': self.gradient_catcher.grads.get('input_grad'),
+            'search_info': self.last_search_info
         }
 
-    def act_visual(self, state, valid_moves, game_state=None):
+    def act_visual(self, state, valid_moves, game_state=None, use_search=False):
         """
         Same as act(), but stores the Q-values for visualization.
+        Optionally uses test-time search if enabled.
         """
         # Respect the toggle: if use_pbs is False, pass None to force internal padding
         pbs_instance = self.pbs if self.use_pbs else None
@@ -146,6 +151,23 @@ class VisualRainbowAgent(RainbowAgent):
         
         if not valid_q_values:
             return None
+        
+        # Test-Time Search (Optional)
+        self.last_search_info = None
+        if use_search and self.search_engine is not None and len(valid_moves) >= 10:
+            def step_fn(gs, move):
+                # Simplified step function for search
+                return gs, 0.0, False, {}
+            def get_valid_moves_fn(gs):
+                return valid_moves
+            
+            search_move, search_info = self.search_engine.search(
+                state_tensor, valid_moves, get_valid_moves_fn, step_fn, 
+                self.player_id, game_state
+            )
+            self.last_search_info = search_info
+            if search_move:
+                return search_move
             
         best_move_idx = np.argmax(valid_q_values)
         return valid_moves[best_move_idx]
@@ -203,10 +225,20 @@ def visual_train():
     setup_agent2 = HeuristicSetupAgent(player_id=-1, device=device)
     random_setup_agent = RandomSetupAgent(player_id=-1)
     
-    # Curriculum
-    from curriculum import CurriculumManager
     curriculum = CurriculumManager(start_phase=CURRICULUM_START_PHASE)
     print(f"Curriculum initialized: Phase {curriculum.current_phase.value}")
+    
+    # Test-Time Search Engine (for visualization only)
+    search_config = SearchConfig(
+        enabled=True,
+        search_depth=2,
+        top_k_moves=5,
+        search_budget=50
+    )
+    agent1.search_engine = PolicyRefinedSearch(
+        agent1.q_network, search_config, device=str(device)
+    )
+    print("[OK] Test-Time Search engine initialized for visualization")
     
     agent2_placeholder = rainbow_agent2 # Default reference
     
@@ -251,6 +283,7 @@ def visual_train():
         'step_by_step': False,
         'run_speed': 0.1,
         'pbs_active': True,
+        'search_active': False,  # Test-time search toggle
         'manual_step_trigger': False
     }
     
@@ -261,12 +294,14 @@ def visual_train():
             f"Phase: {curriculum.current_phase.name} ({curriculum.current_phase.value})\n"
             f"Step Speed: {state_vars['run_speed']:.2f}s\n"
             f"PBS Active: {state_vars['pbs_active']}\n"
+            f"Search Active: {state_vars['search_active']}\n"
             f"Paused: {state_vars['paused']}\n\n"
             "CONTROLS:\n"
             "[SPACE]: Pause/Resume\n"
             "[RIGHT]: Step (if paused)\n"
             "[UP/DOWN]: Speed +/- \n"
             "[P]: Toggle PBS-AAREN\n"
+            "[S]: Toggle Search\n"
             "[C]: Force Curriculum Check"
         )
         ax_info.clear()
@@ -286,6 +321,9 @@ def visual_train():
             state_vars['pbs_active'] = not state_vars['pbs_active']
             agent1.use_pbs = state_vars['pbs_active']
             print(f"PBS Toggled: {state_vars['pbs_active']}")
+        elif event.key == 's':
+            state_vars['search_active'] = not state_vars['search_active']
+            print(f"🔍 Search Toggled: {state_vars['search_active']}")
         elif event.key == 'c':
              # Force verify curriculum
             curriculum.update_metrics({'winner': 1, 'pbs_accuracy': 0.8}) 
@@ -408,7 +446,8 @@ def visual_train():
                 
                 # 2. Agent 1 Act
                 if env.current_player == 1:
-                    action = agent1.act_visual(state, valid_moves, game_state=state)
+                    action = agent1.act_visual(state, valid_moves, game_state=state, 
+                                              use_search=state_vars['search_active'])
                     
                     # Update Q-Map
                     data = agent1.get_last_visual_data()
@@ -424,9 +463,10 @@ def visual_train():
                         ax_qval.set_yticks(np.arange(-0.5, 10.5, 1), minor=True)
                         ax_qval.grid(which='minor', color='black', linestyle='-', linewidth=0.5)
 
-                    # Update Top Moves List
+                    # Update Top Moves List (with search indicator)
                     if data['top_moves']:
-                         visualize_top_moves(ax_top_moves, data['top_moves'])
+                         visualize_top_moves(ax_top_moves, data['top_moves'], 
+                                           search_info=data.get('search_info'))
                     
                     # Update Backprop (If available from training step)
                     grad_data = data['gradients']
@@ -614,16 +654,25 @@ def visualize_board(ax, board, valid_moves, last_move=None, observed_board=None)
         ax.add_patch(plt.Rectangle((c1-0.5, r1-0.5), 1, 1, fill=False, edgecolor='gold', linewidth=3, zorder=5))
         ax.add_patch(plt.Rectangle((c2-0.5, r2-0.5), 1, 1, fill=False, edgecolor='gold', linewidth=3, zorder=5))
 
-def visualize_top_moves(ax, top_moves):
+def visualize_top_moves(ax, top_moves, search_info=None):
     """
     Render a text list of top moves.
     top_moves: list of ((r1, c1), (r2, c2), q_val) or similiar.
     Actually VisualRainbowAgent stores (move, q).
     move is ((r1, c1), (r2, c2)).
+    
+    search_info: Optional dict with search results to display.
     """
     ax.clear()
     ax.axis('off')
-    ax.set_title("Top 10 Candidate Moves", fontsize=10, fontweight='bold')
+    
+    # Title with search indicator
+    title = "Top 10 Candidate Moves"
+    if search_info and search_info.get('search_changed_decision'):
+        title = "🔍 SEARCH REFINED"
+    elif search_info:
+        title = "🔍 Search Active"
+    ax.set_title(title, fontsize=10, fontweight='bold')
     
     # Header
     ax.text(0, 1.0, f"{'Move':<10} {'Q-Value':>10}", transform=ax.transAxes, fontsize=9, fontfamily='monospace', fontweight='bold')
@@ -643,6 +692,20 @@ def visualize_top_moves(ax, top_moves):
             
         ax.text(0, y, f"{move_str:<12} {q_str:>8}", transform=ax.transAxes, fontsize=9, fontfamily='monospace', color=color, fontweight=weight)
         y -= 0.08
+    
+    # Search info box
+    if search_info:
+        y -= 0.05
+        ax.axhline(y=y + 0.03, xmin=0, xmax=0.9, color='gray', linewidth=0.5, transform=ax.transAxes)
+        ax.text(0, y, "─── Search Info ───", transform=ax.transAxes, fontsize=8, color='gray')
+        y -= 0.06
+        ax.text(0, y, f"Depth: {search_info.get('search_depth', 'N/A')}", transform=ax.transAxes, fontsize=8)
+        y -= 0.05
+        ax.text(0, y, f"Expanded: {search_info.get('moves_expanded', 'N/A')} moves", transform=ax.transAxes, fontsize=8)
+        y -= 0.05
+        changed = search_info.get('search_changed_decision', False)
+        ax.text(0, y, f"Decision Changed: {'YES ✓' if changed else 'No'}", 
+                transform=ax.transAxes, fontsize=8, color='blue' if changed else 'gray')
 
 
 if __name__ == "__main__":

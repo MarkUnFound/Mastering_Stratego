@@ -88,14 +88,14 @@ class StrategoRewardConfig:
     reveal_bonus: float = 0.01      # Revealed any enemy rank
     first_reveal_bonus: float = 0.02 # First time seeing this piece type
     
-    # Positional rewards
-    territory_advance: float = 0.05 # One-time reward for reaching a new row
+    # Positional rewards - BOOSTED to encourage flag-seeking
+    territory_advance: float = 0.2   # One-time reward for reaching a new row (increased 4x)
     center_control: float = 0.005
-    flag_proximity_bonus: float = 0.05
+    flag_proximity_bonus: float = 0.3  # Near enemy back rank (increased 6x)
     
     # FLAG DISTANCE REWARD: Continuous reward for moving pieces toward enemy flag
     # This teaches the agent that getting closer to the objective is good
-    flag_distance_reward: float = 0.02  # Per-step reward for reducing distance to enemy back rank
+    flag_distance_reward: float = 0.15  # Increased 7.5x to dominate reward signal
     
     # Scout penetration bonus (encourage flag hunting)
     scout_penetration_bonus: float = 0.3  # Scout reaching enemy back rank

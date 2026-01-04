@@ -32,6 +32,60 @@ class ResidualBlock(nn.Module):
         out = F.relu(out)
         return out
 
+
+class SpatialAttention(nn.Module):
+    """
+    Spatial Self-Attention Layer for global board reasoning.
+    
+    Each board position (cell) attends to ALL other positions,
+    allowing the network to capture long-range piece relationships
+    like "my Marshal vs their Spy" or "path to enemy flag".
+    
+    Input: (B, C, H, W) -> Output: (B, C, H, W)
+    """
+    def __init__(self, channels: int, num_heads: int = 4, dropout: float = 0.1):
+        super(SpatialAttention, self).__init__()
+        self.channels = channels
+        self.num_heads = num_heads
+        
+        # Multi-head self-attention
+        self.attn = nn.MultiheadAttention(
+            embed_dim=channels, 
+            num_heads=num_heads, 
+            dropout=dropout,
+            batch_first=True
+        )
+        
+        # Layer normalization for stability
+        self.norm1 = nn.LayerNorm(channels)
+        self.norm2 = nn.LayerNorm(channels)
+        
+        # Feed-forward network (standard transformer block)
+        self.ffn = nn.Sequential(
+            nn.Linear(channels, channels * 2),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(channels * 2, channels),
+            nn.Dropout(dropout)
+        )
+        
+    def forward(self, x):
+        B, C, H, W = x.shape
+        
+        # Reshape: (B, C, H, W) -> (B, H*W, C)
+        x_flat = x.flatten(2).permute(0, 2, 1)  # (B, 100, 64)
+        
+        # Self-attention with residual connection
+        attn_out, _ = self.attn(x_flat, x_flat, x_flat)
+        x_flat = self.norm1(x_flat + attn_out)
+        
+        # Feed-forward with residual connection
+        ffn_out = self.ffn(x_flat)
+        x_flat = self.norm2(x_flat + ffn_out)
+        
+        # Reshape back: (B, H*W, C) -> (B, C, H, W)
+        return x_flat.permute(0, 2, 1).view(B, C, H, W)
+
 class RainbowDQN(nn.Module):
     """
     Rainbow DQN Network with ResNet Backbone
@@ -56,6 +110,10 @@ class RainbowDQN(nn.Module):
         # Keeps shape (64, 10, 10) but increases depth/abstraction
         self.res_blocks = nn.ModuleList([ResidualBlock(64) for _ in range(6)])
         
+        # Spatial Self-Attention for global board reasoning
+        # Applied AFTER ResBlocks to capture long-range piece relationships
+        self.spatial_attention = SpatialAttention(channels=64, num_heads=4, dropout=0.1)
+        
         # Value Head
         # (64, 10, 10) -> (1, 10, 10) -> Flatten -> 100 -> NoisyLinear
         self.value_conv = nn.Conv2d(64, 1, kernel_size=1)
@@ -77,6 +135,9 @@ class RainbowDQN(nn.Module):
         x = F.relu(self.bn_in(self.conv_in(x)))
         for block in self.res_blocks:
             x = block(x)
+        
+        # Spatial Self-Attention for global reasoning
+        x = self.spatial_attention(x)
             
         # Dueling Heads
         

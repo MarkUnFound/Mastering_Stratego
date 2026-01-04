@@ -153,6 +153,71 @@ class RainbowAgent:
         self.target_network = RainbowDQN(input_shape=(self.input_channels, 10, 10), output_size=action_size, num_atoms=self.num_atoms).to(device)
         self.update_target_network()
         
+        # Reference Network for KL-Regularization (anti-cycling)
+        # This network updates MUCH slower than target to anchor policy
+        self.reference_network = RainbowDQN(
+            input_shape=(self.input_channels, 10, 10), 
+            output_size=action_size, 
+            num_atoms=self.num_atoms
+        ).to(device)
+        self.reference_network.load_state_dict(self.q_network.state_dict())
+        self.reference_network.eval()  # Never train directly
+        self.reference_update_counter = 0
+        
+        # KL and Entropy Regularization Settings
+        try:
+            from training_config import (
+                KL_REG_ENABLED, KL_REG_WEIGHT, REF_POLICY_UPDATE_INTERVAL,
+                ENTROPY_REG_ENABLED, ENTROPY_COEFF_START, ENTROPY_COEFF_END, ENTROPY_ANNEAL_EPISODES
+            )
+            self.kl_reg_enabled = KL_REG_ENABLED
+            self.kl_reg_weight = KL_REG_WEIGHT
+            self.ref_update_interval = REF_POLICY_UPDATE_INTERVAL
+            self.entropy_reg_enabled = ENTROPY_REG_ENABLED
+            self.entropy_coeff_start = ENTROPY_COEFF_START
+            self.entropy_coeff_end = ENTROPY_COEFF_END
+            self.entropy_anneal_episodes = ENTROPY_ANNEAL_EPISODES
+        except ImportError:
+            self.kl_reg_enabled = False
+            self.kl_reg_weight = 0.01
+            self.ref_update_interval = 50000
+            self.entropy_reg_enabled = False
+            self.entropy_coeff_start = 0.1
+            self.entropy_coeff_end = 0.01
+            self.entropy_anneal_episodes = 50000
+        
+        # Ataraxos Techniques Configuration
+        try:
+            from training_config import (
+                ADVANTAGE_FILTERING_ENABLED, ADVANTAGE_OVERSAMPLE_FACTOR, ADVANTAGE_MIN_BATCH,
+                DYNAMIC_DAMPING_ENABLED, TOTAL_TRAINING_EPISODES,
+                MAGNET_COEFF_START, MAGNET_COEFF_END, MAGNET_POWER,
+                TARGET_KL_COEFF_START, TARGET_KL_COEFF_END, TARGET_KL_POWER
+            )
+            self.advantage_filtering = ADVANTAGE_FILTERING_ENABLED
+            self.oversample_factor = ADVANTAGE_OVERSAMPLE_FACTOR
+            self.min_batch_after_filter = ADVANTAGE_MIN_BATCH
+            self.dynamic_damping = DYNAMIC_DAMPING_ENABLED
+            self.total_episodes = TOTAL_TRAINING_EPISODES
+            self.magnet_start = MAGNET_COEFF_START
+            self.magnet_end = MAGNET_COEFF_END
+            self.magnet_power = MAGNET_POWER
+            self.target_kl_start = TARGET_KL_COEFF_START
+            self.target_kl_end = TARGET_KL_COEFF_END
+            self.target_kl_power = TARGET_KL_POWER
+        except ImportError:
+            self.advantage_filtering = False
+            self.oversample_factor = 4
+            self.min_batch_after_filter = 64
+            self.dynamic_damping = False
+            self.total_episodes = 100000
+            self.magnet_start = 0.1
+            self.magnet_end = 0.001
+            self.magnet_power = 2.0
+            self.target_kl_start = 0.001
+            self.target_kl_end = 0.1
+            self.target_kl_power = 2.0
+        
         if device.type == 'cuda':
             torch.backends.cudnn.benchmark = True
         
@@ -675,6 +740,18 @@ class RainbowAgent:
         # Check which environments will take random actions
         random_action_mask = [random.random() < epsilon for _ in range(batch_size)]
         
+        # IMITATION LEARNING: Use heuristic expert for portion of actions during early training
+        try:
+            from training_config import IMITATION_ENABLED, IMITATION_RATIO, IMITATION_EPISODES
+        except ImportError:
+            IMITATION_ENABLED = False
+            IMITATION_RATIO = 0.0
+            IMITATION_EPISODES = 0
+        
+        imitation_active = IMITATION_ENABLED and self.current_episode < IMITATION_EPISODES
+        imitation_mask = [random.random() < IMITATION_RATIO if imitation_active else False 
+                         for _ in range(batch_size)]
+        
         # 1. Get batch state representation and cache it for remember_batch
         state_tensor = self.get_batch_state_representation(states, game_states, full_observability=full_observability)
         self._cached_state_tensor = state_tensor  # Cache for reuse in remember_batch
@@ -713,6 +790,22 @@ class RainbowAgent:
             # EPSILON-GREEDY: Random action with probability epsilon
             if random_action_mask[i]:
                 actions[i] = random.choice(valid_moves)
+                continue
+            
+            # IMITATION LEARNING: Use heuristic expert for early training
+            if imitation_mask[i]:
+                # Get board for heuristic scoring
+                board = states[i]
+                if hasattr(board, 'board'):
+                    board = board.board
+                # Get top heuristic-scored move as expert demonstration
+                scored_moves = self.move_filter.get_filtered_actions(
+                    board, valid_moves, self.player_id, max_moves=1
+                )
+                if scored_moves:
+                    actions[i] = scored_moves[0][0]  # Best move from expert
+                else:
+                    actions[i] = valid_moves[0]
                 continue
             
             # Get board for heuristic scoring
@@ -1041,21 +1134,29 @@ class RainbowAgent:
         if len(self.memory) < max(batch_size, WARMUP_STEPS):
             return None
         
-        # --- Sample Batch (PER or Standard) ---
+        # --- Sample Batch (PER or Standard) with ATARAXOS OVERSAMPLING ---
         indices = None
         weights = None
+        
+        # Determine sample size (oversample if advantage filtering enabled)
+        sample_size = batch_size
+        if self.advantage_filtering:
+            sample_size = batch_size * self.oversample_factor
         
         if self.per_enabled:
             # Anneal beta
             if episode is not None:
                 self.memory.anneal_beta(episode)
             
-            sample_result = self.memory.sample(batch_size)
+            sample_result = self.memory.sample(sample_size)
             if sample_result is None:
                 return None
             states, actions, rewards, next_states, dones, indices, weights = sample_result
         else:
-            states, actions, rewards, next_states, dones = self.memory.sample(batch_size)
+            sample_result = self.memory.sample(sample_size)
+            if sample_result is None:
+                return None
+            states, actions, rewards, next_states, dones = sample_result
         
         # Use n-step gamma if available
         gamma_to_use = self.gamma_n if hasattr(self, 'gamma_n') and self.n_steps > 1 else self.gamma
@@ -1064,6 +1165,36 @@ class RainbowAgent:
         if torch.isnan(rewards).any():
              tqdm.write("[WARN] Warning: NaN detected in rewards batch. Skipping update.")
              return None
+        
+        # --- ATARAXOS ADVANTAGE FILTERING ---
+        # Filter to top 25% by N-step TD error magnitude
+        if self.advantage_filtering and states.size(0) > batch_size:
+            with torch.no_grad():
+                # V(s) from online network (max Q-value)
+                current_probs = self.q_network(states).exp()
+                current_v = (current_probs * self.support).sum(dim=2).max(dim=1)[0]
+                
+                # V(s') from target network
+                next_probs = self.target_network(next_states).exp()
+                next_v = (next_probs * self.support).sum(dim=2).max(dim=1)[0]
+                
+                # N-step TD error: |r + γ^n V(s') - V(s)|
+                gamma_n = self.gamma_n if hasattr(self, 'gamma_n') else self.gamma
+                td_errors = torch.abs(rewards + gamma_n * (1 - dones) * next_v - current_v)
+            
+            # Keep top-k transitions by TD error magnitude
+            k = max(batch_size, self.min_batch_after_filter)
+            if states.size(0) > k:
+                top_k_indices = torch.topk(td_errors, k).indices
+                states = states[top_k_indices]
+                actions = actions[top_k_indices]
+                rewards = rewards[top_k_indices]
+                next_states = next_states[top_k_indices]
+                dones = dones[top_k_indices]
+                if weights is not None:
+                    weights = weights[top_k_indices]
+                if indices is not None:
+                    indices = [indices[i] for i in top_k_indices.cpu().tolist()]
 
         # --- Distributional RL Target Calculation ---
         with torch.no_grad():
@@ -1124,11 +1255,67 @@ class RainbowAgent:
         elementwise_loss = -(m * action_log_probs).sum(dim=1)
         
         # Apply importance sampling weights if PER
-        # Apply importance sampling weights if PER
         if weights is not None:
-            loss = (weights * elementwise_loss).mean()
+            c51_loss = (weights * elementwise_loss).mean()
         else:
-            loss = elementwise_loss.mean()
+            c51_loss = elementwise_loss.mean()
+        
+        # --- KL-REGULARIZATION (Anti-Cycling) ---
+        kl_loss = torch.tensor(0.0, device=self.device)
+        if self.kl_reg_enabled:
+            with torch.no_grad():
+                ref_log_probs = self.reference_network(states)
+            # KL(ref || current) for each action's distribution
+            # Using log-space: KL = sum(p * (log_p - log_q))
+            ref_probs = ref_log_probs.exp()
+            kl_per_action = (ref_probs * (ref_log_probs - current_log_probs)).sum(dim=2)  # (batch, actions)
+            # Average over actions and batch
+            kl_loss = kl_per_action.mean()
+        
+        # --- ENTROPY REGULARIZATION (Bluffing/Mixed Strategies) ---
+        entropy_bonus = torch.tensor(0.0, device=self.device)
+        if self.entropy_reg_enabled:
+            # Anneal entropy coefficient
+            entropy_coeff = self.entropy_coeff_end + (self.entropy_coeff_start - self.entropy_coeff_end) * \
+                           max(0, 1 - (episode or 0) / self.entropy_anneal_episodes)
+            # Entropy = -sum(p * log(p))
+            current_probs = current_log_probs.exp()
+            action_entropy = -(current_probs * current_log_probs).sum(dim=2)  # (batch, actions)
+            # Higher entropy = more exploration, so we SUBTRACT entropy loss (add entropy bonus)
+            entropy_bonus = action_entropy.mean() * entropy_coeff
+        
+        # --- ATARAXOS DYNAMIC DAMPING (Magnetic Regularization) ---
+        magnet_loss = torch.tensor(0.0, device=self.device)
+        target_kl_loss = torch.tensor(0.0, device=self.device)
+        if self.dynamic_damping:
+            # Normalized training progress [0, 1]
+            t = min(1.0, (episode or 0) / self.total_episodes)
+            
+            # Magnet Policy: KL toward uniform (quadratic decay)
+            # alpha(t) = alpha_0 * (1 - t)^p
+            alpha_t = self.magnet_start * ((1 - t) ** self.magnet_power)
+            # KL(π || uniform) = log(num_actions) - H(π)
+            current_probs = current_log_probs.exp()
+            action_entropy_for_magnet = -(current_probs * current_log_probs).sum(dim=2).mean()
+            magnet_loss = alpha_t * (math.log(self.action_size) - action_entropy_for_magnet)
+            
+            # Target KL: KL toward target network (quadratic growth)
+            # beta(t) = beta_0 + (beta_T - beta_0) * t^p
+            beta_t = self.target_kl_start + (self.target_kl_end - self.target_kl_start) * (t ** self.target_kl_power)
+            with torch.no_grad():
+                target_log_probs = self.target_network(states)
+            target_probs = target_log_probs.exp()
+            target_kl_loss = beta_t * (target_probs * (target_log_probs - current_log_probs)).sum(dim=2).mean()
+        
+        # --- TOTAL LOSS ---
+        loss = c51_loss + self.kl_reg_weight * kl_loss - entropy_bonus + magnet_loss + target_kl_loss
+        
+        # Update reference network periodically (much slower than target)
+        if self.kl_reg_enabled:
+            self.reference_update_counter += 1
+            if self.reference_update_counter >= self.ref_update_interval:
+                self.reference_network.load_state_dict(self.q_network.state_dict())
+                self.reference_update_counter = 0
         
         # Check for NaN/Inf (handle tensor properly)
         if torch.isnan(loss).any() or torch.isinf(loss).any():
