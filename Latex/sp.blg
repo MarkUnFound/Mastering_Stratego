@@ -23,9 +23,10 @@ Reallocating 'name_of_file' (item size: 1) to 11 items.
 Reallocating 'name_of_file' (item size: 1) to 14 items.
 A level-1 auxiliary file: misc/vita.aux
 Database file #1: references.bib
+Warning--I didn't find a database entry for "Ataraxos"
 You've used 42 entries,
             2030 wiz_defined-function locations,
-            781 strings with 13436 characters,
+            783 strings with 13452 characters,
 and the built_in function-call counts, 17361 in all, are:
 = -- 1618
 > -- 990
@@ -64,3 +65,4 @@ warning$ -- 0
 while$ -- 151
 width$ -- 44
 write$ -- 395
+(There was 1 warning)

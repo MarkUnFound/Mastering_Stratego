@@ -20,22 +20,23 @@ TARGET_UPDATE_INTERVAL = 5000   # Faster target updates for early learning (was 
 REWARD_SCALE = 1.0        # Scaling factor for reward calculations
 
 # =============================================================================
-# EXPLORATION SETTINGS (Aggressive for Early Training)
+# EXPLORATION SETTINGS (Noisy Networks Only - True Rainbow DQN)
 # =============================================================================
-# Epsilon-greedy exploration (combined with Noisy Networks for hybrid exploration)
-EXPLORATION_EPSILON_START = 0.50  # 50% random actions initially (more aggressive)
-EXPLORATION_EPSILON_END = 0.01    # Decay to 1% over training
-EXPLORATION_EPSILON_DECAY = 20000 # Episodes to decay epsilon
+# Epsilon-greedy DISABLED: Noisy Networks handle exploration (state-dependent)
+# This follows the original Rainbow DQN paper which replaces ε-greedy with NoisyNets
+EXPLORATION_EPSILON_START = 0.0   # Disabled - Noisy Networks handle exploration
+EXPLORATION_EPSILON_END = 0.0     # Disabled
+EXPLORATION_EPSILON_DECAY = 1     # Not used
 
 # =============================================================================
 # CURRICULUM TURN LIMITS (Shorter games for faster learning)
 # =============================================================================
 # Start with shorter games to force faster decisions, increase as agent improves
-PHASE_1_MAX_TURNS = 100   # Reduced from 200 to force faster decisions
-PHASE_2_MAX_TURNS = 300   # Medium games for memory testing
-PHASE_3_MAX_TURNS = 400   # Longer for self-play strategy
-PHASE_4_MAX_TURNS = 500   # Full length for league training
-DEFAULT_MAX_TURNS = 500   # Fallback
+PHASE_1_MAX_TURNS = 200   # Doubled from 100 for longer games
+PHASE_2_MAX_TURNS = 600   # Medium games for memory testing
+PHASE_3_MAX_TURNS = 800   # Longer for self-play strategy
+PHASE_4_MAX_TURNS = 1000  # Full length for league training
+DEFAULT_MAX_TURNS = 1000  # Fallback
 
 # Warmup Period (must collect this many experiences before training starts)
 WARMUP_STEPS = 3000       # Reduced from 10k for faster training start
@@ -86,6 +87,10 @@ AAREN_USE_FP16 = True           # Use half-precision inference (~30% faster)
 AAREN_USE_TORCHSCRIPT = False   # Disabled - AAREN uses dynamic ops that don't compile
 AAREN_HIDDEN_SIZE = 64          # Keep at 64 for checkpoint compatibility
 AAREN_NUM_LAYERS = 3            # Keep at 3 for checkpoint compatibility
+
+# Rainbow DQN Performance Optimizations  
+USE_TORCH_COMPILE = True       # PyTorch 2.0+ compilation (~10-20% speedup, longer first run)
+TORCH_COMPILE_MODE = "reduce-overhead"  # Options: "default", "reduce-overhead", "max-autotune"
 
 # League Training Settings (Opponent Diversity)
 LEAGUE_TRAINING_ENABLED = True

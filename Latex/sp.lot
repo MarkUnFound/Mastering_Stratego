@@ -3,9 +3,9 @@
 \addvspace {10\p@ }
 \contentsline {table}{\numberline {3.1}{\ignorespaces Key Symbols and Descriptions from the MARQ Framework}}{17}{}%
 \addvspace {10\p@ }
-\contentsline {table}{\numberline {4.1}{\ignorespaces Strategic ability bonuses for pieces with special capabilities.}}{45}{}%
-\contentsline {table}{\numberline {4.2}{\ignorespaces Computed piece values with associated combat and survival metrics.}}{46}{}%
-\contentsline {table}{\numberline {4.3}{\ignorespaces State representation input channels for the Rainbow DQN.}}{48}{}%
-\contentsline {table}{\numberline {4.4}{\ignorespaces Heuristic scoring criteria for move filtering.}}{52}{}%
+\contentsline {table}{\numberline {4.1}{\ignorespaces Strategic ability bonuses for pieces with special capabilities.}}{47}{}%
+\contentsline {table}{\numberline {4.2}{\ignorespaces Computed piece values with associated combat and survival metrics.}}{48}{}%
+\contentsline {table}{\numberline {4.3}{\ignorespaces State representation input channels for the Rainbow DQN.}}{50}{}%
+\contentsline {table}{\numberline {4.4}{\ignorespaces Heuristic scoring criteria for move filtering.}}{56}{}%
 \addvspace {10\p@ }
 \addvspace {10\p@ }

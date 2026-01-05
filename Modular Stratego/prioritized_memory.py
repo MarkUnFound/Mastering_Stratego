@@ -10,26 +10,26 @@ Experience = namedtuple('Experience', ['state', 'action', 'reward', 'next_state'
 class StandardReplayBuffer:
     """
     Standard Replay Buffer for Rainbow DQN (Feed-Forward).
-    Stores individual transitions on GPU for maximum performance.
+    Stores individual transitions on GPU with Float16 for memory efficiency.
     """
-    def __init__(self, capacity, device='cuda'):
+    def __init__(self, capacity, device='cuda', use_float16=True):
         self.capacity = capacity
         self.device = device
         self.buffer = deque(maxlen=capacity)
         self.store_on_gpu = (device != 'cpu' and device != torch.device('cpu'))
-        if self.store_on_gpu:
-            pass  # Using GPU storage
+        self.use_float16 = use_float16 and self.store_on_gpu  # Float16 only on GPU
+        self.storage_dtype = torch.float16 if self.use_float16 else torch.float32
         
     def add(self, state, action, reward, next_state, done):
-        """Add a transition to the buffer."""
+        """Add a transition to the buffer with Float16 storage."""
         if self.store_on_gpu:
-            # Store on GPU for faster sampling
-            state_t = state.to(self.device) if isinstance(state, torch.Tensor) else torch.tensor(state, device=self.device)
-            next_state_t = next_state.to(self.device) if isinstance(next_state, torch.Tensor) else torch.tensor(next_state, device=self.device)
+            # Convert to storage dtype (float16 for memory efficiency)
+            state_t = state.to(self.device, dtype=self.storage_dtype) if isinstance(state, torch.Tensor) else torch.tensor(state, device=self.device, dtype=self.storage_dtype)
+            next_state_t = next_state.to(self.device, dtype=self.storage_dtype) if isinstance(next_state, torch.Tensor) else torch.tensor(next_state, device=self.device, dtype=self.storage_dtype)
         else:
-            # CPU fallback
-            state_t = state.cpu() if isinstance(state, torch.Tensor) else torch.tensor(state)
-            next_state_t = next_state.cpu() if isinstance(next_state, torch.Tensor) else torch.tensor(next_state)
+            # CPU fallback (always float32)
+            state_t = state.cpu().float() if isinstance(state, torch.Tensor) else torch.tensor(state, dtype=torch.float32)
+            next_state_t = next_state.cpu().float() if isinstance(next_state, torch.Tensor) else torch.tensor(next_state, dtype=torch.float32)
         
         # Action/Reward/Done are usually scalars
         action_t = action.cpu() if isinstance(action, torch.Tensor) else action
@@ -43,16 +43,16 @@ class StandardReplayBuffer:
         """
         Sample a batch of transitions.
         Returns:
-            states, actions, rewards, next_states, dones (all Tensors on device)
+            states, actions, rewards, next_states, dones (all Tensors on device, float32)
         """
         batch = random.sample(self.buffer, batch_size)
         
         if self.store_on_gpu:
-            # Already on GPU, just stack (fast path)
-            states = torch.stack([e.state for e in batch])
+            # Already on GPU, stack and convert to float32 for computation
+            states = torch.stack([e.state for e in batch]).float()
         else:
             # Move from CPU to GPU during sampling
-            states = torch.stack([e.state for e in batch]).to(self.device)
+            states = torch.stack([e.state for e in batch]).to(self.device).float()
         
         # Handle actions (might be int or tensor)
         actions_list = [e.action for e in batch]
@@ -64,9 +64,9 @@ class StandardReplayBuffer:
         rewards = torch.tensor([e.reward for e in batch], dtype=torch.float32, device=self.device)
         
         if self.store_on_gpu:
-            next_states = torch.stack([e.next_state for e in batch])
+            next_states = torch.stack([e.next_state for e in batch]).float()
         else:
-            next_states = torch.stack([e.next_state for e in batch]).to(self.device)
+            next_states = torch.stack([e.next_state for e in batch]).to(self.device).float()
             
         dones = torch.tensor([e.done for e in batch], dtype=torch.float32, device=self.device)
         
@@ -142,10 +142,11 @@ class PrioritizedReplayBuffer:
     """
     Prioritized Experience Replay Buffer using Sum Tree.
     Samples transitions with probability proportional to TD-error.
+    Uses Float16 storage for memory efficiency.
     
     Reference: Schaul et al. (2015) "Prioritized Experience Replay"
     """
-    def __init__(self, capacity, device='cuda', alpha=0.6, beta_start=0.4, beta_end=1.0, beta_anneal_episodes=10000):
+    def __init__(self, capacity, device='cuda', alpha=0.6, beta_start=0.4, beta_end=1.0, beta_anneal_episodes=10000, use_float16=True):
         self.capacity = capacity
         self.device = device
         self.alpha = alpha  # Priority exponent
@@ -158,9 +159,11 @@ class PrioritizedReplayBuffer:
         
         self.tree = SumTree(capacity)
         self.store_on_gpu = (device != 'cpu' and device != torch.device('cpu'))
+        self.use_float16 = use_float16 and self.store_on_gpu
+        self.storage_dtype = torch.float16 if self.use_float16 else torch.float32
         
     def add(self, state, action, reward, next_state, done, priority=None, is_winning_experience=False):
-        """Add experience with priority boost for winning experiences (self-imitation learning).
+        """Add experience with Float16 storage and priority boost for winning experiences.
         
         Args:
             state, action, reward, next_state, done: Standard experience tuple
@@ -168,11 +171,12 @@ class PrioritizedReplayBuffer:
             is_winning_experience: If True, boost priority 10x for self-imitation learning
         """
         if self.store_on_gpu:
-            state_t = state.to(self.device) if isinstance(state, torch.Tensor) else torch.tensor(state, device=self.device)
-            next_state_t = next_state.to(self.device) if isinstance(next_state, torch.Tensor) else torch.tensor(next_state, device=self.device)
+            # Convert to Float16 for memory efficiency
+            state_t = state.to(self.device, dtype=self.storage_dtype) if isinstance(state, torch.Tensor) else torch.tensor(state, device=self.device, dtype=self.storage_dtype)
+            next_state_t = next_state.to(self.device, dtype=self.storage_dtype) if isinstance(next_state, torch.Tensor) else torch.tensor(next_state, device=self.device, dtype=self.storage_dtype)
         else:
-            state_t = state.cpu() if isinstance(state, torch.Tensor) else torch.tensor(state)
-            next_state_t = next_state.cpu() if isinstance(next_state, torch.Tensor) else torch.tensor(next_state)
+            state_t = state.cpu().float() if isinstance(state, torch.Tensor) else torch.tensor(state, dtype=torch.float32)
+            next_state_t = next_state.cpu().float() if isinstance(next_state, torch.Tensor) else torch.tensor(next_state, dtype=torch.float32)
         
         action_t = action.cpu() if isinstance(action, torch.Tensor) else action
         reward_t = reward.cpu() if isinstance(reward, torch.Tensor) else reward
@@ -221,13 +225,13 @@ class PrioritizedReplayBuffer:
         weights = (self.tree.n_entries * sampling_probs) ** (-self.beta)
         weights = weights / weights.max()  # Normalize
         
-        # Stack tensors
+        # Stack tensors and convert to float32 for computation
         if self.store_on_gpu:
-            states = torch.stack([e.state for e in batch])
-            next_states = torch.stack([e.next_state for e in batch])
+            states = torch.stack([e.state for e in batch]).float()
+            next_states = torch.stack([e.next_state for e in batch]).float()
         else:
-            states = torch.stack([e.state for e in batch]).to(self.device)
-            next_states = torch.stack([e.next_state for e in batch]).to(self.device)
+            states = torch.stack([e.state for e in batch]).to(self.device).float()
+            next_states = torch.stack([e.next_state for e in batch]).to(self.device).float()
         
         actions_list = [e.action for e in batch]
         if isinstance(actions_list[0], torch.Tensor):

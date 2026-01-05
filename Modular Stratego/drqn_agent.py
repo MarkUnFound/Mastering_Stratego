@@ -153,6 +153,16 @@ class RainbowAgent:
         self.target_network = RainbowDQN(input_shape=(self.input_channels, 10, 10), output_size=action_size, num_atoms=self.num_atoms).to(device)
         self.update_target_network()
         
+        # PyTorch 2.0+ Compilation (optional speedup)
+        try:
+            from training_config import USE_TORCH_COMPILE, TORCH_COMPILE_MODE
+            if USE_TORCH_COMPILE:
+                self.q_network = torch.compile(self.q_network, mode=TORCH_COMPILE_MODE)
+                self.target_network = torch.compile(self.target_network, mode=TORCH_COMPILE_MODE)
+                print(f"[OK] Rainbow DQN compiled with mode='{TORCH_COMPILE_MODE}'")
+        except (ImportError, Exception) as e:
+            pass  # Silently skip if unavailable
+        
         # Reference Network for KL-Regularization (anti-cycling)
         # This network updates MUCH slower than target to anchor policy
         self.reference_network = RainbowDQN(
@@ -621,15 +631,17 @@ class RainbowAgent:
             
         self.q_network.eval()
         with torch.no_grad():
-            # Get Log Probabilities: (batch, action_size, num_atoms)
-            log_probs = self.q_network(state_tensor)
-            probs = log_probs.exp()
-            
-            # Calculate Expected Value: Sum(p_i * z_i)
-            # probs: (1, actions, atoms)
-            # support: (atoms)
-            expected_q_values = (probs * self.support).sum(dim=2) # (1, actions)
-            
+            # Mixed-precision inference for ~15-30% speedup
+            with torch.amp.autocast('cuda', enabled=self.amp_enabled):
+                # Get Log Probabilities: (batch, action_size, num_atoms)
+                log_probs = self.q_network(state_tensor)
+                probs = log_probs.exp()
+                
+                # Calculate Expected Value: Sum(p_i * z_i)
+                # probs: (1, actions, atoms)
+                # support: (atoms)
+                expected_q_values = (probs * self.support).sum(dim=2) # (1, actions)
+                
             base_q_values = expected_q_values.squeeze(0) # (actions)
             
         self.q_network.train()
@@ -768,16 +780,17 @@ class RainbowAgent:
             # Phase 1 (Full Obs) or No PBS: No uncertainty
             uncertainty_maps = [{}] * batch_size
             
-        # 3. Network forward pass
+        # 3. Network forward pass with mixed-precision inference
         self.q_network.eval()
         with torch.no_grad():
-            try:
-                log_probs = self.q_network(state_tensor)
-            except RuntimeError as e:
-                print(f"DEBUG: act_batch CRASH. state_tensor shape: {state_tensor.shape}")
-                raise e
-            probs = log_probs.exp()
-            expected_q_values = (probs * self.support).sum(dim=2) # (batch, actions)
+            with torch.amp.autocast('cuda', enabled=self.amp_enabled):
+                try:
+                    log_probs = self.q_network(state_tensor)
+                except RuntimeError as e:
+                    print(f"DEBUG: act_batch CRASH. state_tensor shape: {state_tensor.shape}")
+                    raise e
+                probs = log_probs.exp()
+                expected_q_values = (probs * self.support).sum(dim=2) # (batch, actions)
             
         self.q_network.train()
         

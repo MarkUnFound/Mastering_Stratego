@@ -287,6 +287,42 @@ MARQ employs adaptive learning rate adjustment based on loss trends and performa
 
 where $\mathcal{L}_{recent}$ is the average loss over recent training steps, $\tau_{increase}$ is the increase threshold, and $\alpha$ parameters control the rate of adjustment.
 
+\subsection{Training Stability via Ataraxos-Inspired Regularization}
+
+Recent advances in imperfect-information game solving, exemplified by the Ataraxos system which achieved superhuman performance in no-press Diplomacy, demonstrate that training stability is as critical as algorithmic innovation \cite{Ataraxos}. Deep reinforcement learning agents often struggle with two related problems: sample inefficiency, where most training experiences provide little learning signal, and strategy cycling, where the policy oscillates between different approaches without settling on a robust solution. The MARQ framework incorporates two complementary regularization techniques inspired by this work to address both challenges.
+
+\subsubsection{Advantage Filtering for Sample Efficiency}
+In value-based reinforcement learning, agents learn by comparing their predicted values with observed outcomes. The temporal-difference (TD) error quantifies this discrepancy: when the agent predicts a state is worth 5 points but observes an outcome of 8 points, the TD error is 3. Large TD errors indicate situations the agent does not yet understand well, making these transitions particularly valuable for learning.
+
+Standard experience replay samples transitions uniformly from a buffer of past experiences. This uniform sampling treats all transitions equally, even though some carry far more learning potential than others. A routine move that shuffles a piece sideways may have near-zero TD error because the agent already understands such situations, while a surprising capture that reveals hidden information may have large TD error because the outcome differed substantially from predictions.
+
+Advantage filtering addresses this inefficiency by focusing training on high-error transitions. The procedure works in three steps. First, the system samples more transitions than needed for a single training batch. Specifically, if the target batch size is $n$ transitions, the system samples $k \cdot n$ candidates, where $k=4$ in the current implementation. Second, each candidate's TD error is computed using the current value network. Third, the candidates are ranked by absolute TD error magnitude, and only the top $n$ transitions (the top quartile when $k=4$) are retained for gradient computation:
+\begin{equation}
+\mathcal{B}_{filtered} = \text{Top}_{n/k}\left(\mathcal{B}_{sampled}, |\delta_i|\right)
+\end{equation}
+where $\delta_i = r_i + \gamma^n V(s'_i) - V(s_i)$ is the $n$-step TD error for transition $i$, $r_i$ is the observed reward, $\gamma$ is the discount factor, and $V(\cdot)$ denotes the value function. This selective training focuses gradient updates on experiences where the agent's understanding is weakest, accelerating convergence without increasing computational cost per update.
+
+\subsubsection{Dynamic Damping with Power-Law Annealing}
+Strategy cycling occurs when a reinforcement learning agent repeatedly switches between different policies without converging to a stable solution. In Stratego, an agent might learn an aggressive attacking strategy, then shift to a defensive approach when attacks fail, then return to attacking when defense proves insufficient. This oscillation wastes training time and results in a policy that is easily exploited because it lacks consistency.
+
+The MARQ framework prevents strategy cycling through a technique called dynamic damping, which adds two regularization terms to the training loss function. These terms use Kullback-Leibler (KL) divergence, a mathematical measure of how different two probability distributions are from each other. When applied to policies, KL divergence quantifies how much an agent's action preferences have changed.
+
+The total loss function becomes:
+\begin{equation}
+\mathcal{L}_{total} = \mathcal{L}_{C51} + \alpha(t) \cdot D_{KL}(\pi \| \pi_{uniform}) + \beta(t) \cdot D_{KL}(\pi_{target} \| \pi)
+\end{equation}
+
+The first regularization term, weighted by coefficient $\alpha(t)$, measures the divergence between the current policy $\pi$ and a uniform distribution $\pi_{uniform}$ where all legal actions have equal probability. This term serves as an exploration incentive: a policy that assigns very high probability to one action and near-zero probability to others will incur a large penalty. By encouraging the agent to maintain some probability mass across multiple actions, this term prevents premature convergence to deterministic strategies that opponents could exploit.
+
+The second regularization term, weighted by coefficient $\beta(t)$, measures the divergence between the target network policy $\pi_{target}$ and the current policy $\pi$. In deep reinforcement learning, the target network is a slowly-updated copy of the main network that provides stable learning targets. By penalizing deviation from the target network's action preferences, this term acts as an anchor that prevents the policy from changing too rapidly between updates.
+
+The key insight of dynamic damping is that the optimal balance between exploration and stability changes over training. Early in training, when the agent knows little about effective strategies, strong exploration is beneficial. Later in training, when a good policy has been discovered, stability becomes more important to refine and consolidate the learned strategy. The coefficients therefore follow power-law schedules with opposing dynamics:
+\begin{align}
+\alpha(t) &= \alpha_0 \cdot (1 - t/T)^p \\
+\beta(t) &= \beta_0 + (\beta_T - \beta_0) \cdot (t/T)^p
+\end{align}
+where $t$ is the current episode, $T$ is the total training duration, and $p=2$ produces quadratic curves. The exploration coefficient $\alpha(t)$ starts at $\alpha_0 = 0.1$ and decays toward $0.001$, while the stability coefficient $\beta(t)$ starts at $\beta_0 = 0.001$ and grows toward $\beta_T = 0.1$. This schedule ensures strong exploration when the policy is uncertain and gradual transition to stable exploitation as the policy matures.
+
 \subsection{Cross-System Performance Monitoring}
 
 The framework includes comprehensive performance monitoring to detect misalignment between PBS and DQN components. The system tracks four key metrics: PBS prediction accuracy trends that measure how well the belief state predicts revealed piece identities, DQN loss convergence patterns that indicate training stability, action prediction alignment scores that compare selected actions against high-value alternatives, and reward distribution analysis that monitors the statistical properties of received rewards across episodes.
