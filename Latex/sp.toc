@@ -114,25 +114,26 @@
 \contentsline {paragraph}{Rainbow DQN Architecture.}{49}{}%
 \contentsline {paragraph}{Network Structure.}{49}{}%
 \contentsline {paragraph}{Training Hyperparameters.}{50}{}%
-\contentsline {paragraph}{League-Based Training.}{50}{}%
+\contentsline {paragraph}{Computational Optimizations.}{50}{}%
+\contentsline {paragraph}{League-Based Training.}{51}{}%
 \contentsline {paragraph}{Curriculum Learning.}{51}{}%
-\contentsline {subsection}{\numberline {4.3.1}Centralized Reward System and Defensive Normalization}{51}{}%
-\contentsline {paragraph}{Composite Reward Mixing.}{51}{}%
+\contentsline {subsection}{\numberline {4.3.1}Centralized Reward System and Defensive Normalization}{52}{}%
+\contentsline {paragraph}{Composite Reward Mixing.}{52}{}%
 \contentsline {paragraph}{Rationale for Distributional Scaling.}{52}{}%
 \contentsline {paragraph}{Architectural Evolution and Implementation History.}{52}{}%
 \contentsline {paragraph}{Positional and Anti-Stall Mechanisms.}{53}{}%
 \contentsline {paragraph}{Experience Replay Optimization.}{53}{}%
-\contentsline {paragraph}{Advantage Filtering.}{53}{}%
+\contentsline {paragraph}{Advantage Filtering.}{54}{}%
 \contentsline {paragraph}{Dynamic Damping Regularization.}{54}{}%
 \contentsline {paragraph}{Multi-Step Returns.}{55}{}%
 \contentsline {paragraph}{Learning Rate Scheduling.}{55}{}%
-\contentsline {subsection}{\numberline {4.3.2}Action Space Reduction via Heuristic Filtering}{55}{}%
-\contentsline {paragraph}{Heuristic Move Scoring.}{55}{}%
-\contentsline {paragraph}{Action Masking Integration.}{55}{}%
-\contentsline {subsection}{\numberline {4.3.3}Deployment}{56}{}%
-\contentsline {section}{\numberline {4.4}Evaluation}{57}{}%
-\contentsline {paragraph}{Quantitative Analysis.}{57}{}%
-\contentsline {paragraph}{Qualitative Analysis.}{58}{}%
+\contentsline {subsection}{\numberline {4.3.2}Action Space Reduction via Heuristic Filtering}{56}{}%
+\contentsline {paragraph}{Heuristic Move Scoring.}{56}{}%
+\contentsline {paragraph}{Action Masking Integration.}{56}{}%
+\contentsline {subsection}{\numberline {4.3.3}Deployment}{57}{}%
+\contentsline {section}{\numberline {4.4}Evaluation}{58}{}%
+\contentsline {paragraph}{Quantitative Analysis.}{58}{}%
+\contentsline {paragraph}{Qualitative Analysis.}{59}{}%
 \contentsline {paragraph}{Model Iteration and Initial Results.}{59}{}%
 \contentsline {chapter}{\numberline {A}Gantt Chart}{60}{}%
 \contentsline {chapter}{\numberline {B}System UI and Training}{63}{}%

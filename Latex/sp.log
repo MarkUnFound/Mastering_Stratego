@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.27 (MiKTeX 25.4) (preloaded format=pdflatex 2025.12.6)  5 JAN 2026 12:20
+This is pdfTeX, Version 3.141592653-2.6-1.40.27 (MiKTeX 25.4) (preloaded format=pdflatex 2025.12.6)  6 JAN 2026 13:42
 entering extended mode
  restricted \write18 enabled.
  file:line:error style messages enabled.
@@ -757,22 +757,18 @@ LaTeX Warning: `h' float specifier changed to `ht'.
 
 LaTeX Warning: `h' float specifier changed to `ht'.
 
-[49] [50] [51] [52] [53] [54]
-
-LaTeX Warning: `h' float specifier changed to `ht'.
-
-[55]
-<figures/DQN Architecture.png, id=245, 1326.9575pt x 684.5575pt>
+[49] [50] [51] [52] [53] [54] [55] [56]
+<figures/DQN Architecture.png, id=248, 1326.9575pt x 684.5575pt>
 File: figures/DQN Architecture.png Graphic file (type png)
 <use figures/DQN Architecture.png>
-Package pdftex.def Info: figures/DQN Architecture.png  used on input line 285.
+Package pdftex.def Info: figures/DQN Architecture.png  used on input line 288.
 (pdftex.def)             Requested size: 433.62pt x 223.70067pt.
-<figures/Game diagram.png, id=246, 703.62875pt x 874.26625pt>
+<figures/Game diagram.png, id=249, 703.62875pt x 874.26625pt>
 File: figures/Game diagram.png Graphic file (type png)
 <use figures/Game diagram.png>
-Package pdftex.def Info: figures/Game diagram.png  used on input line 297.
+Package pdftex.def Info: figures/Game diagram.png  used on input line 300.
 (pdftex.def)             Requested size: 216.81pt x 269.37889pt.
- [56] [57 <./figures/DQN Architecture.png>]) [58 <./figures/Game diagram.png>] [59]
+ [57 <./figures/DQN Architecture.png>] [58 <./figures/Game diagram.png>]) [59]
 \openout2 = `chapters/AppendixA.aux'.
 
  (chapters/AppendixA.tex
@@ -933,7 +929,7 @@ Here is how much of TeX's memory you used:
  1141 hyphenation exceptions out of 8191
  84i,13n,104p,2533b,355s stack positions out of 10000i,1000n,20000p,200000b,200000s
 <C:/Users/Mark Lawrence Quibot/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmbx10.pfb><C:/Users/Mark Lawrence Quibot/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmbx12.pfb><C:/Users/Mark Lawrence Quibot/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmcsc10.pfb><C:/Users/Mark Lawrence Quibot/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmex10.pfb><C:/Users/Mark Lawrence Quibot/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmmi10.pfb><C:/Users/Mark Lawrence Quibot/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmmi5.pfb><C:/Users/Mark Lawrence Quibot/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmmi7.pfb><C:/Users/Mark Lawrence Quibot/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmr10.pfb><C:/Users/Mark Lawrence Quibot/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmr12.pfb><C:/Users/Mark Lawrence Quibot/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmr5.pfb><C:/Users/Mark Lawrence Quibot/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmr7.pfb><C:/Users/Mark Lawrence Quibot/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmr8.pfb><C:/Users/Mark Lawrence Quibot/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmr9.pfb><C:/Users/Mark Lawrence Quibot/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmsl10.pfb><C:/Users/Mark Lawrence Quibot/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmsl9.pfb><C:/Users/Mark Lawrence Quibot/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmsy10.pfb><C:/Users/Mark Lawrence Quibot/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmsy5.pfb><C:/Users/Mark Lawrence Quibot/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmsy6.pfb><C:/Users/Mark Lawrence Quibot/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmsy7.pfb><C:/Users/Mark Lawrence Quibot/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmti10.pfb><C:/Users/Mark Lawrence Quibot/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmtt10.pfb><C:/Users/Mark Lawrence Quibot/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/symbols/msbm10.pfb>
-Output written on sp.pdf (88 pages, 11985006 bytes).
+Output written on sp.pdf (88 pages, 11985548 bytes).
 PDF statistics:
  438 PDF objects out of 1000 (max. 8388607)
  0 named destinations out of 1000 (max. 500000)

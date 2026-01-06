@@ -12,7 +12,7 @@ Finally, the entire architecture is embedded within a league-based training para
 
 \subsection{Convergence and Theoretical Guarantees}
 
-The league training system ensures improvement through three complementary mechanisms. First, the system maintains best response values against historical opponents, ensuring that the current policy remains competitive against the full distribution of strategies encountered during training. Second, promotion to the main agent pool requires a positive win rate against previous versions before replacement, preventing regression in overall performance. Third, diversity bonuses in the opponent selection distribution prevent premature convergence to strategies that may be exploitable by novel counter-strategies.
+The league training system ensures improvement through three complementary mechanisms. First, the system maintains best response values against historical opponents, ensuring that the current policy remains competitive against the full distribution of strategies encountered during training. Second, promotion to the main agent pool requires a positive win rate against previous versions before replacement, preventing regression in overall performance. Third, diversity bonuses in the opponent selection distribution prevent premature convergence to strategies that may be exploitable by counter-strategies.
 
 These properties, combined with extensive validation, provide confidence that the MARQ framework will achieve strong, robust play despite the theoretical compromises necessary for tractability.
 
