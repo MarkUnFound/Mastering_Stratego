@@ -69,6 +69,11 @@
           <mxGeometry x="710" y="380" width="40" height="90" as="geometry" />
         </mxCell>
 
+        <!-- Spatial Attention (Added to match implementation) -->
+        <mxCell id="spatial_attn" value="&lt;b&gt;Spatial&lt;/b&gt;&lt;br&gt;Attn" style="shape=cube;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;darkOpacity=0.1;fillColor=#e1d5e7;strokeColor=#9673a6;opacity=90;fontSize=9;" vertex="1" parent="1">
+          <mxGeometry x="755" y="380" width="30" height="90" as="geometry" />
+        </mxCell>
+
         <mxCell id="line4" edge="1" parent="1" source="conv_in" target="res_1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
@@ -84,7 +89,10 @@
         <mxCell id="fork" value="" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
           <mxGeometry x="790" y="420" width="10" height="10" as="geometry" />
         </mxCell>
-        <mxCell id="line5" edge="1" parent="1" source="res_6" target="fork">
+        <mxCell id="line5" edge="1" parent="1" source="spatial_attn" target="fork">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="line_res_to_attn" edge="1" parent="1" source="res_6" target="spatial_attn">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
 
@@ -112,7 +120,7 @@
           <mxGeometry x="900" y="455" width="60" height="60" as="geometry" />
         </mxCell>
         <!-- Output Advantage (Actions x Atoms) -->
-        <mxCell id="adv_out" value="A-Atoms&lt;br&gt;1000 × 51" style="shape=cube;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;darkOpacity=0.1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=9;" vertex="1" parent="1">
+        <mxCell id="adv_out" value="A-Atoms&lt;br&gt;400 × 51" style="shape=cube;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;darkOpacity=0.1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=9;" vertex="1" parent="1">
           <mxGeometry x="1000" y="440" width="80" height="90" as="geometry" />
         </mxCell>
 

@@ -17,52 +17,52 @@ Reallocating 'name_of_file' (item size: 1) to 23 items.
 A level-1 auxiliary file: chapters/AppendixA.aux
 Reallocating 'name_of_file' (item size: 1) to 23 items.
 A level-1 auxiliary file: chapters/AppendixB.aux
-Reallocating 'name_of_file' (item size: 1) to 5 items.
-The style file: siam.bst
+Reallocating 'name_of_file' (item size: 1) to 9 items.
+The style file: unsrtnat.bst
 Reallocating 'name_of_file' (item size: 1) to 11 items.
 Reallocating 'name_of_file' (item size: 1) to 14 items.
 A level-1 auxiliary file: misc/vita.aux
 Database file #1: references.bib
 Warning--I didn't find a database entry for "Ataraxos"
-You've used 42 entries,
-            2030 wiz_defined-function locations,
-            783 strings with 13452 characters,
-and the built_in function-call counts, 17361 in all, are:
-= -- 1618
-> -- 990
-< -- 0
-+ -- 392
-- -- 346
-* -- 1399
-:= -- 2710
-add.period$ -- 48
-call.type$ -- 42
-change.case$ -- 295
-chr.to.int$ -- 0
-cite$ -- 42
-duplicate$ -- 763
-empty$ -- 1158
-format.name$ -- 346
-if$ -- 3673
-int.to.chr$ -- 0
-int.to.str$ -- 42
+You've used 43 entries,
+            2481 wiz_defined-function locations,
+            873 strings with 15416 characters,
+and the built_in function-call counts, 19443 in all, are:
+= -- 1614
+> -- 1188
+< -- 30
++ -- 444
+- -- 356
+* -- 1590
+:= -- 3144
+add.period$ -- 176
+call.type$ -- 43
+change.case$ -- 86
+chr.to.int$ -- 41
+cite$ -- 43
+duplicate$ -- 935
+empty$ -- 1636
+format.name$ -- 417
+if$ -- 4152
+int.to.chr$ -- 3
+int.to.str$ -- 44
 missing$ -- 41
-newline$ -- 135
-num.names$ -- 88
-pop$ -- 302
+newline$ -- 260
+num.names$ -- 133
+pop$ -- 359
 preamble$ -- 1
-purify$ -- 253
+purify$ -- 43
 quote$ -- 0
-skip$ -- 633
+skip$ -- 564
 stack$ -- 0
-substring$ -- 954
-swap$ -- 334
-text.length$ -- 0
+substring$ -- 797
+swap$ -- 202
+text.length$ -- 15
 text.prefix$ -- 0
 top$ -- 0
-type$ -- 166
+type$ -- 298
 warning$ -- 0
-while$ -- 151
-width$ -- 44
-write$ -- 395
+while$ -- 144
+width$ -- 0
+write$ -- 644
 (There was 1 warning)
