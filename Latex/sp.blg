@@ -17,52 +17,52 @@ Reallocating 'name_of_file' (item size: 1) to 23 items.
 A level-1 auxiliary file: chapters/AppendixA.aux
 Reallocating 'name_of_file' (item size: 1) to 23 items.
 A level-1 auxiliary file: chapters/AppendixB.aux
-Reallocating 'name_of_file' (item size: 1) to 9 items.
-The style file: unsrtnat.bst
+Reallocating 'name_of_file' (item size: 1) to 4 items.
+The style file: acm.bst
 Reallocating 'name_of_file' (item size: 1) to 11 items.
 Reallocating 'name_of_file' (item size: 1) to 14 items.
 A level-1 auxiliary file: misc/vita.aux
 Database file #1: references.bib
 Warning--I didn't find a database entry for "Ataraxos"
-You've used 43 entries,
-            2481 wiz_defined-function locations,
-            873 strings with 15416 characters,
-and the built_in function-call counts, 19443 in all, are:
-= -- 1614
-> -- 1188
-< -- 30
-+ -- 444
-- -- 356
-* -- 1590
-:= -- 3144
-add.period$ -- 176
-call.type$ -- 43
-change.case$ -- 86
-chr.to.int$ -- 41
-cite$ -- 43
-duplicate$ -- 935
-empty$ -- 1636
-format.name$ -- 417
-if$ -- 4152
-int.to.chr$ -- 3
-int.to.str$ -- 44
-missing$ -- 41
-newline$ -- 260
-num.names$ -- 133
-pop$ -- 359
+You've used 54 entries,
+            2253 wiz_defined-function locations,
+            882 strings with 16200 characters,
+and the built_in function-call counts, 21004 in all, are:
+= -- 1949
+> -- 1258
+< -- 0
++ -- 516
+- -- 458
+* -- 1732
+:= -- 3433
+add.period$ -- 165
+call.type$ -- 54
+change.case$ -- 385
+chr.to.int$ -- 0
+cite$ -- 54
+duplicate$ -- 690
+empty$ -- 1518
+format.name$ -- 458
+if$ -- 4307
+int.to.chr$ -- 0
+int.to.str$ -- 54
+missing$ -- 49
+newline$ -- 274
+num.names$ -- 112
+pop$ -- 411
 preamble$ -- 1
-purify$ -- 43
+purify$ -- 332
 quote$ -- 0
-skip$ -- 564
+skip$ -- 474
 stack$ -- 0
-substring$ -- 797
-swap$ -- 202
-text.length$ -- 15
+substring$ -- 1113
+swap$ -- 213
+text.length$ -- 0
 text.prefix$ -- 0
 top$ -- 0
-type$ -- 298
+type$ -- 212
 warning$ -- 0
-while$ -- 144
-width$ -- 0
-write$ -- 644
+while$ -- 175
+width$ -- 56
+write$ -- 551
 (There was 1 warning)

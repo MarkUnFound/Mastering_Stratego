@@ -26,7 +26,7 @@ The theoretical state space of Stratego demonstrates the computational challenge
 |\mathcal{S}| = \binom{40}{1,1,2,3,4,4,4,5,8} \times 10^{10} \times 2^{40} \approx 10^{535}
 \end{equation}
 
-This high complexity necessitates knowledge-limited reasoning and belief state management rather than exhaustive enumeration of possible states.
+This state space complexity estimate was established by Perolat et al. \cite{RLStratego}. This high complexity necessitates knowledge-limited reasoning and belief state management rather than exhaustive enumeration of possible states.
 
 
 \section{MARQ Framework Overview}
@@ -75,7 +75,7 @@ The MARQ framework operates through the hierarchical integration of its componen
 
 \section{MARQ Policy Definition}
 
-Policy optimization in reinforcement learning refers to the iterative refinement of an agent's decision-making strategy to maximize cumulative expected reward. In multi-agent environments characterized by imperfect information, this optimization process must produce policies that are not only effective against static opponents but also robust to the inherent uncertainty of hidden game states and the adaptive behaviors of learning adversaries. The MARQ framework addresses these challenges through a hierarchical policy architecture that integrates belief state reasoning with value-based decision making.
+Policy optimization in reinforcement learning refers to the iterative refinement of an agent's decision-making strategy to maximize cumulative expected reward \cite{DRLImperfectInfo2023}. In multi-agent environments characterized by imperfect information, this optimization process must produce policies that are not only effective against static opponents but also robust to the inherent uncertainty of hidden game states and the adaptive behaviors of learning adversaries. The MARQ framework addresses these challenges through a hierarchical policy architecture that integrates belief state reasoning with value-based decision making.
 
 The policy learning process in MARQ operates across multiple interconnected objectives. The primary objective concerns game outcomes, where the agent learns to maximize win probability through strategic piece deployment and tactical combat decisions. A secondary objective involves belief state accuracy, where the Probabilistic Belief State maintained by the AAREN module is continuously refined through comparison with revealed ground truth positions during gameplay. These objectives are jointly optimized, as accurate belief states enable better decision-making, while strategic decisions that reveal opponent information improve future belief quality.
 
@@ -131,7 +131,7 @@ The reward function decomposes into three components that capture different aspe
 
 \subsection{Nash Equilibrium in Imperfect Information}
 
-The strategic objective of MARQ training is to discover policies that approximate Nash equilibrium strategies. A Nash equilibrium represents a strategy profile where no player can improve their expected payoff through unilateral deviation:
+The strategic objective of MARQ training is to discover policies that approximate Nash equilibrium strategies \cite{SubgameSolving2021}. A Nash equilibrium represents a strategy profile where no player can improve their expected payoff through unilateral deviation:
 
 \begin{equation}
 v_i(\pi^*) = \max_{\pi_i} v_i(\pi_i, \pi^*_{-i})
@@ -142,16 +142,16 @@ Finding exact Nash equilibria in large imperfect information games is computatio
 
 \section{Deep Q-Network Architecture}
 
-Deep Q-Networks in the MARQ framework operate on belief states rather than complete game states. The network approximates Q-values for probability distributions over opponent configurations, $\mathcal{B}_t$:
+Deep Q-Networks in the MARQ framework operate on belief states rather than complete game states \cite{DRLImperfectInfo2023}. The network approximates Q-values for probability distributions over opponent configurations, $\mathcal{B}_t$:
 $$Q(s, a) = \mathbb{E}_{s' \sim \mathcal{S}_t \subseteq \mathcal{B}_t}[Q_{network}(s', a)]$$
 
 The system uses a standard replay buffer for experience storage, sampling transitions $(\mathcal{B}_t, a_t, r_t, \mathcal{B}_{t+1})$ uniformly to train the value function.
 
 \subsection{Rainbow DQN Components}
-The implementation incorporates key enhancements from the Rainbow DQN architecture to improve stability and sample efficiency.
+The implementation incorporates key enhancements from the Rainbow DQN architecture \cite{RainbowJMLR2021} to improve stability and sample efficiency.
 
 \paragraph{Distributional RL (Categorical DQN).}
-Stratego's inherent uncertainty leads to multimodal value distributions. The value distribution $Z(s, a)$ is modeled directly rather than just its expectation. The distribution is approximated by a discrete distribution over $N=51$ atoms $\{z_i\}_{i=1}^{N}$, with support ranging from $V_{min}$ to $V_{max}$:
+Stratego's inherent uncertainty leads to multimodal value distributions \cite{DistributionalRL2023}. The value distribution $Z(s, a)$ is modeled directly rather than just its expectation. The distribution is approximated by a discrete distribution over $N=51$ atoms $\{z_i\}_{i=1}^{N}$, with support ranging from $V_{min}$ to $V_{max}$:
 \begin{equation}
 Z_\theta(s, a) = \sum_{i=1}^{N} p_i(s, a) \delta_{z_i}
 \end{equation}
@@ -187,7 +187,7 @@ where $U(a)$ represents the entropy of the belief distribution at the target loc
 Recent advances in imperfect-information game solving, exemplified by the Ataraxos system which achieved superhuman performance in no-press Diplomacy, demonstrate that training stability is as critical as algorithmic innovation \cite{Ataraxos2025}. Deep reinforcement learning agents often struggle with two related problems: sample inefficiency, where most training experiences provide little learning signal, and strategy cycling, where the policy oscillates between different approaches without settling on a robust solution. The MARQ framework incorporates two complementary regularization techniques inspired by this work.
 
 \paragraph{Advantage Filtering for Sample Efficiency.}
-In value-based reinforcement learning, agents learn by comparing their predicted values with observed outcomes. The temporal-difference (TD) error quantifies this discrepancy. Standard experience replay samples transitions uniformly from a buffer of past experiences, treating all transitions equally even though some carry more learning potential. Advantage filtering focuses training on high-error transitions by oversampling the replay buffer and retaining only the top quartile by TD error magnitude:
+Advantage filtering techniques have been shown to improve sample efficiency in imperfect-information game training \cite{RegularizationStrategyExploration}. In value-based reinforcement learning, agents learn by comparing their predicted values with observed outcomes. The temporal-difference (TD) error quantifies this discrepancy. Standard experience replay samples transitions uniformly from a buffer of past experiences, treating all transitions equally even though some carry more learning potential. Advantage filtering focuses training on high-error transitions by oversampling the replay buffer and retaining only the top quartile by TD error magnitude:
 \begin{equation}
 \mathcal{B}_{filtered} = \text{Top}_{n/k}\left(\mathcal{B}_{sampled}, |\delta_i|\right)
 \end{equation}
@@ -209,7 +209,7 @@ where $t$ is the current episode, $T$ is the total training duration, and $p=2$ 
 
 \section{AAREN and Probabilistic Belief State}
 
-The AAREN module (Attention as Recurrent Neural Network) serves as the core memory and belief state system within the MARQ architecture. It is specifically designed to process extended sequences of partial observations in Stratego, integrating information over hundreds of moves while avoiding the vanishing gradient problem that affects recurrent models like LSTMs or GRUs in long tasks. AAREN leverages an attention mechanism to provide direct, weighted access to the entire history of observations, enabling more coherent and computationally efficient belief tracking \cite{Aaren}.
+The AAREN module (Attention as Recurrent Neural Network) \cite{Aaren} serves as the core memory and belief state system within the MARQ architecture. It is specifically designed to process extended sequences of partial observations in Stratego, integrating information over hundreds of moves while avoiding the vanishing gradient problem that affects recurrent models like LSTMs or GRUs in long tasks. AAREN leverages an attention mechanism to provide direct, weighted access to the entire history of observations, enabling more coherent and computationally efficient belief tracking \cite{Aaren}.
 
 \subsection{Recurrent Attention Computation}
 AAREN implements an attention-based recurrent computation that maintains a state triplet $(a_t, c_t, m_t)$ across the observation sequence. Unlike traditional recurrent neural networks that suffer from vanishing gradients over long sequences, AAREN provides direct access to the entire history through attention weights while maintaining O(1) inference complexity per timestep.
@@ -280,7 +280,7 @@ For example, when the single Marshal is revealed, the probability of any other p
 MARQ employs a league reinforcement learning system that minimizes non-stationarity, a fundamental challenge in multi-agent learning where policy updates by one agent alter the environment experienced by others.
 
 \subsection{League-Based Training Architecture}
-The league consists of a dynamic pool of agents designed to ensure robust generalizability. The main agent represents the current best-performing policy that is being actively optimized through gradient descent. The historical pool contains saved collections of past main agent checkpoints representing distinct strategic eras discovered during training.
+The league consists of a dynamic pool of agents designed to ensure robust generalizability \cite{AlphaStar}. The main agent represents the current best-performing policy that is being actively optimized through gradient descent. The historical pool contains saved collections of past main agent checkpoints representing distinct strategic eras discovered during training.
 
 During training, opponents are sampled using a probability distribution:
 \begin{equation}
@@ -294,7 +294,7 @@ This prevents cycling where the agent re-learns and un-learns the same strategie
 
 \subsection{Strategy Mixing for Exploitation Resistance}
 
-Extensive-form imperfect information games with deterministic strategies are inherently suboptimal and vulnerable to exploitation. An adversary with knowledge of a deterministic policy effectively reduces the game to a perfect information setting, nullifying the strategic uncertainty fundamental to games like Stratego. The MARQ framework addresses this challenge through two complementary mechanisms.
+Extensive-form imperfect information games with deterministic strategies are inherently suboptimal and vulnerable to exploitation \cite{RLStratego, MARLGametheoretic}. An adversary with knowledge of a deterministic policy effectively reduces the game to a perfect information setting, nullifying the strategic uncertainty fundamental to games like Stratego. The MARQ framework addresses this challenge through two complementary mechanisms.
 
 At the action selection level, MARQ employs Noisy Linear layers that inject learned, state-dependent noise into the policy. Rather than using fixed exploration schedules such as $\epsilon$-greedy, the network learns the appropriate degree of randomization for each game state.
 
@@ -302,7 +302,7 @@ At the strategy level, MARQ achieves mixing through diverse opponent exposure du
 
 \subsection{Multi-Dimensional Reward Structure}
 
-The reward function $R(s, a, s')$ is shaped to guide learning in the sparse-reward Stratego environment:
+The reward function $R(s, a, s')$ is shaped to guide learning in the sparse-reward Stratego environment \cite{PBRSModern2022}:
 
 \begin{equation}
 R_{total} = R_{move} + R_{capture} + R_{tactical} + R_{info}
@@ -328,7 +328,7 @@ To prevent creating static, easily countered setups, the agent includes an explo
 
 \subsection{Information Set Monte Carlo Tree Search (IS-MCTS)}
 
-For high-stakes decision making, particularly in the endgame, MARQ employs an Information Set MCTS agent that combines search with learned value functions. The search process proceeds in three phases.
+For high-stakes decision making, particularly in the endgame, MARQ employs an Information Set MCTS agent \cite{UpdatedISMCTS} that combines search with learned value functions. The search process proceeds in three phases.
 
 First, during the determinization phase, the agent samples a consistent concrete world state $s_{det}$ from the PBS beliefs according to $s_{det} \sim P(S | \mathcal{B}_t)$. This converts the imperfect information game into a perfect information instance for the duration of the simulation.
 

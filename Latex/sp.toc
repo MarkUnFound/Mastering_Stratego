@@ -10,16 +10,16 @@
 \contentsline {section}{\numberline {2.1}Artificial Intelligence in Imperfect Information Games}{7}{section.2.1}%
 \contentsline {subsection}{\numberline {2.1.1}Student of Games}{8}{subsection.2.1.1}%
 \contentsline {subsection}{\numberline {2.1.2}Deep Q-Networks}{8}{subsection.2.1.2}%
-\contentsline {subsection}{\numberline {2.1.3}Multi-Agent Reinforcement Learning}{9}{subsection.2.1.3}%
+\contentsline {subsection}{\numberline {2.1.3}Multi-Agent Reinforcement Learning}{8}{subsection.2.1.3}%
 \contentsline {subsection}{\numberline {2.1.4}KLUSS}{9}{subsection.2.1.4}%
-\contentsline {subsection}{\numberline {2.1.5}Counterfactual Regret Minimization}{10}{subsection.2.1.5}%
+\contentsline {subsection}{\numberline {2.1.5}Counterfactual Regret Minimization}{9}{subsection.2.1.5}%
 \contentsline {section}{\numberline {2.2}RNN}{10}{section.2.2}%
 \contentsline {subsection}{\numberline {2.2.1}LSTM}{10}{subsection.2.2.1}%
-\contentsline {subsection}{\numberline {2.2.2}Aaren}{11}{subsection.2.2.2}%
+\contentsline {subsection}{\numberline {2.2.2}Aaren}{10}{subsection.2.2.2}%
 \contentsline {section}{\numberline {2.3}Stratego}{11}{section.2.3}%
-\contentsline {section}{\numberline {2.4}Board Games in Community Building}{12}{section.2.4}%
+\contentsline {section}{\numberline {2.4}Board Games in Community Building}{11}{section.2.4}%
 \contentsline {section}{\numberline {2.5}Other Applications}{13}{section.2.5}%
-\contentsline {section}{\numberline {2.6}Application to Other Game Environments}{14}{section.2.6}%
+\contentsline {section}{\numberline {2.6}Application to Other Game Environments}{13}{section.2.6}%
 \contentsline {chapter}{\numberline {3}Theoretical Frameworks}{15}{chapter.3}%
 \contentsline {section}{\numberline {3.1}Stratego Game Domain}{15}{section.3.1}%
 \contentsline {section}{\numberline {3.2}MARQ Framework Overview}{16}{section.3.2}%
@@ -41,15 +41,15 @@
 \contentsline {subsection}{\numberline {3.5.1}Recurrent Attention Computation}{24}{subsection.3.5.1}%
 \contentsline {subsection}{\numberline {3.5.2}Piece Type Inference}{25}{subsection.3.5.2}%
 \contentsline {subsection}{\numberline {3.5.3}PBS Quality Evaluation}{25}{subsection.3.5.3}%
-\contentsline {subsection}{\numberline {3.5.4}Belief Updates on Piece Revelation}{25}{subsection.3.5.4}%
+\contentsline {subsection}{\numberline {3.5.4}Belief Updates on Piece Revelation}{26}{subsection.3.5.4}%
 \contentsline {section}{\numberline {3.6}Multi-Agent Learning and Strategy Mixing}{26}{section.3.6}%
 \contentsline {subsection}{\numberline {3.6.1}League-Based Training Architecture}{26}{subsection.3.6.1}%
-\contentsline {subsection}{\numberline {3.6.2}Strategy Mixing for Exploitation Resistance}{26}{subsection.3.6.2}%
+\contentsline {subsection}{\numberline {3.6.2}Strategy Mixing for Exploitation Resistance}{27}{subsection.3.6.2}%
 \contentsline {subsection}{\numberline {3.6.3}Multi-Dimensional Reward Structure}{27}{subsection.3.6.3}%
-\contentsline {section}{\numberline {3.7}Specialized Agent Architectures}{27}{section.3.7}%
-\contentsline {subsection}{\numberline {3.7.1}Setup Agent via Distributional RL}{27}{subsection.3.7.1}%
+\contentsline {section}{\numberline {3.7}Specialized Agent Architectures}{28}{section.3.7}%
+\contentsline {subsection}{\numberline {3.7.1}Setup Agent via Distributional RL}{28}{subsection.3.7.1}%
 \contentsline {subsection}{\numberline {3.7.2}Information Set Monte Carlo Tree Search (IS-MCTS)}{28}{subsection.3.7.2}%
-\contentsline {section}{\numberline {3.8}Game Environment and State Management}{28}{section.3.8}%
+\contentsline {section}{\numberline {3.8}Game Environment and State Management}{29}{section.3.8}%
 \contentsline {subsection}{\numberline {3.8.1}Information Set Management}{29}{subsection.3.8.1}%
 \contentsline {subsection}{\numberline {3.8.2}Temporal State Evolution}{29}{subsection.3.8.2}%
 \contentsline {subsection}{\numberline {3.8.3}Valid Action Filtering}{29}{subsection.3.8.3}%

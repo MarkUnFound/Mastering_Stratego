@@ -385,8 +385,6 @@ OUTPUT chapters\techbackground.aux
 INPUT .\chapters\techbackground.tex
 INPUT .\chapters\techbackground.tex
 INPUT chapters\techbackground.tex
-INPUT C:\Users\quibo\AppData\Local\Programs\MiKTeX\fonts\tfm\public\cm\cmbx7.tfm
-INPUT C:\Users\quibo\AppData\Local\Programs\MiKTeX\fonts\tfm\public\cm\cmbx5.tfm
 INPUT .\figures\stratego_piece.png
 INPUT .\figures\stratego_piece.png
 INPUT .\figures\stratego_piece.png
@@ -398,7 +396,6 @@ INPUT .\figures\stratego.png
 INPUT .\figures\stratego.png
 INPUT .\figures\stratego.png
 INPUT .\figures\stratego.png
-INPUT C:\Users\quibo\AppData\Local\Programs\MiKTeX\fonts\tfm\public\cm\cmtt10.tfm
 INPUT .\chapters\methodology.tex
 INPUT .\chapters\methodology.tex
 OUTPUT chapters\methodology.aux
@@ -413,8 +410,6 @@ INPUT C:\Users\quibo\AppData\Local\Programs\MiKTeX\fonts\tfm\public\cm\cmsy8.tfm
 INPUT C:\Users\quibo\AppData\Local\Programs\MiKTeX\fonts\tfm\public\cm\cmsy6.tfm
 INPUT C:\Users\quibo\AppData\Local\Programs\MiKTeX\fonts\tfm\public\amsfonts\cmextra\cmex8.tfm
 INPUT C:\Users\quibo\AppData\Local\Programs\MiKTeX\fonts\tfm\public\amsfonts\cmextra\cmex7.tfm
-INPUT C:\Users\quibo\AppData\Local\Programs\MiKTeX\fonts\tfm\public\cm\cmbx8.tfm
-INPUT C:\Users\quibo\AppData\Local\Programs\MiKTeX\fonts\tfm\public\cm\cmbx6.tfm
 INPUT C:\Users\quibo\AppData\Local\Programs\MiKTeX\fonts\tfm\public\amsfonts\symbols\msam10.tfm
 INPUT C:\Users\quibo\AppData\Local\Programs\MiKTeX\fonts\tfm\public\amsfonts\symbols\msam7.tfm
 INPUT C:\Users\quibo\AppData\Local\Programs\MiKTeX\fonts\tfm\public\amsfonts\symbols\msbm10.tfm
@@ -424,6 +419,7 @@ INPUT C:\Users\quibo\AppData\Local\Programs\MiKTeX\fonts\tfm\public\latex-fonts\
 INPUT C:\Users\quibo\AppData\Local\Programs\MiKTeX\fonts\tfm\jknappen\ec\tcrm0800.tfm
 INPUT C:\Users\quibo\AppData\Local\Programs\MiKTeX\fonts\tfm\jknappen\ec\tcrm0600.tfm
 INPUT C:\Users\quibo\AppData\Local\Programs\MiKTeX\fonts\tfm\public\cm\cmti10.tfm
+INPUT C:\Users\quibo\AppData\Local\Programs\MiKTeX\fonts\tfm\public\cm\cmtt10.tfm
 INPUT .\figures\DQN Architecture.png
 INPUT .\figures\DQN Architecture.png
 INPUT .\figures\DQN Architecture.png
@@ -579,6 +575,7 @@ INPUT .\figures\pbs_visualization_episode_1000_end.png
 INPUT .\sp.bbl
 INPUT .\sp.bbl
 INPUT sp.bbl
+INPUT C:\Users\quibo\AppData\Local\Programs\MiKTeX\fonts\tfm\public\cm\cmcsc10.tfm
 INPUT .\misc\vita.tex
 INPUT .\misc\vita.tex
 OUTPUT misc\vita.aux
@@ -619,6 +616,8 @@ INPUT C:\Users\quibo\AppData\Local\Programs\MiKTeX\fonts\type1\public\amsfonts\c
 INPUT C:\Users\quibo\AppData\Local\Programs\MiKTeX\fonts\type1\public\amsfonts\cm\cmbx10.pfb
 INPUT C:\Users\quibo\AppData\Local\Programs\MiKTeX\fonts\type1\public\amsfonts\cm\cmbx12.pfb
 INPUT C:\Users\quibo\AppData\Local\Programs\MiKTeX\fonts\type1\public\amsfonts\cm\cmbx12.pfb
+INPUT C:\Users\quibo\AppData\Local\Programs\MiKTeX\fonts\type1\public\amsfonts\cm\cmcsc10.pfb
+INPUT C:\Users\quibo\AppData\Local\Programs\MiKTeX\fonts\type1\public\amsfonts\cm\cmcsc10.pfb
 INPUT C:\Users\quibo\AppData\Local\Programs\MiKTeX\fonts\type1\public\amsfonts\cm\cmex10.pfb
 INPUT C:\Users\quibo\AppData\Local\Programs\MiKTeX\fonts\type1\public\amsfonts\cm\cmex10.pfb
 INPUT C:\Users\quibo\AppData\Local\Programs\MiKTeX\fonts\type1\public\amsfonts\cm\cmmi10.pfb
