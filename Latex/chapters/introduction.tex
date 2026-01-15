@@ -2,7 +2,8 @@
 \section{Project Context}
 Games have a history of being a metric for how Artificial Intelligence (AI) progresses and performs in the current time \cite{StudeGame}. Many real-world problems, from military tactics to multiplayer games, require intelligent decision-making in environments where all information is not available. A common example is a feature found in many multiplayer games known as the "fog of war"  \cite{FogofWar}, where the game environment is not fully revealed, which makes it an example of an imperfect information game \cite{National}. Imperfect information games create a scenario where players develop unconventional strategies without having full knowledge of the game's environmental state \cite{FogofWar}. Solving these kinds of problems and determining the optimal strategy remains a significant challenge for Artificial Intelligence \cite{GeneralGame}.
 
-This study focuses on mastering imperfect information games through Multi-Agent Reinforcement Learning (MARL) with Deep Q-Networks (DQN). In MARL, multiple agents learn and adapt in the same environment, making each decision based on its own observations and rewards \cite{MARLCOMP, MARLCHALL}. With DQN, the agents can utilize deep neural networks to approximate the Q-function that maps state-action pairs for the expected reward. With all of these together, this study introduces the MARQ (Multi-Agent Rainbow Deep Q-Networks) framework to solve imperfect information games. This approach is suited well for Stratego, where these agents are trained to compete against each other, developing strategies through repeated experience, even though information is lacking about the opponent's setup or the environment's full state. 
+This study focuses on mastering imperfect information games through Multi-Agent Reinforcement Learning (MARL) with Deep Q-Networks (DQN). In MARL, multiple agents learn and adapt in the same environment, making each decision based on its own observations and rewards \cite{MARLCOMP, MARLCHALL}. With DQN, the agents can utilize deep neural networks to approximate the Q-function that maps state-action pairs for the expected reward. This study introduces the MARQ (Multi-Agent Rainbow Deep Q-Networks) framework, which extends the basic DQN architecture with Rainbow enhancements including distributional value estimation and noisy exploration networks \cite{RainbowJMLR2021}. The framework integrates an AAREN (Attention as Recurrent Neural Network) module \cite{Aaren} for processing extended observation sequences and maintaining a Probabilistic Belief State (PBS) that tracks uncertainty about hidden opponent pieces. League-based self-play training \cite{AlphaStar} ensures that agents develop robust strategies by competing against diverse historical opponents. This approach is suited well for Stratego, where agents are trained to compete against each other, developing strategies through repeated experience while reasoning under uncertainty about the opponent's setup and the environment's hidden state.
+
 
 
 \section{Purpose and Description}
@@ -15,9 +16,9 @@ This study is guided by three main research questions:
 
 \begin{enumerate}
    
-    \item How effective is the AI agent in adapting to hidden information and different strategies?
-    \item To what extent does the trained AI agent’s performance compare against human players and other AI opponents in Stratego?
-    \item How does the use of Stratego as a research platform contribute to advancing studies in imperfect information multi-agent reinforcement learning?
+    \item How does the MARQ framework perform in terms of convergence speed and win-rate against heuristic baselines in a partially observable environment?
+    \item Does the MARQ framework demonstrate statistically significant superiority over standard DQN and rule-based agents across varying opponent difficulty tiers?
+    \item What is the impact of integrating the AAREN module on the agent's ability to infer hidden opponent piece configurations compared to approaches without explicit belief state modeling?
 \end{enumerate}
 
 \section{Objectives}
@@ -39,11 +40,8 @@ The MARQ framework's significance lies in its explicit opponent modeling through
 
 \section{Definition of Terms}
 
-\noindent\textbf{AAREN} \\
-Attention a recurrent neural network, a model that integrates the sequential processing of RNNs with the parallel efficiency of Transformers, designed for tasks such as event forecasting and classification. \\[6pt]
-
-\noindent\textbf{Alpha-Beta Pruning} \\
-A search algorithm that explores possible moves in a game tree while pruning branches that cannot affect the final decision, making the search process more efficient. \\[6pt]
+\noindent\textbf{AAREN (Attention as Recurrent Neural Network)} \\
+A neural architecture that combines the parallel training efficiency of Transformers with the sequential processing of RNNs. In the MARQ framework, AAREN processes observation sequences to maintain and update the Probabilistic Belief State. \\[6pt]
 
 \noindent\textbf{Counterfactual Regret Minimization (CFR)} \\
 An iterative algorithm that approximates Nash equilibrium by minimizing regret, widely applied in imperfect information games such as Poker and Stratego. \\[6pt]
@@ -51,17 +49,20 @@ An iterative algorithm that approximates Nash equilibrium by minimizing regret, 
 \noindent\textbf{Deep Q-Networks (DQN)} \\
 A reinforcement learning algorithm that combines Q-learning with deep neural networks, enabling agents to approximate optimal decision-making in complex environments. \\[6pt]
 
+\noindent\textbf{Distributional Reinforcement Learning} \\
+An approach that models the full distribution of returns rather than just the expected value. The MARQ framework uses C51 (Categorical DQN) with 51 atoms to capture uncertainty in value estimates. \\[6pt]
+
 \noindent\textbf{Fog of War} \\
 A game mechanic used in strategy games that conceals parts of the map or opponent actions, requiring players to utilize prediction and information-gathering strategies to reduce uncertainty. \\[6pt]
 
 \noindent\textbf{Imperfect Information Games} \\
 Games where players have incomplete knowledge of the current game state, requiring them to make strategic decisions under uncertainty (e.g., Stratego, Poker, Multiplayer Online Battle Arenas). \\[6pt]
 
-\noindent\textbf{ Knowledge-Limited Unfrozen Subgame Solving(KLUSS)} \\
-Knowledge-Limited Unfrozen Subgame Solving (KLUSS) is an advancement in search algorithms for imperfect-information games. KLUSS builds on the earlier Knowledge-Limited Subgame Solving (KLSS) method, which simplified computation by removing irrelevant states and freezing certain strategies. \\[6pt]
+\noindent\textbf{Information Set Monte Carlo Tree Search (IS-MCTS)} \\
+A search algorithm for imperfect information games that samples consistent game states from belief distributions and performs tree search on information sets rather than individual states. \\[6pt]
 
-\noindent\textbf{Long Short-Term Memory (LSTM)} \\
-A variant of RNN designed to capture long-term dependencies in sequential data while mitigating the vanishing gradient problem. \\[6pt]
+\noindent\textbf{League Training} \\
+A self-play training paradigm where agents compete against a diverse pool of historical opponents, preventing strategy cycling and ensuring robust generalization across different playing styles. \\[6pt]
 
 \noindent\textbf{Multi-Agent Reinforcement Learning (MARL)} \\
 An extension of reinforcement learning in which multiple agents interact within the same environment, learning coordinated or competitive strategies through simultaneous training. \\[6pt]
@@ -72,8 +73,11 @@ A game-theoretic concept where no player can gain an advantage by unilaterally c
 \noindent\textbf{Perfect Information Games} \\
 Games in which all players have complete knowledge of the current game state and available moves, such as Chess and Go. \\[6pt]
 
-\noindent\textbf{Proximal Policy Optimization (PPO)} \\
-A reinforcement learning algorithm that optimizes policies through probability ratio clipping, often compared to DQN in performance within gaming environments such as VizDoom. \\[6pt]
+\noindent\textbf{Probabilistic Belief State (PBS)} \\
+A probability distribution over possible opponent piece configurations, maintained and updated by the AAREN module as observations reveal information during gameplay. \\[6pt]
+
+\noindent\textbf{Rainbow DQN} \\
+An enhanced DQN architecture that combines multiple improvements including distributional RL, noisy networks for exploration, and dueling network architecture for improved stability and sample efficiency. \\[6pt]
 
 \noindent\textbf{Recurrent Neural Network (RNN)} \\
 A type of neural network designed to process sequential data by maintaining memory of previous inputs, useful in imperfect information games for recalling past moves or revealed information. \\[6pt]
@@ -82,10 +86,5 @@ A type of neural network designed to process sequential data by maintaining memo
 A machine learning paradigm where agents learn optimal strategies through trial-and-error interactions with the environment, guided by rewards and penalties. \\[6pt]
 
 \noindent\textbf{Stratego} \\
-A two-player strategy board game characterized by hidden information and asymmetric piece abilities, where the objective is to capture the opponent’s flag or render them immobile. \\[6pt]
+A two-player strategy board game characterized by hidden information and asymmetric piece abilities, where the objective is to capture the opponent's flag or render them immobile. \\[6pt]
 
-\noindent\textbf{Student of Games (SoG)} \\
-A unified AI framework combining self-play learning, strategic search, and game-theoretic reasoning, designed to handle both perfect and imperfect information games. \\[6pt]
-
-\noindent\textbf{Vanishing Gradient} \\
-The vanishing gradient problem is basically as in the name, vanishing gradient, as color in a gradient, the message in this case starts strong and gradually fades away when it passes through each layer, making the learning weak or close to zero.\\[6pt]

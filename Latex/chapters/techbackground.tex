@@ -2,7 +2,7 @@
 
 \section{Stratego Game Domain}
 
-Stratego is an imperfect information board game with European roots, popularized in the Netherlands in the 1940s and released in North America in 1961. The game is played on a 10x10 board that includes two 2x2 ``lake'' areas in the center, which are impassable. Each player commands an army of 40 pieces of varying ranks, and during the game, the identity and rank of the pieces are kept secret from the opposing player. The objective is to capture the opponent's flag or eliminate all of their movable pieces.
+Stratego is an imperfect information board game with European roots, popularized in the Netherlands in the 1940s and released in North America in 1961 \cite{StrategoOrigin}. The game is played on a 10x10 board that includes two 2x2 ``lake'' areas in the center, which are impassable. Each player commands an army of 40 pieces of varying ranks, and during the game, the identity and rank of the pieces are kept secret from the opposing player. The objective is to capture the opponent's flag or eliminate all of their movable pieces.
 
 Each army consists of 12 different types of pieces, with ranks ranging from 1 (the Spy) to 10 (the Marshal), alongside Bombs and a Flag. Higher-ranked pieces defeat lower-ranked ones during combat, except in special situations: the Spy can defeat a Marshal if attacking first, the Miner is the only piece that can defuse Bombs, and Scouts can move multiple squares in a straight line. Victory is achieved by capturing the opponent's Flag, immobilizing all movable enemy pieces, or forcing the opponent to run out of time.
 
@@ -31,7 +31,7 @@ This state space complexity estimate was established by Perolat et al. \cite{RLS
 
 \section{MARQ Framework Overview}
 
-The MARQ framework, a Multi-Agent Rainbow Deep Q-Networks system, employs self-play techniques and deep reinforcement learning to train agents capable of handling Stratego's large game state space and imperfect information. The framework uses a league-based self-play system where agents learn by competing against a diverse pool of opponents, including their own previous versions and exploratory variants.
+The MARQ framework, a Multi-Agent Rainbow Deep Q-Networks system, employs self-play techniques and deep reinforcement learning to train agents capable of handling Stratego's large game state space and imperfect information \cite{AlphaStratego}. The framework uses a league-based self-play system where agents learn by competing against a diverse pool of opponents, including their own previous versions and exploratory variants.
 
 This approach addresses the fundamental challenge of Stratego: reasoning about hidden information without computing intractable common-knowledge sets. While the number of possible game states exceeds $10^{535}$ and initial setups alone reach $10^{66}$ per player \cite{RLStratego}, the MARQ framework manages this complexity through belief state management, probabilistic reasoning, and strategic pattern recognition. The framework combines deep reinforcement learning for value estimation, attention mechanisms for processing game history, and controlled strategy mixing to prevent exploitation, while maintaining computational tractability even in this vast imperfect-information domain.
 
@@ -273,6 +273,46 @@ The revealed piece count is incremented, and remaining beliefs are adjusted to r
 \end{equation}
 
 For example, when the single Marshal is revealed, the probability of any other piece being a Marshal drops to zero.
+
+\subsection{Hindsight-Aided Belief Refinement}
+
+While the AAREN module provides inference during gameplay, the Hindsight-Aided Belief Refinement (HABR) module enables learning from verified information. When a piece is revealed through combat, HABR applies retrospective learning across the entire history of that piece, using the ground truth as a supervisory signal for past predictions.
+
+\paragraph{Information Gain Reward.}
+The Information Gain reward quantifies the value of observations that reduce uncertainty about opponent pieces. Let $H(P)$ denote the Shannon entropy of a probability distribution $P$. The KL divergence from a uniform prior $U$ over $N$ piece types is:
+\begin{equation}
+D_{KL}(P \parallel U) = \log(N) - H(P)
+\end{equation}
+The Information Gain reward measures the change in this divergence between consecutive PBS updates:
+\begin{equation}
+R_{gain}(t) = D_{KL}(PBS_{t-1} \parallel U) - D_{KL}(PBS_t \parallel U)
+\end{equation}
+Substituting the divergence formula yields:
+\begin{equation}
+R_{gain}(t) = (\log(N) - H(PBS_{t-1})) - (\log(N) - H(PBS_t)) = H(PBS_{t-1}) - H(PBS_t)
+\end{equation}
+This result shows that $R_{gain}$ equals the reduction in entropy. A positive reward is achieved only when the observation at time $t$ increases certainty about piece identity compared to $t-1$. This aligns the agent's incentives with active information gathering.
+
+\paragraph{Sinkhorn Constraint Normalization.}
+Independent belief updates for each piece position can lead to inconsistent global predictions. For example, if piece count constraints are not enforced, the model might assign high probability to multiple pieces being the single Marshal. This phenomenon, termed identity inflation, violates the physical constraints of the game.
+
+The Sinkhorn normalization addresses this through iterative proportional fitting. Given a belief matrix $M \in \mathbb{R}^{P \times S}$ where $P$ is the number of tracked pieces and $S$ is the number of piece types, two constraints must hold: the row constraint $\sum_{s} PBS(p, s) = 1$ ensures each piece has exactly one identity, and the column constraint $\sum_{p} PBS(p, s) = Count(s)$ ensures the total predicted count of each piece type matches the remaining count.
+
+The Sinkhorn algorithm alternates between row and column normalization until convergence:
+\begin{align}
+M^{(k+1)} &= D_r^{(k)} M^{(k)} D_c^{(k)} \\
+D_r^{(k)} &= \text{diag}\left(\frac{1_P}{M^{(k)} 1_S}\right), \quad D_c^{(k)} = \text{diag}\left(\frac{c}{M^{(k)T} 1_P}\right)
+\end{align}
+where $c$ is the vector of remaining piece counts. This operator is differentiable, allowing gradients from the training loss to propagate through the normalization. When piece A is confirmed as the Spy, the Sinkhorn layer automatically forces the Spy probability for all other pieces toward zero, creating a federated update across the entire belief state.
+
+\paragraph{Retrospective KL Divergence.}
+When a piece with identity $s^*_p$ is revealed at time $t$, the retrospective loss applies across the entire history of that piece:
+\begin{equation}
+\mathcal{L}_{retro} = \sum_{k=1}^{t} \lambda^{t-k} D_{KL}(PBS_k(p) \parallel \delta_{s^*_p})
+\end{equation}
+where $\delta_{s^*_p}$ is the Dirac delta distribution concentrated on the true piece type. The temporal decay factor $\lambda < 1$ (typically 0.9) assigns higher weight to recent predictions.
+
+The decay factor addresses the non-stationary nature of piece behavior in Stratego. A piece may exhibit deceptive behavior in the early game, such as a Marshal moving conservatively to avoid revealing its identity, before adopting more characteristic patterns in the endgame. By weighting recent observations more heavily, the loss function prioritizes learning from high-information behaviors near the revelation event while still providing a smoothed learning signal over the piece's history.
 
 
 \section{Multi-Agent Learning and Strategy Mixing}

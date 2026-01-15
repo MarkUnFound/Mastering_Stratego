@@ -114,7 +114,18 @@ Deductive reasoning applies when direct piece interactions occur. Upon combat, t
 
 Inductive reasoning enables the system to infer piece identity from observed behavior patterns. Pieces exhibiting high mobility and long-range movement are assigned increased probability of being Scouts. Conversely, pieces that retreat from threats or remain stationary near the back rank suggest defensive behavior characteristic of high-value pieces such as the Flag or Marshal. These behavioral heuristics are incorporated through Bayesian updates to the belief distribution.
 
-During training, the PBS is compared against the true game state to provide supervised learning signal. This comparison allows the belief estimation network to be trained toward more accurate predictions. The trained PBS effectively transforms the imperfect information game into an approximate perfect information representation, enabling the application of standard reinforcement learning techniques.
+\paragraph{Hindsight-Aided Belief Refinement.}
+Training the PBS module presents a challenge: ground truth labels are only available when pieces are revealed through combat, which may occur many moves after the initial observations. The Hindsight-Aided Belief Refinement (HABR) module addresses this by storing PBS snapshots throughout each piece's history. When a piece is revealed with identity $s^*_p$, HABR computes a retrospective loss:
+\begin{equation}
+\mathcal{L}_{retro} = \sum_{k=1}^{t} \lambda^{t-k} D_{KL}(PBS_k(p) \parallel \delta_{s^*_p})
+\end{equation}
+where $\lambda = 0.9$ is the temporal decay factor. This loss propagates the verified signal backward through the prediction history, training the belief tracker to recognize patterns that predict the revealed identity. The decay factor prioritizes recent observations while maintaining gradient flow to earlier predictions.
+
+\paragraph{Sinkhorn Global Constraints.}
+To prevent identity inflation where multiple pieces are assigned high probability for the same rare type, a Sinkhorn normalization layer enforces global piece-count constraints. After each PBS update, the Sinkhorn operator iteratively adjusts the belief matrix such that: each piece's probabilities sum to 1, and the total predicted count for each piece type matches the remaining count. This differentiable normalization enables end-to-end training while maintaining physically consistent predictions.
+
+\paragraph{Information Gain Reward.}
+The PBS module computes an Information Gain reward that measures entropy reduction between consecutive updates: $R_{gain}(t) = H(PBS_{t-1}) - H(PBS_t)$. This reward incentivizes the agent to make moves that gather information about opponent pieces, balancing exploitation with active deduction.
 
 
 \section{Model Training}

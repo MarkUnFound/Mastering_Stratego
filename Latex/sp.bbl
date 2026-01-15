@@ -20,6 +20,13 @@
   cognition for the elderly of tresna werdha budi pertiwi social care.
 \newblock {\em Advances in Social Humanities Research 3}, 4 (2025).
 
+\bibitem{StrategoOrigin}
+{\sc Arts, A. F.~C.}
+\newblock Competitive play in stratego.
+\newblock Master's thesis, Maastricht University, Department of Knowledge
+  Engineering, Maastricht, The Netherlands, March 2010.
+\newblock Thesis DKE 10-05.
+
 \bibitem{Optimization}
 {\sc Barzilai, G., Shamir, O., and Zamani, M.}
 \newblock Are convex optimization curves convex?
@@ -36,6 +43,12 @@
 {\sc Bellemare, M.~G., Dabney, W., and Rowland, M.}
 \newblock {\em Distributional Reinforcement Learning}.
 \newblock MIT Press, 2023.
+
+\bibitem{AlphaStratego}
+{\sc Blüml, J., Czech, J., and Kersting, K.}
+\newblock Alphaze$^{**}$: Alphazero-like baselines for imperfect information
+  games are surprisingly strong.
+\newblock {\em Frontiers in Artificial Intelligence Volume 6 - 2023\/} (2023).
 
 \bibitem{brim2020deep}
 {\sc Brim, A.}

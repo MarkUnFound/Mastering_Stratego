@@ -103,6 +103,10 @@ class StrategoRewardConfig:
     # Intrinsic Curiosity (exploration bonus)
     curiosity_weight: float = 0.1   # Weight for novelty bonus
     curiosity_bonus_scale: float = 0.01  # Max bonus per novel state
+    
+    # HABR Information Gain (rewards active deduction)
+    # R_gain = H(PBS_{t-1}) - H(PBS_t) = entropy reduction
+    info_gain_weight: float = 0.05  # Weight for information gain reward
 
 
 class UnifiedRewardShaper:
@@ -127,7 +131,10 @@ class UnifiedRewardShaper:
         self.revealed_positions: Set[Tuple[int, int]] = set()
         self.max_row_reached: int = 10 if self.player_id == 1 else -1
         # Note: We don't reset novelty_tracker - it persists across episodes
-        # to encourage exploration of truly novel states 
+        # to encourage exploration of truly novel states
+        
+        # HABR info gain tracking for this episode
+        self._episode_info_gain: float = 0.0
         
     def __call__(self, previous_state: GameState, action: Optional[Tuple], 
                  current_state: GameState, done: bool, 
@@ -299,6 +306,27 @@ class UnifiedRewardShaper:
         
         total_reward = sum(reward_components.values())
         return total_reward
+    
+    def add_info_gain_reward(self, info_gain: float):
+        """
+        Add HABR Information Gain reward to the episode total.
+        
+        Called by the training loop when PBS updates occur.
+        R_gain = H(PBS_{t-1}) - H(PBS_t) = entropy reduction
+        
+        Args:
+            info_gain: The information gain from a PBS update
+        """
+        self._episode_info_gain += info_gain * self.config.info_gain_weight
+    
+    def get_episode_info_gain_reward(self) -> float:
+        """
+        Get the total information gain reward for this episode.
+        
+        Returns:
+            Accumulated info gain reward (weighted by config)
+        """
+        return self._episode_info_gain
 
 def create_unified_reward_shaper(player_id: int = 1, config: Optional[StrategoRewardConfig] = None, device: str = 'cuda'):
     """Factory function for creating the shaper."""
