@@ -59,11 +59,12 @@ class StrategoRewardConfig:
     epistemic_weight: float = 0.1   # Reduced to favor terminal outcome
     positional_weight: float = 0.05 # Strictly guidance, not a primary objective
     
-    # Terminal rewards - DIFFERENTIATED by win type
-    win_reward_flag: float = 15.0   # Flag capture = primary objective (BOOSTED)
-    win_reward_depletion: float = 5.0  # Opponent immobilized = secondary
-    win_reward: float = 10.0        # Fallback if win_type not specified
-    loss_penalty: float = -10.0     # Symmetric loss penalty
+    # Terminal rewards - DIFFERENTIATED by win type (BOOSTED for faster learning)
+    # NOTE: C51 support bounds expanded to [-30.0, +30.0] to accommodate these values
+    win_reward_flag: float = 25.0   # Flag capture = primary objective (BOOSTED from 15.0)
+    win_reward_depletion: float = 10.0  # Opponent immobilized = secondary (BOOSTED)
+    win_reward: float = 15.0        # Fallback if win_type not specified (BOOSTED)
+    loss_penalty: float = -15.0     # Symmetric loss penalty (BOOSTED)
     draw_penalty: float = -5.0      # Increased from -3.0 to discourage passive draws
     
     # MATERIAL-ADVANTAGE DRAWS: Adjust draw reward based on piece count
