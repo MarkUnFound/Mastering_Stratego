@@ -5,9 +5,9 @@ Configuration settings for DQN training.
 # =============================================================================
 # HARDWARE & TRAINING SCALE CONFIGURATION (Fixed)
 # =============================================================================
-NUM_LANES = 8             # Reduced to 8 (Safe for 6GB VRAM)
+NUM_LANES = 2             # Reduced to 8 (Safe for 6GB VRAM)
 NUM_ENVS = NUM_LANES      # LEGACY alias - always equals NUM_LANES (kept for compatibility)
-BATCH_SIZE = 512          # Reduced to 256 (Safe for 6GB VRAM)
+BATCH_SIZE = 256          # Reduced to 256 (Safe for 6GB VRAM)
 GAMMA = 0.995           # Discount factor - HIGH for long-term flag capture planning
 MEMORY_SIZE = 500000      # 200k on GPU (~2.2GB) to leave room for model and batches
 LEARNING_RATE = 0.00003    # Reduced from 0.0001 for stable distributional RL

@@ -77,10 +77,21 @@ except ImportError:
 def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100, 
                      plot_interval: int = PLOT_INTERVAL,
                      model_save_path: str = "dqn_models",
-                     generate_gifs: bool = True):
+                     generate_gifs: bool = True,
+                     init_weights: str = None,
+                     pbt_reporter = None):
     """
     Train Rainbow DQN agent with league-based diverse opponents.
     Early training uses self-play, then transitions to historical opponents.
+    
+    Args:
+        num_episodes: Maximum number of episodes to train
+        save_interval: Episodes between checkpoint saves
+        plot_interval: Episodes between progress plots
+        model_save_path: Directory to save models and logs
+        generate_gifs: Whether to generate visualization GIFs
+        init_weights: Path to initial model weights (for PBT cloning)
+        pbt_reporter: Optional PBTMetricsReporter for supervisor communication
     """
     device = torch.device('cpu')  # Default to CPU
     if torch.cuda.is_available():
@@ -187,20 +198,33 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
         except (ValueError, IndexError):
             return -1
 
-    # Look for Rainbow models
-    agent1_files = glob.glob(os.path.join(model_save_path, "agent1_rainbow_episode_*.pth"))
-    agent2_files = glob.glob(os.path.join(model_save_path, "agent2_rainbow_episode_*.pth"))
-    
-    if agent1_files:
-        agent1_files.sort(key=extract_episode, reverse=True)
-        latest_file = agent1_files[0]
+    # PBT Cloning: If init_weights is provided, load those weights (priority over checkpoints)
+    if init_weights and os.path.exists(init_weights):
         try:
-            agent1.load_model(latest_file)
-            start_episode = extract_episode(latest_file)
-            print(f"[OK] Loaded Agent 1 Rainbow model from {latest_file}")
+            agent1.load_model(init_weights)
+            print(f"[PBT] Loaded cloned weights from {init_weights}")
+            start_episode = 0  # Start fresh episode count for cloned worker
         except Exception as e:
-            print(f"[WARN] Failed to load Agent 1 model: {e}")
-            
+            print(f"[WARN] Failed to load init_weights: {e}")
+            init_weights = None  # Fall back to checkpoint loading
+    
+    # Look for Rainbow models (only if not using PBT init_weights)
+    if not init_weights:
+        agent1_files = glob.glob(os.path.join(model_save_path, "agent1_rainbow_episode_*.pth"))
+        agent2_files = glob.glob(os.path.join(model_save_path, "agent2_rainbow_episode_*.pth"))
+        
+        if agent1_files:
+            agent1_files.sort(key=extract_episode, reverse=True)
+            latest_file = agent1_files[0]
+            try:
+                agent1.load_model(latest_file)
+                start_episode = extract_episode(latest_file)
+                print(f"[OK] Loaded Agent 1 Rainbow model from {latest_file}")
+            except Exception as e:
+                print(f"[WARN] Failed to load Agent 1 model: {e}")
+    
+    # Load Agent 2 model (always from checkpoints, not affected by PBT cloning)
+    agent2_files = glob.glob(os.path.join(model_save_path, "agent2_rainbow_episode_*.pth"))
     if agent2_files:
         agent2_files.sort(key=extract_episode, reverse=True)
         latest_file = agent2_files[0]
@@ -743,6 +767,24 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                 
                 completed_episodes += 1
                 pbar.update(1)
+                
+                # --- PBT METRICS REPORTING ---
+                # Report metrics to supervisor for PBT exploitation decisions
+                if pbt_reporter is not None:
+                    # Calculate recent win rate
+                    recent_wins = sum(1 for r in metrics['rewards_p1'][-100:] if r > 0)
+                    recent_win_rate = recent_wins / min(100, len(metrics['rewards_p1'])) if metrics['rewards_p1'] else 0.0
+                    
+                    # Get recent average loss
+                    recent_loss = np.mean(metrics['losses_p1'][-100:]) if metrics['losses_p1'] else 0.0
+                    
+                    pbt_reporter.report(
+                        episode=completed_episodes,
+                        reward=lane_episode_rewards_p1[i],
+                        win=1 if winner == 1 else 0,
+                        win_rate=recent_win_rate,
+                        avg_loss=recent_loss
+                    )
                 
                 reset_data = reset_lane(i)
                 reset_commands[i] = {'p1_placement': reset_data['p1_placement'], 

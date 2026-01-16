@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.25 (MiKTeX 24.1) (preloaded format=pdflatex 2025.12.5)  15 JAN 2026 11:59
+This is pdfTeX, Version 3.141592653-2.6-1.40.25 (MiKTeX 24.1) (preloaded format=pdflatex 2025.12.5)  16 JAN 2026 08:29
 entering extended mode
  restricted \write18 enabled.
  file:line:error style messages enabled.
@@ -765,7 +765,7 @@ Chapter 2.
 
 
 ] [8] [9] [10]
-<figures/stratego.png, id=583, 642.4pt x 481.8pt>
+<figures/stratego.png, id=588, 642.4pt x 481.8pt>
 File: figures/stratego.png Graphic file (type png)
 <use figures/stratego.png>
 Package pdftex.def Info: figures/stratego.png  used on input line 37.
@@ -780,7 +780,7 @@ l.46
 
  (chapters/techbackground.tex
 Chapter 3.
-<figures/stratego_piece.png, id=609, 225.84375pt x 234.8775pt>
+<figures/stratego_piece.png, id=614, 225.84375pt x 234.8775pt>
 File: figures/stratego_piece.png Graphic file (type png)
 <use figures/stratego_piece.png>
 Package pdftex.def Info: figures/stratego_piece.png  used on input line 12.
@@ -864,109 +864,113 @@ Overfull \hbox (10.11348pt too wide) in paragraph at lines 215--216
 \OT1/cmr/m/n/10 AAREN im-ple-ments an attention-based re-cur-rent com-pu-ta-tion that main-tains a state triplet $(\OML/cmm/m/it/10 a[]; c[]; m[]\OT1/cmr/m/n/10 )$
  []
 
-[23] [24] [25] [26] [27] [28] [29] [30]) [31]
+[23] [24] [25] [26] [27] [28] [29] [30] [31]) [32]
 \openout2 = `chapters/methodology.aux'.
 
  (chapters/methodology.tex
 Chapter 4.
-[32
+[33
 
 
 
 
-] [33] [34]
+] [34] [35]
 
 LaTeX Warning: `h' float specifier changed to `ht'.
 
-[35
+[36
 pdfTeX warning (ext4): destination with the same identifier (name{table.4.1}) has been already used, duplicate ignored
 <argument> ...shipout:D \box_use:N \l_shipout_box 
                                                   \__shipout_drop_firstpage_...
 l.110 \subsection
-                 {Handling Imperfect Information: Probabilistic Belief State...] [36
+                 {Handling Imperfect Information: Probabilistic Belief State...] [37
 pdfTeX warning (ext4): destination with the same identifier (name{table.4.2}) has been already used, duplicate ignored
 <argument> ...shipout:D \box_use:N \l_shipout_box 
                                                   \__shipout_drop_firstpage_...
 l.119 \begin{equation}
-                      ] [37] [38
+                      ] [38] [39
 pdfTeX warning (ext4): destination with the same identifier (name{table.4.3}) has been already used, duplicate ignored
 <argument> ...shipout:D \box_use:N \l_shipout_box 
                                                   \__shipout_drop_firstpage_...
 l.162 
-      ] [39] [40]
-Overfull \hbox (11.35225pt too wide) in paragraph at lines 195--196
+      ] [40] [41]
+Overfull \hbox (11.35225pt too wide) in paragraph at lines 204--205
 \OT1/cmr/m/n/10 legacy ver-sions per-formed re-ward cal-cu-la-tions di-rectly within the game en-vi-ron-ment (\OT1/cmtt/m/n/10 environment.py\OT1/cmr/m/n/10 ),
  []
 
-[41] [42] [43] [44
+[42] [43] [44]
+
+LaTeX Warning: `h' float specifier changed to `ht'.
+
+[45]
+<figures/DQN Architecture.png, id=878, 1326.9575pt x 684.5575pt>
+File: figures/DQN Architecture.png Graphic file (type png)
+<use figures/DQN Architecture.png>
+Package pdftex.def Info: figures/DQN Architecture.png  used on input line 293.
+(pdftex.def)             Requested size: 433.62pt x 223.70067pt.
+ [46
 pdfTeX warning (ext4): destination with the same identifier (name{table.4.4}) has been already used, duplicate ignored
 <argument> ...shipout:D \box_use:N \l_shipout_box 
                                                   \__shipout_drop_firstpage_...
-l.275     \item A
-                  binary mask is constructed where selected actions receive ...]
-<figures/DQN Architecture.png, id=869, 1326.9575pt x 684.5575pt>
-File: figures/DQN Architecture.png Graphic file (type png)
-<use figures/DQN Architecture.png>
-Package pdftex.def Info: figures/DQN Architecture.png  used on input line 284.
-(pdftex.def)             Requested size: 433.62pt x 223.70067pt.
- [45
+l.302 
+      ]
+<figures/Game diagram.png, id=889, 703.62875pt x 874.26625pt>
+File: figures/Game diagram.png Graphic file (type png)
+<use figures/Game diagram.png>
+Package pdftex.def Info: figures/Game diagram.png  used on input line 305.
+(pdftex.def)             Requested size: 216.81pt x 269.37889pt.
+ [47
 pdfTeX warning (ext4): destination with the same identifier (name{figure.4.1}) has been already used, duplicate ignored
 <argument> ...shipout:D \box_use:N \l_shipout_box 
                                                   \__shipout_drop_firstpage_...
-l.293 
-       <./figures/DQN Architecture.png>]
-<figures/Game diagram.png, id=878, 703.62875pt x 874.26625pt>
-File: figures/Game diagram.png Graphic file (type png)
-<use figures/Game diagram.png>
-Package pdftex.def Info: figures/Game diagram.png  used on input line 296.
-(pdftex.def)             Requested size: 216.81pt x 269.37889pt.
- [46
+l.317 
+       <./figures/DQN Architecture.png>] [48
 pdfTeX warning (ext4): destination with the same identifier (name{figure.4.2}) has been already used, duplicate ignored
 <argument> ...shipout:D \box_use:N \l_shipout_box 
                                                   \__shipout_drop_firstpage_...
-l.306 \paragraph
-                {Quantitative Analysis.} <./figures/Game diagram.png>]) [47]
+l.320 
+       <./figures/Game diagram.png>]) [49]
 \openout2 = `chapters/AppendixA.aux'.
 
  (chapters/AppendixA.tex
 Appendix A.
-[48
+[50
 
 
 
 
 ]
-<figures/aug1-sept5.png, id=895, 678.73575pt x 425.79076pt>
+<figures/aug1-sept5.png, id=912, 678.73575pt x 425.79076pt>
 File: figures/aug1-sept5.png Graphic file (type png)
 <use figures/aug1-sept5.png>
 Package pdftex.def Info: figures/aug1-sept5.png  used on input line 12.
 (pdftex.def)             Requested size: 433.62pt x 272.02437pt.
-<figures/sept11-nov30.png, id=896, 994.917pt x 357.13425pt>
+<figures/sept11-nov30.png, id=913, 994.917pt x 357.13425pt>
 File: figures/sept11-nov30.png Graphic file (type png)
 <use figures/sept11-nov30.png>
 Package pdftex.def Info: figures/sept11-nov30.png  used on input line 19.
 (pdftex.def)             Requested size: 433.62pt x 155.65186pt.
-<figures/oct27.png, id=897, 955.1685pt x 277.63725pt>
+<figures/oct27.png, id=914, 955.1685pt x 277.63725pt>
 File: figures/oct27.png Graphic file (type png)
 <use figures/oct27.png>
 Package pdftex.def Info: figures/oct27.png  used on input line 26.
 (pdftex.def)             Requested size: 433.62pt x 126.03706pt.
-<figures/dec1-feb14.png, id=898, 823.878pt x 159.59625pt>
+<figures/dec1-feb14.png, id=915, 823.878pt x 159.59625pt>
 File: figures/dec1-feb14.png Graphic file (type png)
 <use figures/dec1-feb14.png>
 Package pdftex.def Info: figures/dec1-feb14.png  used on input line 33.
 (pdftex.def)             Requested size: 433.62pt x 83.99626pt.
-<figures/feb15-may4.png, id=899, 1284.59924pt x 124.0635pt>
+<figures/feb15-may4.png, id=916, 1284.59924pt x 124.0635pt>
 File: figures/feb15-may4.png Graphic file (type png)
 <use figures/feb15-may4.png>
 Package pdftex.def Info: figures/feb15-may4.png  used on input line 41.
 (pdftex.def)             Requested size: 433.62pt x 41.87624pt.
-) [49
+) [51
 pdfTeX warning (ext4): destination with the same identifier (name{figure.A.1}) has been already used, duplicate ignored
 <argument> ...shipout:D \box_use:N \l_shipout_box 
                                                   \__shipout_drop_firstpage_...
 l.143 \include{chapters/AppendixA}
-                                   <./figures/aug1-sept5.png>] [50
+                                   <./figures/aug1-sept5.png>] [52
 pdfTeX warning (ext4): destination with the same identifier (name{figure.A.2}) has been already used, duplicate ignored
 <argument> ...shipout:D \box_use:N \l_shipout_box 
                                                   \__shipout_drop_firstpage_...
@@ -981,7 +985,7 @@ pdfTeX warning (ext4): destination with the same identifier (name{figure.A.4}) h
 <argument> ...shipout:D \box_use:N \l_shipout_box 
                                                   \__shipout_drop_firstpage_...
 l.143 \include{chapters/AppendixA}
-                                   <./figures/sept11-nov30.png> <./figures/oct27.png> <./figures/dec1-feb14.png>] [51
+                                   <./figures/sept11-nov30.png> <./figures/oct27.png> <./figures/dec1-feb14.png>] [53
 pdfTeX warning (ext4): destination with the same identifier (name{figure.A.5}) has been already used, duplicate ignored
 <argument> ...shipout:D \box_use:N \l_shipout_box 
                                                   \__shipout_drop_firstpage_...
@@ -991,83 +995,83 @@ l.143 \include{chapters/AppendixA}
 
  (chapters/AppendixB.tex
 Appendix B.
-[52
+[54
 
 
 
 
 ]
-<figures/Game_Menu.png, id=922, 5275.71pt x 2934.965pt>
+<figures/Game_Menu.png, id=938, 5275.71pt x 2934.965pt>
 File: figures/Game_Menu.png Graphic file (type png)
 <use figures/Game_Menu.png>
 Package pdftex.def Info: figures/Game_Menu.png  used on input line 13.
 (pdftex.def)             Requested size: 390.18713pt x 217.06757pt.
-<figures/Arrange.png, id=923, 1445.4pt x 921.4425pt>
+<figures/Arrange.png, id=939, 1445.4pt x 921.4425pt>
 File: figures/Arrange.png Graphic file (type png)
 <use figures/Arrange.png>
 Package pdftex.def Info: figures/Arrange.png  used on input line 20.
 (pdftex.def)             Requested size: 351.42436pt x 224.03304pt.
-<figures/Game_Start.png, id=924, 5283.74pt x 2951.025pt>
+<figures/Game_Start.png, id=940, 5283.74pt x 2951.025pt>
 File: figures/Game_Start.png Graphic file (type png)
 <use figures/Game_Start.png>
 Package pdftex.def Info: figures/Game_Start.png  used on input line 27.
 (pdftex.def)             Requested size: 390.21666pt x 217.94016pt.
-<figures/GameHistory.png, id=925, 5259.65pt x 2979.13pt>
+<figures/GameHistory.png, id=941, 5259.65pt x 2979.13pt>
 File: figures/GameHistory.png Graphic file (type png)
 <use figures/GameHistory.png>
 Package pdftex.def Info: figures/GameHistory.png  used on input line 34.
 (pdftex.def)             Requested size: 390.20319pt x 221.01584pt.
-<figures/Victory.png, id=926, 5335.935pt x 2947.01pt>
+<figures/Victory.png, id=942, 5335.935pt x 2947.01pt>
 File: figures/Victory.png Graphic file (type png)
 <use figures/Victory.png>
 Package pdftex.def Info: figures/Victory.png  used on input line 42.
 (pdftex.def)             Requested size: 390.24466pt x 215.53015pt.
-<figures/training_progress_episode_200.png, id=927, 859.0494pt x 1238.226pt>
+<figures/training_progress_episode_200.png, id=943, 859.0494pt x 1238.226pt>
 File: figures/training_progress_episode_200.png Graphic file (type png)
 <use figures/training_progress_episode_200.png>
 Package pdftex.def Info: figures/training_progress_episode_200.png  used on input line 50.
 (pdftex.def)             Requested size: 155.4218pt x 224.02357pt.
-<figures/training_progress_episode_400.png, id=928, 859.0494pt x 1238.226pt>
+<figures/training_progress_episode_400.png, id=944, 859.0494pt x 1238.226pt>
 File: figures/training_progress_episode_400.png Graphic file (type png)
 <use figures/training_progress_episode_400.png>
 Package pdftex.def Info: figures/training_progress_episode_400.png  used on input line 57.
 (pdftex.def)             Requested size: 155.4218pt x 224.02357pt.
-<figures/training_progress_episode_600.png, id=929, 859.0494pt x 1238.226pt>
+<figures/training_progress_episode_600.png, id=945, 859.0494pt x 1238.226pt>
 File: figures/training_progress_episode_600.png Graphic file (type png)
 <use figures/training_progress_episode_600.png>
 Package pdftex.def Info: figures/training_progress_episode_600.png  used on input line 64.
 (pdftex.def)             Requested size: 155.4218pt x 224.02357pt.
-<figures/training_progress_episode_800.png, id=930, 859.0494pt x 1238.226pt>
+<figures/training_progress_episode_800.png, id=946, 859.0494pt x 1238.226pt>
 File: figures/training_progress_episode_800.png Graphic file (type png)
 <use figures/training_progress_episode_800.png>
 Package pdftex.def Info: figures/training_progress_episode_800.png  used on input line 71.
 (pdftex.def)             Requested size: 155.4218pt x 224.02357pt.
-<figures/training_progress_episode_1000.png, id=931, 859.0494pt x 1238.226pt>
+<figures/training_progress_episode_1000.png, id=947, 859.0494pt x 1238.226pt>
 File: figures/training_progress_episode_1000.png Graphic file (type png)
 <use figures/training_progress_episode_1000.png>
 Package pdftex.def Info: figures/training_progress_episode_1000.png  used on input line 78.
 (pdftex.def)             Requested size: 155.4218pt x 224.02357pt.
-<figures/setup_agent_progress_episode_400.png, id=932, 859.5312pt x 826.287pt>
+<figures/setup_agent_progress_episode_400.png, id=948, 859.5312pt x 826.287pt>
 File: figures/setup_agent_progress_episode_400.png Graphic file (type png)
 <use figures/setup_agent_progress_episode_400.png>
 Package pdftex.def Info: figures/setup_agent_progress_episode_400.png  used on input line 85.
 (pdftex.def)             Requested size: 233.04706pt x 224.03346pt.
-<figures/pbs_visualization_episode_1000_setup.png, id=933, 1438.173pt x 685.6014pt>
+<figures/pbs_visualization_episode_1000_setup.png, id=949, 1438.173pt x 685.6014pt>
 File: figures/pbs_visualization_episode_1000_setup.png Graphic file (type png)
 <use figures/pbs_visualization_episode_1000_setup.png>
 Package pdftex.def Info: figures/pbs_visualization_episode_1000_setup.png  used on input line 92.
 (pdftex.def)             Requested size: 390.24304pt x 186.03545pt.
-<figures/pbs_visualization_episode_1000_end.png, id=934, 1438.173pt x 685.6014pt>
+<figures/pbs_visualization_episode_1000_end.png, id=950, 1438.173pt x 685.6014pt>
 File: figures/pbs_visualization_episode_1000_end.png Graphic file (type png)
 <use figures/pbs_visualization_episode_1000_end.png>
 Package pdftex.def Info: figures/pbs_visualization_episode_1000_end.png  used on input line 99.
 (pdftex.def)             Requested size: 390.24304pt x 186.03545pt.
-) [53
+) [55
 pdfTeX warning (ext4): destination with the same identifier (name{figure.B.1}) has been already used, duplicate ignored
 <argument> ...shipout:D \box_use:N \l_shipout_box 
                                                   \__shipout_drop_firstpage_...
 l.144 \include{chapters/AppendixB}
-                                   <./figures/Game_Menu.png>] [54
+                                   <./figures/Game_Menu.png>] [56
 pdfTeX warning (ext4): destination with the same identifier (name{figure.B.2}) has been already used, duplicate ignored
 <argument> ...shipout:D \box_use:N \l_shipout_box 
                                                   \__shipout_drop_firstpage_...
@@ -1077,7 +1081,7 @@ pdfTeX warning (ext4): destination with the same identifier (name{figure.B.3}) h
 <argument> ...shipout:D \box_use:N \l_shipout_box 
                                                   \__shipout_drop_firstpage_...
 l.144 \include{chapters/AppendixB}
-                                   <./figures/Arrange.png> <./figures/Game_Start.png>] [55
+                                   <./figures/Arrange.png> <./figures/Game_Start.png>] [57
 pdfTeX warning (ext4): destination with the same identifier (name{figure.B.4}) has been already used, duplicate ignored
 <argument> ...shipout:D \box_use:N \l_shipout_box 
                                                   \__shipout_drop_firstpage_...
@@ -1087,7 +1091,7 @@ pdfTeX warning (ext4): destination with the same identifier (name{figure.B.5}) h
 <argument> ...shipout:D \box_use:N \l_shipout_box 
                                                   \__shipout_drop_firstpage_...
 l.144 \include{chapters/AppendixB}
-                                   <./figures/GameHistory.png> <./figures/Victory.png>] [56
+                                   <./figures/GameHistory.png> <./figures/Victory.png>] [58
 pdfTeX warning (ext4): destination with the same identifier (name{figure.B.6}) has been already used, duplicate ignored
 <argument> ...shipout:D \box_use:N \l_shipout_box 
                                                   \__shipout_drop_firstpage_...
@@ -1097,7 +1101,7 @@ pdfTeX warning (ext4): destination with the same identifier (name{figure.B.7}) h
 <argument> ...shipout:D \box_use:N \l_shipout_box 
                                                   \__shipout_drop_firstpage_...
 l.144 \include{chapters/AppendixB}
-                                   <./figures/training_progress_episode_200.png> <./figures/training_progress_episode_400.png>] [57
+                                   <./figures/training_progress_episode_200.png> <./figures/training_progress_episode_400.png>] [59
 pdfTeX warning (ext4): destination with the same identifier (name{figure.B.8}) has been already used, duplicate ignored
 <argument> ...shipout:D \box_use:N \l_shipout_box 
                                                   \__shipout_drop_firstpage_...
@@ -1107,7 +1111,7 @@ pdfTeX warning (ext4): destination with the same identifier (name{figure.B.9}) h
 <argument> ...shipout:D \box_use:N \l_shipout_box 
                                                   \__shipout_drop_firstpage_...
 l.144 \include{chapters/AppendixB}
-                                   <./figures/training_progress_episode_600.png> <./figures/training_progress_episode_800.png>] [58
+                                   <./figures/training_progress_episode_600.png> <./figures/training_progress_episode_800.png>] [60
 pdfTeX warning (ext4): destination with the same identifier (name{figure.B.10}) has been already used, duplicate ignored
 <argument> ...shipout:D \box_use:N \l_shipout_box 
                                                   \__shipout_drop_firstpage_...
@@ -1117,7 +1121,7 @@ pdfTeX warning (ext4): destination with the same identifier (name{figure.B.11}) 
 <argument> ...shipout:D \box_use:N \l_shipout_box 
                                                   \__shipout_drop_firstpage_...
 l.144 \include{chapters/AppendixB}
-                                   <./figures/training_progress_episode_1000.png> <./figures/setup_agent_progress_episode_400.png>] [59
+                                   <./figures/training_progress_episode_1000.png> <./figures/setup_agent_progress_episode_400.png>] [61
 pdfTeX warning (ext4): destination with the same identifier (name{figure.B.12}) has been already used, duplicate ignored
 <argument> ...shipout:D \box_use:N \l_shipout_box 
                                                   \__shipout_drop_firstpage_...
@@ -1127,7 +1131,7 @@ pdfTeX warning (ext4): destination with the same identifier (name{figure.B.13}) 
 <argument> ...shipout:D \box_use:N \l_shipout_box 
                                                   \__shipout_drop_firstpage_...
 l.144 \include{chapters/AppendixB}
-                                   <./figures/pbs_visualization_episode_1000_setup.png> <./figures/pbs_visualization_episode_1000_end.png>] (sp.bbl [60
+                                   <./figures/pbs_visualization_episode_1000_setup.png> <./figures/pbs_visualization_episode_1000_end.png>] (sp.bbl [62
 
 
 
@@ -1146,7 +1150,7 @@ Underfull \hbox (badness 10000) in paragraph at lines 157--163
 \OT1/cmtt/m/n/10 multi-[]agent-[]deep-[]reinforcement-[]learning-[]marl-[]in-[]starcraft-[]2/$[]\OT1/cmr/m/n/10 , 2017.  Course
  []
 
-[61] [62] [63]) [64]
+[63] [64] [65]) [66]
 \openout2 = `misc/vita.aux'.
 
  (misc/vita.tex
@@ -1154,7 +1158,7 @@ Underfull \hbox (badness 10000) in paragraph at lines 4--8
 
  []
 
-[65
+[67
 
 
 ]) (sp.aux (misc/dedication.aux) (misc/acknowledgements.aux) (chapters/introduction.aux) (chapters/review.aux) (chapters/techbackground.aux) (chapters/methodology.aux) (chapters/AppendixA.aux) (chapters/AppendixB.aux) (misc/vita.aux))
@@ -1163,20 +1167,20 @@ LaTeX2e <2023-11-01> patch level 1
 L3 programming layer <2024-01-04>
  ***********
 Package rerunfilecheck Info: File `sp.out' has not changed.
-(rerunfilecheck)             Checksum: F6251DEB8CE9EBD0241E3EDBFE31BFAA;13672.
+(rerunfilecheck)             Checksum: 5E2E605B5E509A07597FE919557C7372;13862.
  ) 
 Here is how much of TeX's memory you used:
- 23383 strings out of 474485
- 433879 string characters out of 5743734
+ 23390 strings out of 474485
+ 433968 string characters out of 5743734
  1939542 words of memory out of 5000000
- 44854 multiletter control sequences out of 15000+600000
+ 44855 multiletter control sequences out of 15000+600000
  570243 words of font info for 83 fonts, out of 8000000 for 9000
  1141 hyphenation exceptions out of 8191
  84i,13n,93p,2516b,620s stack positions out of 10000i,1000n,20000p,200000b,200000s
 <C:/Users/quibo/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmbx10.pfb><C:/Users/quibo/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmbx12.pfb><C:/Users/quibo/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmcsc10.pfb><C:/Users/quibo/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmex10.pfb><C:/Users/quibo/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmmi10.pfb><C:/Users/quibo/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmmi5.pfb><C:/Users/quibo/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmmi7.pfb><C:/Users/quibo/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmr10.pfb><C:/Users/quibo/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmr12.pfb><C:/Users/quibo/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmr5.pfb><C:/Users/quibo/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmr7.pfb><C:/Users/quibo/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmr8.pfb><C:/Users/quibo/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmr9.pfb><C:/Users/quibo/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmsl10.pfb><C:/Users/quibo/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmsl9.pfb><C:/Users/quibo/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmsy10.pfb><C:/Users/quibo/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmsy5.pfb><C:/Users/quibo/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmsy6.pfb><C:/Users/quibo/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmsy7.pfb><C:/Users/quibo/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmti10.pfb><C:/Users/quibo/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmtt10.pfb><C:/Users/quibo/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/symbols/msbm10.pfb>
-Output written on sp.pdf (77 pages, 12057135 bytes).
+Output written on sp.pdf (79 pages, 12063099 bytes).
 PDF statistics:
- 1184 PDF objects out of 1200 (max. 8388607)
- 332 named destinations out of 1000 (max. 500000)
- 683 words of extra memory for PDF output out of 10000 (max. 10000000)
+ 1202 PDF objects out of 1440 (max. 8388607)
+ 338 named destinations out of 1000 (max. 500000)
+ 691 words of extra memory for PDF output out of 10000 (max. 10000000)
 

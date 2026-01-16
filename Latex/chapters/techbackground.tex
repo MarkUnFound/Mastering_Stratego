@@ -332,6 +332,17 @@ P(\text{opponent}) =
 \end{equation}
 This prevents cycling where the agent re-learns and un-learns the same strategies endlessly, forcing it to defeat all previous versions of itself.
 
+\subsection{Population-Based Training}
+Population-Based Training (PBT) extends the league training paradigm by treating hyperparameter optimization as a parallel evolutionary process. Rather than training a single agent with fixed hyperparameters, PBT maintains a population of $K$ workers, each training independently with potentially different hyperparameter configurations.
+
+At regular intervals (typically hourly), the supervisor evaluates the population and performs exploitation: workers in the bottom quantile are terminated, and their training is restarted using weights cloned from top-performing workers. This mechanism allows the population to collectively discover effective hyperparameter schedules during training rather than requiring extensive tuning prior to training.
+
+To prevent the population from collapsing to a single strategy, cloned workers receive perturbed hyperparameters:
+\begin{equation}
+\theta'_i = \theta_i \cdot \xi, \quad \xi \sim U(0.8, 1.2)
+\end{equation}
+The exploration rate $\epsilon$ is reset to a non-zero value (typically 0.1) for cloned workers, enabling renewed exploration from the inherited policy. This combination of exploitation (copying successful weights) and exploration (perturbing hyperparameters) allows PBT to adapt the training configuration as the policy evolves, addressing the observation that optimal hyperparameters change over the course of training.
+
 \subsection{Strategy Mixing for Exploitation Resistance}
 
 Extensive-form imperfect information games with deterministic strategies are inherently suboptimal and vulnerable to exploitation \cite{RLStratego, MARLGametheoretic}. An adversary with knowledge of a deterministic policy effectively reduces the game to a perfect information setting, nullifying the strategic uncertainty fundamental to games like Stratego. The MARQ framework addresses this challenge through two complementary mechanisms.

@@ -169,6 +169,15 @@ To accelerate training throughput, the implementation employs mixed-precision in
 \paragraph{League-Based Training.}
 To prevent policy cycling, the agent trains against a diverse opponent pool. The opponent selection distribution allocates 50\% to historical league agents, 20\% to random agents, 20\% to greedy heuristic agents, and 10\% to self-play. Agent checkpoints are added to the league every 500 episodes, with a maximum pool size of 50 historical agents.
 
+\paragraph{Population-Based Training.}
+To accelerate hyperparameter optimization during training, the framework implements Population-Based Training (PBT). PBT combines the advantages of parallel random search with online model selection by maintaining a population of 4 to 8 independent training workers, each initialized with a unique random seed to ensure exploration diversity.
+
+A supervisor process monitors worker performance by reading metrics from a shared log file every 30 seconds. Every hour, the supervisor evaluates all workers based on their mean reward over the most recent 100 episodes and performs exploitation: the bottom 50\% of workers are terminated, and new workers are launched using cloned weights from the top performers. To encourage continued exploration, cloned workers receive perturbed hyperparameters according to:
+\begin{equation}
+\theta'_i = \theta_i \cdot U(0.8, 1.2)
+\end{equation}
+where $U(0.8, 1.2)$ denotes a uniform random perturbation factor. The exploration rate $\epsilon$ is reset to 0.1 for cloned workers, allowing renewed discovery from the inherited policy. This adaptive schedule enables the population to collectively discover effective hyperparameter configurations during training rather than requiring extensive manual tuning prior to training.
+
 \paragraph{Curriculum Learning.}
 Training follows a five-phase curriculum of increasing complexity with extended episode counts to ensure thorough learning at each stage. Phase 1 (Full Observability) allows the agent to observe all piece identities, enabling acquisition of fundamental game mechanics. To mitigate the "observability cliff" when transitioning to Phase 2, a Mixed Observability mechanism is introduced: as the agent's win rate exceeds 85\% in Phase 1, a stochastic "Fog of War" randomly occludes 50\% of opponent pieces. This forces the agent to begin relying on probabilistic inference and PBS predictions before full occlusion occurs.
 
