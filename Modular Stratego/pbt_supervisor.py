@@ -138,9 +138,15 @@ class PBTSupervisor:
         self.exploit_count = 0
         self.start_time = time.time()
         
+        # Resolve all paths to absolute (relative to script location)
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        self.config.base_model_dir = os.path.abspath(os.path.join(script_dir, config.base_model_dir))
+        self.config.log_dir = os.path.abspath(os.path.join(script_dir, config.log_dir))
+        self.config.metrics_file = os.path.abspath(os.path.join(script_dir, config.metrics_file))
+        
         # Create directories
-        os.makedirs(config.log_dir, exist_ok=True)
-        os.makedirs(config.base_model_dir, exist_ok=True)
+        os.makedirs(self.config.log_dir, exist_ok=True)
+        os.makedirs(self.config.base_model_dir, exist_ok=True)
         
         # Initialize PBT dashboard for aggregate visualization
         try:
@@ -245,14 +251,18 @@ class PBTSupervisor:
         
         os.makedirs(worker_dir, exist_ok=True)
         
-        # Build command line arguments
+        # Get absolute path to worker script (in same directory as supervisor)
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        worker_script_path = os.path.join(script_dir, self.config.worker_script)
+        
+        # Build command line arguments with absolute paths
         cmd = [
             sys.executable,
-            self.config.worker_script,
+            worker_script_path,
             "--seed", str(seed),
             "--worker_id", str(worker_id),
-            "--model_dir", worker_dir,
-            "--metrics_file", self.config.metrics_file,
+            "--model_dir", os.path.abspath(worker_dir),
+            "--metrics_file", os.path.abspath(self.config.metrics_file),
         ]
         
         if clone_from:
@@ -829,97 +839,6 @@ class PBTSupervisor:
         }
 
 
-# =============================================================================
-# WORKER SCRIPT TEMPLATE
-# =============================================================================
-
-WORKER_SCRIPT_TEMPLATE = '''"""
-DQN Training Worker for PBT
-
-This is a standalone training worker that reports metrics back to the
-PBT supervisor. It can be initialized with pre-trained weights and
-custom hyperparameters.
-
-This script is launched by pbt_supervisor.py and should not be run directly.
-"""
-
-import os
-import sys
-import csv
-import time
-import argparse
-import torch
-import numpy as np
-import random
-
-# Add parent directory to path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from train_dqn import train_dqn_agents
-from training_config import *
-
-
-def set_seeds(seed: int):
-    """Set all random seeds for reproducibility."""
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed(seed)
-        torch.cuda.manual_seed_all(seed)
-
-
-def report_metrics(metrics_file: str, worker_id: int, episode: int, 
-                   reward: float, win: int, timestamp: float):
-    """Append metrics to shared CSV file for supervisor monitoring."""
-    file_exists = os.path.exists(metrics_file)
-    
-    with open(metrics_file, 'a', newline='') as f:
-        writer = csv.writer(f)
-        if not file_exists:
-            writer.writerow(['worker_id', 'episode', 'reward', 'win', 'timestamp'])
-        writer.writerow([worker_id, episode, reward, win, timestamp])
-
-
-def main():
-    parser = argparse.ArgumentParser(description='DQN Training Worker for PBT')
-    parser.add_argument('--seed', type=int, default=0)
-    parser.add_argument('--worker_id', type=int, required=True)
-    parser.add_argument('--model_dir', type=str, required=True)
-    parser.add_argument('--metrics_file', type=str, required=True)
-    parser.add_argument('--init_weights', type=str, default=None)
-    parser.add_argument('--learning_rate', type=float, default=LEARNING_RATE)
-    parser.add_argument('--epsilon_start', type=float, default=1.0)
-    parser.add_argument('--epsilon_end', type=float, default=0.01)
-    parser.add_argument('--epsilon_decay', type=float, default=0.9995)
-    
-    args = parser.parse_args()
-    
-    print(f"[Worker {args.worker_id}] Starting with seed {args.seed}")
-    set_seeds(args.seed)
-    
-    # TODO: Integrate with your train_dqn.py training loop
-    # This is a template - you'll need to modify train_dqn.py to:
-    # 1. Accept hyperparameters as arguments
-    # 2. Load initial weights if provided
-    # 3. Report metrics via report_metrics() after each episode
-    
-    # Example integration point:
-    # train_dqn_agents(
-    #     num_episodes=NUM_EPISODES,
-    #     save_interval=SAVE_INTERVAL,
-    #     model_save_path=args.model_dir,
-    #     learning_rate=args.learning_rate,
-    #     init_weights=args.init_weights,
-    #     metrics_callback=lambda ep, rew, win: report_metrics(
-    #         args.metrics_file, args.worker_id, ep, rew, win, time.time()
-    #     ),
-    # )
-
-
-if __name__ == '__main__':
-    main()
-'''
 
 
 def create_worker_script(output_path: str = "train_dqn_worker.py"):

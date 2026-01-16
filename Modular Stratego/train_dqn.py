@@ -104,6 +104,14 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
             print("   Falling back to CPU. Install PyTorch with CUDA support for GPU acceleration.")
     print(f"Using device: {device}")
     
+    # Resolve model_save_path to absolute path (relative to script location)
+    # This ensures consistent save location regardless of current working directory
+    if not os.path.isabs(model_save_path):
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        model_save_path = os.path.join(script_dir, model_save_path)
+    model_save_path = os.path.abspath(model_save_path)
+    print(f"Model save path: {model_save_path}")
+    
     # Use fixed configuration from training_config.py
     num_envs = NUM_LANES
     batch_size = BATCH_SIZE
@@ -982,7 +990,11 @@ if __name__ == "__main__":
     print("==================================================")
     print()
     
-    if run_preflight_checks(model_save_path="dqn_models"):
+    # Resolve model path relative to script location
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    default_model_path = os.path.join(script_dir, "dqn_models")
+    
+    if run_preflight_checks(model_save_path=default_model_path):
         train_dqn_agents(
             num_episodes=NUM_EPISODES,
             save_interval=SAVE_INTERVAL,
@@ -990,3 +1002,4 @@ if __name__ == "__main__":
         )
     else:
         print("[ERROR] Pre-flight checks failed. Aborting training.")
+
