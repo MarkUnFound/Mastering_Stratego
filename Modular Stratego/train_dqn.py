@@ -320,9 +320,15 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
     # Set Environment Observability (handles float for mixed/fog mode)
     parallel_env.set_full_observability(obs_rate)
     
-    # Agent Logic: Use Full Obs only if rate is 1.0 (or very close)
-    # If mixed (e.g. 0.8), agent should use partial mode (PBS) to handle the hidden 20%
-    use_full_obs = (obs_rate >= 0.99)
+    # Agent Logic: ALWAYS use AAREN embeddings (partial observability mode)
+    # Agent learns with AAREN memory from day one, not just later phases
+    # This lets the agent get accustomed to interpreting AAREN embeddings early
+    use_full_obs = False  # Always use AAREN embeddings
+    
+    # Print AAREN status
+    from training_config import HISTORY_EMBEDDING_SIZE
+    print(f"[INFO] AAREN History Aggregator: ENABLED ({HISTORY_EMBEDDING_SIZE}-dim embeddings per position)")
+    print(f"   Input channels: 15 (board) + {HISTORY_EMBEDDING_SIZE} (AAREN) = {15 + HISTORY_EMBEDDING_SIZE}")
     
     # PBS optimization: track steps for interval-based updates
     from training_config import PBS_UPDATE_INTERVAL
@@ -561,6 +567,7 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
         batch_active_mask = []
         batch_game_states = []
         batch_next_game_states = []
+        batch_infos = []  # Track infos for battle detection in PER
 
         for i in range(num_envs):
             lane_step_counts[i] += 1
@@ -591,6 +598,7 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                     batch_active_mask.append(True)
                     batch_game_states.append(lane_game_states[i])
                     batch_next_game_states.append(next_states[i])
+                    batch_infos.append(infos[i])  # For PER battle detection
                     
                     lane_pending_transitions[i] = None # Clear
                 else:
@@ -647,6 +655,7 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                     batch_active_mask.append(True)
                     batch_game_states.append(pending['game_state'])
                     batch_next_game_states.append(next_states[i])
+                    batch_infos.append(infos[i])  # For PER battle detection
                     
                     lane_pending_transitions[i] = None # Clear pending
             
@@ -658,10 +667,9 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                 elif current_player == -1 and not use_full_obs:
                     agent1.update_pbs_batch([actions[i]], [lane_game_states[i]], acting_player=-1)
             
-            # --- PBS TRAINING (Critical for Phase 2+) ---
-            from training_config import PBS_UPDATE_INTERVAL
-            if global_step % PBS_UPDATE_INTERVAL == 0:
-                agent1.train_pbs(epochs=5)
+            
+            # AAREN serves as memory aggregator - no separate training needed
+            # The agent learns end-to-end through DQN gradient flow
             
             # Check for Game End
             if done_bool:
@@ -846,7 +854,8 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                 batch_dones,
                 batch_active_mask,
                 batch_game_states,
-                batch_next_game_states
+                batch_next_game_states,
+                infos=batch_infos  # Pass infos for PER battle detection
             )
         
         # --- APPLY RESETS ---
@@ -915,11 +924,8 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
         if agent1.scheduler and global_step % 1000 == 0:
             agent1.scheduler.step()
         
-        # --- TRAIN PBS (periodically) ---
-        if global_step % 500 == 0 and not use_full_obs:
-            agent1.train_pbs(epochs=5)
-            if agent2.use_pbs:
-                agent2.train_pbs(epochs=5)
+        # AAREN serves as memory aggregator - learns end-to-end with agent
+        # No separate training needed (unlike PBS which required explicit updates)
         
         # --- PERIODIC PLOTTING (every plot_interval episodes) ---
         if metrics_tracker.should_plot(completed_episodes, plot_interval):

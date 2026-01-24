@@ -162,13 +162,14 @@ class PrioritizedReplayBuffer:
         self.use_float16 = use_float16 and self.store_on_gpu
         self.storage_dtype = torch.float16 if self.use_float16 else torch.float32
         
-    def add(self, state, action, reward, next_state, done, priority=None, is_winning_experience=False):
-        """Add experience with Float16 storage and priority boost for winning experiences.
+    def add(self, state, action, reward, next_state, done, priority=None, is_winning_experience=False, is_battle=False):
+        """Add experience with Float16 storage and priority boost for important events.
         
         Args:
             state, action, reward, next_state, done: Standard experience tuple
             priority: Optional explicit priority (if None, uses max_priority)
             is_winning_experience: If True, boost priority 10x for self-imitation learning
+            is_battle: If True, boost priority 2.5x for capture events (high-value learning)
         """
         if self.store_on_gpu:
             # Convert to Float16 for memory efficiency
@@ -192,6 +193,11 @@ class PrioritizedReplayBuffer:
         # This makes the agent learn more from its successes
         if is_winning_experience:
             priority *= 10.0  # 10x priority boost for wins
+        
+        # BATTLE EVENT BOOST: Prioritize capture events for faster learning
+        # Battles are high-value moments that reveal pieces and change material
+        if is_battle:
+            priority *= 2.5  # 2.5x priority boost for battles
         
         self.tree.add(priority, exp)
     

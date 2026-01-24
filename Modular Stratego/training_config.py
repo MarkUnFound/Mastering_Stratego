@@ -5,7 +5,7 @@ Configuration settings for DQN training.
 # =============================================================================
 # HARDWARE & TRAINING SCALE CONFIGURATION (Fixed)
 # =============================================================================
-NUM_LANES = 2             # Reduced to 8 (Safe for 6GB VRAM)
+NUM_LANES = 4             # Reduced to 8 (Safe for 6GB VRAM)
 NUM_ENVS = NUM_LANES      # LEGACY alias - always equals NUM_LANES (kept for compatibility)
 BATCH_SIZE = 256          # Reduced to 256 (Safe for 6GB VRAM)
 GAMMA = 0.995           # Discount factor - HIGH for long-term flag capture planning
@@ -32,7 +32,7 @@ EXPLORATION_EPSILON_DECAY = 1     # Not used
 # CURRICULUM TURN LIMITS (Shorter games for faster learning)
 # =============================================================================
 # Start with shorter games to force faster decisions, increase as agent improves
-PHASE_1_MAX_TURNS = 100   # Shorter games for faster terminal feedback in Phase 1
+PHASE_1_MAX_TURNS = 150   # Shorter games for faster terminal feedback in Phase 1
 PHASE_2_MAX_TURNS = 600   # Medium games for memory testing
 PHASE_3_MAX_TURNS = 800   # Longer for self-play strategy
 PHASE_4_MAX_TURNS = 1000  # Full length for league training
@@ -87,6 +87,10 @@ AAREN_USE_FP16 = True           # Use half-precision inference (~30% faster)
 AAREN_USE_TORCHSCRIPT = False   # Disabled - AAREN uses dynamic ops that don't compile
 AAREN_HIDDEN_SIZE = 64          # Keep at 64 for checkpoint compatibility
 AAREN_NUM_LAYERS = 3            # Keep at 3 for checkpoint compatibility
+
+# History Aggregator Settings (Simplified PBS replacement)
+# Uses AAREN embeddings instead of explicit belief distributions
+HISTORY_EMBEDDING_SIZE = 64     # Size of AAREN embedding per position (matches hidden_size)
 
 # Rainbow DQN Performance Optimizations  
 USE_TORCH_COMPILE = False      # PyTorch 2.0+ compilation (~10-20% speedup, longer first run)

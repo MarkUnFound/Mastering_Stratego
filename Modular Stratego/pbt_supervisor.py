@@ -57,7 +57,7 @@ logger = logging.getLogger(__name__)
 class PBTConfig:
     """Configuration for PBT supervisor."""
     # Worker settings
-    num_workers: int = 4            # Number of parallel workers (4-8 recommended)
+    num_workers: int = 2            # Number of parallel workers (4-8 recommended)
     worker_script: str = "train_dqn_worker.py"  # Script each worker runs
     base_model_dir: str = "dqn_models"  # Base directory for models
     

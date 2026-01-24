@@ -21,11 +21,9 @@ from board import LAKE_SQUARE
 
 # Import from new modular structure
 from networks import NoisyLinear, RainbowDQN
-from pbs import ProbabilisticBeliefState, PBS_EVALUATOR_AVAILABLE
+from history_aggregator import HistoryAggregator
 from aaren import PieceActionAaren
 
-if PBS_EVALUATOR_AVAILABLE:
-    from pbs_evaluator import PBSEvaluator
 from prioritized_memory import StandardReplayBuffer, PrioritizedReplayBuffer, NStepBuffer, Experience
 
 # Heuristic Action Filter for Top-100 move selection
@@ -98,46 +96,45 @@ class RainbowAgent:
         
         # Import AAREN optimization settings
         try:
-            from training_config import AAREN_HIDDEN_SIZE, AAREN_NUM_LAYERS, AAREN_USE_TORCHSCRIPT
+            from training_config import AAREN_HIDDEN_SIZE, AAREN_NUM_LAYERS, HISTORY_EMBEDDING_SIZE
         except ImportError:
-            AAREN_HIDDEN_SIZE = 32
+            AAREN_HIDDEN_SIZE = 64
             AAREN_NUM_LAYERS = 2
-            AAREN_USE_TORCHSCRIPT = True
+            HISTORY_EMBEDDING_SIZE = 64
         
-        if self.use_pbs:
+        # History Aggregator (replaces PBS)
+        # Uses AAREN embeddings instead of belief distributions
+        self.history = None
+        self.history_instances = []
+        self.history_embedding_size = HISTORY_EMBEDDING_SIZE
+        
+        if self.use_pbs:  # use_pbs now means use_history
             if num_envs > 1:
-                # Create shared models for parallel environments with optimized settings
+                # Create shared AAREN for parallel environments
                 self.shared_aaren = PieceActionAaren(
                     input_size=24, hidden_size=AAREN_HIDDEN_SIZE, 
                     num_layers=AAREN_NUM_LAYERS, output_size=12, device=device
                 ).to(device)
                 
-                # TorchScript compilation for faster inference
-                if AAREN_USE_TORCHSCRIPT:
-                    try:
-                        self.shared_aaren = torch.jit.script(self.shared_aaren)
-                        print(f"[OK] AAREN TorchScript compilation successful")
-                    except Exception as e:
-                        print(f"[WARN] AAREN TorchScript failed, using eager mode: {e}")
-                
                 self.shared_aaren_optimizer = optim.AdamW(self.shared_aaren.parameters(), lr=0.001, weight_decay=0.01)
                 
-                self.shared_evaluator = None
-                if PBS_EVALUATOR_AVAILABLE:
-                    self.shared_evaluator = PBSEvaluator(device=device)
-                
                 for _ in range(num_envs):
-                    pbs_instance = ProbabilisticBeliefState(
+                    history_instance = HistoryAggregator(
                         player_id, device, 
-                        shared_aaren_model=self.shared_aaren,
-                        shared_evaluator=self.shared_evaluator
+                        hidden_size=AAREN_HIDDEN_SIZE,
+                        num_layers=AAREN_NUM_LAYERS,
+                        shared_aaren_model=self.shared_aaren
                     )
-                    pbs_instance.aaren_optimizer = self.shared_aaren_optimizer
-                    self.pbs_instances.append(pbs_instance)
-                self.pbs = self.pbs_instances[0]
+                    history_instance.optimizer = self.shared_aaren_optimizer
+                    self.history_instances.append(history_instance)
+                self.history = self.history_instances[0]
             else:
-                self.pbs = ProbabilisticBeliefState(player_id, device)
-                self.pbs_instances = [self.pbs]
+                self.history = HistoryAggregator(player_id, device, hidden_size=AAREN_HIDDEN_SIZE)
+                self.history_instances = [self.history]
+        
+        # Legacy PBS references for backward compatibility (point to history)
+        self.pbs = self.history
+        self.pbs_instances = self.history_instances
         
         # Uncertainty parameters
         self.uncertainty_exploration_multiplier = 0.05
@@ -147,8 +144,8 @@ class RainbowAgent:
         self.tau = 0.001
         
         # Rainbow Networks
-        # 15 (Board) + 12 (PBS Beliefs) = 27 Channels
-        self.input_channels = 27 
+        # 15 (Board) + HISTORY_EMBEDDING_SIZE (AAREN embeddings) = 79 Channels (with 64)
+        self.input_channels = 15 + self.history_embedding_size
         self.q_network = RainbowDQN(input_shape=(self.input_channels, 10, 10), output_size=action_size, num_atoms=self.num_atoms).to(device)
         self.target_network = RainbowDQN(input_shape=(self.input_channels, 10, 10), output_size=action_size, num_atoms=self.num_atoms).to(device)
         self.update_target_network()
@@ -391,13 +388,13 @@ class RainbowAgent:
     def get_state_representation(self, board, pbs_instance=None, full_observability=False):
         """
         Convert raw board to feature tensor.
-        Now includes PBS belief tensor (12 channels).
-        Total channels: 15 (Board) + 12 (PBS) = 27
+        Now includes AAREN history embeddings instead of PBS beliefs.
+        Total channels: 15 (Board) + HISTORY_EMBEDDING_SIZE (AAREN) = 79 (default)
         
         Args:
             board: Game board tensor or GameState object
-            pbs_instance: PBS instance for belief channels (optional)
-            full_observability: If True, use ground truth enemy types instead of PBS
+            pbs_instance: History aggregator instance (legacy name for compatibility)
+            full_observability: If True, use ground truth enemy types instead of embeddings
         """
         # Handle GameState object - extract the board tensor
         from game_state import GameState
@@ -431,50 +428,49 @@ class RainbowAgent:
         
         state_tensor = features
         
-        # --- PBS BELIEF CHANNELS (15-26) ---
+        # --- AAREN EMBEDDING CHANNELS ---
         if full_observability:
-            # FULL OBSERVABILITY: Create one-hot ground truth beliefs from actual board
-            # This lets the agent see true enemy piece types in Phase 1
-            belief_tensor = torch.zeros((12, 10, 10), device=self.device)
+            # FULL OBSERVABILITY: Create representation from ground truth
+            # Expand piece type info to fill embedding channels
+            embedding = torch.zeros((self.history_embedding_size, 10, 10), device=self.device)
             
             if self.player_id == 1:
-                # Enemy pieces are negative (excluding lakes at -13)
                 enemy_mask = (board < 0) & (board > LAKE_SQUARE)
                 enemy_positions = torch.nonzero(enemy_mask)
                 for pos in enemy_positions:
                     r, c = pos[0].item(), pos[1].item()
-                    piece_type_idx = abs(int(board[r, c].item())) - 1  # 0-11 index
+                    piece_type_idx = abs(int(board[r, c].item())) - 1
                     if 0 <= piece_type_idx < 12:
-                        belief_tensor[piece_type_idx, r, c] = 1.0
+                        # Create a distinctive pattern for this piece type
+                        # Use first 12 channels for one-hot, rest as zeros
+                        embedding[piece_type_idx, r, c] = 1.0
             else:
-                # Enemy pieces are positive
                 enemy_mask = board > 0
                 enemy_positions = torch.nonzero(enemy_mask)
                 for pos in enemy_positions:
                     r, c = pos[0].item(), pos[1].item()
-                    piece_type_idx = int(board[r, c].item()) - 1  # 0-11 index
+                    piece_type_idx = int(board[r, c].item()) - 1
                     if 0 <= piece_type_idx < 12:
-                        belief_tensor[piece_type_idx, r, c] = 1.0
+                        embedding[piece_type_idx, r, c] = 1.0
             
-            full_state = torch.cat([state_tensor, belief_tensor], dim=0)
+            full_state = torch.cat([state_tensor, embedding], dim=0)
             return full_state
             
         elif pbs_instance is not None:
-            # PARTIAL OBSERVABILITY: Use PBS belief distributions
-            belief_tensor = pbs_instance.belief_tensor 
+            # PARTIAL OBSERVABILITY: Use AAREN embeddings from HistoryAggregator
+            embedding = pbs_instance.get_embedding_tensor()
             
-            # If belief_tensor is on a different device/dtype, fix it
-            if belief_tensor.device != self.device:
-                belief_tensor = belief_tensor.to(self.device)
+            # Ensure correct device
+            if embedding.device != self.device:
+                embedding = embedding.to(self.device)
                 
-            # Concatenate along channel dimension (dim 0)
-            # New shape: (15 + 12 = 27, 10, 10)
-            full_state = torch.cat([state_tensor, belief_tensor], dim=0)
+            # Concatenate: (15 + history_embedding_size, 10, 10)
+            full_state = torch.cat([state_tensor, embedding], dim=0)
             return full_state
         
-        # Fallback if no PBS and not full observability (pad with zeros)
+        # Fallback: pad with zeros
         else:
-            padding = torch.zeros((12, 10, 10), device=self.device)
+            padding = torch.zeros((self.history_embedding_size, 10, 10), device=self.device)
             full_state = torch.cat([state_tensor, padding], dim=0)
             return full_state
         
@@ -486,11 +482,14 @@ class RainbowAgent:
         
         self._add_experience(state_processed, action, reward, next_state_processed, done)
 
-    def _add_experience(self, state, action, reward, next_state, done):
+    def _add_experience(self, state, action, reward, next_state, done, is_battle=False):
         """
         Internal helper to add experience to memory with potential augmentation.
         Always expects 'state' and 'next_state' to be processed tensors.
         'action' can be a move tuple or index.
+        
+        Args:
+            is_battle: If True, indicates this transition involved a capture event
         """
         # 1. Convert action to index if it's a tuple
         action_idx = action
@@ -510,9 +509,10 @@ class RainbowAgent:
         # Win rewards are 10-15, so use 10.0 as threshold
         is_winning_experience = (reward_clipped >= 10.0 and done)
         
-        # Pass is_winning_experience for PER priority boost (ignored by StandardBuffer)
+        # Pass priority boost flags to PER (ignored by StandardBuffer)
         if hasattr(self.memory, 'add') and 'is_winning_experience' in self.memory.add.__code__.co_varnames:
-            self.memory.add(state, action_idx, reward_clipped, next_state, done, is_winning_experience=is_winning_experience)
+            self.memory.add(state, action_idx, reward_clipped, next_state, done, 
+                          is_winning_experience=is_winning_experience, is_battle=is_battle)
         else:
             self.memory.add(state, action_idx, reward_clipped, next_state, done)
         self.step_count += 1
@@ -547,7 +547,7 @@ class RainbowAgent:
                 self.memory.add(state_rot, action_idx_rot, reward_clipped, next_state_rot, done)
                 self.step_count += 1
 
-    def remember_batch(self, states, actions, rewards, next_states, dones, active_mask, game_states=None, next_game_states=None):
+    def remember_batch(self, states, actions, rewards, next_states, dones, active_mask, game_states=None, next_game_states=None, infos=None):
         """
         Store multiple experiences efficiently with batched state processing.
         Uses N-step returns if enabled.
@@ -561,6 +561,7 @@ class RainbowAgent:
             active_mask: Boolean array indicating which envs are active
             game_states: List of GameState objects (for PBS lookup)
             next_game_states: List of next GameState objects
+            infos: List of info dicts from environment (contains revealed_in_step for battle detection)
         """
         # Get batch state representation once (much more efficient)
         # Get batch state representation once (much more efficient)
@@ -582,6 +583,13 @@ class RainbowAgent:
             # Reward is in a list here
             reward = rewards[i]
             
+            # BATTLE DETECTION: Check if this transition involved a capture
+            # Battles are detected via revealed_in_step in info dict
+            is_battle = False
+            if infos and i < len(infos) and infos[i]:
+                revealed = infos[i].get('revealed_in_step', [])
+                is_battle = len(revealed) > 0  # Any piece revealed = battle occurred
+            
             # N-Step returns processing
             if self.n_step_buffers is not None and i < len(self.n_step_buffers):
                 # Buffers expect the action as it was taken (tuple or index)
@@ -592,19 +600,20 @@ class RainbowAgent:
                 
                 if n_step_result is not None:
                     # Got n-step experience - add to replay via central helper
+                    # Note: For n-step, we boost priority if ANY step in the sequence had a battle
                     n_state, n_action, n_reward, n_next_state, n_done = n_step_result
-                    self._add_experience(n_state, n_action, n_reward, n_next_state, n_done)
+                    self._add_experience(n_state, n_action, n_reward, n_next_state, n_done, is_battle=is_battle)
                 
                 # Flush remaining if episode done
                 if dones[i]:
                     remaining = self.n_step_buffers[i].flush()
                     for result in remaining:
                         n_state, n_action, n_reward, n_next_state, n_done = result
-                        self._add_experience(n_state, n_action, n_reward, n_next_state, n_done)
+                        self._add_experience(n_state, n_action, n_reward, n_next_state, n_done, is_battle=is_battle)
                     self.n_step_buffers[i].reset()
             else:
                 # Standard 1-step: add directly using central helper
-                self._add_experience(state_tensors[i], action, reward, next_state_tensors[i], dones[i])
+                self._add_experience(state_tensors[i], action, reward, next_state_tensors[i], dones[i], is_battle=is_battle)
 
     def act(self, state, valid_moves: List[Tuple[Tuple[int, int], Tuple[int, int]]], game_state=None):
         """
@@ -768,17 +777,9 @@ class RainbowAgent:
         state_tensor = self.get_batch_state_representation(states, game_states, full_observability=full_observability)
         self._cached_state_tensor = state_tensor  # Cache for reuse in remember_batch
         
-        # 2. Get uncertainty maps
-        uncertainty_maps = []
-        if self.pbs_instances and game_states and not full_observability:
-            for i, gs in enumerate(game_states):
-                if gs:
-                    uncertainty_maps.append(self.pbs_instances[i].get_uncertainty_map(gs))
-                else:
-                    uncertainty_maps.append({})
-        else:
-            # Phase 1 (Full Obs) or No PBS: No uncertainty
-            uncertainty_maps = [{}] * batch_size
+        # 2. Uncertainty maps removed - HistoryAggregator uses AAREN embeddings directly
+        # The agent learns to interpret uncertainty implicitly from AAREN patterns
+        uncertainty_maps = [{}] * batch_size
             
         # 3. Network forward pass with mixed-precision inference
         self.q_network.eval()
@@ -915,216 +916,58 @@ class RainbowAgent:
     def update_pbs_batch(self, actions: List[Optional[Tuple[Tuple[int, int], Tuple[int, int]]]], 
                         game_states: List, acting_player: int):
         """
-        Update PBS state for a batch of actions from the opponent.
-        Uses batched inference for efficiency.
+        Update history aggregator for a batch of actions from the opponent.
+        Legacy method name kept for backward compatibility.
         
-        OPTIMIZATION: Skips simple moves and immediately detects Scout moves.
+        Uses HistoryAggregator's update() method to track action history per position.
         """
-        if not self.pbs:
+        if not self.history:
             return
         
-        # Import config for optimization settings
-        try:
-            from training_config import PBS_SKIP_SIMPLE_MOVES
-        except ImportError:
-            PBS_SKIP_SIMPLE_MOVES = True
-            
-        # 1. Categorize actions: immediate (Scout), skip (simple), or batch (complex)
-        immediate_updates = []  # Scout moves (2+ tiles) - update immediately
-        batch_updates = []      # Complex moves to batch
-        
+        # Process each action
         for i, action in enumerate(actions):
             if action is None:
                 continue
-                
-            # Get move distance
-            (r_from, c_from), (r_to, c_to) = action
-            distance = abs(r_to - r_from) + abs(c_to - c_from)
             
-            # Get PBS instance for this env
-            pbs_instance = None
-            if self.pbs_instances and i < len(self.pbs_instances):
-                pbs_instance = self.pbs_instances[i]
+            # Get history instance for this environment
+            history_instance = None
+            if self.history_instances and i < len(self.history_instances):
+                history_instance = self.history_instances[i]
             else:
-                pbs_instance = self.pbs
+                history_instance = self.history
                 
-            if not pbs_instance:
-                continue
-                
-            # IMMEDIATE: Scout detection (2+ tile move) - NEVER skip this
-            if distance > 1:
-                # This MUST be a Scout - update immediately with certainty
-                immediate_updates.append((i, pbs_instance, action, game_states[i]))
+            if not history_instance:
                 continue
             
-            # Check if it's an attack (has target piece)
-            is_attack = False
-            if hasattr(game_states[i], 'board'):
-                board = game_states[i].board
-                if isinstance(board, torch.Tensor):
-                    target_val = board[r_to, c_to].item()
-                    if self.player_id == 1:
-                        is_attack = target_val < 0 and target_val > -13
-                    else:
-                        is_attack = target_val > 0
-            
-            # SKIP: Simple 1-square non-attack moves (if enabled)
-            if PBS_SKIP_SIMPLE_MOVES and distance == 1 and not is_attack:
-                # Just update history without AAREN inference
-                result = pbs_instance.prepare_recurrent_update(action, game_states[i], acting_player)
-                if result:
-                    pos, feature, hidden_state = result
-                    # Apply only rule-based updates (no AAREN)
-                    pbs_instance.apply_recurrent_update(pos, None, hidden_state, action, game_states[i])
-                continue
-            
-            # BATCH: Complex moves (attacks or moves we want to analyze)
-            batch_updates.append((i, pbs_instance, action, game_states[i]))
-        
-        # 2. Process immediate Scout detections (rule-based, very fast)
-        for i, pbs_instance, action, game_state in immediate_updates:
-            (r_from, c_from), (r_to, c_to) = action
-            pos = (r_from, c_from)
-            
-            # Scout confirmed with certainty - set beliefs directly
-            from piece import PieceType
-            pbs_instance.belief_distributions[pos] = {
-                pt: 1.0 if pt == PieceType.SCOUT else 0.0 for pt in PieceType
-            }
-            pbs_instance._update_belief_tensor(pos)
-            
-            # Update position tracking
-            new_pos = (r_to, c_to)
-            if pos in pbs_instance.belief_distributions:
-                pbs_instance.belief_distributions[new_pos] = pbs_instance.belief_distributions.pop(pos)
-            if pos in pbs_instance.piece_action_history:
-                pbs_instance.piece_action_history[new_pos] = pbs_instance.piece_action_history.pop(pos)
-            pbs_instance._update_belief_tensor(new_pos)
-        
-        # 3. Batch process complex moves with AAREN inference
-        inference_batch_features = []
-        inference_batch_states = []
-        update_metadata = []
-        
-        for i, pbs_instance, action, game_state in batch_updates:
-            result = pbs_instance.prepare_recurrent_update(action, game_state, acting_player)
-            if result:
-                pos, feature, hidden_state = result
-                if feature is not None:
-                    inference_batch_features.append(feature)
-                    inference_batch_states.append(hidden_state)
-                    update_metadata.append((i, pos, action, game_state))
-                else:
-                    pbs_instance.apply_recurrent_update(pos, None, None, action, game_state)
-        
-        # 4. Run Batched AAREN Inference (only if we have batch items)
-        if inference_batch_features:
-            aaren_model = None
-            if hasattr(self, 'shared_aaren') and self.shared_aaren:
-                aaren_model = self.shared_aaren
-            elif self.pbs and self.pbs.aaren_model:
-                aaren_model = self.pbs.aaren_model
-                
-            if aaren_model:
-                # Create batch tensor efficiently (NumPy -> GPU)
-                batch_np = np.array(inference_batch_features, dtype=np.float32)
-                batch_tensor = torch.from_numpy(batch_np).to(self.device)
-                
-                num_layers = aaren_model.num_layers
-                hidden_size = aaren_model.hidden_size
-                batched_states = []
-                
-                has_any_state = any(s is not None for s in inference_batch_states)
-                
-                if has_any_state:
-                    for layer_idx in range(num_layers):
-                        a_list, c_list, m_list = [], [], []
-                        
-                        for sample_state in inference_batch_states:
-                            if sample_state is not None:
-                                a, c, m = sample_state[layer_idx]
-                                a_list.append(a)
-                                c_list.append(c)
-                                m_list.append(m)
-                            else:
-                                a_list.append(torch.zeros(1, hidden_size, device=self.device))
-                                c_list.append(torch.zeros(1, 1, device=self.device))
-                                m_list.append(torch.full((1, 1), -1e9, device=self.device))
-                        
-                        a_batch = torch.cat(a_list, dim=0)
-                        c_batch = torch.cat(c_list, dim=0)
-                        m_batch = torch.cat(m_list, dim=0)
-                        
-                        batched_states.append((a_batch, c_batch, m_batch))
-                else:
-                    batched_states = None
-
-                # Import FP16 setting
-                try:
-                    from training_config import AAREN_USE_FP16
-                except ImportError:
-                    AAREN_USE_FP16 = True
-
-                aaren_model.eval()
-                with torch.no_grad():
-                    # FP16 inference for ~30% speedup
-                    if AAREN_USE_FP16 and self.device.type == 'cuda':
-                        with torch.amp.autocast('cuda'):
-                            probs, new_states = aaren_model.forward_sequential(batch_tensor, batched_states)
-                    else:
-                        probs, new_states = aaren_model.forward_sequential(batch_tensor, batched_states)
-                aaren_model.train()
-                
-                # Apply Updates
-                for k, (env_idx, pos, action, gs) in enumerate(update_metadata):
-                    pbs_instance = self.pbs_instances[env_idx] if self.pbs_instances else self.pbs
-                    
-                    sample_new_state = []
-                    for layer_state in new_states:
-                        a_k = layer_state[0][k:k+1]
-                        c_k = layer_state[1][k:k+1]
-                        m_k = layer_state[2][k:k+1]
-                        sample_new_state.append((a_k, c_k, m_k))
-                    
-                    pbs_instance.apply_recurrent_update(pos, probs[k], sample_new_state, action, gs)
+            # Update history with this action
+            game_state = game_states[i] if i < len(game_states) else None
+            if game_state:
+                history_instance.update(action, game_state, acting_player)
 
     def train_pbs(self, epochs: int = 5):
         """
-        Train the PBS (AAREN) model using collected data from all environments.
+        Train the history aggregator (AAREN) model using collected reveal data.
+        Legacy method name kept for backward compatibility.
         """
-        if not self.pbs:
+        if not self.history:
             return
             
         # If using shared AAREN model (Parallel Env)
-        if hasattr(self, 'shared_aaren') and self.shared_aaren and self.pbs_instances:
-            all_sequences = []
-            all_labels = []
-            all_weights = []
-            all_positions = [] # Not strictly needed for batch training but kept for API consistency
+        if hasattr(self, 'shared_aaren') and self.shared_aaren and self.history_instances:
+            # Aggregate training buffers from all instances
+            total_buffer_size = sum(h.get_buffer_size() for h in self.history_instances)
             
-            # Collect data from all instances
-            for pbs in self.pbs_instances:
-                seqs, labels, weights, pos = pbs.get_aaren_training_data()
-                all_sequences.extend(seqs)
-                all_labels.extend(labels)
-                all_weights.extend(weights)
-                all_positions.extend(pos)
-            
-            if len(all_sequences) > 0:
-                # Use the first PBS instance to drive the training (it holds the optimizer)
-                # Note: Ideally, the agent should hold the optimizer for the shared model.
-                # But currently, each PBS has an optimizer.
-                # We will use the first PBS instance to train the shared model.
-                self.pbs_instances[0].train_aaren(
-                    action_sequences=all_sequences,
-                    true_piece_types=all_labels,
-                    epochs=epochs,
-                    evaluator_weights=all_weights,
-                    positions=all_positions
-                )
+            if total_buffer_size > 0:
+                # Train using first instance (has shared optimizer)
+                loss = self.history_instances[0].train(epochs=epochs)
+                if loss is not None:
+                    return loss
         else:
-            # Single Env
-            self.pbs.train_aaren_with_evaluator_feedback(epochs=epochs)
+            # Single Env - train directly
+            if self.history:
+                return self.history.train(epochs=epochs)
+        
+        return None
 
     def replay(self, batch_size=None, episode=None) -> Optional[float]:
         """

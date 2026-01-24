@@ -7,10 +7,13 @@ from piece import PieceType
 from battle import BattleResolver
 from dqn_visualizer import DQNMoveVisualizer
 from game_state import GameState
-from training_config import REWARD_SCALE
+from training_config import REWARD_SCALE, DEFAULT_MAX_TURNS
 
 class StrategoEnvironment:
-    def __init__(self, device, record_game=False, episode_num=None, full_observability=False, enable_anti_stall=False, max_turns=500):
+    def __init__(self, device, record_game=False, episode_num=None, full_observability=False, enable_anti_stall=False, max_turns=None):
+        # Use configured default if not specified
+        if max_turns is None:
+            max_turns = DEFAULT_MAX_TURNS
         self.device = device
         self.record_game = record_game
         self.episode_num = episode_num
