@@ -655,7 +655,12 @@ def plot_pbs_evaluator_progress(
     total_episodes: Optional[int] = None,
     aaren_losses: Optional[List[float]] = None,
     aaren_accuracies: Optional[List[float]] = None,
-    aaren_buffer_sizes: Optional[List[int]] = None
+    aaren_buffer_sizes: Optional[List[int]] = None,
+    # New end-to-end AAREN metrics
+    aaren_grad_norms: Optional[List[float]] = None,
+    aaren_embedding_stds: Optional[List[float]] = None,
+    aaren_active_positions: Optional[List[int]] = None,
+    dqn_grad_norms: Optional[List[float]] = None  # DQN gradient norms for comparison
 ):
     """
     Plot PBS evaluator and AAREN improvement metrics.
@@ -668,9 +673,12 @@ def plot_pbs_evaluator_progress(
         evaluator2_buffer_sizes: List of experience buffer sizes for evaluator 2
         save_path: Path to save the plot
         total_episodes: Total episodes across all training runs (for display)
-        aaren_losses: Optional list of AAREN training losses
-        aaren_accuracies: Optional list of AAREN prediction accuracies (0-1)
-        aaren_buffer_sizes: Optional list of AAREN buffer sizes
+        aaren_losses: Optional list of AAREN training losses (legacy separate training)
+        aaren_accuracies: Optional list of AAREN prediction accuracies (legacy)
+        aaren_buffer_sizes: Optional list of AAREN buffer sizes (legacy)
+        aaren_grad_norms: Optional list of AAREN gradient norms (end-to-end training)
+        aaren_embedding_stds: Optional list of embedding std dev (end-to-end training)
+        aaren_active_positions: Optional list of active positions with history
     """
     # Validate input data
     if not episode_history:
@@ -688,9 +696,12 @@ def plot_pbs_evaluator_progress(
     evaluator1_buffer_sizes = evaluator1_buffer_sizes[:min_len]
     evaluator2_buffer_sizes = evaluator2_buffer_sizes[:min_len]
     
-    # Check if AAREN data is available
-    has_aaren = (aaren_losses is not None and aaren_accuracies is not None and 
+    # Check if AAREN data is available (legacy OR end-to-end)
+    has_legacy_aaren = (aaren_losses is not None and aaren_accuracies is not None and 
                  len(aaren_losses) > 0 and len(aaren_accuracies) > 0)
+    has_e2e_aaren = (aaren_grad_norms is not None and aaren_embedding_stds is not None and
+                     len(aaren_grad_norms) > 0 and len(aaren_embedding_stds) > 0)
+    has_aaren = has_legacy_aaren or has_e2e_aaren
     
     # Create figure with 2x2 grid if AAREN data available, else 2x1
     if has_aaren:
@@ -701,157 +712,242 @@ def plot_pbs_evaluator_progress(
     fig.patch.set_facecolor('white')
     
     # Title
-    title = 'PBS Evaluator & AAREN Metrics' if has_aaren else 'PBS Evaluator Metrics'
+    title = 'AAREN End-to-End Training Metrics' if has_e2e_aaren else ('PBS Evaluator & AAREN Metrics' if has_aaren else 'PBS Evaluator Metrics')
     if total_episodes is not None:
         title += f' | Total Episodes: {total_episodes:,}'
     fig.suptitle(title, fontsize=16, fontweight='bold')
     
-    # 1. Evaluator Training Loss (Raw + Moving Average)
+    # 1. AAREN vs DQN Gradient Norms (shows if AAREN is learning alongside DQN)
     ax1 = axes[0]
     
-    # Filter out None values
-    valid_episodes_1 = [ep for ep, loss in zip(episode_history, evaluator1_losses) if loss is not None]
-    valid_losses_1 = [loss for loss in evaluator1_losses if loss is not None]
-    valid_episodes_2 = [ep for ep, loss in zip(episode_history, evaluator2_losses) if loss is not None]
-    valid_losses_2 = [loss for loss in evaluator2_losses if loss is not None]
-    
-    has_data = False
-    
-    # Plot Agent 1
-    if valid_episodes_1:
-        # Raw loss (faint)
-        ax1.plot(valid_episodes_1, valid_losses_1, 'b-', alpha=0.2, linewidth=1, label='Evaluator 1 (Raw)')
+    if has_e2e_aaren and aaren_grad_norms and dqn_grad_norms and len(dqn_grad_norms) > 0:
+        # Filter valid data
+        valid_eps_aaren = []
+        valid_aaren_grads = []
+        valid_eps_dqn = []
+        valid_dqn_grads = []
         
-        # Moving Average (bold)
-        window = min(50, len(valid_episodes_1) // 2) if valid_episodes_1 else 10
-        if window > 1:
-            ma_losses_1 = []
-            ma_episodes_1 = []
-            for i in range(window, len(valid_losses_1)):
-                ma_losses_1.append(np.mean(valid_losses_1[i-window:i]))
-                ma_episodes_1.append(valid_episodes_1[i])
-            if ma_episodes_1:
-                ax1.plot(ma_episodes_1, ma_losses_1, 'b-', linewidth=2.5, label='Evaluator 1 (Moving Avg)')
-        has_data = True
-
-    # Plot Agent 2
-    if valid_episodes_2:
-        # Raw loss (faint)
-        ax1.plot(valid_episodes_2, valid_losses_2, 'r-', alpha=0.2, linewidth=1, label='Evaluator 2 (Raw)')
+        for i, (ep, ag, dg) in enumerate(zip(episode_history[:len(aaren_grad_norms)], 
+                                              aaren_grad_norms, 
+                                              dqn_grad_norms[:len(aaren_grad_norms)])):
+            if ag is not None and ag > 0:
+                valid_eps_aaren.append(ep)
+                valid_aaren_grads.append(ag)
+            if dg is not None and dg > 0:
+                valid_eps_dqn.append(ep)
+                valid_dqn_grads.append(dg)
         
-        # Moving Average (bold)
-        window = min(50, len(valid_episodes_2) // 2) if valid_episodes_2 else 10
-        if window > 1:
-            ma_losses_2 = []
-            ma_episodes_2 = []
-            for i in range(window, len(valid_losses_2)):
-                ma_losses_2.append(np.mean(valid_losses_2[i-window:i]))
-                ma_episodes_2.append(valid_episodes_2[i])
-            if ma_episodes_2:
-                ax1.plot(ma_episodes_2, ma_losses_2, 'r-', linewidth=2.5, label='Evaluator 2 (Moving Avg)')
-        has_data = True
-    
-    if not has_data:
-        ax1.text(0.5, 0.5, 'No loss data available', ha='center', va='center', transform=ax1.transAxes)
+        if valid_aaren_grads:
+            ax1.scatter(valid_eps_aaren, valid_aaren_grads, c='green', alpha=0.3, s=15, label='AAREN Grad')
+            # Moving average
+            window = min(50, len(valid_aaren_grads) // 2) if len(valid_aaren_grads) > 1 else 1
+            if len(valid_aaren_grads) >= window and window > 1:
+                ma_vals = []
+                ma_eps = []
+                for i in range(window, len(valid_aaren_grads) + 1):
+                    ma_vals.append(np.mean(valid_aaren_grads[i-window:i]))
+                    ma_eps.append(valid_eps_aaren[i-1])
+                if ma_eps:
+                    ax1.plot(ma_eps, ma_vals, 'g-', linewidth=2.5, label=f'AAREN MA ({window})')
+        
+        if valid_dqn_grads:
+            ax1.scatter(valid_eps_dqn, valid_dqn_grads, c='blue', alpha=0.2, s=10, label='DQN Grad')
+            # Moving average
+            window = min(50, len(valid_dqn_grads) // 2) if len(valid_dqn_grads) > 1 else 1
+            if len(valid_dqn_grads) >= window and window > 1:
+                ma_vals = []
+                ma_eps = []
+                for i in range(window, len(valid_dqn_grads) + 1):
+                    ma_vals.append(np.mean(valid_dqn_grads[i-window:i]))
+                    ma_eps.append(valid_eps_dqn[i-1])
+                if ma_eps:
+                    ax1.plot(ma_eps, ma_vals, 'b-', linewidth=2, label=f'DQN MA ({window})')
+        
+        ax1.set_yscale('log')
+        ax1.set_title('Gradient Norms: AAREN vs DQN (log scale)')
+    else:
+        ax1.text(0.5, 0.5, 'Waiting for gradient data...', ha='center', va='center', transform=ax1.transAxes)
+        ax1.set_title('Gradient Norms: AAREN vs DQN')
     
     ax1.set_xlabel('Episodes')
-    ax1.set_ylabel('Loss')
-    ax1.set_title('Evaluator Training Loss (Lower is Better)')
-    ax1.legend()
+    ax1.set_ylabel('Gradient Norm (log)')
+    ax1.legend(loc='upper right')
     ax1.grid(True, alpha=0.3)
     
-    # 2. Buffer Size (Evaluator)
+    # 2. Gradient Ratio: AAREN / DQN (shows relative learning rate)
     ax2 = axes[1]
     
-    # Filter out None values
-    valid_episodes_buf_1 = [ep for ep, size in zip(episode_history, evaluator1_buffer_sizes) if size is not None]
-    valid_sizes_1 = [size for size in evaluator1_buffer_sizes if size is not None]
-    valid_episodes_buf_2 = [ep for ep, size in zip(episode_history, evaluator2_buffer_sizes) if size is not None]
-    valid_sizes_2 = [size for size in evaluator2_buffer_sizes if size is not None]
-    
-    if valid_episodes_buf_1:
-        ax2.plot(valid_episodes_buf_1, valid_sizes_1, 'b-', linewidth=2, label='Evaluator 1 Buffer')
-    
-    if valid_episodes_buf_2:
-        ax2.plot(valid_episodes_buf_2, valid_sizes_2, 'r-', linewidth=2, label='Evaluator 2 Buffer')
+    if has_e2e_aaren and aaren_grad_norms and dqn_grad_norms and len(dqn_grad_norms) > 0:
+        valid_eps_ratio = []
+        valid_ratios = []
+        
+        for ep, ag, dg in zip(episode_history[:len(aaren_grad_norms)], 
+                              aaren_grad_norms, 
+                              dqn_grad_norms[:len(aaren_grad_norms)]):
+            if ag is not None and dg is not None and ag > 0 and dg > 0:
+                valid_eps_ratio.append(ep)
+                valid_ratios.append(ag / dg)  # Ratio of gradients
+        
+        if valid_ratios:
+            ax2.scatter(valid_eps_ratio, valid_ratios, c='purple', alpha=0.4, s=15, label='AAREN/DQN Ratio')
+            # Moving average
+            window = min(50, len(valid_ratios) // 2) if len(valid_ratios) > 1 else 1
+            if len(valid_ratios) >= window and window > 1:
+                ma_vals = []
+                ma_eps = []
+                for i in range(window, len(valid_ratios) + 1):
+                    ma_vals.append(np.mean(valid_ratios[i-window:i]))
+                    ma_eps.append(valid_eps_ratio[i-1])
+                if ma_eps:
+                    ax2.plot(ma_eps, ma_vals, 'purple', linewidth=2.5, label=f'MA ({window})')
+            
+            # Reference line at 1.0 (equal gradients)
+            ax2.axhline(y=1.0, color='gray', linestyle='--', linewidth=1, alpha=0.7, label='Equal (1.0)')
+            ax2.set_title('AAREN/DQN Gradient Ratio')
+        else:
+            ax2.text(0.5, 0.5, 'Waiting for ratio data...', ha='center', va='center', transform=ax2.transAxes)
+            ax2.set_title('AAREN/DQN Gradient Ratio')
+    else:
+        ax2.text(0.5, 0.5, 'Waiting for gradient data...', ha='center', va='center', transform=ax2.transAxes)
+        ax2.set_title('AAREN/DQN Gradient Ratio')
         
     ax2.set_xlabel('Episodes')
-    ax2.set_ylabel('Buffer Size')
-    ax2.set_title('Experience Buffer Size')
-    ax2.legend()
+    ax2.set_ylabel('Gradient Ratio')
+    ax2.legend(loc='upper right')
     ax2.grid(True, alpha=0.3)
     
-    # 3. AAREN Training Loss (if available)
+    # 3. AAREN Metrics (gradient norm for end-to-end OR loss for legacy)
     if has_aaren:
         ax3 = axes[2]
         
-        # Filter out zero/None values (no training happened)
-        valid_aaren_eps = []
-        valid_aaren_losses = []
-        for ep, loss in zip(episode_history[:len(aaren_losses)], aaren_losses):
-            if loss is not None and loss > 0:
-                valid_aaren_eps.append(ep)
-                valid_aaren_losses.append(loss)
-        
-        if valid_aaren_losses:
-            # Plot raw loss with transparency
-            ax3.scatter(valid_aaren_eps, valid_aaren_losses, c='green', alpha=0.4, s=20, label='AAREN Loss')
+        if has_e2e_aaren and aaren_grad_norms:
+            # End-to-end training: plot gradient norms
+            valid_eps = []
+            valid_grads = []
+            for ep, grad in zip(episode_history[:len(aaren_grad_norms)], aaren_grad_norms):
+                if grad is not None and grad > 0:
+                    valid_eps.append(ep)
+                    valid_grads.append(grad)
             
-            # Moving average
-            window = min(50, len(valid_aaren_losses) // 2) if len(valid_aaren_losses) > 1 else 1
-            if len(valid_aaren_losses) >= window and window > 1:
-                ma_losses = []
-                ma_eps = []
-                for i in range(window, len(valid_aaren_losses) + 1):
-                    ma_losses.append(np.mean(valid_aaren_losses[i-window:i]))
-                    ma_eps.append(valid_aaren_eps[i-1])
-                if ma_eps:
-                    ax3.plot(ma_eps, ma_losses, 'g-', linewidth=2.5, label=f'Moving Avg ({window} ep)')
+            if valid_grads:
+                ax3.scatter(valid_eps, valid_grads, c='green', alpha=0.4, s=20, label='AAREN Grad Norm')
+                
+                # Moving average
+                window = min(50, len(valid_grads) // 2) if len(valid_grads) > 1 else 1
+                if len(valid_grads) >= window and window > 1:
+                    ma_vals = []
+                    ma_eps = []
+                    for i in range(window, len(valid_grads) + 1):
+                        ma_vals.append(np.mean(valid_grads[i-window:i]))
+                        ma_eps.append(valid_eps[i-1])
+                    if ma_eps:
+                        ax3.plot(ma_eps, ma_vals, 'g-', linewidth=2.5, label=f'Moving Avg ({window} ep)')
+                
+                ax3.set_yscale('log')
+            else:
+                ax3.text(0.5, 0.5, 'Waiting for gradients...', ha='center', va='center', transform=ax3.transAxes)
             
-            # Log scale for loss
-            ax3.set_yscale('log')
-        else:
-            ax3.text(0.5, 0.5, 'No AAREN loss data yet', ha='center', va='center', transform=ax3.transAxes)
+            ax3.set_xlabel('Episodes')
+            ax3.set_ylabel('Gradient Norm (log)')
+            ax3.set_title('AAREN Gradient Norm (Higher = Active Learning)')
+            ax3.legend()
+            ax3.grid(True, alpha=0.3)
         
-        ax3.set_xlabel('Episodes')
-        ax3.set_ylabel('AAREN Loss (log)')
-        ax3.set_title('AAREN Training Loss (Lower is Better)')
-        ax3.legend()
-        ax3.grid(True, alpha=0.3)
+        elif has_legacy_aaren and aaren_losses:
+            # Legacy separate training: plot loss
+            valid_aaren_eps = []
+            valid_aaren_losses = []
+            for ep, loss in zip(episode_history[:len(aaren_losses)], aaren_losses):
+                if loss is not None and loss > 0:
+                    valid_aaren_eps.append(ep)
+                    valid_aaren_losses.append(loss)
+            
+            if valid_aaren_losses:
+                ax3.scatter(valid_aaren_eps, valid_aaren_losses, c='green', alpha=0.4, s=20, label='AAREN Loss')
+                
+                window = min(50, len(valid_aaren_losses) // 2) if len(valid_aaren_losses) > 1 else 1
+                if len(valid_aaren_losses) >= window and window > 1:
+                    ma_losses = []
+                    ma_eps = []
+                    for i in range(window, len(valid_aaren_losses) + 1):
+                        ma_losses.append(np.mean(valid_aaren_losses[i-window:i]))
+                        ma_eps.append(valid_aaren_eps[i-1])
+                    if ma_eps:
+                        ax3.plot(ma_eps, ma_losses, 'g-', linewidth=2.5, label=f'Moving Avg ({window} ep)')
+                
+                ax3.set_yscale('log')
+            else:
+                ax3.text(0.5, 0.5, 'No AAREN loss data yet', ha='center', va='center', transform=ax3.transAxes)
+            
+            ax3.set_xlabel('Episodes')
+            ax3.set_ylabel('AAREN Loss (log)')
+            ax3.set_title('AAREN Training Loss (Lower is Better)')
+            ax3.legend()
+            ax3.grid(True, alpha=0.3)
         
-        # 4. AAREN Prediction Accuracy
+        # 4. AAREN Embedding Std (end-to-end) OR Accuracy (legacy)
         ax4 = axes[3]
         
-        # Filter out zero values (no predictions yet)
-        valid_acc_eps = []
-        valid_accs = []
-        for ep, acc in zip(episode_history[:len(aaren_accuracies)], aaren_accuracies):
-            if acc is not None:
-                valid_acc_eps.append(ep)
-                valid_accs.append(acc * 100)  # Convert to percentage
-        
-        if valid_accs:
-            ax4.scatter(valid_acc_eps, valid_accs, c='purple', alpha=0.4, s=20, label='AAREN Accuracy')
+        if has_e2e_aaren and aaren_embedding_stds:
+            # End-to-end training: plot embedding std
+            valid_eps = []
+            valid_stds = []
+            for ep, std in zip(episode_history[:len(aaren_embedding_stds)], aaren_embedding_stds):
+                if std is not None:
+                    valid_eps.append(ep)
+                    valid_stds.append(std)
             
-            # Moving average
-            window = min(50, len(valid_accs) // 2) if len(valid_accs) > 1 else 1
-            if len(valid_accs) >= window and window > 1:
-                ma_accs = []
-                ma_eps = []
-                for i in range(window, len(valid_accs) + 1):
-                    ma_accs.append(np.mean(valid_accs[i-window:i]))
-                    ma_eps.append(valid_acc_eps[i-1])
-                if ma_eps:
-                    ax4.plot(ma_eps, ma_accs, 'purple', linewidth=2.5, label=f'Moving Avg ({window} ep)')
-        else:
-            ax4.text(0.5, 0.5, 'No accuracy data yet', ha='center', va='center', transform=ax4.transAxes)
+            if valid_stds:
+                ax4.scatter(valid_eps, valid_stds, c='purple', alpha=0.4, s=20, label='Embedding Std')
+                
+                window = min(50, len(valid_stds) // 2) if len(valid_stds) > 1 else 1
+                if len(valid_stds) >= window and window > 1:
+                    ma_vals = []
+                    ma_eps = []
+                    for i in range(window, len(valid_stds) + 1):
+                        ma_vals.append(np.mean(valid_stds[i-window:i]))
+                        ma_eps.append(valid_eps[i-1])
+                    if ma_eps:
+                        ax4.plot(ma_eps, ma_vals, 'purple', linewidth=2.5, label=f'Moving Avg ({window} ep)')
+            else:
+                ax4.text(0.5, 0.5, 'Waiting for embeddings...', ha='center', va='center', transform=ax4.transAxes)
+            
+            ax4.set_xlabel('Episodes')
+            ax4.set_ylabel('Embedding Std Dev')
+            ax4.set_title('AAREN Embedding Diversity (Non-zero = Learning)')
+            ax4.legend()
+            ax4.grid(True, alpha=0.3)
         
-        ax4.set_xlabel('Episodes')
-        ax4.set_ylabel('Accuracy (%)')
-        ax4.set_title('AAREN Prediction Accuracy (Higher is Better)')
-        ax4.set_ylim(0, 100)
-        ax4.legend()
-        ax4.grid(True, alpha=0.3)
+        elif has_legacy_aaren and aaren_accuracies:
+            # Legacy separate training: plot accuracy
+            valid_acc_eps = []
+            valid_accs = []
+            for ep, acc in zip(episode_history[:len(aaren_accuracies)], aaren_accuracies):
+                if acc is not None:
+                    valid_acc_eps.append(ep)
+                    valid_accs.append(acc * 100)
+            
+            if valid_accs:
+                ax4.scatter(valid_acc_eps, valid_accs, c='purple', alpha=0.4, s=20, label='AAREN Accuracy')
+                
+                window = min(50, len(valid_accs) // 2) if len(valid_accs) > 1 else 1
+                if len(valid_accs) >= window and window > 1:
+                    ma_accs = []
+                    ma_eps = []
+                    for i in range(window, len(valid_accs) + 1):
+                        ma_accs.append(np.mean(valid_accs[i-window:i]))
+                        ma_eps.append(valid_acc_eps[i-1])
+                    if ma_eps:
+                        ax4.plot(ma_eps, ma_accs, 'purple', linewidth=2.5, label=f'Moving Avg ({window} ep)')
+            else:
+                ax4.text(0.5, 0.5, 'No accuracy data yet', ha='center', va='center', transform=ax4.transAxes)
+            
+            ax4.set_xlabel('Episodes')
+            ax4.set_ylabel('Accuracy (%)')
+            ax4.set_title('AAREN Prediction Accuracy (Higher is Better)')
+            ax4.set_ylim(0, 100)
+            ax4.legend()
+            ax4.grid(True, alpha=0.3)
     
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
     

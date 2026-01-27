@@ -107,25 +107,25 @@ Flag$^{\ddagger}$ & 0.1 & --- & --- \\
 
 These values inform the material reward component of the reward shaping function described in subsequent sections.
 
-\subsection{Handling Imperfect Information: Probabilistic Belief State (PBS)}
-A fundamental challenge in Stratego is the hidden identity of opponent pieces. To address this, the system incorporates a Probabilistic Belief State (PBS), represented as a matrix that maintains a probability distribution over the possible identities of each unrevealed opponent piece. The PBS is updated throughout the game through two complementary reasoning mechanisms.
+\subsection{Handling Imperfect Information: AAREN History Aggregation}
+A fundamental challenge in Stratego is the hidden identity of opponent pieces. Rather than maintaining explicit probability distributions over piece identities, the system employs an end-to-end learned approach inspired by DeepNash \cite{perolat2022mastering}. The Action-Augmented Recurrent Encoder (AAREN) module serves as a history aggregator that produces learned embeddings from observed opponent behavior, allowing the agent network to implicitly infer piece identities through gradient-based optimization.
 
-Deductive reasoning applies when direct piece interactions occur. Upon combat, the identity of the involved pieces becomes known with certainty, and the PBS is updated accordingly. The probability mass previously assigned to eliminated possibilities is redistributed among remaining candidates through renormalization.
+This model-free approach offers several advantages over explicit belief tracking. The agent jointly learns both what embeddings to produce from action sequences and how to interpret these embeddings for decision-making. This eliminates the need for hand-crafted Bayesian update rules and constraint enforcement, instead allowing the network to discover effective representations through end-to-end training.
 
-Inductive reasoning enables the system to infer piece identity from observed behavior patterns. Pieces exhibiting high mobility and long-range movement are assigned increased probability of being Scouts. Conversely, pieces that retreat from threats or remain stationary near the back rank suggest defensive behavior characteristic of high-value pieces such as the Flag or Marshal. These behavioral heuristics are incorporated through Bayesian updates to the belief distribution.
+\paragraph{Action Feature Extraction.}
+For each observed opponent action, AAREN extracts a 24-dimensional feature vector encoding:
+\begin{itemize}
+    \item \textbf{Movement features}: Direction (normalized), distance, whether the move was an attack
+    \item \textbf{Position features}: Starting position (normalized), board region indicators
+    \item \textbf{Behavioral indicators}: Scout move flag (distance $> 1$), forward advancement, lateral movement
+    \item \textbf{Temporal features}: Turn number, piece activity (historical movement frequency)
+\end{itemize}
 
-\paragraph{Hindsight-Aided Belief Refinement.}
-Training the PBS module presents a challenge: ground truth labels are only available when pieces are revealed through combat, which may occur many moves after the initial observations. The Hindsight-Aided Belief Refinement (HABR) module addresses this by storing PBS snapshots throughout each piece's history. When a piece is revealed with identity $s^*_p$, HABR computes a retrospective loss:
-\begin{equation}
-\mathcal{L}_{retro} = \sum_{k=1}^{t} \lambda^{t-k} D_{KL}(PBS_k(p) \parallel \delta_{s^*_p})
-\end{equation}
-where $\lambda = 0.9$ is the temporal decay factor. This loss propagates the verified signal backward through the prediction history, training the belief tracker to recognize patterns that predict the revealed identity. The decay factor prioritizes recent observations while maintaining gradient flow to earlier predictions.
+\paragraph{Recurrent Embedding Generation.}
+The AAREN module processes action sequences using a parallel prefix scan algorithm during training for computational efficiency, and $O(1)$ recurrent updates during inference for real-time play. For each enemy piece position with observed history, AAREN maintains a hidden state that captures temporal patterns in the piece's behavior. This hidden state is output as a 64-dimensional embedding vector per board position.
 
-\paragraph{Sinkhorn Global Constraints.}
-To prevent identity inflation where multiple pieces are assigned high probability for the same rare type, a Sinkhorn normalization layer enforces global piece-count constraints. After each PBS update, the Sinkhorn operator iteratively adjusts the belief matrix such that: each piece's probabilities sum to 1, and the total predicted count for each piece type matches the remaining count. This differentiable normalization enables end-to-end training while maintaining physically consistent predictions.
-
-\paragraph{Information Gain Reward.}
-The PBS module computes an Information Gain reward that measures entropy reduction between consecutive updates: $R_{gain}(t) = H(PBS_{t-1}) - H(PBS_t)$. This reward incentivizes the agent to make moves that gather information about opponent pieces, balancing exploitation with active deduction.
+\paragraph{End-to-End Training.}
+Unlike separate belief state modules that require explicit supervision, AAREN learns jointly with the Rainbow DQN through shared gradient flow. The combined optimizer updates both the AAREN encoder and the Q-network simultaneously, allowing the system to discover representations that are directly useful for action selection rather than optimizing for auxiliary prediction tasks.
 
 
 \section{Model Training}
@@ -136,7 +136,7 @@ Training the MARQ agent is computationally intensive due to the large state-acti
 MARQ employs a Rainbow DQN architecture that integrates several algorithmic improvements over the standard DQN. The implementation includes Categorical DQN (C51) for distributional value estimation with 51 atoms over the support $[V_{min}, V_{max}] = [-15, 15]$, Noisy Networks for learned exploration (replacing $\epsilon$-greedy), and Dueling Network Architecture separating state value and action advantage estimation. The noisy linear layers inject state-dependent stochasticity, enabling the agent to learn appropriate exploration levels for different game situations without manual scheduling.
 
 \paragraph{Network Structure.}
-The Q-network employs a Deep Residual Network (ResNet) backbone to capture long-range spatial dependencies across the board. The architecture consists of an initial convolutional layer (64 filters, $3 \times 3$ kernel) followed by six residual blocks (twelve convolutional layers total), each containing two convolutional layers with Instance Normalization and ReLU activation. This deep feature extractor feeds into the dueling streams, allowing for more abstract strategic reasoning compared to shallow architectures. The 27-channel state representation is partitioned into two components, as detailed in Table \ref{tab:state_channels}.
+The Q-network employs a Deep Residual Network (ResNet) backbone to capture long-range spatial dependencies across the board. The architecture consists of an initial convolutional layer (64 filters, $3 \times 3$ kernel) followed by six residual blocks (twelve convolutional layers total), each containing two convolutional layers with Instance Normalization and ReLU activation. A spatial self-attention layer follows the ResNet backbone to enable global board reasoning, allowing each position to attend to all other positions for capturing long-range piece relationships. This deep feature extractor feeds into the dueling streams, allowing for more abstract strategic reasoning compared to shallow architectures. The 79-channel state representation is partitioned into two components, as detailed in Table \ref{tab:state_channels}.
 
 \begin{table}[h]
 \centering
@@ -152,13 +152,13 @@ The Q-network employs a Deep Residual Network (ResNet) backbone to capture long-
 13 & Obstacles & Binary map of lake squares (impassable terrain) \\
 14 & Empty Squares & Binary map of unoccupied traversable positions \\
 \hline
-\multicolumn{3}{l}{\textit{Enemy Type Features (Channels 15--26)}} \\
-15--26 & Piece Type Probabilities & During full observability phases, these channels contain one-hot ground truth encodings of enemy piece types; during partial observability phases, they contain PBS probability distributions indicating the inferred likelihood of each piece type at enemy positions \\
+\multicolumn{3}{l}{\textit{AAREN Embedding Features (Channels 15--78)}} \\
+15--78 & Learned Embeddings & 64-dimensional learned embedding vectors per board position, produced by the AAREN history aggregator from observed opponent action sequences. These embeddings encode implicit piece identity inference learned end-to-end with the agent. \\
 \hline
 \end{tabular}
 \end{table}
 
-The board feature channels provide deterministic knowledge of the agent's own piece positions and observed enemy locations. The enemy type channels encode information about hidden enemy piece identities, with the representation varying by training phase. During full observability training (Phase 1), these channels contain ground truth one-hot encodings that allow the agent to learn fundamental game mechanics and piece-type awareness without inference uncertainty. During partial observability phases, the channels contain probabilistic beliefs from the PBS module, updated through the AAREN attention mechanism based on observed opponent behavior. This dual-mode representation enables the network to first acquire robust combat and positional strategies before learning to operate under uncertainty. The AAREN module uses 24-dimensional action feature vectors, 64 hidden units, and 3 layers to process action histories and output piece type probability distributions.
+The board feature channels provide deterministic knowledge of the agent's own piece positions and observed enemy locations. The AAREN embedding channels encode learned representations of hidden enemy piece identities based on their observed behavior. Unlike explicit probability distributions, these embeddings are dense learned vectors that the network interprets through end-to-end training. During full observability training (Phase 1), the embedding channels contain sparse one-hot encodings of ground truth enemy types to establish baseline piece-type awareness. During partial observability phases, the channels contain AAREN-generated embeddings that capture temporal patterns in opponent behavior. The AAREN module uses 24-dimensional action feature vectors, 64 hidden units, and 3 layers to process action histories and output embedding vectors.
 
 \paragraph{Training Hyperparameters.}
 The training configuration uses several key parameters: learning rate $\alpha = 3 \times 10^{-5}$ with AdamW optimizer and weight decay $\lambda = 0.01$, and a discount factor $\gamma = 0.995$ to capture long-term strategic consequences. We utilize a batch size of 512 transitions and a replay buffer capacity of 150,000 transitions with prioritized sampling. Soft target network updates ($\tau = 0.001$) occur every 5,000 steps. Model updates are performed every 2 steps utilizing 8 parallel lanes and 3-step returns to improve credit assignment. To improve sample efficiency, data augmentation is applied via horizontal flip, exploiting the game's symmetry. Training proceeds for 35,000+ episodes with checkpoints saved every 1,000 episodes.
@@ -179,11 +179,11 @@ A supervisor process monitors worker performance by reading metrics from a share
 where $U(0.8, 1.2)$ denotes a uniform random perturbation factor. The exploration rate $\epsilon$ is reset to 0.1 for cloned workers, allowing renewed discovery from the inherited policy. This adaptive schedule enables the population to collectively discover effective hyperparameter configurations during training rather than requiring extensive manual tuning prior to training.
 
 \paragraph{Curriculum Learning.}
-Training follows a five-phase curriculum of increasing complexity with extended episode counts to ensure thorough learning at each stage. Phase 1 (Full Observability) allows the agent to observe all piece identities, enabling acquisition of fundamental game mechanics. To mitigate the "observability cliff" when transitioning to Phase 2, a Mixed Observability mechanism is introduced: as the agent's win rate exceeds 85\% in Phase 1, a stochastic "Fog of War" randomly occludes 50\% of opponent pieces. This forces the agent to begin relying on probabilistic inference and PBS predictions before full occlusion occurs.
+Training follows a five-phase curriculum of increasing complexity with extended episode counts to ensure thorough learning at each stage. Phase 1 (Full Observability) allows the agent to observe all piece identities, enabling acquisition of fundamental game mechanics. To mitigate the "observability cliff" when transitioning to Phase 2, a Mixed Observability mechanism is introduced: as the agent's win rate exceeds 85\% in Phase 1, a stochastic "Fog of War" randomly occludes 50\% of opponent pieces. This forces the agent to begin relying on AAREN embeddings for piece inference before full occlusion occurs.
 
 Training proceeds for 5,000--10,000 episodes against a progressively challenging opponent mix: initially random opponents, then basic heuristic agents, and finally a sophisticated multi-factor heuristic opponent. Phase advancement requires $\geq$95\% win rate against random opponents, $\geq$75\% against the basic heuristic, and $\geq$60\% against the strategic heuristic.
 
-Phase 2 (Partial Observability) disables full observability, requiring reliance on PBS predictions for 5,000--10,000 episodes. The opponent distribution allocates 40\% to frozen heuristic agents and 60\% to the strategic heuristic opponent. Phase advancement requires PBS prediction accuracy $\geq$75\% and overall win rate $\geq$60\%.
+Phase 2 (Partial Observability) disables full observability, requiring reliance on AAREN-generated embeddings for 5,000--10,000 episodes. The opponent distribution allocates 40\% to frozen heuristic agents and 60\% to the strategic heuristic opponent. Phase advancement requires embedding-based inference accuracy $\geq$75\% and overall win rate $\geq$60\%.
 
 Phase 3 (Self-Play) trains against a mixture of delayed agent copies (60\%) and strategic heuristic opponents (40\%) for 5,000--15,000 episodes to discover novel strategies while preventing policy collapse. Phase 4 (League Training) activates the full opponent distribution with 40\% historical league agents, 30\% strategic heuristic, 20\% greedy agents, and 10\% self-play. Phase 5 (Scenario Drills) introduces specialized board configurations every 1,000 episodes for targeted skill training.
 
@@ -291,7 +291,7 @@ This approach ensures that attack moves and forward advances are always availabl
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=1\textwidth]{figures/DQN Architecture.png}
-\caption[MARQ Framework]{The MARQ System Architecture, which takes the Board State and PBS as input.}
+\caption[MARQ Framework]{The MARQ System Architecture, which takes the Board State and AAREN embeddings as input.}
 \label{fig:my_label}
 \end{figure}
 
@@ -307,7 +307,7 @@ The deployed system will function as the complete application used during the us
     \label{fig:Sequence Diagram}
 \end{figure}
 
-In the figure above, the player starts the game and the loop begins until either the player wins by capturing the opponent's flag or loses if the agent captures the player's flag. The agent receives the current board state and updates the AAREN module, which constructs the PBS representing the probability distribution over hidden piece identities. The DQN then evaluates Q-values for all legal actions given this belief-enhanced state representation and selects the action with the highest expected value.
+In the figure above, the player starts the game and the loop begins until either the player wins by capturing the opponent's flag or loses if the agent captures the player's flag. The agent receives the current board state and updates the AAREN module, which produces learned embeddings encoding implicit piece identity inference from observed action history. The DQN then evaluates Q-values for all legal actions given this embedding-enhanced state representation and selects the action with the highest expected value.
 \section{Evaluation}
 
 A comprehensive evaluation approach combining quantitative and qualitative methods will be used to assess the MARQ framework's performance and the user experience.

@@ -269,8 +269,8 @@ class PBSEvaluator:
         # Update target network
         self.update_target_network()
         
-        # Training statistics
-        self.training_losses = []
+        # Training statistics (bounded to prevent memory growth)
+        self.training_losses = deque(maxlen=1000)
         
     def update_target_network(self):
         """Copy weights from main network to target network"""

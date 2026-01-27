@@ -130,21 +130,21 @@
     \end{tabular}
 };
 
-\node[inputbox, below=0.5cm of board, label=below:{\footnotesize PBS Beliefs}] (pbs) {
+\node[inputbox, below=0.5cm of board, label=below:{\footnotesize AAREN Embeddings}] (pbs) {
     \begin{tabular}{c}
-    \textbf{12 ch}\\
-    P(type)
+    \textbf{64 ch}\\
+    Learned
     \end{tabular}
 };
 
-% Combine into 27-channel input
+% Combine into 79-channel input
 \node[rectangle, draw=convblue, fill=convblue!20, minimum width=1.5cm, minimum height=4cm, 
-      right=1cm of $(board)!0.5!(pbs)$, rounded corners=3pt, label=above:{\footnotesize 27 Channels}] (input27) {};
+      right=1cm of $(board)!0.5!(pbs)$, rounded corners=3pt, label=above:{\footnotesize 79 Channels}] (input27) {};
 \node[font=\tiny, text=convblue2] at (input27) {
     \begin{tabular}{c}
-    PBS (12)\\
+    AAREN (64)\\
     +\\
-    Own (12)\\
+    Board (12)\\
     +\\
     Masks (3)
     \end{tabular}
@@ -227,8 +227,8 @@
 
 \node[pbsbox, right=1cm of aaren] (pbsupdate) {
     \begin{tabular}{c}
-    PBS Update\\
-    $\mathcal{B}_t$
+    Embedding\\
+    $\mathcal{E}_t$
     \end{tabular}
 };
 

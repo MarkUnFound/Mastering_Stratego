@@ -35,7 +35,7 @@ The MARQ framework, a Multi-Agent Rainbow Deep Q-Networks system, employs self-p
 
 This approach addresses the fundamental challenge of Stratego: reasoning about hidden information without computing intractable common-knowledge sets. While the number of possible game states exceeds $10^{535}$ and initial setups alone reach $10^{66}$ per player \cite{RLStratego}, the MARQ framework manages this complexity through belief state management, probabilistic reasoning, and strategic pattern recognition. The framework combines deep reinforcement learning for value estimation, attention mechanisms for processing game history, and controlled strategy mixing to prevent exploitation, while maintaining computational tractability even in this vast imperfect-information domain.
 
-The MARQ framework operates through the hierarchical integration of its components. The system starts with observation processing, where the AAREN module ingests raw game positions to construct and maintain a probabilistic belief state (PBS). This belief state forms the base of information used for all subsequent reasoning. The entire architecture is embedded within a league-based training paradigm involving simultaneous training and evaluation of MARQ agents.
+The MARQ framework operates through the hierarchical integration of its components. The system starts with observation processing, where the AAREN module ingests raw game positions and action sequences to produce learned embeddings that encode implicit piece identity inference. These embeddings form the base of information used for all subsequent reasoning. The entire architecture is embedded within a league-based training paradigm involving simultaneous training and evaluation of MARQ agents.
 
 \begin{table}[htbp]
     \centering
@@ -61,7 +61,7 @@ The MARQ framework operates through the hierarchical integration of its componen
         \hline
         $\pi^*$ & Nash equilibrium policy profile & Optimal mixed strategy that cannot be exploited by opponent strategy changes \\
         \hline
-        $Q_{eval}(\mathcal{B})$ & PBS evaluator network output (quality score) & Confidence score for belief distribution accuracy \\
+        $Q_{eval}(\mathcal{B})$ & Embedding quality evaluator output & Confidence score for embedding representation accuracy \\
         \hline
         $H(\pi)$ & Policy entropy measure & Ensures minimum unpredictability to prevent exploitation \\
         \hline
@@ -77,7 +77,7 @@ The MARQ framework operates through the hierarchical integration of its componen
 
 Policy optimization in reinforcement learning refers to the iterative refinement of an agent's decision-making strategy to maximize cumulative expected reward \cite{DRLImperfectInfo2023}. In multi-agent environments characterized by imperfect information, this optimization process must produce policies that are not only effective against static opponents but also robust to the inherent uncertainty of hidden game states and the adaptive behaviors of learning adversaries. The MARQ framework addresses these challenges through a hierarchical policy architecture that integrates belief state reasoning with value-based decision making.
 
-The policy learning process in MARQ operates across multiple interconnected objectives. The primary objective concerns game outcomes, where the agent learns to maximize win probability through strategic piece deployment and tactical combat decisions. A secondary objective involves belief state accuracy, where the Probabilistic Belief State maintained by the AAREN module is continuously refined through comparison with revealed ground truth positions during gameplay. These objectives are jointly optimized, as accurate belief states enable better decision-making, while strategic decisions that reveal opponent information improve future belief quality.
+The policy learning process in MARQ operates across multiple interconnected objectives. The primary objective concerns game outcomes, where the agent learns to maximize win probability through strategic piece deployment and tactical combat decisions. A secondary objective involves representation quality, where the learned embeddings produced by the AAREN module are refined through end-to-end gradient flow as the agent learns to interpret them for decision-making. These objectives are jointly optimized, as effective embeddings enable better decision-making, while strategic decisions that reveal opponent information provide implicit supervision for embedding quality.
 
 \subsection{Core Policy Framework}
 
@@ -207,9 +207,9 @@ The coefficients follow power-law schedules with opposing dynamics:
 where $t$ is the current episode, $T$ is the total training duration, and $p=2$ produces quadratic curves. This schedule ensures strong exploration when the policy is uncertain and gradual transition to stable exploitation as the policy matures.
 
 
-\section{AAREN and Probabilistic Belief State}
+\section{AAREN and Learned Embedding System}
 
-The AAREN module (Attention as Recurrent Neural Network) \cite{Aaren} serves as the core memory and belief state system within the MARQ architecture. It is specifically designed to process extended sequences of partial observations in Stratego, integrating information over hundreds of moves while avoiding the vanishing gradient problem that affects recurrent models like LSTMs or GRUs in long tasks. AAREN leverages an attention mechanism to provide direct, weighted access to the entire history of observations, enabling more coherent and computationally efficient belief tracking \cite{Aaren}.
+The AAREN module (Attention as Recurrent Neural Network) \cite{Aaren} serves as the core memory and history aggregation system within the MARQ architecture. Rather than maintaining explicit probability distributions over piece identities, AAREN produces learned embeddings from observed action sequences that the agent interprets through end-to-end training. This approach is specifically designed to process extended sequences of partial observations in Stratego, integrating information over hundreds of moves while avoiding the vanishing gradient problem that affects recurrent models like LSTMs or GRUs in long tasks. AAREN leverages an attention mechanism to provide direct, weighted access to the entire history of observations, enabling efficient history aggregation \cite{Aaren}.
 
 \subsection{Recurrent Attention Computation}
 AAREN implements an attention-based recurrent computation that maintains a state triplet $(a_t, c_t, m_t)$ across the observation sequence. Unlike traditional recurrent neural networks that suffer from vanishing gradients over long sequences, AAREN provides direct access to the entire history through attention weights while maintaining O(1) inference complexity per timestep.
@@ -241,11 +241,11 @@ The AAREN model learns to infer piece values from action sequences using 24-dime
 P(\text{piece\_type} = t \mid \text{action\_sequence}) = \text{softmax}(W_{out} \cdot h_T + b_{out})_t
 \end{equation}
 
-This allows the PBS to combine AAREN predictions with rule-based inference and historical pattern matching for robust piece identification under uncertainty.
+This allows the network to interpret AAREN embeddings alongside rule-based constraints and observable game state for robust decision-making under uncertainty.
 
-\subsection{PBS Quality Evaluation}
+\subsection{Embedding Quality Assessment}
 
-The MARQ framework incorporates a PBS evaluation system that assesses prediction quality and provides feedback for continuous improvement. The PBS Evaluator employs a neural network architecture that takes belief distributions as input and outputs quality scores $Q_{eval}(\mathcal{B}) = \text{MLP}(\mathcal{B}; \theta_{eval})$. The training objective is based on rewards computed from ground truth comparisons:
+The MARQ framework incorporates an embedding evaluation system that assesses representation quality and provides feedback for continuous improvement. The evaluator employs a neural network architecture that takes learned embeddings as input and outputs quality scores $Q_{eval}(\mathcal{E}) = \text{MLP}(\mathcal{E}; \theta_{eval})$. The training objective is based on rewards computed from ground truth comparisons:
 
 \begin{equation}
 R_{quality}(\mathcal{B}, g) = \alpha \cdot \mathcal{B}[g] - \beta \cdot |V_{pred} - V_{actual}| - \gamma \cdot \text{distance\_penalty}

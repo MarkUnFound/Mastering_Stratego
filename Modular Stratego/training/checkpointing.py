@@ -168,5 +168,28 @@ class Checkpointer:
                 save_path=os.path.join(self.save_dir, f"additional_metrics_episode_{episode}.png")
             )
             
+            # AAREN End-to-End Training Visualization
+            try:
+                from training_visualizer import plot_pbs_evaluator_progress
+                plot_pbs_evaluator_progress(
+                    episode_history=plot_data['episode_history'],
+                    evaluator1_losses=metrics_tracker.metrics.get('pbs_eval1_losses', [0.0] * num_eps),
+                    evaluator2_losses=[0.0] * num_eps,  # Agent 2 doesn't train
+                    evaluator1_buffer_sizes=metrics_tracker.metrics.get('pbs_eval1_buffer_sizes', [0] * num_eps),
+                    evaluator2_buffer_sizes=[0] * num_eps,
+                    save_path=os.path.join(self.save_dir, f"aaren_progress_episode_{episode}.png"),
+                    total_episodes=episode,
+                    # Legacy AAREN (separate training)
+                    aaren_losses=metrics_tracker.metrics.get('aaren_loss', []),
+                    aaren_accuracies=metrics_tracker.metrics.get('aaren_accuracy', []),
+                    aaren_buffer_sizes=metrics_tracker.metrics.get('aaren_buffer_size', []),
+                    # End-to-end AAREN training metrics
+                    aaren_grad_norms=metrics_tracker.metrics.get('aaren_grad_norm', []),
+                    aaren_embedding_stds=metrics_tracker.metrics.get('aaren_embedding_std', []),
+                    dqn_grad_norms=metrics_tracker.metrics.get('dqn_grad_norm', [])
+                )
+            except Exception as aaren_plot_err:
+                print(f"[WARN] AAREN progress plot failed: {aaren_plot_err}")
+            
         except Exception as e:
             print(f"[WARN] Could not plot training progress: {e}")

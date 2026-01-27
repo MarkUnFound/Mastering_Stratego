@@ -22,6 +22,7 @@ import glob
 import queue
 import threading
 import time
+import gc  # Garbage collection for memory cleanup
 import copy
 import traceback
 import json
@@ -763,11 +764,24 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                     metrics['pbs_eval1_buffer_sizes'].append(0)
                     metrics['pbs_eval1_accuracy'].append(0.0)
                 
-                # AAREN metrics
+                # AAREN metrics (legacy + end-to-end)
                 if agent1.pbs:
-                    metrics['aaren_loss'].append(agent1.pbs.get_aaren_avg_loss() if hasattr(agent1.pbs, 'get_aaren_avg_loss') else 0.0)
-                    metrics['aaren_accuracy'].append(agent1.pbs.get_aaren_accuracy() if hasattr(agent1.pbs, 'get_aaren_accuracy') else 0.0)
-                    metrics['aaren_buffer_size'].append(agent1.pbs.get_aaren_buffer_size() if hasattr(agent1.pbs, 'get_aaren_buffer_size') else 0)
+                    # Legacy (separate training)
+                    metrics['aaren_loss'].append(agent1.pbs.get_avg_loss() if hasattr(agent1.pbs, 'get_avg_loss') else 0.0)
+                    metrics['aaren_accuracy'].append(agent1.pbs.get_accuracy() if hasattr(agent1.pbs, 'get_accuracy') else 0.0)
+                    metrics['aaren_buffer_size'].append(agent1.pbs.get_buffer_size() if hasattr(agent1.pbs, 'get_buffer_size') else 0)
+                    
+                    # End-to-end training metrics (gradient norms captured during replay)
+                    aaren_grad = agent1.get_aaren_grad_norm() if hasattr(agent1, 'get_aaren_grad_norm') else 0.0
+                    dqn_grad = agent1.get_dqn_grad_norm() if hasattr(agent1, 'get_dqn_grad_norm') else 0.0
+                    embedding_stats = agent1.get_aaren_embedding_stats() if hasattr(agent1, 'get_aaren_embedding_stats') else {'std': 0.0}
+                    
+                    metrics['aaren_grad_norm'] = metrics.get('aaren_grad_norm', [])
+                    metrics['aaren_grad_norm'].append(aaren_grad)
+                    metrics['dqn_grad_norm'] = metrics.get('dqn_grad_norm', [])
+                    metrics['dqn_grad_norm'].append(dqn_grad)
+                    metrics['aaren_embedding_std'] = metrics.get('aaren_embedding_std', [])
+                    metrics['aaren_embedding_std'].append(embedding_stats.get('std', 0.0))
                 
                 # Q-value and entropy metrics
                 avg_q = agent1.get_average_q() if hasattr(agent1, 'get_average_q') else 0.0
@@ -972,6 +986,17 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
             if piece_tracker is not None and save_episode % 500 == 0:
                 piece_tracker.log_comparison(save_episode)
                 piece_tracker.save()
+            
+            # --- MEMORY CLEANUP (Prevent OOM from fragmentation) ---
+            # Run garbage collection and clear CUDA cache every save interval
+            if device.type == 'cuda':
+                gc.collect()
+                torch.cuda.empty_cache()
+                # Log memory stats periodically
+                if save_episode % 1000 == 0:
+                    allocated = torch.cuda.memory_allocated() / (1024**3)
+                    reserved = torch.cuda.memory_reserved() / (1024**3)
+                    tqdm.write(f"[MEM] CUDA cleanup: {allocated:.2f}GB allocated, {reserved:.2f}GB reserved")
                 
         # --- UPDATE PROGRESS BAR (only when episodes complete) ---
         if reset_commands:

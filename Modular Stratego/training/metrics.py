@@ -53,10 +53,15 @@ class MetricsTracker:
             'pbs_eval1_buffer_sizes': [],
             'pbs_eval1_accuracy': [],
             
-            # AAREN metrics
+            # AAREN metrics (legacy separate training)
             'aaren_loss': [],
             'aaren_accuracy': [],
             'aaren_buffer_size': [],
+            
+            # AAREN end-to-end training metrics
+            'aaren_grad_norm': [],     # Gradient norm from DQN backprop
+            'dqn_grad_norm': [],       # DQN gradient norm for comparison
+            'aaren_embedding_std': [], # Embedding diversity (std dev)
             
             # Additional metrics
             'avg_q_values_p1': [],
@@ -143,11 +148,14 @@ class MetricsTracker:
             self.metrics['pbs_eval1_buffer_sizes'].append(0)
             self.metrics['pbs_eval1_accuracy'].append(0.0)
         
-        # AAREN metrics
+        # AAREN metrics (legacy separate training)
         if aaren_metrics:
             self.metrics['aaren_loss'].append(aaren_metrics.get('loss', 0.0))
             self.metrics['aaren_accuracy'].append(aaren_metrics.get('accuracy', 0.0))
             self.metrics['aaren_buffer_size'].append(aaren_metrics.get('buffer_size', 0))
+            # End-to-end training metrics
+            self.metrics['aaren_grad_norm'].append(aaren_metrics.get('grad_norm', 0.0))
+            self.metrics['aaren_embedding_std'].append(aaren_metrics.get('embedding_std', 0.0))
         
         # Q-value and entropy
         self.metrics['avg_q_values_p1'].append(avg_q)

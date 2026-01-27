@@ -2,7 +2,7 @@
 \section{Project Context}
 Games have a history of being a metric for how Artificial Intelligence (AI) progresses and performs in the current time \cite{StudeGame}. Many real-world problems, from military tactics to multiplayer games, require intelligent decision-making in environments where all information is not available. A common example is a feature found in many multiplayer games known as the "fog of war"  \cite{FogofWar}, where the game environment is not fully revealed, which makes it an example of an imperfect information game \cite{National}. Imperfect information games create a scenario where players develop unconventional strategies without having full knowledge of the game's environmental state \cite{FogofWar}. Solving these kinds of problems and determining the optimal strategy remains a significant challenge for Artificial Intelligence \cite{GeneralGame}.
 
-This study focuses on mastering imperfect information games through Multi-Agent Reinforcement Learning (MARL) with Deep Q-Networks (DQN). In MARL, multiple agents learn and adapt in the same environment, making each decision based on its own observations and rewards \cite{MARLCOMP, MARLCHALL}. With DQN, the agents can utilize deep neural networks to approximate the Q-function that maps state-action pairs for the expected reward. This study introduces the MARQ (Multi-Agent Rainbow Deep Q-Networks) framework, which extends the basic DQN architecture with Rainbow enhancements including distributional value estimation and noisy exploration networks \cite{RainbowJMLR2021}. The framework integrates an AAREN (Attention as Recurrent Neural Network) module \cite{Aaren} for processing extended observation sequences and maintaining a Probabilistic Belief State (PBS) that tracks uncertainty about hidden opponent pieces. League-based self-play training \cite{AlphaStar} ensures that agents develop robust strategies by competing against diverse historical opponents. This approach is suited well for Stratego, where agents are trained to compete against each other, developing strategies through repeated experience while reasoning under uncertainty about the opponent's setup and the environment's hidden state.
+This study focuses on mastering imperfect information games through Multi-Agent Reinforcement Learning (MARL) with Deep Q-Networks (DQN). In MARL, multiple agents learn and adapt in the same environment, making each decision based on its own observations and rewards \cite{MARLCOMP, MARLCHALL}. With DQN, the agents can utilize deep neural networks to approximate the Q-function that maps state-action pairs for the expected reward. This study introduces the MARQ (Multi-Agent Rainbow Deep Q-Networks) framework, which extends the basic DQN architecture with Rainbow enhancements including distributional value estimation and noisy exploration networks \cite{RainbowJMLR2021}. The framework integrates an AAREN (Attention as Recurrent Neural Network) module \cite{Aaren} for processing extended observation sequences and producing learned embeddings that enable implicit inference of hidden opponent pieces through end-to-end training. League-based self-play training \cite{AlphaStar} ensures that agents develop robust strategies by competing against diverse historical opponents. This approach is suited well for Stratego, where agents are trained to compete against each other, developing strategies through repeated experience while reasoning under uncertainty about the opponent's setup and the environment's hidden state.
 
 
 
@@ -36,12 +36,12 @@ The study is limited to the development of an AI agent for imperfect information
 
 \section{Significance of the Study}
 The development of the MARQ framework addresses limitations in current imperfect information game AI, where existing systems either require large computational resources or employ model-free approaches that limit strategic depth.
-The MARQ framework's significance lies in its explicit opponent modeling through AAREN and probabilistic belief states, and hybrid DQN architecture that balances strategic depth with computational tractability. The synchronized learning evaluation framework provides insights into AI adaptability against improving human opponents, with implications extending beyond gaming to domains characterized by incomplete information and strategic interaction, including cybersecurity, financial trading, and strategic planning.
+The MARQ framework's significance lies in its implicit opponent modeling through AAREN-generated embeddings, and hybrid DQN architecture that balances strategic depth with computational tractability. The synchronized learning evaluation framework provides insights into AI adaptability against improving human opponents, with implications extending beyond gaming to domains characterized by incomplete information and strategic interaction, including cybersecurity, financial trading, and strategic planning.
 
 \section{Definition of Terms}
 
 \noindent\textbf{AAREN (Attention as Recurrent Neural Network)} \\
-A neural architecture that combines the parallel training efficiency of Transformers with the sequential processing of RNNs. In the MARQ framework, AAREN processes observation sequences to maintain and update the Probabilistic Belief State. \\[6pt]
+A neural architecture that combines the parallel training efficiency of Transformers with the sequential processing of RNNs. In the MARQ framework, AAREN processes observation sequences to produce learned embeddings that encode implicit piece identity inference. \\[6pt]
 
 \noindent\textbf{Counterfactual Regret Minimization (CFR)} \\
 An iterative algorithm that approximates Nash equilibrium by minimizing regret, widely applied in imperfect information games such as Poker and Stratego. \\[6pt]
@@ -73,8 +73,8 @@ A game-theoretic concept where no player can gain an advantage by unilaterally c
 \noindent\textbf{Perfect Information Games} \\
 Games in which all players have complete knowledge of the current game state and available moves, such as Chess and Go. \\[6pt]
 
-\noindent\textbf{Probabilistic Belief State (PBS)} \\
-A probability distribution over possible opponent piece configurations, maintained and updated by the AAREN module as observations reveal information during gameplay. \\[6pt]
+\noindent\textbf{AAREN Embeddings} \\
+Learned 64-dimensional embedding vectors produced by the AAREN module from observed opponent action sequences. These embeddings encode implicit piece identity inference and are interpreted by the agent through end-to-end training, replacing explicit probability distributions. \\[6pt]
 
 \noindent\textbf{Rainbow DQN} \\
 An enhanced DQN architecture that combines multiple improvements including distributional RL, noisy networks for exploration, and dueling network architecture for improved stability and sample efficiency. \\[6pt]

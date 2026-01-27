@@ -116,7 +116,7 @@ class RainbowAgent:
                     num_layers=AAREN_NUM_LAYERS, output_size=12, device=device
                 ).to(device)
                 
-                self.shared_aaren_optimizer = optim.AdamW(self.shared_aaren.parameters(), lr=0.001, weight_decay=0.01)
+                # Note: AAREN uses main optimizer (combined with DQN) for end-to-end training
                 
                 for _ in range(num_envs):
                     history_instance = HistoryAggregator(
@@ -125,7 +125,7 @@ class RainbowAgent:
                         num_layers=AAREN_NUM_LAYERS,
                         shared_aaren_model=self.shared_aaren
                     )
-                    history_instance.optimizer = self.shared_aaren_optimizer
+                    history_instance.optimizer = None  # Uses main optimizer
                     self.history_instances.append(history_instance)
                 self.history = self.history_instances[0]
             else:
@@ -139,6 +139,10 @@ class RainbowAgent:
         # Uncertainty parameters
         self.uncertainty_exploration_multiplier = 0.05
         self.uncertainty_penalty_scale = 0.5
+        
+        # Cached gradient norms (updated during replay for plotting)
+        self._cached_aaren_grad_norm = 0.0
+        self._cached_dqn_grad_norm = 0.0
         
         # Soft Update Param
         self.tau = 0.001
@@ -228,7 +232,17 @@ class RainbowAgent:
         if device.type == 'cuda':
             torch.backends.cudnn.benchmark = True
         
-        self.optimizer = optim.AdamW(self.q_network.parameters(), lr=lr, weight_decay=0.01)
+        # Combined Optimizer: DQN + AAREN (end-to-end training)
+        # AAREN learns jointly with Rainbow DQN via shared gradient flow
+        all_parameters = list(self.q_network.parameters())
+        if self.use_pbs and hasattr(self, 'shared_aaren') and self.shared_aaren:
+            all_parameters.extend(self.shared_aaren.parameters())
+            print(f"[OK] AAREN params added to optimizer (end-to-end training)")
+        elif self.use_pbs and self.history and self.history.owns_aaren:
+            all_parameters.extend(self.history.aaren.parameters())
+            print(f"[OK] AAREN params added to optimizer (end-to-end training)")
+        
+        self.optimizer = optim.AdamW(all_parameters, lr=lr, weight_decay=0.01)
         
         # Import PER and N-Step settings
         try:
@@ -1191,11 +1205,19 @@ class RainbowAgent:
         if self.amp_enabled:
             self.scaler.scale(loss).backward()
             self.scaler.unscale_(self.optimizer)
+            
+            # Capture gradient norms AFTER backward, BEFORE optimizer step
+            self._capture_gradient_norms()
+            
             torch.nn.utils.clip_grad_norm_(self.q_network.parameters(), max_norm=10.0)
             self.scaler.step(self.optimizer)
             self.scaler.update()
         else:
             loss.backward()
+            
+            # Capture gradient norms AFTER backward, BEFORE optimizer step
+            self._capture_gradient_norms()
+            
             torch.nn.utils.clip_grad_norm_(self.q_network.parameters(), max_norm=10.0)
             self.optimizer.step()
             
@@ -1210,8 +1232,9 @@ class RainbowAgent:
             'step_count': self.step_count
         }
         
-        if self.pbs:
-            checkpoint['pbs_state_dict'] = self.pbs.state_dict()
+        # Save history aggregator (AAREN) state
+        if self.history:
+            checkpoint['history_state_dict'] = self.history.state_dict()
             
         torch.save(checkpoint, filepath)
         
@@ -1224,9 +1247,13 @@ class RainbowAgent:
             self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
             self.step_count = checkpoint.get('step_count', 0)
             
-            if self.pbs and 'pbs_state_dict' in checkpoint:
-                self.pbs.load_state_dict(checkpoint['pbs_state_dict'])
-                print(f"[OK] PBS state loaded from {filepath}")
+            # Load history aggregator (AAREN) state
+            if self.history and 'history_state_dict' in checkpoint:
+                self.history.load_state_dict(checkpoint['history_state_dict'])
+                print(f"[OK] AAREN history state loaded from {filepath}")
+            elif self.history and 'pbs_state_dict' in checkpoint:
+                # Backward compatibility with old PBS checkpoints - skip
+                print(f"[WARN] Old PBS checkpoint found, skipping (incompatible with HistoryAggregator)")
                 
             print(f"[OK] Model loaded from {filepath} (Step: {self.step_count})")
         except Exception as e:
@@ -1285,6 +1312,88 @@ class RainbowAgent:
             return 0.0
         except Exception:
             return 0.0
+    
+    def _capture_gradient_norms(self):
+        """
+        Capture gradient norms for AAREN and DQN after backward pass.
+        Called internally during replay() to store values for later retrieval.
+        """
+        try:
+            # Capture AAREN gradient norm
+            aaren_model = None
+            if hasattr(self, 'shared_aaren') and self.shared_aaren:
+                aaren_model = self.shared_aaren
+            elif self.history and self.history.owns_aaren:
+                aaren_model = self.history.aaren
+            
+            if aaren_model is not None:
+                total_norm = 0.0
+                num_params = 0
+                for param in aaren_model.parameters():
+                    if param.grad is not None:
+                        total_norm += param.grad.norm().item()
+                        num_params += 1
+                self._cached_aaren_grad_norm = total_norm / max(num_params, 1)
+            
+            # Capture DQN gradient norm (for comparison)
+            total_dqn_norm = 0.0
+            num_dqn_params = 0
+            for param in self.q_network.parameters():
+                if param.grad is not None:
+                    total_dqn_norm += param.grad.norm().item()
+                    num_dqn_params += 1
+            self._cached_dqn_grad_norm = total_dqn_norm / max(num_dqn_params, 1)
+            
+        except Exception:
+            pass  # Silently fail, keep previous values
+    
+    def get_aaren_grad_norm(self) -> float:
+        """
+        Get the cached AAREN gradient norm (computed during replay).
+        
+        This measures how much the DQN loss is affecting AAREN (end-to-end training).
+        Higher values = AAREN is learning more actively from DQN feedback.
+        """
+        return getattr(self, '_cached_aaren_grad_norm', 0.0)
+    
+    def get_dqn_grad_norm(self) -> float:
+        """
+        Get the cached DQN network gradient norm (computed during replay).
+        Useful for comparison with AAREN gradient norm.
+        """
+        return getattr(self, '_cached_dqn_grad_norm', 0.0)
+    
+    def get_aaren_embedding_stats(self) -> dict:
+        """
+        Get statistics about AAREN embeddings (mean, std, max).
+        
+        This helps track if embeddings are meaningful and changing over training.
+        - Mean near 0 with reasonable std = good
+        - All zeros = AAREN not producing useful features
+        - Very high values = potential instability
+        """
+        stats = {'mean': 0.0, 'std': 0.0, 'max': 0.0, 'active_positions': 0}
+        
+        try:
+            if self.history is None:
+                return stats
+            
+            # Get current embeddings (without recomputing)
+            with torch.no_grad():
+                embedding = self.history.get_embedding_tensor()
+                
+                # Count non-zero positions (active history)
+                active = (embedding.abs().sum(dim=0) > 1e-6).sum().item()
+                stats['active_positions'] = int(active)
+                
+                if active > 0:
+                    stats['mean'] = embedding.mean().item()
+                    stats['std'] = embedding.std().item()
+                    stats['max'] = embedding.abs().max().item()
+            
+            return stats
+        except Exception:
+            return stats
 
 
     def _move_to_action_index(self, move):

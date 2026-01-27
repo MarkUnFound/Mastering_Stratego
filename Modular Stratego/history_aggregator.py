@@ -13,7 +13,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from typing import Tuple, Optional, List, Dict
-from collections import defaultdict
+from collections import defaultdict, deque
 
 from aaren.network import PieceActionAaren
 from piece import PieceType, NUM_PIECE_TYPES
@@ -83,7 +83,7 @@ class HistoryAggregator:
         
         # Training data collection
         self.training_buffer: List[Tuple[List[List[float]], int]] = []  # (sequence, true_type)
-        self.training_losses: List[float] = []
+        self.training_losses = deque(maxlen=1000)  # Bounded to prevent memory growth
         self.max_buffer_size = 10000
         
         # Cached embedding tensor (updated on demand)
@@ -364,3 +364,23 @@ class HistoryAggregator:
     def get_buffer_size(self) -> int:
         """Get current training buffer size."""
         return len(self.training_buffer)
+    
+    def state_dict(self) -> dict:
+        """Get state dict for checkpointing."""
+        return {
+            'aaren_state_dict': self.aaren.state_dict() if self.owns_aaren else None,
+            'optimizer_state_dict': self.optimizer.state_dict() if self.optimizer else None,
+            'training_losses': self.training_losses,
+            'predictions_correct': self.predictions_correct,
+            'predictions_total': self.predictions_total,
+        }
+    
+    def load_state_dict(self, state_dict: dict):
+        """Load state dict from checkpoint."""
+        if state_dict.get('aaren_state_dict') and self.owns_aaren:
+            self.aaren.load_state_dict(state_dict['aaren_state_dict'])
+        if state_dict.get('optimizer_state_dict') and self.optimizer:
+            self.optimizer.load_state_dict(state_dict['optimizer_state_dict'])
+        self.training_losses = state_dict.get('training_losses', [])
+        self.predictions_correct = state_dict.get('predictions_correct', 0)
+        self.predictions_total = state_dict.get('predictions_total', 0)

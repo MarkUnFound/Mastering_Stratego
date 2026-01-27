@@ -36,10 +36,10 @@
 \contentsline {subsection}{\numberline {3.4.3}Training Stability via Regularization}{22}{subsection.3.4.3}%
 \contentsline {paragraph}{Advantage Filtering for Sample Efficiency.}{22}{section*.8}%
 \contentsline {paragraph}{Dynamic Damping with Power-Law Annealing.}{22}{section*.9}%
-\contentsline {section}{\numberline {3.5}AAREN and Probabilistic Belief State}{23}{section.3.5}%
+\contentsline {section}{\numberline {3.5}AAREN and Learned Embedding System}{23}{section.3.5}%
 \contentsline {subsection}{\numberline {3.5.1}Recurrent Attention Computation}{23}{subsection.3.5.1}%
 \contentsline {subsection}{\numberline {3.5.2}Piece Type Inference}{24}{subsection.3.5.2}%
-\contentsline {subsection}{\numberline {3.5.3}PBS Quality Evaluation}{24}{subsection.3.5.3}%
+\contentsline {subsection}{\numberline {3.5.3}Embedding Quality Assessment}{24}{subsection.3.5.3}%
 \contentsline {subsection}{\numberline {3.5.4}Belief Updates on Piece Revelation}{25}{subsection.3.5.4}%
 \contentsline {subsection}{\numberline {3.5.5}Hindsight-Aided Belief Refinement}{25}{subsection.3.5.5}%
 \contentsline {paragraph}{Information Gain Reward.}{25}{section*.10}%
@@ -73,10 +73,10 @@
 \contentsline {subsubsection}{Survival Rate}{35}{section*.14}%
 \contentsline {subsubsection}{Auxiliary Value Components}{36}{section*.15}%
 \contentsline {subsubsection}{Composite Value Function}{36}{section*.16}%
-\contentsline {subsection}{\numberline {4.2.2}Handling Imperfect Information: Probabilistic Belief State (PBS)}{37}{subsection.4.2.2}%
-\contentsline {paragraph}{Hindsight-Aided Belief Refinement.}{38}{section*.17}%
-\contentsline {paragraph}{Sinkhorn Global Constraints.}{38}{section*.18}%
-\contentsline {paragraph}{Information Gain Reward.}{38}{section*.19}%
+\contentsline {subsection}{\numberline {4.2.2}Handling Imperfect Information: AAREN History Aggregation}{37}{subsection.4.2.2}%
+\contentsline {paragraph}{Action Feature Extraction.}{37}{section*.17}%
+\contentsline {paragraph}{Recurrent Embedding Generation.}{38}{section*.18}%
+\contentsline {paragraph}{End-to-End Training.}{38}{section*.19}%
 \contentsline {section}{\numberline {4.3}Model Training}{38}{section.4.3}%
 \contentsline {paragraph}{Rainbow DQN Architecture.}{38}{section*.20}%
 \contentsline {paragraph}{Network Structure.}{39}{section*.21}%
@@ -85,7 +85,7 @@
 \contentsline {paragraph}{League-Based Training.}{40}{section*.24}%
 \contentsline {paragraph}{Population-Based Training.}{40}{section*.25}%
 \contentsline {paragraph}{Curriculum Learning.}{41}{section*.26}%
-\contentsline {subsection}{\numberline {4.3.1}Centralized Reward System and Defensive Normalization}{42}{subsection.4.3.1}%
+\contentsline {subsection}{\numberline {4.3.1}Centralized Reward System and Defensive Normalization}{41}{subsection.4.3.1}%
 \contentsline {paragraph}{Composite Reward Mixing.}{42}{section*.27}%
 \contentsline {paragraph}{Rationale for Distributional Scaling.}{42}{section*.28}%
 \contentsline {paragraph}{Architectural Evolution and Implementation History.}{42}{section*.29}%
@@ -97,10 +97,10 @@
 \contentsline {paragraph}{Learning Rate Scheduling.}{45}{section*.35}%
 \contentsline {subsection}{\numberline {4.3.2}Action Space Reduction via Heuristic Filtering}{45}{subsection.4.3.2}%
 \contentsline {paragraph}{Heuristic Move Scoring.}{45}{section*.36}%
-\contentsline {paragraph}{Action Masking Integration.}{46}{section*.37}%
+\contentsline {paragraph}{Action Masking Integration.}{45}{section*.37}%
 \contentsline {subsection}{\numberline {4.3.3}Deployment}{46}{subsection.4.3.3}%
 \contentsline {section}{\numberline {4.4}Evaluation}{47}{section.4.4}%
-\contentsline {paragraph}{Quantitative Analysis.}{48}{section*.38}%
+\contentsline {paragraph}{Quantitative Analysis.}{47}{section*.38}%
 \contentsline {paragraph}{Qualitative Analysis.}{48}{section*.39}%
 \contentsline {paragraph}{Model Iteration and Initial Results.}{49}{section*.40}%
 \contentsline {chapter}{\numberline {A}Gantt Chart}{50}{appendix.A}%
