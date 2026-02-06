@@ -1,0 +1,102 @@
+C:\Users\Mark Lawrence Quibot\repo\Research\Modular Stratego\stratego_dqn_clean\training\trainer.py:235: UserWarning: To copy construct from a tensor, it is recommended to use sourceTensor.detach().clone() or sourceTensor.detach().clone().requires_grad_(True), rather than torch.tensor(sourceTensor).
+  board_tensor = torch.tensor(board, dtype=torch.float32, device=self.device)
+C:\Users\Mark Lawrence Quibot\repo\Research\Modular Stratego\stratego_dqn_clean\training\trainer.py:258: UserWarning: To copy construct from a tensor, it is recommended to use sourceTensor.detach().clone() or sourceTensor.detach().clone().requires_grad_(True), rather than torch.tensor(sourceTensor).
+  next_board_tensor = torch.tensor(next_board, dtype=torch.float32, device=self.device)
+
+[INFO] Using device: cuda
+[INFO] GPU: NVIDIA GeForce RTX 3060 Laptop GPU
+
+[CONFIG]
+  Batch size:     32
+  Learning rate:  0.0001
+  Adam eps:       0.00015
+  Gradient clip:  1.0
+  Target update:  every 1000 steps
+
+[INIT] Creating agent...
+[DoubleDQNAgent] Initialized for Player 1
+  - AAREN params: 14,080
+  - DQN params: 4,092,964
+  - Total params: 4,107,044
+  - Batch size: 32
+  - Target update: Hard every 1000
+[INIT] Creating environment...
+[INIT] Creating trainer...
+[UniformReplayBuffer] Initialized with capacity=50,000
+  - Storage: GPU
+  - Dtype: torch.float16
+[DoubleDQNTrainer] Initialized
+  - Batch size: 32
+  - Buffer size: 50,000
+  - Target update: every 1000 steps
+  - Self-checks: ENABLED
+
+[GATE 1] Memory Test
+----------------------------------------
+  Peak VRAM: 0.096 GB
+  [PASS]: VRAM under limit
+  AAREN gradient norm: 0.219395
+  [PASS]: AAREN gradients flowing
+
+[GATE 1] [PASS]ED
+
+[MODE] Running 1000-step diagnostics test...
+
+============================================================
+STARTING DOUBLE DQN + AAREN TRAINING
+============================================================
+Traceback (most recent call last):
+  File "C:\Users\Mark Lawrence Quibot\repo\Research\Modular Stratego\stratego_dqn_clean\train.py", line 393, in <module>
+    exit(main())
+         ~~~~^^
+  File "C:\Users\Mark Lawrence Quibot\repo\Research\Modular Stratego\stratego_dqn_clean\train.py", line 341, in main
+    results = trainer.train(max_steps=1000)
+  File "C:\Users\Mark Lawrence Quibot\repo\Research\Modular Stratego\stratego_dqn_clean\training\trainer.py", line 166, in train
+    episode_reward, episode_steps = self._run_episode()
+                                    ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\Mark Lawrence Quibot\repo\Research\Modular Stratego\stratego_dqn_clean\training\trainer.py", line 247, in _run_episode
+    action, action_idx = self.agent.act(
+                         ~~~~~~~~~~~~~~^
+        state_tensor.unsqueeze(0),
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^
+        valid_moves,
+        ^^^^^^^^^^^^
+        greedy=False
+        ^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Mark Lawrence Quibot\AppData\Local\Programs\Python\Python313\Lib\site-packages\torch\utils\_contextlib.py", line 116, in decorate_context
+    return func(*args, **kwargs)
+  File "C:\Users\Mark Lawrence Quibot\repo\Research\Modular Stratego\stratego_dqn_clean\models\double_dqn.py", line 269, in act
+    q_values = self.online_network(state)  # (1, action_dim)
+  File "C:\Users\Mark Lawrence Quibot\AppData\Local\Programs\Python\Python313\Lib\site-packages\torch\nn\modules\module.py", line 1751, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\Mark Lawrence Quibot\AppData\Local\Programs\Python\Python313\Lib\site-packages\torch\nn\modules\module.py", line 1762, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "C:\Users\Mark Lawrence Quibot\repo\Research\Modular Stratego\stratego_dqn_clean\models\double_dqn.py", line 83, in forward
+    features = self.backbone(x)  # (B, 64, 10, 10)
+  File "C:\Users\Mark Lawrence Quibot\AppData\Local\Programs\Python\Python313\Lib\site-packages\torch\nn\modules\module.py", line 1751, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\Mark Lawrence Quibot\AppData\Local\Programs\Python\Python313\Lib\site-packages\torch\nn\modules\module.py", line 1762, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "C:\Users\Mark Lawrence Quibot\repo\Research\Modular Stratego\stratego_dqn_clean\models\resnet_backbone.py", line 113, in forward
+    x = F.relu(self.bn_in(self.conv_in(x)))
+                          ~~~~~~~~~~~~^^^
+  File "C:\Users\Mark Lawrence Quibot\AppData\Local\Programs\Python\Python313\Lib\site-packages\torch\nn\modules\module.py", line 1751, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\Mark Lawrence Quibot\AppData\Local\Programs\Python\Python313\Lib\site-packages\torch\nn\modules\module.py", line 1762, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "C:\Users\Mark Lawrence Quibot\AppData\Local\Programs\Python\Python313\Lib\site-packages\torch\nn\modules\conv.py", line 554, in forward
+    return self._conv_forward(input, self.weight, self.bias)
+           ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Mark Lawrence Quibot\AppData\Local\Programs\Python\Python313\Lib\site-packages\torch\nn\modules\conv.py", line 549, in _conv_forward
+    return F.conv2d(
+           ~~~~~~~~^
+        input, weight, bias, self.stride, self.padding, self.dilation, self.groups
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+RuntimeError: Given groups=1, weight of size [64, 79, 3, 3], expected input[1, 143, 10, 10] to have 79 channels, but got 143 channels instead

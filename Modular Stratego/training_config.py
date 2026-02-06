@@ -156,7 +156,14 @@ REF_POLICY_UPDATE_INTERVAL = 50000  # Update reference network every N steps
 ENTROPY_REG_ENABLED = False      # Disabled for Phase 1 to favor exploitation vs random opponents
 ENTROPY_COEFF_START = 0.1        # Initial entropy coefficient (used when re-enabled)
 ENTROPY_COEFF_END = 0.01         # Final entropy coefficient (decays over training)
+ENTROPY_COEFF_END = 0.01         # Final entropy coefficient (decays over training)
 ENTROPY_ANNEAL_EPISODES = 50000  # Episodes to anneal entropy coefficient
+
+# =============================================================================
+# NOISY NET REGULARIZATION (Exploration Control)
+# =============================================================================
+# Penalize high sigma to prevent over-exploration
+SIGMA_REG_WEIGHT = 0.01          # L2 penalty on sigma params
 
 # =============================================================================
 # ATARAXOS ADVANTAGE FILTERING (Training Efficiency)
@@ -170,7 +177,9 @@ ADVANTAGE_MIN_BATCH = 64          # Minimum batch size after filtering
 # ATARAXOS DYNAMIC DAMPING (Magnetic Regularization)
 # =============================================================================
 # Dual KL regularization with power-law annealing schedule
-DYNAMIC_DAMPING_ENABLED = True
+# Dual KL regularization with power-law annealing schedule
+DYNAMIC_DAMPING_ENABLED = False
+TOTAL_TRAINING_EPISODES = 100000  # For schedule normalization
 TOTAL_TRAINING_EPISODES = 100000  # For schedule normalization
 
 # Magnet Policy (toward uniform): Starts high, decays to prevent overconfidence
@@ -194,3 +203,12 @@ UE_MMD_STEP_SIZE = 0.1            # η for Magnetic Mirror Descent
 UE_TEMPERATURE = 0.5              # Softmax temperature for prior
 
 # REWARDS ARE NOW CONSOLIDATED IN distributional_reward.py
+
+# =============================================================================
+# DIAGNOSTIC SETTINGS (Learning Verification)
+# =============================================================================
+DIAGNOSTIC_ENABLED = True           # Enable Phase 1 diagnostics
+DIAGNOSTIC_LOG_INTERVAL = 100       # Log every N episodes
+DIAGNOSTIC_DEAD_GRAD_THRESHOLD = 1e-6  # Gradient norm below this = dead
+DIAGNOSTIC_DEAD_GRAD_CONSECUTIVE = 10  # Consecutive dead grads = failure
+

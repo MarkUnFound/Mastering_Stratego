@@ -23,6 +23,8 @@ from board import LAKE_SQUARE
 from networks import NoisyLinear, RainbowDQN
 from history_aggregator import HistoryAggregator
 from aaren import PieceActionAaren
+from diagnostics import DiagnosticTracker
+
 
 from prioritized_memory import StandardReplayBuffer, PrioritizedReplayBuffer, NStepBuffer, Experience
 
@@ -216,6 +218,8 @@ class RainbowAgent:
             self.target_kl_start = TARGET_KL_COEFF_START
             self.target_kl_end = TARGET_KL_COEFF_END
             self.target_kl_power = TARGET_KL_POWER
+            self.target_kl_end = TARGET_KL_COEFF_END
+            self.target_kl_power = TARGET_KL_POWER
         except ImportError:
             self.advantage_filtering = False
             self.oversample_factor = 4
@@ -228,6 +232,13 @@ class RainbowAgent:
             self.target_kl_start = 0.001
             self.target_kl_end = 0.1
             self.target_kl_power = 2.0
+            
+        # Exploration Regularization
+        try:
+            from training_config import SIGMA_REG_WEIGHT
+            self.sigma_reg_weight = SIGMA_REG_WEIGHT
+        except ImportError:
+            self.sigma_reg_weight = 0.0
         
         if device.type == 'cuda':
             torch.backends.cudnn.benchmark = True
@@ -310,6 +321,20 @@ class RainbowAgent:
         
         # Cache for state tensors (to avoid redundant computation in remember_batch)
         self._cached_state_tensor = None  # Cached from act_batch
+
+        # Diagnostics (Phase 1 Learning Verification)
+        try:
+            from training_config import DIAGNOSTIC_ENABLED, DIAGNOSTIC_LOG_INTERVAL, DIAGNOSTIC_DEAD_GRAD_THRESHOLD, DIAGNOSTIC_DEAD_GRAD_CONSECUTIVE
+            self.diagnostic_enabled = DIAGNOSTIC_ENABLED
+            if self.diagnostic_enabled:
+                self.diagnostics = DiagnosticTracker(
+                    log_interval=DIAGNOSTIC_LOG_INTERVAL,
+                    dead_grad_threshold=DIAGNOSTIC_DEAD_GRAD_THRESHOLD,
+                    dead_grad_consecutive=DIAGNOSTIC_DEAD_GRAD_CONSECUTIVE
+                )
+                print(f"[OK] [P{self.player_id}] Diagnostics enabled (log_interval={DIAGNOSTIC_LOG_INTERVAL})")
+        except ImportError:
+            self.diagnostic_enabled = False
 
 
     def reset(self):
@@ -522,6 +547,10 @@ class RainbowAgent:
         # SELF-IMITATION LEARNING: Detect winning experiences for priority boost
         # Win rewards are 10-15, so use 10.0 as threshold
         is_winning_experience = (reward_clipped >= 10.0 and done)
+
+        # --- DIAGNOSTICS: Signal Verification ---
+        if hasattr(self, 'diagnostic_enabled') and self.diagnostic_enabled:
+             self.diagnostics.signal_tracker.log_experience(reward, done)
         
         # Pass priority boost flags to PER (ignored by StandardBuffer)
         if hasattr(self.memory, 'add') and 'is_winning_experience' in self.memory.add.__code__.co_varnames:
@@ -1177,8 +1206,15 @@ class RainbowAgent:
             target_probs = target_log_probs.exp()
             target_kl_loss = beta_t * (target_probs * (target_log_probs - current_log_probs)).sum(dim=2).mean()
         
+        # Sigma Regularization (Exploration Control)
+        sigma_loss = torch.tensor(0.0, device=self.device)
+        if self.sigma_reg_weight > 0.0:
+            for name, param in self.q_network.named_parameters():
+                 if "sigma" in name:
+                      sigma_loss += param.square().mean()
+        
         # --- TOTAL LOSS ---
-        loss = c51_loss + self.kl_reg_weight * kl_loss - entropy_bonus + magnet_loss + target_kl_loss
+        loss = c51_loss + self.kl_reg_weight * kl_loss - entropy_bonus + magnet_loss + target_kl_loss + self.sigma_reg_weight * sigma_loss
         
         # Update reference network periodically (much slower than target)
         if self.kl_reg_enabled:
@@ -1199,6 +1235,36 @@ class RainbowAgent:
         if self.per_enabled and indices is not None:
             td_errors = elementwise_loss.detach().cpu().numpy()
             self.memory.update_priorities(indices, td_errors)
+            
+            # --- DIAGNOSTICS: Signal Verification ---
+            if self.diagnostic_enabled:
+                 # Ensure rewards is available (should be unpacked from sample)
+                 # rewards is a tensor on device, convert to numpy
+                 rewards_np = rewards.detach().cpu().numpy()
+                 self.diagnostics.signal_tracker.log_td_error(td_errors, rewards_np)
+        
+        # --- DIAGNOSTICS: Capture Q-values BEFORE update ---
+        q_before = None
+        sample_state = None
+        if self.diagnostic_enabled and episode is not None and episode % self.diagnostics.log_interval == 0:
+            with torch.no_grad():
+                # Use first state in batch for consistency
+                if isinstance(states, torch.Tensor):
+                    sample_state = states[0:1]
+                else:
+                    sample_state = states[0].unsqueeze(0)
+                q_before = self.q_network(sample_state).clone()
+                
+                # --- DIAGNOSTICS: Representation Verification ---
+                if hasattr(self.diagnostics, 'representation_tracker'):
+                     self.diagnostics.representation_tracker.log_embedding_stats(states)
+                     
+                # --- DIAGNOSTICS: Policy Verification ---
+                if hasattr(self.diagnostics, 'policy_tracker'):
+                    # Convert C51 Log Probs -> Expected Q (q_before is log_probs)
+                    probs = q_before.exp()
+                    expected_q = (probs * self.support).sum(dim=2) # (Batch, Actions)
+                    self.diagnostics.policy_tracker.log_policy_stats(expected_q)
              
         self.optimizer.zero_grad()
         
@@ -1220,6 +1286,25 @@ class RainbowAgent:
             
             torch.nn.utils.clip_grad_norm_(self.q_network.parameters(), max_norm=10.0)
             self.optimizer.step()
+            
+        # --- DIAGNOSTICS: Capture Q-values AFTER update ---
+        if self.diagnostic_enabled and q_before is not None and sample_state is not None:
+            with torch.no_grad():
+                # Re-eval same state to see parameter update effect
+                q_after = self.q_network(sample_state)
+                q_delta = (q_after - q_before).abs().max().item()
+            
+            # Retrieve gradient norm (captured in _capture_gradient_norms)
+            grad_norm = self._cached_dqn_grad_norm
+            
+            # Log step
+            self.diagnostics.log_step(episode, loss.item(), grad_norm, q_delta)
+            
+            # Check immediate failures (optional print)
+            failures = self.diagnostics.check_failure_conditions()
+            if failures:
+                for f in failures:
+                    print(f"[DIAG FAILURE] {f}")
             
         return loss.item()
 

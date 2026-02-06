@@ -982,6 +982,15 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
             
             tqdm.write(f"[SAVE] Models saved for episode {save_episode}")
             
+            # --- DIAGNOSTICS REPORT ---
+            if agent1.diagnostic_enabled:
+                failures = agent1.diagnostics.check_failure_conditions()
+                if failures:
+                    for f in failures:
+                        tqdm.write(f"[DIAG] {f}")
+                else:
+                    tqdm.write(f"[DIAG] Phase 1 OK - Gradients flowing, Q-values updating")
+            
             # Piece value tracking
             if piece_tracker is not None and save_episode % 500 == 0:
                 piece_tracker.log_comparison(save_episode)

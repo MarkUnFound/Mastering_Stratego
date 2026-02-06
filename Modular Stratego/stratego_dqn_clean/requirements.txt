@@ -1,0 +1,21 @@
+# Double DQN + AAREN for Stratego
+# Strict version requirements
+
+# Core ML
+torch>=2.0.0
+numpy>=1.24.0
+
+# Standard library (no version pinning needed)
+# collections, os, sys, time, json, random, typing, dataclasses - built-in
+
+# Optional: Visualization (uncomment if needed)
+# matplotlib>=3.7.0
+# tensorboard>=2.12.0
+
+# HARDWARE REQUIREMENTS:
+# - CUDA-capable GPU with >= 6GB VRAM (tested on RTX 3060 Laptop)
+# - CUDA 11.8+ recommended
+
+# PROHIBITED DEPENDENCIES (DO NOT INSTALL):
+# - transformers (Transformer architectures forbidden)
+# - any C51/Rainbow DQN implementations
