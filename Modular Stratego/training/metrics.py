@@ -48,7 +48,7 @@ class MetricsTracker:
             'losses_by_flag_history': [],
             'losses_by_depletion_history': [],
             
-            # PBS evaluator metrics
+            # Legacy PBS evaluator metric keys (kept for backward compatibility)
             'pbs_eval1_losses': [],
             'pbs_eval1_buffer_sizes': [],
             'pbs_eval1_accuracy': [],
@@ -68,7 +68,7 @@ class MetricsTracker:
             'avg_entropy_p1': [],
             'win_rate_100': [],
             'phase_history': [],
-            'pbs_accuracy': [],
+            'pbs_accuracy': [],  # Legacy key, now always 0
             'episode_end_steps': [],
             
             # State tracking
@@ -138,7 +138,7 @@ class MetricsTracker:
         self.metrics['phase_history'].append(phase)
         self.metrics['episode_end_steps'].append(global_step)
         
-        # PBS metrics
+        # Legacy PBS evaluator metrics (always zero — AAREN replaced PBS)
         if pbs_metrics:
             self.metrics['pbs_eval1_losses'].append(pbs_metrics.get('loss', 0.0))
             self.metrics['pbs_eval1_buffer_sizes'].append(pbs_metrics.get('buffer_size', 0))

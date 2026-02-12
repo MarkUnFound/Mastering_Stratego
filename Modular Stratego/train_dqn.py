@@ -5,7 +5,7 @@ Features:
 - Single-agent focus (Agent1 trains, Agent2 for opponents)
 - League training: Auto-switches from Agent2 to historical opponents
 - Diverse opponents: League (50%), Random (20%), Greedy (20%), Self (10%)
-- PBS/AAREN inference for fair opponent play
+- AAREN inference for fair opponent play
 """
 
 # Set matplotlib backend to non-interactive BEFORE any imports
@@ -37,8 +37,7 @@ from parallel_environment import ParallelStrategoEnvironment
 from drqn_agent import RainbowAgent
 from heuristic_setup import HeuristicSetupAgent
 from game_state import GameState
-from training_visualizer import plot_training_progress, create_training_gif, create_episode_gif, plot_pbs_evaluator_progress, plot_additional_metrics
-from pbs_visualizer import visualize_pbs_state, create_pbs_gif
+from training_visualizer import plot_training_progress, create_training_gif, create_episode_gif, plot_additional_metrics
 from piece import PieceType, PIECE_RANKS
 from board import LAKE_SQUARE
 
@@ -135,10 +134,10 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
     # Initialize Agents
     print("Initializing Rainbow Agents...")
     agent1 = RainbowAgent(player_id=1, device=device, lr=LEARNING_RATE, batch_size=batch_size, num_envs=num_envs, buffer_size=memory_size)
-    # Agent2: minimal buffer, no PBS (saves ~18% training time in early phases)
-    # PBS will be enabled for Agent 2 when reaching Phase 4
+    # Agent2: minimal buffer, no AAREN history (saves ~18% training time in early phases)
+    # AAREN history will be enabled for Agent 2 when reaching Phase 4
     agent2 = RainbowAgent(player_id=-1, device=device, lr=LEARNING_RATE, batch_size=batch_size, num_envs=num_envs, buffer_size=10000, use_pbs=False)
-    print("[INFO] Agent 2 PBS disabled for early phases (will enable at Phase 4)")
+    print("[INFO] Agent 2 AAREN history disabled for early phases (will enable at Phase 4)")
     
     # Initialize Setup Agents (using fast heuristic instead of neural network)
     # This saves ~2 seconds per episode while maintaining strategic setups
@@ -246,25 +245,8 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
 
     # (HeuristicSetupAgent doesn't need model loading)
 
-    # Load PBS Evaluators (if available)
-    pbs_eval1_files = glob.glob(os.path.join(model_save_path, "pbs_evaluator1_episode_*.pth"))
-    pbs_eval2_files = glob.glob(os.path.join(model_save_path, "pbs_evaluator2_episode_*.pth"))
-    
-    if pbs_eval1_files and agent1.pbs and hasattr(agent1.pbs, 'evaluator') and agent1.pbs.evaluator:
-        pbs_eval1_files.sort(key=extract_episode, reverse=True)
-        try:
-            agent1.pbs.evaluator.load_model(pbs_eval1_files[0])
-            print(f"[OK] Loaded PBS Evaluator 1 from {pbs_eval1_files[0]}")
-        except Exception as e:
-            print(f"[WARN] Could not load PBS Evaluator 1: {e}")
-            
-    if pbs_eval2_files and agent2.pbs and hasattr(agent2.pbs, 'evaluator') and agent2.pbs.evaluator:
-        pbs_eval2_files.sort(key=extract_episode, reverse=True)
-        try:
-            agent2.pbs.evaluator.load_model(pbs_eval2_files[0])
-            print(f"[OK] Loaded PBS Evaluator 2 from {pbs_eval2_files[0]}")
-        except Exception as e:
-            print(f"[WARN] Could not load PBS Evaluator 2: {e}")
+    # PBS evaluator loading removed — AAREN replaced PBS
+
     # Initialize Checkpointer and MetricsTracker (extracted modules)
     checkpointer = Checkpointer(save_dir=model_save_path)
     metrics_tracker = MetricsTracker(save_dir=model_save_path)
@@ -296,7 +278,7 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
     lane_episode_rewards_p2 = [0.0] * num_envs   # Cumulative reward per lane (P2 for visualization)
     lane_step_counts = [0] * num_envs         # Steps in current game per lane
     lane_opponent_types = ["self"] * num_envs # Opponent type per lane
-    lane_opponent_uses_pbs = [True] * num_envs  # Whether opponent uses PBS per lane
+    lane_opponent_uses_history = [True] * num_envs  # Whether opponent uses AAREN history per lane
     lane_current_opponents = [agent2] * num_envs  # Current opponent per lane
     
     # Track losses per episode for proper plotting
@@ -331,8 +313,8 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
     print(f"[INFO] AAREN History Aggregator: ENABLED ({HISTORY_EMBEDDING_SIZE}-dim embeddings per position)")
     print(f"   Input channels: 15 (board) + {HISTORY_EMBEDDING_SIZE} (AAREN) = {15 + HISTORY_EMBEDDING_SIZE}")
     
-    # PBS optimization: track steps for interval-based updates
-    from training_config import PBS_UPDATE_INTERVAL
+    # AAREN optimization: track steps for interval-based updates
+    from training_config import PBS_UPDATE_INTERVAL as HISTORY_UPDATE_INTERVAL
     
     # Helper function to generate placements and reset a single lane
 
@@ -342,7 +324,7 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
         Now selects opponent FIRST to determine correct setup type.
         """
         # 1. Select Opponent for this episode
-        opp_type, opp_uses_pbs, opp = select_opponent_for_lane(lane_idx)
+        opp_type, opp_uses_history, opp = select_opponent_for_lane(lane_idx)
         
         # 2. Setup Agent 1 (Always Heuristic/Smart)
         p1_pieces = parallel_env.call_method('_generate_pieces')
@@ -364,7 +346,7 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
             'p1_placement': p1_place, 
             'p2_placement': p2_place,
             'opp_type': opp_type,
-            'opp_uses_pbs': opp_uses_pbs,
+            'opp_uses_history': opp_uses_history,
             'opp': opp,
             'starting_player': starting_player
         }
@@ -376,7 +358,7 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
 
         
         opponent_type = "self"
-        opponent_uses_pbs = True
+        opponent_uses_history = True
         current_opponent = agent2
         
         if curriculum and CURRICULUM_ENABLED:
@@ -392,60 +374,60 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
             # Configure opponent based on type
             if opponent_type == "true_random":
                 current_opponent = true_random_agent
-                opponent_uses_pbs = False
+                opponent_uses_history = False
             elif opponent_type == "random":
                 current_opponent = random_agent
-                opponent_uses_pbs = False
+                opponent_uses_history = False
             elif opponent_type in ["heuristic", "frozen_heuristic"]:
                 current_opponent = heuristic_agent
-                opponent_uses_pbs = False
+                opponent_uses_history = False
             elif opponent_type == "smart_heuristic":
                 current_opponent = smart_heuristic_agent
-                opponent_uses_pbs = False
+                opponent_uses_history = False
             elif opponent_type == "greedy":
                 current_opponent = greedy_agent
-                opponent_uses_pbs = False
+                opponent_uses_history = False
             elif opponent_type == "league":
                 path = league_manager.get_opponent()
                 if path:
                     # Load league agent (shared agent2 weights)
                     agent2.load_model(path)
                     current_opponent = agent2
-                    opponent_uses_pbs = True
+                    opponent_uses_history = True
                 else:
                     opponent_type = "self"
                     agent2.q_network.load_state_dict(agent1.q_network.state_dict())
                     agent2.target_network.load_state_dict(agent1.target_network.state_dict())
                     current_opponent = agent2
-                    opponent_uses_pbs = True
+                    opponent_uses_history = True
             elif opponent_type == "exploiters":
                 current_opponent = get_random_exploiter(device, player_id=-1)
-                opponent_uses_pbs = False
+                opponent_uses_history = False
             else:  # self_500, self
                 agent2.q_network.load_state_dict(agent1.q_network.state_dict())
                 agent2.target_network.load_state_dict(agent1.target_network.state_dict())
                 current_opponent = agent2
-                opponent_uses_pbs = True
+                opponent_uses_history = True
         else:
             # Legacy mode: use opponent pool
             opponent_type, opponent_data = opponent_pool.select_opponent()
             if opponent_type == "league":
                 agent2.load_model(opponent_data)
                 current_opponent = agent2
-                opponent_uses_pbs = True
+                opponent_uses_history = True
             elif opponent_type == "random":
                 current_opponent = random_agent
-                opponent_uses_pbs = False
+                opponent_uses_history = False
             elif opponent_type == "greedy":
                 current_opponent = greedy_agent
-                opponent_uses_pbs = False
+                opponent_uses_history = False
             else:
                 agent2.q_network.load_state_dict(agent1.q_network.state_dict())
                 agent2.target_network.load_state_dict(agent1.target_network.state_dict())
                 current_opponent = agent2
-                opponent_uses_pbs = True
+                opponent_uses_history = True
         
-        return opponent_type, opponent_uses_pbs, current_opponent
+        return opponent_type, opponent_uses_history, current_opponent
     
     # Initial reset for all lanes
     # print(f"Initializing {num_envs} lanes...") # Duplicate print
@@ -458,7 +440,7 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
         
         # Select opponent for each lane (Now comes from reset_lane)
         lane_opponent_types[i] = reset_data['opp_type']
-        lane_opponent_uses_pbs[i] = reset_data['opp_uses_pbs']
+        lane_opponent_uses_history[i] = reset_data['opp_uses_history']
         lane_current_opponents[i] = reset_data['opp']
     
     # Reset all environments
@@ -471,7 +453,7 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
         initial_placements_p1[i] = reset_data['p1_placement']
         initial_placements_p2[i] = reset_data['p2_placement']
         lane_opponent_types[i] = reset_data['opp_type']
-        lane_opponent_uses_pbs[i] = reset_data['opp_uses_pbs']
+        lane_opponent_uses_history[i] = reset_data['opp_uses_history']
         lane_current_opponents[i] = reset_data['opp']
     
     # Reset environments with placements
@@ -485,9 +467,9 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
     lane_episode_loss_sum_p1 = np.zeros(num_envs)
     lane_episode_loss_count_p1 = np.zeros(num_envs, dtype=int)
     
-    # Reset PBS for all lanes
-    agent1.reset_pbs()
-    agent2.reset_pbs()
+    # Reset AAREN history for all lanes
+    agent1.reset_history()
+    agent2.reset_history()
     
     # State tracking for intervals
     last_replay_step = 0
@@ -660,13 +642,13 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                     
                     lane_pending_transitions[i] = None # Clear pending
             
-            # Update PBS
+            # Update AAREN history
             done_bool = dones[i].item() if hasattr(dones[i], 'item') else dones[i]
             if not done_bool:
-                if current_player == 1 and lane_opponent_uses_pbs[i]:
-                    agent2.update_pbs_batch([actions[i]], [lane_game_states[i]], acting_player=1)
+                if current_player == 1 and lane_opponent_uses_history[i]:
+                    agent2.update_history_batch([actions[i]], [lane_game_states[i]], acting_player=1)
                 elif current_player == -1 and not use_full_obs:
-                    agent1.update_pbs_batch([actions[i]], [lane_game_states[i]], acting_player=-1)
+                    agent1.update_history_batch([actions[i]], [lane_game_states[i]], acting_player=-1)
             
             
             # AAREN serves as memory aggregator - no separate training needed
@@ -747,29 +729,21 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                     curriculum.update_metrics({
                         'winner': winner,
                         'opponent_type': lane_opponent_types[i],
-                        'pbs_accuracy': agent1.pbs.avg_accuracy if agent1.pbs and hasattr(agent1.pbs, 'avg_accuracy') else 0.0
+                        'pbs_accuracy': agent1.history.avg_accuracy if agent1.history and hasattr(agent1.history, 'avg_accuracy') else 0.0
                     })
                 
                 # --- GRANULAR METRICS (Per Episode) ---
-                # PBS evaluator metrics
-                if agent1.pbs and hasattr(agent1.pbs, 'evaluator') and agent1.pbs.evaluator:
-                    eval1 = agent1.pbs.evaluator
-                    last_loss = eval1.training_losses[-1] if hasattr(eval1, 'training_losses') and eval1.training_losses else 0.0
-                    buffer_size = len(eval1.memory) if hasattr(eval1, 'memory') else 0
-                    metrics['pbs_eval1_losses'].append(last_loss)
-                    metrics['pbs_eval1_buffer_sizes'].append(buffer_size)
-                    metrics['pbs_eval1_accuracy'].append(getattr(eval1, 'avg_accuracy', 0.0))
-                else:
-                    metrics['pbs_eval1_losses'].append(0.0)
-                    metrics['pbs_eval1_buffer_sizes'].append(0)
-                    metrics['pbs_eval1_accuracy'].append(0.0)
+                # PBS evaluator metrics removed — AAREN replaced PBS evaluator
+                metrics['pbs_eval1_losses'].append(0.0)
+                metrics['pbs_eval1_buffer_sizes'].append(0)
+                metrics['pbs_eval1_accuracy'].append(0.0)
                 
                 # AAREN metrics (legacy + end-to-end)
-                if agent1.pbs:
-                    # Legacy (separate training)
-                    metrics['aaren_loss'].append(agent1.pbs.get_avg_loss() if hasattr(agent1.pbs, 'get_avg_loss') else 0.0)
-                    metrics['aaren_accuracy'].append(agent1.pbs.get_accuracy() if hasattr(agent1.pbs, 'get_accuracy') else 0.0)
-                    metrics['aaren_buffer_size'].append(agent1.pbs.get_buffer_size() if hasattr(agent1.pbs, 'get_buffer_size') else 0)
+                if agent1.history:
+                    # Legacy metric keys kept for backward compatibility
+                    metrics['aaren_loss'].append(agent1.history.get_avg_loss() if hasattr(agent1.history, 'get_avg_loss') else 0.0)
+                    metrics['aaren_accuracy'].append(agent1.history.get_accuracy() if hasattr(agent1.history, 'get_accuracy') else 0.0)
+                    metrics['aaren_buffer_size'].append(agent1.history.get_buffer_size() if hasattr(agent1.history, 'get_buffer_size') else 0)
                     
                     # End-to-end training metrics (gradient norms captured during replay)
                     aaren_grad = agent1.get_aaren_grad_norm() if hasattr(agent1, 'get_aaren_grad_norm') else 0.0
@@ -822,7 +796,7 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                 
                 # Update Opponent
                 lane_opponent_types[i] = reset_data['opp_type']
-                lane_opponent_uses_pbs[i] = reset_data['opp_uses_pbs']
+                lane_opponent_uses_history[i] = reset_data['opp_uses_history']
                 lane_current_opponents[i] = reset_data['opp']
                 
                 # Reset Lane State
@@ -836,10 +810,10 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                 lane_p2_shapers[i].reset()
                 lane_pending_transitions[i] = None
                 
-                if agent1.pbs_instances and i < len(agent1.pbs_instances):
-                    agent1.pbs_instances[i].reset()
-                if lane_opponent_uses_pbs[i] and agent2.pbs_instances and i < len(agent2.pbs_instances):
-                    agent2.pbs_instances[i].reset()
+                if agent1.history_instances and i < len(agent1.history_instances):
+                    agent1.history_instances[i].reset()
+                if lane_opponent_uses_history[i] and agent2.history_instances and i < len(agent2.history_instances):
+                    agent2.history_instances[i].reset()
             else:
                 # Continue Game
                 lane_current_player[i] *= -1
@@ -929,10 +903,10 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                     parallel_env.set_max_turns(new_max_turns)
                     tqdm.write(f"[INFO] Max turns updated to {new_max_turns}")
                     
-                    # Enable Agent 2 PBS at Phase 4
+                    # Enable Agent 2 AAREN history at Phase 4
                     if curriculum.current_phase.value >= 4 and not agent2.use_pbs:
-                        agent2.enable_pbs(num_envs)
-                        tqdm.write("[INFO] Agent 2 PBS ENABLED for Phase 4+")
+                        agent2.enable_history(num_envs)
+                        tqdm.write("[INFO] Agent 2 AAREN history ENABLED for Phase 4+")
         
         # --- LR SCHEDULER STEP (per fixed step interval) ---
         if agent1.scheduler and global_step % 1000 == 0:

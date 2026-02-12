@@ -40,7 +40,7 @@ def profile_training():
     stats = {
         'total_step_time': [],
         'act_batch_time': [],
-        'pbs_update_time': [],
+        'history_update_time': [],
         'env_step_time': [],
         'remember_time': [],
         'training_time': [],
@@ -92,13 +92,13 @@ def profile_training():
                 actions_list[idx] = action
         stats['act_batch_time'].append(time.perf_counter() - t0)
         
-        # 2. PBS Updates
+        # 2. History Updates (AAREN)
         t0 = time.perf_counter()
         if agent1_indices:
-            agent2.update_pbs_batch([actions_list[i] for i in agent1_indices], [states[i] for i in agent1_indices], acting_player=1)
+            agent2.update_history_batch([actions_list[i] for i in agent1_indices], [states[i] for i in agent1_indices], acting_player=1)
         if agent2_indices:
-            agent1.update_pbs_batch([actions_list[i] for i in agent2_indices], [states[i] for i in agent2_indices], acting_player=-1)
-        stats['pbs_update_time'].append(time.perf_counter() - t0)
+            agent1.update_history_batch([actions_list[i] for i in agent2_indices], [states[i] for i in agent2_indices], acting_player=-1)
+        stats['history_update_time'].append(time.perf_counter() - t0)
         
         # 3. Prepare Commands & Environment Step
         t0 = time.perf_counter()
@@ -152,14 +152,12 @@ def profile_training():
                 completed_episodes += 1
                 pbar.update(1)
 
-                agent1.reset_pbs(i)
-                agent2.reset_pbs(i)
+                agent1.reset_history()
+                agent2.reset_history()
                 
-                # Mimic train_dqn.py overhead
-                t_pbs = time.perf_counter()
-                agent1.train_pbs_evaluator(epochs=1)
-                agent2.train_pbs_evaluator(epochs=1)
-                stats['pbs_update_time'][-1] += (time.perf_counter() - t_pbs) # Add to PBS time
+                # AAREN trains end-to-end with agent, no separate training needed
+                t_hist = time.perf_counter()
+                stats['history_update_time'][-1] += (time.perf_counter() - t_hist)
 
         stats['remember_time'].append(time.perf_counter() - t0)
         
@@ -186,7 +184,7 @@ def profile_training():
     print(f"Avg Time per Step: {np.mean(stats['total_step_time']):.4f}s")
     print("-" * 30)
     print(f"Avg Act Batch Time: {np.mean(stats['act_batch_time']):.4f}s")
-    print(f"Avg PBS Update Time: {np.mean(stats['pbs_update_time']):.4f}s")
+    print(f"Avg History Update Time: {np.mean(stats['history_update_time']):.4f}s")
     print(f"Avg Env Step Time: {np.mean(stats['env_step_time']):.4f}s")
     print(f"Avg Remember Time: {np.mean(stats['remember_time']):.4f}s")
     print(f"Avg Training Time: {np.mean(stats['training_time']):.4f}s")

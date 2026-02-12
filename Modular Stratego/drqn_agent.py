@@ -1,7 +1,7 @@
 """
 Rainbow DQN Agent for Stratego Game
 Features:
-- Feed-Forward Architecture (relies on AAREN PBS for memory)
+- Feed-Forward Architecture (AAREN HistoryAggregator for memory)
 - Noisy Nets for Exploration (No epsilon-greedy)
 - C51 Distributional RL (Categorical DQN)
 - Dueling Architecture
@@ -89,9 +89,9 @@ class RainbowAgent:
         self.support = torch.linspace(self.v_min, self.v_max, self.num_atoms, device=device)
         self.delta_z = (self.v_max - self.v_min) / (self.num_atoms - 1)
         
-        # Probabilistic Belief State
-        self.pbs = None
-        self.pbs_instances = []
+        # History tracking (AAREN)
+        self.pbs = None  # Legacy alias for self.history
+        self.pbs_instances = []  # Legacy alias for self.history_instances
         self.action_pbs_buffer = {} 
         
         # Import AAREN optimization settings
@@ -132,7 +132,7 @@ class RainbowAgent:
                 self.history = HistoryAggregator(player_id, device, hidden_size=AAREN_HIDDEN_SIZE)
                 self.history_instances = [self.history]
         
-        # Legacy PBS references for backward compatibility (point to history)
+        # Legacy aliases (point to history)
         self.pbs = self.history
         self.pbs_instances = self.history_instances
         
@@ -321,21 +321,24 @@ class RainbowAgent:
         self.step_count = 0
         self.update_target_network()
         
-        self.reset_pbs()
+        self.reset_history()
             
-    def reset_pbs(self):
-        """Reset the PBS module state."""
-        if self.pbs:
+    def reset_history(self):
+        """Reset the history aggregator state."""
+        if self.history:
             if self.num_envs > 1:
-                for pbs in self.pbs_instances:
-                    pbs.reset()
+                for h in self.history_instances:
+                    h.reset()
             else:
-                self.pbs.reset()
+                self.history.reset()
 
-    def enable_pbs(self, num_envs: int = None):
+    # Backward compatibility alias
+    reset_pbs = reset_history
+
+    def enable_history(self, num_envs: int = None):
         """
-        Enable PBS for an agent that was created with use_pbs=False.
-        This is used during curriculum phase transitions to dynamically enable PBS.
+        Enable AAREN history aggregation for an agent created with use_pbs=False.
+        Used during curriculum phase transitions to dynamically enable AAREN.
         
         Args:
             num_envs: Number of parallel environments (uses self.num_envs if not provided)
@@ -349,50 +352,42 @@ class RainbowAgent:
         self.use_pbs = True
         self.num_envs = num_envs
         
-        # Import AAREN optimization settings
+        # Import AAREN settings
         try:
-            from training_config import AAREN_HIDDEN_SIZE, AAREN_NUM_LAYERS, AAREN_USE_TORCHSCRIPT
+            from training_config import AAREN_HIDDEN_SIZE, AAREN_NUM_LAYERS
         except ImportError:
-            AAREN_HIDDEN_SIZE = 32
+            AAREN_HIDDEN_SIZE = 64
             AAREN_NUM_LAYERS = 2
-            AAREN_USE_TORCHSCRIPT = True
         
         if num_envs > 1:
-            # Create shared models for parallel environments with optimized settings
+            # Create shared AAREN for parallel environments
             self.shared_aaren = PieceActionAaren(
                 input_size=24, hidden_size=AAREN_HIDDEN_SIZE, 
                 num_layers=AAREN_NUM_LAYERS, output_size=12, device=self.device
             ).to(self.device)
             
-            # TorchScript compilation for faster inference
-            if AAREN_USE_TORCHSCRIPT:
-                try:
-                    self.shared_aaren = torch.jit.script(self.shared_aaren)
-                    print(f"[OK] AAREN TorchScript compilation successful (enable_pbs)")
-                except Exception as e:
-                    print(f"[WARN] AAREN TorchScript failed, using eager mode: {e}")
-            
-            self.shared_aaren_optimizer = optim.AdamW(self.shared_aaren.parameters(), lr=0.001, weight_decay=0.01)
-            
-            self.shared_evaluator = None
-            if PBS_EVALUATOR_AVAILABLE:
-                self.shared_evaluator = PBSEvaluator(device=self.device)
-            
-            self.pbs_instances = []
             for _ in range(num_envs):
-                pbs_instance = ProbabilisticBeliefState(
+                history_instance = HistoryAggregator(
                     self.player_id, self.device, 
-                    shared_aaren_model=self.shared_aaren,
-                    shared_evaluator=self.shared_evaluator
+                    hidden_size=AAREN_HIDDEN_SIZE,
+                    num_layers=AAREN_NUM_LAYERS,
+                    shared_aaren_model=self.shared_aaren
                 )
-                pbs_instance.aaren_optimizer = self.shared_aaren_optimizer
-                self.pbs_instances.append(pbs_instance)
-            self.pbs = self.pbs_instances[0]
+                history_instance.optimizer = None  # Uses main optimizer
+                self.history_instances.append(history_instance)
+            self.history = self.history_instances[0]
         else:
-            self.pbs = ProbabilisticBeliefState(self.player_id, self.device)
-            self.pbs_instances = [self.pbs]
+            self.history = HistoryAggregator(self.player_id, self.device, hidden_size=AAREN_HIDDEN_SIZE)
+            self.history_instances = [self.history]
         
-        print(f"[OK] PBS enabled for {self.name} ({num_envs} environments)")
+        # Update legacy aliases
+        self.pbs = self.history
+        self.pbs_instances = self.history_instances
+        
+        print(f"[OK] AAREN history enabled for {self.name} ({num_envs} environments)")
+
+    # Backward compatibility alias
+    enable_pbs = enable_history
 
     def update_target_network(self):
         """Soft update target network."""
@@ -669,10 +664,8 @@ class RainbowAgent:
             
         self.q_network.train()
         
-        # Uncertainty handling (same as before)
+        # Uncertainty is now implicitly handled via AAREN embeddings
         uncertainty_map = {}
-        if self.pbs and game_state:
-            uncertainty_map = self.pbs.get_uncertainty_map(game_state)
             
         # Filter valid moves - now includes Scout multi-step moves
         valid_q_values = []
@@ -716,8 +709,8 @@ class RainbowAgent:
         best_move_idx = np.argmax(valid_q_values)
         best_move = valid_moves_filtered[best_move_idx]
         
-        if self.pbs and game_state:
-            self.store_action_pbs_state(best_move, base_q_values.unsqueeze(0), uncertainty_map, game_state)
+        if self.history and game_state:
+            self.store_action_state(best_move, base_q_values.unsqueeze(0), uncertainty_map, game_state)
             
         return best_move
 
@@ -921,18 +914,16 @@ class RainbowAgent:
                 best_move_idx = np.argmax(valid_q_values)
                 actions[i] = valid_moves_filtered[best_move_idx]
             
-            if self.pbs_instances and game_states and game_states[i]:
+            if self.history_instances and game_states and game_states[i]:
                 actual_env_idx = env_indices[i]
-                self.store_action_pbs_state(actions[i], expected_q_values[i].unsqueeze(0), uncertainty_maps[i], game_states[i], env_idx=actual_env_idx)
+                self.store_action_state(actions[i], expected_q_values[i].unsqueeze(0), uncertainty_maps[i], game_states[i], env_idx=actual_env_idx)
         
         return actions
 
-    def update_pbs_batch(self, actions: List[Optional[Tuple[Tuple[int, int], Tuple[int, int]]]], 
+    def update_history_batch(self, actions: List[Optional[Tuple[Tuple[int, int], Tuple[int, int]]]], 
                         game_states: List, acting_player: int):
         """
         Update history aggregator for a batch of actions from the opponent.
-        Legacy method name kept for backward compatibility.
-        
         Uses HistoryAggregator's update() method to track action history per position.
         """
         if not self.history:
@@ -958,10 +949,12 @@ class RainbowAgent:
             if game_state:
                 history_instance.update(action, game_state, acting_player)
 
-    def train_pbs(self, epochs: int = 5):
+    # Backward compatibility alias
+    update_pbs_batch = update_history_batch
+
+    def train_history(self, epochs: int = 5):
         """
         Train the history aggregator (AAREN) model using collected reveal data.
-        Legacy method name kept for backward compatibility.
         """
         if not self.history:
             return
@@ -982,6 +975,9 @@ class RainbowAgent:
                 return self.history.train(epochs=epochs)
         
         return None
+
+    # Backward compatibility alias
+    train_pbs = train_history
 
     def replay(self, batch_size=None, episode=None) -> Optional[float]:
         """
@@ -1469,9 +1465,12 @@ class RainbowAgent:
             return uncertainty_map[r2, c2]
         return 0.0
 
-    def store_action_pbs_state(self, action, q_values, uncertainty_map, game_state, env_idx=0):
+    def store_action_state(self, action, q_values, uncertainty_map, game_state, env_idx=0):
         """
-        Store PBS state for visualization/debugging.
+        Store action state for visualization/debugging.
         """
         # This is just for visualization, not core logic.
         pass
+
+    # Backward compatibility alias
+    store_action_pbs_state = store_action_state

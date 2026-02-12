@@ -4,7 +4,7 @@ INTERACTIVE MODE: Single-lane, visualizations enabled.
 
 Features:
 - Real-time visualization of Board, Q-Values, and Gradients.
-- Interactive controls (Toggle PBS, Pause, etc.)
+- Interactive controls (Toggle AAREN, Pause, etc.)
 - Visual Curriculum Transitions
 """
 
@@ -96,9 +96,9 @@ class VisualRainbowAgent(RainbowAgent):
         Optionally uses test-time search if enabled.
         """
         # Respect the toggle: if use_pbs is False, pass None to force internal padding
-        pbs_instance = self.pbs if self.use_pbs else None
+        history_instance = self.history if self.use_pbs else None
         
-        state_tensor = self.get_state_representation(state, pbs_instance=pbs_instance)
+        state_tensor = self.get_state_representation(state, pbs_instance=history_instance)
         if state_tensor.dim() == 3:
             state_tensor = state_tensor.unsqueeze(0)
             
@@ -114,10 +114,8 @@ class VisualRainbowAgent(RainbowAgent):
         # --- Visualization Capture ---
         q_map = np.full((10, 10), -np.inf)
         
-        # Uncertainty handling (only if PBS active)
+        # Uncertainty is now implicitly handled via AAREN embeddings
         uncertainty_map = {}
-        if self.use_pbs and self.pbs and game_state:
-            uncertainty_map = self.pbs.get_uncertainty_map(game_state)
             
         valid_q_values = []
         best_q = -float('inf')
@@ -283,7 +281,7 @@ def visual_train():
         'paused': False,
         'step_by_step': False,
         'run_speed': 0.1,
-        'pbs_active': True,
+        'aaren_active': True,
         'search_active': False,  # Test-time search toggle
         'manual_step_trigger': False
     }
@@ -294,14 +292,14 @@ def visual_train():
         text = (
             f"Phase: {curriculum.current_phase.name} ({curriculum.current_phase.value})\n"
             f"Step Speed: {state_vars['run_speed']:.2f}s\n"
-            f"PBS Active: {state_vars['pbs_active']}\n"
+            f"AAREN Active: {state_vars['aaren_active']}\n"
             f"Search Active: {state_vars['search_active']}\n"
             f"Paused: {state_vars['paused']}\n\n"
             "CONTROLS:\n"
             "[SPACE]: Pause/Resume\n"
             "[RIGHT]: Step (if paused)\n"
             "[UP/DOWN]: Speed +/- \n"
-            "[P]: Toggle PBS-AAREN\n"
+            "[A]: Toggle AAREN\n"
             "[S]: Toggle Search\n"
             "[C]: Force Curriculum Check"
         )
@@ -318,10 +316,10 @@ def visual_train():
             state_vars['run_speed'] = max(0.01, state_vars['run_speed'] / 2)
         elif event.key == 'down':
             state_vars['run_speed'] = min(2.0, state_vars['run_speed'] * 2)
-        elif event.key == 'p':
-            state_vars['pbs_active'] = not state_vars['pbs_active']
-            agent1.use_pbs = state_vars['pbs_active']
-            print(f"PBS Toggled: {state_vars['pbs_active']}")
+        elif event.key == 'a':
+            state_vars['aaren_active'] = not state_vars['aaren_active']
+            agent1.use_pbs = state_vars['aaren_active']
+            print(f"AAREN Toggled: {state_vars['aaren_active']}")
         elif event.key == 's':
             state_vars['search_active'] = not state_vars['search_active']
             print(f"🔍 Search Toggled: {state_vars['search_active']}")
@@ -345,7 +343,7 @@ def visual_train():
         while True:
             # 1. Determine Opponent
             opponent_type = "self"
-            opponent_uses_pbs = True
+            opponent_uses_history = True
             current_opponent = rainbow_agent2
             
             if curriculum:
@@ -361,16 +359,16 @@ def visual_train():
                 # Configure opponent (Simplified selection)
                 if opponent_type == "random":
                     current_opponent = random_agent
-                    opponent_uses_pbs = False
+                    opponent_uses_history = False
                 elif opponent_type == "greedy":
                     current_opponent = greedy_agent
-                    opponent_uses_pbs = False
+                    opponent_uses_history = False
                 elif opponent_type == "league":
                     path = league_manager.get_opponent()
                     if path:
                         rainbow_agent2.load_model(path)
                         current_opponent = rainbow_agent2
-                        opponent_uses_pbs = True
+                        opponent_uses_history = True
                     else:
                         opponent_type = "self" # Fallback
                         current_opponent = rainbow_agent2
@@ -407,10 +405,10 @@ def visual_train():
             episode_reward1 = 0
             steps = 0
             
-            # Ensure PBS state is reset
-            if agent1.pbs: agent1.reset_pbs()
-            if opponent_uses_pbs and hasattr(current_opponent, 'reset_pbs'): 
-                current_opponent.reset_pbs()
+            # Ensure AAREN history state is reset
+            if agent1.history: agent1.reset_history()
+            if opponent_uses_history and hasattr(current_opponent, 'reset_history'): 
+                current_opponent.reset_history()
             
             while not done:
                 # Pause Logic
@@ -433,7 +431,7 @@ def visual_train():
                 ground_truth = env.board.actual_board
                 observation = None
                 
-                if state_vars['pbs_active']:
+                if state_vars['aaren_active']:
                     # Fog Mode: Use observation to filter visibility
                     observation = env.board.get_visible_board(1)
                 else:
@@ -493,10 +491,10 @@ def visual_train():
                 else:
                     action = current_opponent.act(state, valid_moves)
                     
-                    # Update PBS for Agent 1 based on opponent move (inference)
-                    if agent1.pbs and agent1.use_pbs:
+                    # Update AAREN history for Agent 1 based on opponent move (inference)
+                    if agent1.history and agent1.use_pbs:
                         if action:
-                            agent1.update_pbs_batch([action], [state], acting_player=-1)
+                            agent1.update_history_batch([action], [state], acting_player=-1)
                 
                 # 3. Step
                 next_state, reward, done, info = env.step(action)
@@ -545,8 +543,8 @@ def visual_train():
                     # Curriculum Update
                     winner = info.get('winner')
                     pbs_acc = 0.8 # Mock accuracy since we don't have true labels easily in loop
-                    if agent1.pbs and hasattr(agent1.pbs, 'avg_accuracy'):
-                        pbs_acc = agent1.pbs.avg_accuracy
+                    if agent1.history and hasattr(agent1.history, 'avg_accuracy'):
+                        pbs_acc = agent1.history.avg_accuracy
                         
                     curriculum.update_metrics({
                         'winner': winner,

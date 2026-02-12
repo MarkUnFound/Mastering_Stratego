@@ -76,10 +76,8 @@ def analyze_moves(agent: RainbowAgent, game_state, valid_moves: List[Tuple[Tuple
     # 1. Get State
     state = agent.get_state_representation(game_state)
     
-    # 2. Get Uncertainty Map
+    # 2. Get Uncertainty Map (now implicitly handled via AAREN)
     uncertainty_map = {}
-    if agent.pbs and game_state is not None:
-        uncertainty_map = agent.pbs.get_uncertainty_map(game_state)
 
     # 3. Base Q-values (Expected Value for Rainbow)
     # Ensure state is correct shape/device
@@ -229,10 +227,9 @@ def run_visualization():
         # Execute Step
         game_state, reward, done, info = env.step(action)
         
-        # Update PBS for BOTH agents (crucial for tracking)
-        # The acting agent updates based on its own action (if needed, usually implicit in act/learn)
-        # The OPPONENT updates based on the action they just saw
-        opponent_agent.update_pbs_from_action(action, game_state, acting_player=current_player)
+        # Update AAREN history for BOTH agents (tracking opponent actions)
+        if hasattr(opponent_agent, 'update_history_batch'):
+            opponent_agent.update_history_batch([action], [game_state], acting_player=current_player)
         
         move_count += 1
         

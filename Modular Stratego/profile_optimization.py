@@ -3,28 +3,25 @@ import time
 import torch
 import numpy as np
 import copy
-from drqn_agent import DRQNAgent
+from drqn_agent import RainbowAgent
 from game_state import GameState
 from piece import PieceType
-from pbs import ProbabilisticBeliefState
+from history_aggregator import HistoryAggregator
 
-def benchmark_pbs_update():
-    print("--- Benchmarking PBS Update ---")
+def benchmark_history_update():
+    print("--- Benchmarking History Aggregator Update ---")
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
     
-    # Initialize Agent and PBS
-    agent = DRQNAgent(player_id=1, device=device, num_envs=32)
-    # Ensure PBS is initialized
-    if agent.pbs is None:
-        agent.pbs = ProbabilisticBeliefState(player_id=1, device=device)
+    # Initialize Agent with AAREN history
+    agent = RainbowAgent(player_id=1, device=device, num_envs=32)
     
     # Create mock batch
     batch_size = 32
     actions = []
     game_states = []
     
-    # Create a dummy game state
+    # Create a dummy game state with tensors
     board = torch.zeros((10, 10), dtype=torch.int32, device=device)
     # Add some pieces
     board[0, 0] = 2 # Scout
@@ -42,7 +39,7 @@ def benchmark_pbs_update():
         revealed_pieces_p2={}
     )
     
-    # Add actual_board for PBS to see "hidden" pieces
+    # Add actual_board for history to see "hidden" pieces
     dummy_state.actual_board = board
     
     for i in range(batch_size):
@@ -51,17 +48,14 @@ def benchmark_pbs_update():
         actions.append(action)
         game_states.append(dummy_state)
         
-    # Create multiple PBS instances to simulate parallel envs
-    agent.pbs_instances = [ProbabilisticBeliefState(player_id=1, device=device, shared_aaren_model=agent.shared_aaren) for _ in range(batch_size)]
-    
     # Warmup
-    agent.update_pbs_batch(actions, game_states, acting_player=-1) # acting_player=-1 so agent 1 updates beliefs about agent 2
+    agent.update_history_batch(actions, game_states, acting_player=-1)
     
     # Benchmark
     start_time = time.time()
     iterations = 10
     for _ in range(iterations):
-        agent.update_pbs_batch(actions, game_states, acting_player=-1)
+        agent.update_history_batch(actions, game_states, acting_player=-1)
     end_time = time.time()
     
     avg_time = (end_time - start_time) / iterations
@@ -114,4 +108,4 @@ def benchmark_gamestate_clone():
 
 if __name__ == "__main__":
     benchmark_gamestate_clone()
-    benchmark_pbs_update()
+    benchmark_history_update()

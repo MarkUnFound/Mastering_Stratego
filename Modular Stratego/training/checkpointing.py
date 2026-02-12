@@ -72,29 +72,7 @@ class Checkpointer:
         
         return start_episode
     
-    def load_pbs_evaluators(self, agent1, agent2) -> None:
-        """Load PBS evaluators for agents."""
-        # Agent 1 PBS
-        if agent1.pbs and hasattr(agent1.pbs, 'evaluator') and agent1.pbs.evaluator:
-            result = self.find_latest_checkpoint("pbs_evaluator1_episode_*.pth")
-            if result:
-                path, _ = result
-                try:
-                    agent1.pbs.evaluator.load_model(path)
-                    print(f"[OK] Loaded PBS Evaluator 1 from {path}")
-                except Exception as e:
-                    print(f"[WARN] Could not load PBS Evaluator 1: {e}")
-        
-        # Agent 2 PBS
-        if agent2.pbs and hasattr(agent2.pbs, 'evaluator') and agent2.pbs.evaluator:
-            result = self.find_latest_checkpoint("pbs_evaluator2_episode_*.pth")
-            if result:
-                path, _ = result
-                try:
-                    agent2.pbs.evaluator.load_model(path)
-                    print(f"[OK] Loaded PBS Evaluator 2 from {path}")
-                except Exception as e:
-                    print(f"[WARN] Could not load PBS Evaluator 2: {e}")
+    # load_pbs_evaluators removed — AAREN replaced PBS
     
     def save_checkpoint(
         self,
@@ -115,13 +93,7 @@ class Checkpointer:
         if episode % league_interval == 0:
             league_manager.save_agent(agent1_path, episode)
         
-        # Save PBS evaluators
-        if agent1.pbs and hasattr(agent1.pbs, 'evaluator') and agent1.pbs.evaluator:
-            try:
-                pbs_path = os.path.join(self.save_dir, f"pbs_evaluator1_episode_{episode}.pth")
-                agent1.pbs.evaluator.save_model(pbs_path)
-            except Exception:
-                pass
+        # PBS evaluator saving removed — AAREN replaced PBS
         
         # Save curriculum state
         if curriculum:
@@ -170,23 +142,17 @@ class Checkpointer:
             
             # AAREN End-to-End Training Visualization
             try:
-                from training_visualizer import plot_pbs_evaluator_progress
-                plot_pbs_evaluator_progress(
+                from training_visualizer import plot_aaren_progress
+                plot_aaren_progress(
                     episode_history=plot_data['episode_history'],
-                    evaluator1_losses=metrics_tracker.metrics.get('pbs_eval1_losses', [0.0] * num_eps),
-                    evaluator2_losses=[0.0] * num_eps,  # Agent 2 doesn't train
-                    evaluator1_buffer_sizes=metrics_tracker.metrics.get('pbs_eval1_buffer_sizes', [0] * num_eps),
-                    evaluator2_buffer_sizes=[0] * num_eps,
-                    save_path=os.path.join(self.save_dir, f"aaren_progress_episode_{episode}.png"),
-                    total_episodes=episode,
-                    # Legacy AAREN (separate training)
                     aaren_losses=metrics_tracker.metrics.get('aaren_loss', []),
                     aaren_accuracies=metrics_tracker.metrics.get('aaren_accuracy', []),
                     aaren_buffer_sizes=metrics_tracker.metrics.get('aaren_buffer_size', []),
-                    # End-to-end AAREN training metrics
                     aaren_grad_norms=metrics_tracker.metrics.get('aaren_grad_norm', []),
                     aaren_embedding_stds=metrics_tracker.metrics.get('aaren_embedding_std', []),
-                    dqn_grad_norms=metrics_tracker.metrics.get('dqn_grad_norm', [])
+                    dqn_grad_norms=metrics_tracker.metrics.get('dqn_grad_norm', []),
+                    save_path=os.path.join(self.save_dir, f"aaren_progress_episode_{episode}.png"),
+                    total_episodes=episode
                 )
             except Exception as aaren_plot_err:
                 print(f"[WARN] AAREN progress plot failed: {aaren_plot_err}")

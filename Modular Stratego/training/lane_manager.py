@@ -43,7 +43,7 @@ class LaneManager:
         
         # Opponent tracking per lane
         self.opponent_types: List[str] = ["self"] * num_lanes
-        self.opponent_uses_pbs: List[bool] = [True] * num_lanes
+        self.opponent_uses_history: List[bool] = [True] * num_lanes
         self.current_opponents: List[Any] = [None] * num_lanes
         
         # Pending transitions for P1 (when waiting for P2's move)
@@ -83,10 +83,10 @@ class LaneManager:
         self.game_states[lane_idx] = state
         self.valid_moves[lane_idx] = valid_moves
     
-    def set_opponent(self, lane_idx: int, opp_type: str, uses_pbs: bool, opponent: Any) -> None:
+    def set_opponent(self, lane_idx: int, opp_type: str, uses_history: bool, opponent: Any) -> None:
         """Set opponent for a lane."""
         self.opponent_types[lane_idx] = opp_type
-        self.opponent_uses_pbs[lane_idx] = uses_pbs
+        self.opponent_uses_history[lane_idx] = uses_history
         self.current_opponents[lane_idx] = opponent
     
     def increment_step(self, lane_idx: int) -> None:
