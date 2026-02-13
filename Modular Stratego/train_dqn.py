@@ -650,9 +650,15 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                 elif current_player == -1 and not use_full_obs:
                     agent1.update_history_batch([actions[i]], [lane_game_states[i]], acting_player=-1)
             
-            
-            # AAREN serves as memory aggregator - no separate training needed
-            # The agent learns end-to-end through DQN gradient flow
+            # Feed reveal data to AAREN for supervised training
+            # When battles occur, the environment returns revealed piece types
+            if infos[i].get('revealed_in_step'):
+                for pos, piece_type in infos[i]['revealed_in_step']:
+                    if agent1.history_instances and i < len(agent1.history_instances):
+                        game_phase = "early" if lane_step_counts[i] < 50 else ("mid" if lane_step_counts[i] < 200 else "end")
+                        agent1.history_instances[i].update_from_reveal(
+                            pos, piece_type, game_phase=game_phase, turn_count=lane_step_counts[i]
+                        )
             
             # Check for Game End
             if done_bool:
@@ -912,8 +918,11 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
         if agent1.scheduler and global_step % 1000 == 0:
             agent1.scheduler.step()
         
-        # AAREN serves as memory aggregator - learns end-to-end with agent
-        # No separate training needed (unlike PBS which required explicit updates)
+        # Train AAREN supervised model periodically (lightweight cross-entropy on reveal data)
+        if global_step % (REPLAY_UPDATE_INTERVAL * 10) == 0:
+            aaren_loss = agent1.train_history(epochs=1)
+            if aaren_loss is not None:
+                tqdm.write(f"[AAREN] Supervised loss: {aaren_loss:.4f}")
         
         # --- PERIODIC PLOTTING (every plot_interval episodes) ---
         if metrics_tracker.should_plot(completed_episodes, plot_interval):

@@ -1,16 +1,13 @@
 \chapter{Methodology}
-This chapter outlines the methodology employed to evaluate the effectiveness of the MARQ framework in solving mind sports with imperfect information. The approach involves the development of a competitive system, followed by the evaluation of its performance through win-rate analysis against human players and an assessment of its adaptability across diverse game environments. The subsequent sections detail the processes and methods that will be used to achieve these research objectives.
+This chapter explains how we tested the MARQ framework's ability to solve games with hidden information. We built a competitive system and then tested its win-rate against human players and its adaptability across different games. The following sections describe the steps we took.
 
 \section{Project Planning}
-This research will be conducted according to a structured plan encompassing participant selection, sample size determination, and experimental procedures. The project will follow a rapid prototyping approach for the design and implementation of the MARQ framework. The timeline is segmented into four distinct phases. The development phase will run from September 2025 to February 2026, beginning with game environment development from September through November 2025, followed by agent training from December 2025 to January 2026, and concluding with system deployment in February 2026. The user testing phase will take place in March 2026, involving one-on-one matches and data collection activities. The final analysis and documentation phase will commence in April 2026, focusing on data analysis and manuscript preparation.
+We conducted this research using a plan that includes choosing participants and setting up the experiment. We used a rapid prototyping method to design and build the MARQ framework. The development phase ran from September 2025 to February 2026, including building the game environment and training the agent. User testing took place in March 2026, and we analyzed the data in April 2026.
 
 \subsection{Community Introduction to Stratego}
-The introduction of the game Stratego to the participant community is a prerequisite for this study. This necessity arises from a complete lack of available local participants possessing prior knowledge of the game's rules or strategies. Unlike more popular games like Chess, Stratego's niche status means a pre-existing pool of experienced players is not available for participation to test against the MARQ framework. Therefore, a structured introduction is essential to cultivate the necessary participant cohort from the ground up. This approach ensures all participants begin with a uniform baseline understanding. It allows for the parallel development of both human expertise and artificial intelligence, creating a synchronized learning environment where the adaptive capabilities of the MARQ framework can be fairly assessed against a human cohort that is also in the process of learning.
+We introduced Stratego to the participants first because none of them knew the rules or strategies. Stratego is a niche game, so there weren't many experienced players available to test against our model. By teaching everyone the game from scratch, we ensured that both the humans and the AI were learning at the same time, making the test fairer.
 
-\subsection{Participant Selection}
-The participant selection process is designed to recruit a cohort of 20 individuals via convenience sampling, taking into account the project's resource constraints while still yielding a sufficient sample. The target demographic is enthusiasts of strategic mind sports of a diverse age and game experience.
-
-Prospective participants will be screened to evaluate two key attributes. Their strategic game experience is key to ensuring a baseline aptitude, and second, their confirmed lack of prior knowledge of Stratego to ensure the study's "synchronized learning" premise. Ultimately, only those who successfully finish the screening phase will be admitted, guaranteeing they possess the necessary foundational skills to provide meaningful interaction with the MARQ framework and substantive feedback.
+We chose 20 people based on their availability for our study. We looked for strategic game fans of different ages and backgrounds. We checked each person to make sure they had some experience with strategy games but didn't know how to play Stratego. This way, we knew they were skilled enough to play but were also starting fresh with this specific game.
 
 \subsection{Experimental Procedures}
 One-on-one matches between human participants and the MARQ framework will be conducted on-site using a single device. To ensure consistency, each participant will receive a checklist outlining the procedures for interacting with the game.
@@ -107,10 +104,10 @@ Flag$^{\ddagger}$ & 0.1 & --- & --- \\
 
 These values inform the material reward component of the reward shaping function described in subsequent sections.
 
-\subsection{Handling Imperfect Information: AAREN History Aggregation}
-A fundamental challenge in Stratego is the hidden identity of opponent pieces. Rather than maintaining explicit probability distributions over piece identities, the system employs an end-to-end learned approach inspired by DeepNash \cite{perolat2022mastering}. The Action-Augmented Recurrent Encoder (AAREN) module serves as a history aggregator that produces learned embeddings from observed opponent behavior, allowing the agent network to implicitly infer piece identities through gradient-based optimization.
+\subsection{Using AAREN to Remember Game History}
+The main challenge in Stratego is that you don't know the opponent's pieces. Instead of keeping simple counts of piece identities, the system uses a method learned from start to finish, inspired by DeepNash \cite{perolat2022mastering}. The Action-Augmented Recurrent Encoder (AAREN) module gathers history and creates embeddings from the opponent's moves, which help the agent guess what the pieces are.
 
-To address the "sparse death" problem common in historical encoders—where the absence of move history for a piece results in uninformative zero tensors—the implementation introduces a learnable default embedding. This embedding is designed to serve as a robust prior, potentially ensuring stable gradient flow from the first turn of the game. The effectiveness of this mechanism is currently under evaluation as part of a PBS ablation study.
+To solve the "sparse death" problem where a lack of move history leads to unhelpful zero tensors, we added a learnable default embedding. This helps the network have a starting point and keeps training stable from the very first turn. We are still testing how well this works in our studies.
 
 \paragraph{Action Feature Extraction.}
 For each observed opponent action, AAREN extracts a 24-dimensional feature vector encoding:
@@ -133,11 +130,11 @@ Unlike separate belief state modules that require explicit supervision, AAREN le
 Training the MARQ agent is computationally intensive due to the large state-action space and the need to learn accurate belief state representations over extended game histories.
 
 \paragraph{Rainbow DQN Architecture.}
-MARQ employs a Rainbow DQN architecture that integrates several algorithmic improvements over the standard DQN. The implementation includes Categorical DQN (C51) for distributional value estimation with 51 atoms over the support $[V_{min}, V_{max}] = [-15, 15]$, Noisy Networks for learned exploration (replacing $\epsilon$-greedy), and Dueling Network Architecture separating state value and action advantage estimation. The noisy linear layers inject state-dependent stochasticity, enabling the agent to learn appropriate exploration levels for different game situations without manual scheduling.
+MARQ uses a Rainbow DQN that includes several updates to the standard model. It uses Categorical DQN (C51) to estimate values, Noisy Networks for exploration, and a Dueling Network to separate state values from move advantages. The noisy layers add randomness based on the state, which helps the agent learn how much to explore without us having to set a manual schedule.
 
 \paragraph{Network Structure.}
-The Q-network employs a Deep Residual Network (ResNet) backbone to capture long-range spatial dependencies across the board. The architecture consists of an initial convolutional layer (64 filters, $3 \times 3$ kernel) followed by six residual blocks (twelve convolutional layers total), each containing two convolutional layers with Instance Normalization and ReLU activation. A spatial self-attention layer follows the ResNet backbone to enable global board reasoning, allowing each position to attend to all other positions for capturing long-range piece relationships.
- This deep feature extractor feeds into the dueling streams, allowing for more abstract strategic reasoning compared to shallow architectures. The 79-channel state representation is partitioned into two components, as detailed in Table \ref{tab:state_channels}.
+The Q-network uses a ResNet backbone to help it see patterns across the board. The architecture has an initial convolutional layer followed by six residual blocks (twelve convolutional layers total). A spatial self-attention layer follows the ResNet backbone to let the agent think about the whole board at once, capturing relationships between pieces even if they are far apart.
+ This part of the network feeds into the dueling streams, which helps with better strategic thinking than simpler models. The 79-channel state representation is split into two parts, as shown in Table \ref{tab:state_channels}.
 
 \begin{table}[h]
 \centering
@@ -179,8 +176,7 @@ A supervisor process monitors worker performance by reading metrics from a share
 \end{equation}
 where $U(0.8, 1.2)$ denotes a uniform random perturbation factor. The exploration rate $\epsilon$ is reset to 0.1 for cloned workers, allowing renewed discovery from the inherited policy. This adaptive schedule enables the population to collectively discover effective hyperparameter configurations during training rather than requiring extensive manual tuning prior to training.
 
-\paragraph{Curriculum Learning.}
-Training follows a five-phase curriculum of increasing complexity with extended episode counts to ensure thorough learning at each stage. Phase 1 (Full Observability) allows the agent to observe all piece identities, enabling acquisition of fundamental game mechanics. To mitigate the "observability cliff" when transitioning to Phase 2, a Mixed Observability mechanism is introduced: as the agent's win rate exceeds 85\% in Phase 1, a stochastic "Fog of War" randomly occludes 50\% of opponent pieces. This forces the agent to begin relying on AAREN embeddings for piece inference before full occlusion occurs.
+Training follows a five-phase plan that gets harder as it goes. Phase 1 (Full Observability) lets the agent see all pieces so it can learn the basic rules. To make the jump to the next phase easier, we use Mixed Observability: as the agent starts winning most games, we add a "Fog of War" that hides half of the pieces. This forces the agent to start using AAREN to guess identities before they are all hidden.
 
 Training proceeds for 5,000--10,000 episodes against a progressively challenging opponent mix: initially random opponents, then basic heuristic agents, and finally a sophisticated multi-factor heuristic opponent. Phase advancement requires $\geq$95\% win rate against random opponents, $\geq$75\% against the basic heuristic, and $\geq$60\% against the strategic heuristic.
 
@@ -201,8 +197,7 @@ where weights are established as $w_o = 1.0$, $w_m = 0.5$, $w_e = 0.1$, and $w_p
 \paragraph{Rationale for Distributional Scaling.}
 The choice of support range $[V_{min}, V_{max}] = [-15, 15]$ is calibrated to accommodate boosted terminal rewards. With 51 atoms, the distribution resolution is $\delta_z = 0.6$, providing sufficient granularity while allowing the full range of expected returns to be represented. Terminal outcomes are configured such that win and loss rewards are set to $\pm 10.0$ to provide a strong learning signal in this sparse reward environment, while a draw receives $-1.0$, indicating it is preferable to a loss but inferior to a win. A constant step penalty of $-0.00005$ per step provides light time pressure; over a 4000-step game, this accumulates to $-0.2$, which does not overwhelm the terminal reward. For positional constraints, positional rewards for territory advancement are state-based to prevent movement farming, with the agent receiving a one-time bonus of $+0.05$ when reaching a new row closer to the enemy base. Dense rewards for information gain (revealing enemy pieces) and center control provide guidance when the terminal reward is distant, serving as sparse reward mitigation.
 
-\paragraph{Architectural Evolution and Implementation History.}
-The implementation of this reward system followed an iterative trajectory to resolve scaling anomalies and logic redundancy. Early legacy versions performed reward calculations directly within the game environment (\texttt{environment.py}), supplemented by independent shaping modules (\texttt{reward\_shaping.py} and \texttt{aggression\_reward.py}). This led to logic fragmentation, where hidden step penalties and overlapping reward signals interfered with the training process, occasionally resulting in large reward spikes that overwhelmed the C51 distribution. The current consolidated architecture utilizes a unified \texttt{UnifiedRewardShaper} module. By consolidating disparate shaping logic into a single point of truth, the framework ensures that all rewards are properly normalized and mutually consistent. The environment now acts as an objective state manager, returning only raw event data in an \textit{info} dictionary, which the shaper transforms into a stable learning signal aligned with the technical requirements of the Rainbow DQN.
+This reward system was updated several times to fix errors and logic problems. Early versions did the math inside the game environment, which made the code confusing and sometimes caused large reward spikes. The current version uses a single shaper module that handles all rewards in one place. By putting all the logic in one spot, we ensured that the rewards are consistent and help the agent learn without overwhelming the system.
 
 \paragraph{Positional and Anti-Stall Mechanisms.}
 Beyond combat, the system implements specific shaping to guide behavior. A constant base step penalty of $-0.0001$ creates a slight time pressure toward efficiency. For stalemate prevention, sudden mobility restrictions (dropping below 5 moves) trigger a $-0.05$ penalty, discouraging the agent from boxing itself into immovable positions. Strategic proximity shaping grants a small $+0.05$ bonus for moving pieces toward the opponent's back rank (especially corners), guiding the agent toward typical flag locations.
@@ -225,10 +220,9 @@ w_i = \left(\frac{1}{N \cdot P(i)}\right)^\beta
 \paragraph{Advantage Filtering.}
 In standard deep reinforcement learning, the experience replay buffer stores past transitions (state, action, reward, next state) and samples them uniformly during training. However, not all experiences are equally valuable for learning. A routine move that shuffles a piece sideways provides less learning signal than a decisive capture that changes the game trajectory. Building upon Prioritized Experience Replay, the framework implements advantage filtering inspired by the Ataraxos system for imperfect-information games.
 
-The key insight is that transitions where the value network makes larger prediction errors indicate situations the agent does not yet understand well. These high-error transitions are precisely where gradient updates will produce the most learning improvement. The filtering procedure works as follows: first, the replay buffer is oversampled by a factor of 4, meaning if the target batch size is 128 transitions, the system initially samples 512 candidates. Each candidate's temporal-difference (TD) error is computed, which measures how much the predicted value differs from the observed outcome. The 512 candidates are then ranked by the absolute magnitude of this error, and only the top quartile (128 transitions with the largest errors) is retained for the actual gradient computation. This selective training focuses learning on the most informative experiences while maintaining the same computational cost per gradient step.
+A routine move where a piece shuffles sideways doesn't show much about how to play, but a capture can change the whole game. Transitions where the network makes big errors show parts of the game the agent doesn't understand yet. These high-error moments are where the model can learn the most. Our system focuses on these by sampling from the buffer and picking out the moves with the largest errors to train on. This helps the agent learn from the most important parts of the game without costing more computing time.
 
-\paragraph{Dynamic Damping Regularization.}
-A common problem in multi-agent reinforcement learning is strategy cycling, where the policy oscillates between different approaches without converging to a stable solution. For example, an agent might learn an aggressive attacking strategy, then shift to a defensive strategy when it encounters difficulties, then return to attacking when the defensive approach fails. This oscillation wastes training time and prevents the discovery of robust strategies.
+A common problem in multi-agent games is strategy cycling, where the agent jumps between different approaches without finding a stable solution. For example, an agent might learn to be aggressive, then shift to being defensive when it loses, then go back to being aggressive. This slows down training and makes it hard to find a truly good strategy.
 
 To address this problem, the loss function incorporates two additional regularization terms based on Kullback-Leibler (KL) divergence. KL divergence measures how different two probability distributions are from each other. The first regularization term, called the magnet term, measures the difference between the agent's current action probabilities and a uniform distribution where all actions are equally likely. This term encourages exploration by penalizing policies that become too confident in specific actions. The second term, called the target anchor, measures the difference between the current policy and the more stable target network policy. This term provides stability by preventing the policy from changing too rapidly.
 
@@ -296,6 +290,30 @@ This approach ensures that attack moves and forward advances are always availabl
 \label{fig:my_label}
 \end{figure}
 
+\subsection{Test-Time Search}
+
+While the trained Q-network provides a strong action-selection policy via single-pass inference, additional performance can be gained at deployment through shallow lookahead search without any retraining. The PolicyRefinedSearch module implements a 2-ply minimax search that uses the Q-network's value estimates as leaf evaluations.
+
+Given a state $s$ and a set of legal moves $\mathcal{A}(s)$, the search proceeds as follows:
+
+\begin{enumerate}
+    \item \textbf{Prior estimation.} Compute Q-values $Q(s, a)$ for all $a \in \mathcal{A}(s)$ via a single forward pass through the C51 network, taking the expected value across the 51-atom distribution.
+    \item \textbf{Top-K expansion.} Select the $K = 5$ moves with highest Q-values as candidates for deeper evaluation.
+    \item \textbf{Forward simulation (Ply 1).} For each candidate move $a_i$, simulate the resulting state $s' = \text{step}(s, a_i)$ using the game engine, obtaining immediate reward $r_i$.
+    \item \textbf{Opponent modeling (Ply 2).} Evaluate the opponent's legal responses in $s'$ using the same Q-network (from the opponent's perspective). The opponent is assumed to select their best response $a^*_{\text{opp}} = \arg\max_{a'} Q_{\text{opp}}(s', a')$.
+    \item \textbf{Leaf evaluation.} After simulating the opponent's response, evaluate the resulting state $s''$ using the Q-network's maximum action value as a position estimator.
+\end{enumerate}
+
+The refined value of each candidate move is computed as:
+
+\begin{equation}
+    V(s, a_i) = r_i + \gamma \cdot \max_{a''} Q(s'', a'')
+\end{equation}
+
+\noindent where $s''$ is the state after our move $a_i$ and the opponent's best response $a^*_{\text{opp}}$, and $\gamma = 0.99$ is the discount factor. The move with the highest refined value is selected.
+
+This search is exclusively applied during inference and is never used during the training loop, as the deep copies and additional forward passes required for simulation would reduce training throughput. The computational overhead at inference time is approximately 5 forward passes per decision (1 for the prior + top-K leaf evaluations), which remains within acceptable latency bounds for interactive play.
+
 \subsection{Deployment}
 Upon completion of the training and validation cycles, the best-performing MARQ model weights will be saved and finalized for deployment. Deploy the trained model into the Stratego game environment described in Section 2 of the methodology.
 
@@ -319,5 +337,4 @@ The quantitative assessment of the model's performance tracks several key metric
 \paragraph{Qualitative Analysis.}
 To assess end-user opinion on usability, a usability testing session will gather participant feedback through an evaluation form evaluating three key dimensions. Performance assessment examines the agent's speed, consistency, and perceived strategic competence. Usability evaluation considers the ease of use, intuitiveness of the interface, and overall user experience. Relevance gauges the AI's value as a strategic training tool and its potential for helping players learn Stratego.
 
-\paragraph{Model Iteration and Initial Results.}
-The development of the MARQ framework is an iterative process where each model version represents a snapshot of the system's evolution. Appendix B presents initial training results from 1,000 episodes. During this early phase, the agent remains in an exploratory state, searching for exploitable strategies. The reward signal indicates difficulty in discovering effective tactics against the opponent. Early win rates reflect frequent draws caused by repetitive piece movements. With the transition to Noisy Networks, the agent's stochasticity is learned rather than scheduled, allowing more adaptive exploration throughout training.
+Developing the MARQ framework is a process where each version represents an improvement over the last. Appendix B shows the initial results from 1,000 episodes. During this early stage, the agent is still exploring and trying to find the best strategies. The early win rates show many draws as the pieces just move back and forth. With Noisy Networks, the agent learns how much to explore on its own, which helps it adapt better as training continues.

@@ -966,6 +966,36 @@ def plot_pbs_evaluator_progress(
     plt.close(fig)
 
 
+def plot_aaren_progress(
+    episode_history: List[int],
+    aaren_losses: List[float],
+    aaren_accuracies: List[float],
+    aaren_buffer_sizes: List[int],
+    aaren_grad_norms: Optional[List[float]] = None,
+    aaren_embedding_stds: Optional[List[float]] = None,
+    dqn_grad_norms: Optional[List[float]] = None,
+    save_path: str = "aaren_progress.png",
+    total_episodes: Optional[int] = None
+):
+    """
+    Wrapper for plot_pbs_evaluator_progress using only AAREN-relevant parameters.
+    Called from training/checkpointing.py.
+    """
+    plot_pbs_evaluator_progress(
+        episode_history=episode_history,
+        evaluator1_losses=[0.0] * len(episode_history),
+        evaluator2_losses=[0.0] * len(episode_history),
+        evaluator1_buffer_sizes=[0] * len(episode_history),
+        evaluator2_buffer_sizes=[0] * len(episode_history),
+        save_path=save_path,
+        total_episodes=total_episodes,
+        aaren_losses=aaren_losses,
+        aaren_accuracies=aaren_accuracies,
+        aaren_buffer_sizes=aaren_buffer_sizes,
+        aaren_grad_norms=aaren_grad_norms,
+        aaren_embedding_stds=aaren_embedding_stds,
+        dqn_grad_norms=dqn_grad_norms
+    )
 
 
 

@@ -24,45 +24,47 @@ Reallocating 'name_of_file' (item size: 1) to 14 items.
 A level-1 auxiliary file: misc/vita.aux
 Database file #1: references.bib
 Warning--I didn't find a database entry for "perolat2022mastering"
-You've used 56 entries,
+Warning--can't use both volume and number fields in hessel2018rainbow
+Warning--can't use both volume and number fields in li2024opponent
+You've used 67 entries,
             2253 wiz_defined-function locations,
-            896 strings with 16614 characters,
-and the built_in function-call counts, 21489 in all, are:
-= -- 1997
-> -- 1282
+            950 strings with 18671 characters,
+and the built_in function-call counts, 26858 in all, are:
+= -- 2497
+> -- 1604
 < -- 0
-+ -- 526
-- -- 466
-* -- 1766
-:= -- 3524
-add.period$ -- 172
-call.type$ -- 56
-change.case$ -- 396
++ -- 658
+- -- 586
+* -- 2227
+:= -- 4350
+add.period$ -- 205
+call.type$ -- 67
+change.case$ -- 488
 chr.to.int$ -- 0
-cite$ -- 56
-duplicate$ -- 708
-empty$ -- 1552
-format.name$ -- 466
-if$ -- 4402
+cite$ -- 69
+duplicate$ -- 903
+empty$ -- 1934
+format.name$ -- 586
+if$ -- 5526
 int.to.chr$ -- 0
-int.to.str$ -- 56
-missing$ -- 50
-newline$ -- 285
-num.names$ -- 116
-pop$ -- 418
+int.to.str$ -- 67
+missing$ -- 61
+newline$ -- 340
+num.names$ -- 138
+pop$ -- 522
 preamble$ -- 1
-purify$ -- 340
+purify$ -- 421
 quote$ -- 0
-skip$ -- 484
+skip$ -- 631
 stack$ -- 0
-substring$ -- 1123
-swap$ -- 216
+substring$ -- 1438
+swap$ -- 293
 text.length$ -- 0
 text.prefix$ -- 0
 top$ -- 0
-type$ -- 220
-warning$ -- 0
-while$ -- 179
-width$ -- 58
-write$ -- 574
-(There was 1 warning)
+type$ -- 264
+warning$ -- 2
+while$ -- 221
+width$ -- 69
+write$ -- 690
+(There were 3 warnings)

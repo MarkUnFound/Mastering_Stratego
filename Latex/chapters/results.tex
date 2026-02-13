@@ -9,7 +9,7 @@
 This chapter presents the training results and performance evaluation of the MARQ framework across different phases of the curriculum. The evaluation focus is on the agent's ability to acquire tactical knowledge and manage imperfect information.
 
 \section{Phase 1: Acquisition of Tactical Foundations}
-During Phase 1 (Full Observability), the agent demonstrated rapid acquisition of basic game mechanics. Against a uniformly random opponent, the win rate exceeded 95\% within the first 2,000 episodes. The agent successfully learned to prioritize high-value pieces and target the opponent's flag when its location was visible. As part of a PBS ablation study, the system's performance is being evaluated without explicit belief tracking to determine the impact on learning stability and strategic depth.
+During Phase 1 (Full Observability), the agent demonstrated rapid acquisition of basic game mechanics. Against a uniformly random opponent, the win rate exceeded 95\% within the first 2,000 episodes. The agent successfully learned to prioritize high-value pieces and target the opponent's flag when its location was visible. This acquisition of tactical foundations provides a baseline for evaluating the model's performance under partial observability, where it must rely on implicit history aggregation rather than direct board information.
 
 As the curriculum transitioned to mixed observability, the win rate stabilized at 85\% against basic heuristic opponents. The loss curve during this phase showed steady convergence, with the distributional (C51) loss decreasing from an initial 4.5 to 0.8.
 

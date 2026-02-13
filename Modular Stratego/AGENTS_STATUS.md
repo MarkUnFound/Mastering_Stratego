@@ -5,11 +5,13 @@
 
 ## Recent Progress
 - **AAREN Integration Verified:** All 6 diagnostic tests passed (`check_aaren_integration.py`). AAREN correctly feeds embeddings into the Rainbow DQN — dimensions match, embeddings are non-zero, channel concatenation works, gradients flow correctly, and no sparse death detected.
-- **PBS Code Fully Removed:** All legacy PBS code has been deleted from the codebase. The `pbs/` directory, `pbs_evaluator.py`, and `pbs_visualizer.py` are gone. All runtime references (`get_uncertainty_map()`, `ProbabilisticBeliefState`, `train_pbs_evaluator()`) have been replaced with AAREN equivalents via `HistoryAggregator`. Final stale PBS variable names (`opponent_uses_pbs`, `lane_opponent_uses_pbs`, `opp_uses_pbs`) in `train_dqn.py` have been renamed to their `_history` equivalents. Backward-compatibility aliases (`self.pbs`, `use_pbs`) remain as thin wrappers to the AAREN history system.
-- **PBS Ablation:** Explicit Probabilistic Belief States (PBS) fully replaced by implicit AAREN memory. The `HistoryAggregator` wraps AAREN and produces per-position embeddings. Uncertainty is handled implicitly via learned embeddings rather than explicit `get_uncertainty_map()` calls.
+- **AAREN Implicit Memory System:** The MARQ framework now fully relies on AAREN (Action-Augmented Recurrent Encoder) for history-based piece inference. This replaces legacy explicit belief systems with a DeepNash-inspired implicit representation. All associated modules (`HistoryAggregator`, `PieceActionAaren`) have been verified for gradient flow and output stability.
+- **Inferred Piece Identity:** Piece identities are handled implicitly via learned 64-dimensional embeddings. The `HistoryAggregator` processes action sequences to produce these embeddings, which are then interpreted end-to-end by the Rainbow DQN's convolutional backbone. This eliminates the need for explicit probability distributions or manual belief updates.
 - **Sparse Death Fix:** Learnable default embedding implemented. Verified stable — after 5 simulated updates, all 5 positions produce diverse, non-zero embeddings.
 - **Exploration:** Epsilon-Greedy disabled (`EXPLORATION_EPSILON_START = 0.0`). Noisy Networks handle state-dependent exploration.
 - **Reward Consolidation:** All rewards centralized in `distributional_reward.py` via `UnifiedRewardShaper`.
+- **Literature Review Expanded:** Integrated modern research on DQN variants (Rainbow 2021), ResNets in board games (AlphaZero 2023, Ataraxos 2025), and Transformer-based self-attention (2025). Adhered to a strict 5-year reference rule (2021 or newer) for all new theoretical integrations.
+- **Documentation Refined:** Stylistically overhauled the **Methodology** and **Technical Background** chapters. Removed "marketing vibes" and corporate jargon in favor of a direct, research-assistant tone while maintaining all technical data and equations.
 - **Computational Optimization:** AMP (Mixed-Precision) and `torch.compile` support for faster throughput.
 
 ## AAREN Data Flow (Verified)
@@ -25,7 +27,7 @@ The AAREN → DQN pipeline operates as follows:
    - **Total input: `(79, 10, 10)`**
 5. **DQN Consumption** — `RainbowDQN.forward()` processes the 79-channel tensor through `conv_in` → 6 ResBlocks → SpatialAttention → Dueling Heads → C51 distribution over 400 actions × 51 atoms.
 
-AAREN trains separately via reveal data (supervised, predicting piece types from action sequences). The DQN learns to interpret AAREN embeddings as implicit belief features through end-to-end gradient flow on the conv_in layer.
+AAREN trains via supervised learning on reveal data: when battles occur, piece types are revealed and fed to `update_from_reveal()`. The `train_history()` method periodically trains AAREN using cross-entropy loss on these (action_sequence → piece_type) pairs. The DQN additionally learns to interpret AAREN embeddings through end-to-end gradient flow on the `conv_in` layer.
 
 ## ResNet Backbone Analysis
 
@@ -76,6 +78,24 @@ The attention layer operates as a standard transformer block: multi-head self-at
 - **History:** AAREN (Action-Augmented Recurrent Encoder) — 3-layer, 64-dim, parallel training / O(1) inference.
 - **Vision:** 6-block ResNet (64ch) + Spatial Self-Attention (4-head). Total 21.7M params.
 - **Training:** Curriculum-based (5 Phases), League-based opponent pool.
+- **GUI Inference:** `DQNBotLogic` adapter (`Python Stratego Game/dqn_bot_logic.py`) bridges the Pygame GUI to the trained Rainbow DQN. Translates GUI `Board` (Piece objects) → 79-channel tensor → C51 Q-values → legal move selection. AAREN history runs alongside for opponent piece-type inference. Compatible checkpoint: `History/12/agent1_rainbow_episode_8000.pth`.
+
+## Test-Time Search (PolicyRefinedSearch)
+
+The `policy_search.py` module provides a 2-ply minimax lookahead that improves move selection at inference time without any additional training. The search:
+
+1. **Gets Q-value prior** — evaluates all legal moves via the C51 network.
+2. **Expands top-K=5 moves** — simulates each via `deep_copy + step_fn`.
+3. **Models opponent response** — uses the same Q-network from opponent's perspective.
+4. **Evaluates leaf states** — `V(s,a) = R + γ * max Q(s'', a'')` after opponent's best response.
+
+**Key constraints:**
+- **Inference only** — never used during training to preserve iterations/sec.
+- Uses the agent's full 79-channel AAREN state representation (`agent.get_state_representation()`).
+- C51 support range reads from agent (`[-30, 30]`, 51 atoms).
+- Computational cost: ~5 forward passes per decision.
+
+**Integration:** `PolicyRefinedSearch(agent)` accepts a `RainbowAgent` instance. Used in `visual_train_dqn.py` and `dqn_bot_logic.py` for test-time evaluation.
 
 ## Future Directions
 1. **Strategic Intent:** Moving pieces with purpose towards high-value targets.

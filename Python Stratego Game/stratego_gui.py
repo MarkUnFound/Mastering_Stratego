@@ -15,7 +15,8 @@ import random
 import csv
 import os
 from stratego import Board, auto_setup, side_name, FILES, Piece
-from bot_logic import EnhancedBotLogic
+from dqn_bot_logic import DQNBotLogic
+from bot_logic import EnhancedBotLogic  # Fallback
 from setup_agent_integration import StrategicSetupAgent
 
 pygame.init()
@@ -60,8 +61,13 @@ auto_setup(board, 1)
 auto_setup(board, 2)
 
 # Determine model paths - check multiple possible locations
+# Priority: Rainbow DQN checkpoints (79-channel) > old StrategoNet (dqn_agent_final.pth)
 model_dir = os.path.dirname(os.path.abspath(__file__))
 possible_paths = [
+    # Rainbow DQN checkpoints (compatible with DQNBotLogic)
+    os.path.join(model_dir, '..', 'History', '12', 'agent1_rainbow_episode_8000.pth'),
+    os.path.join(model_dir, '..', 'Modular Stratego', 'dqn_models', 'agent1_rainbow_latest.pth'),
+    # Legacy StrategoNet checkpoint (fallback for EnhancedBotLogic)
     os.path.join(model_dir, 'dqn_agent_final.pth'),
     os.path.join(model_dir, 'user_input_files', 'dqn_agent_final.pth'),
     'dqn_models/dqn_agent_final.pth',
@@ -1016,21 +1022,23 @@ while running:
             auto_setup(board, human_side)
             
             try:
-                bot_logic = EnhancedBotLogic(agent_model_path, player_id=2)
+                bot_logic = DQNBotLogic(agent_model_path, player_id=2)
                 bot_logic.reset()
-                print("✓ Enhanced bot initialized with PBS")
+                print("✓ DQN bot initialized with Rainbow DQN + AAREN")
             except Exception as e:
-                print(f"Enhanced bot initialization failed: {e}")
-                print(f"Attempting fallback to basic BotLogic with model: {agent_model_path}")
-                if not os.path.exists(agent_model_path):
-                    print(f"❌ Error: Model file not found: {agent_model_path}")
-                    print("Please ensure the model file exists in one of these locations:")
-                    print("  - Python Stratego Game/dqn_agent_final.pth")
-                    print("  - Python Stratego Game/user_input_files/dqn_agent_final.pth")
-                    print("  - dqn_models/dqn_agent_final.pth")
-                    raise FileNotFoundError(f"Model file not found: {agent_model_path}")
-                from bot_logic import BotLogic
-                bot_logic = BotLogic(agent_model_path)
+                print(f"DQN bot initialization failed: {e}")
+                print("Falling back to EnhancedBotLogic...")
+                try:
+                    bot_logic = EnhancedBotLogic(agent_model_path, player_id=2)
+                    bot_logic.reset()
+                    print("✓ Fallback: Enhanced bot initialized with PBS")
+                except Exception as e2:
+                    print(f"Enhanced bot also failed: {e2}")
+                    if not os.path.exists(agent_model_path):
+                        print(f"❌ Error: Model file not found: {agent_model_path}")
+                        raise FileNotFoundError(f"Model file not found: {agent_model_path}")
+                    from bot_logic import BotLogic
+                    bot_logic = BotLogic(agent_model_path)
             
             game_state = "setup"
             message = "Arrange your pieces. Click to select and move."

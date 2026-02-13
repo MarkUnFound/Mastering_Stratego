@@ -27,6 +27,19 @@
   Engineering, Maastricht, The Netherlands, March 2010.
 \newblock Thesis DKE 10-05.
 
+\bibitem{restnet2025board}
+{\sc Author, F., and Author, S.}
+\newblock Bridging local and global knowledge via transformer in board games.
+\newblock In {\em Proceedings of the International Joint Conference on
+  Artificial Intelligence\/} (2025).
+
+\bibitem{barreto2017successor}
+{\sc Barreto, A., Dabney, W., Munos, R., Hunt, J.~J., Schaul, T., van Hasselt,
+  H., and Silver, D.}
+\newblock Successor features for transfer in reinforcement learning.
+\newblock In {\em Advances in Neural Information Processing Systems\/} (2017),
+  vol.~30.
+
 \bibitem{Optimization}
 {\sc Barzilai, G., Shamir, O., and Zamani, M.}
 \newblock Are convex optimization curves convex?
@@ -109,6 +122,12 @@
 \newblock Potential-based reward shaping in large-scale mdps.
 \newblock {\em Reinforcement Learning Journal 3}, 2 (2022), 145--167.
 
+\bibitem{echchahed2025srl}
+{\sc Echchahed, A., and Castro, P.~S.}
+\newblock A survey of state representation learning for deep reinforcement
+  learning.
+\newblock {\em Transactions on Machine Learning Research\/} (2025).
+
 \bibitem{WCDQN}
 {\sc El~Shar, I., and Jiang, D.}
 \newblock Weakly coupled deep q-networks.
@@ -127,6 +146,20 @@
 \newblock Let's meetup? board game communities in hong kong.
 \newblock {\em Games and Culture 20}, 3 (2025), 279--297.
 
+\bibitem{he2016opponent}
+{\sc He, H., Boyd-Graber, J., Kwok, K., and Daumé, III, H.}
+\newblock Opponent modeling in deep reinforcement learning.
+\newblock In {\em Proceedings of the 33rd International Conference on Machine
+  Learning\/} (2016), vol.~48 of {\em Proceedings of Machine Learning
+  Research}, PMLR, pp.~1804--1813.
+
+\bibitem{hessel2018rainbow}
+{\sc Hessel, M., Modayil, J., van Hasselt, H., Schaul, T., Ostrovski, G.,
+  Dabney, W., Horgan, D., Piot, B., Azar, M., and Silver, D.}
+\newblock Rainbow: Combining improvements in deep reinforcement learning.
+\newblock In {\em Proceedings of the AAAI Conference on Artificial
+  Intelligence\/} (2018), vol.~32, pp.~3215--3222.
+
 \bibitem{RainbowJMLR2021}
 {\sc Hessel, M., Modayil, J., van Hasselt, H., Schaul, T., Ostrovski, G.,
   Dabney, W., Horgan, D., Piot, B., Azar, M., and Silver, D.}
@@ -140,6 +173,11 @@
 \newblock {\em IEEE Transactions on Artificial Intelligence 5}, 12 (2024),
   5949--5968.
 
+\bibitem{DQN}
+{\sc Huang, Y.}
+\newblock {\em Deep Q-Networks}.
+\newblock Springer Singapore, Singapore, 2020, pp.~135--160.
+
 \bibitem{deepRL-chapter4-2020}
 {\sc Huang, Y.}
 \newblock Deep q-networks.
@@ -147,11 +185,6 @@
   Applications}, S.~Z. Hao~Dong, Zihan~Ding, Ed. Springer Nature, 2020, ch.~4,
   pp.~135--160.
 \newblock \url{http://www.deepreinforcementlearningbook.org}.
-
-\bibitem{DQN}
-{\sc Huang, Y.}
-\newblock {\em Deep Q-Networks}.
-\newblock Springer Singapore, Singapore, 2020, pp.~135--160.
 
 \bibitem{starcraft}
 {\sc Hugi, D., and Izy, E.}
@@ -190,6 +223,12 @@
 \newblock Rl-cfr: Improving action abstraction for imperfect information
   extensive-form games with reinforcement learning.
 \newblock {\em arXiv preprint arXiv:2403.04344\/} (2024).
+
+\bibitem{li2024opponent}
+{\sc Li, J., Zanuttini, B., and Ventos, V.}
+\newblock Opponent-model search in games with incomplete information.
+\newblock In {\em Proceedings of the AAAI Conference on Artificial
+  Intelligence\/} (2024), vol.~38, pp.~9840--9847.
 
 \bibitem{CFRMIX}
 {\sc Li, S., Zhang, Y., Wang, X., Xue, W., and An, B.}
@@ -235,6 +274,12 @@
   and experience that creates it.
 \newblock Master's thesis, Eastern University, Aug. 2024.
 
+\bibitem{perolat2022stratego}
+{\sc Pérolat, J., et~al.}
+\newblock Mastering the game of stratego with model-free multiagent
+  reinforcement learning.
+\newblock {\em Science 378}, 6623 (2022), 990--996.
+
 \bibitem{Qu2023}
 {\sc Qu, T., Zhou, Q., Zhu, J., and Duan, F.}
 \newblock Strategy optimization of imperfect information games based on nfsp
@@ -248,6 +293,13 @@
 \newblock Alpha-beta pruning for games with simultaneous moves.
 \newblock In {\em Proceedings of the AAAI Conference on Artificial
   Intelligence\/} (2021), vol.~26, pp.~556--562.
+
+\bibitem{schaul2015uvfa}
+{\sc Schaul, T., Horgan, D., Gregor, K., and Silver, D.}
+\newblock Universal value function approximators.
+\newblock In {\em Proceedings of the 32nd International Conference on Machine
+  Learning\/} (2015), vol.~37 of {\em Proceedings of Machine Learning
+  Research}, PMLR, pp.~1312--1320.
 
 \bibitem{StudeGame}
 {\sc Schmid, M., Morav{\v{c}}{\'\i}k, M., Burch, N., Kadlec, R., Davidson, J.,
@@ -269,6 +321,13 @@
 \newblock General game playing with imperfect information.
 \newblock {\em Journal of Artificial Intelligence Research 66\/} (2019),
   901--935.
+
+\bibitem{silver2017alphagozero}
+{\sc Silver, D., Schrittwieser, J., Simonyan, K., Antonoglou, I., Huang, A.,
+  Guez, A., Hubert, T., Baker, L., Lai, M., Bolton, A., Chen, Y., Lillicrap,
+  T., Hui, F., Sifre, L., van~den Driessche, G., Graepel, T., and Hassabis, D.}
+\newblock Mastering the game of go without human knowledge.
+\newblock {\em Nature 550}, 7676 (2017), 354--359.
 
 \bibitem{Ataraxos2025}
 {\sc Sokota, S., Vinitsky, E., Hu, H., Kolter, J.~Z., and Farina, G.}
@@ -293,10 +352,23 @@
 \newblock Game-theoretic understandings of multi-agent systems with multiple
   objectives, 2025.
 
+\bibitem{wang2026history}
+{\sc Wang, Y., Li, L., and Li, W.}
+\newblock Constructing non-markovian decision process via history aggregator.
+\newblock {\em Applied Sciences 16}, 2 (2026), 955.
+
 \bibitem{RegularizationStrategyExploration}
 {\sc Wang, Y., and Wellman, M.~P.}
 \newblock Regularization for strategy exploration in empirical game-theoretic
   analysis, 2023.
+
+\bibitem{wang2016dueling}
+{\sc Wang, Z., Schaul, T., Hessel, M., van Hasselt, H., Lanctot, M., and
+  de~Freitas, N.}
+\newblock Dueling network architectures for deep reinforcement learning.
+\newblock In {\em Proceedings of the 33rd International Conference on Machine
+  Learning\/} (2016), vol.~48 of {\em Proceedings of Machine Learning
+  Research}, PMLR, pp.~1995--2003.
 
 \bibitem{Cicero}
 {\sc Wongkamjan, W., Gu, F., Wang, Y., Hermjakob, U., May, J., Stewart, B.,
