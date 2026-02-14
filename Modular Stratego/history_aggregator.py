@@ -21,7 +21,7 @@ from piece import PieceType, NUM_PIECE_TYPES
 # Default configuration
 DEFAULT_HIDDEN_SIZE = 64
 DEFAULT_NUM_LAYERS = 2
-MAX_HISTORY_LENGTH = 20  # Max actions to track per position
+MAX_HISTORY_LENGTH = 50  # Max actions to track per position (supports 200-500 move games)
 
 
 class HistoryAggregator:
@@ -139,7 +139,7 @@ class HistoryAggregator:
         
         # Turn info
         turn = game_state.turn_count if hasattr(game_state, 'turn_count') else 0
-        turn_norm = min(turn / 500.0, 1.0)
+        turn_norm = min(turn / 1000.0, 1.0)  # Aligned with DEFAULT_MAX_TURNS=1000
         
         # Scout indicator (distance > 1)
         is_scout_move = 1.0 if dist > 1 else 0.0

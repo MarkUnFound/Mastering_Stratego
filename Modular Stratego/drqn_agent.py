@@ -30,13 +30,13 @@ from prioritized_memory import StandardReplayBuffer, PrioritizedReplayBuffer, NS
 from heuristic_filter import HeuristicMoveFilter
 
 # C51 Hyperparameters - CRITICAL FOR DISTRIBUTIONAL RL
-# The support range must match the expected return scale!
-# With heavily boosted rewards (win_reward_flag=25.0):
-#   - Max expected return: ~+30 (win + captures + bonuses + N-step returns)
-#   - Min expected return: ~-30 (loss + losses + penalties + N-step returns)
-# Using [-30.0, +30.0] covers the full boosted range with margin
-V_MIN = -30.0   # Expanded to match heavily boosted reward scale
-V_MAX = 30.0    # Expanded to match heavily boosted reward scale
+# Support range [-10, +10] with 51 atoms → 0.4 units/atom resolution.
+# Terminal rewards are ±1.0, per-step shaping ~0.01–0.3;
+# accumulated returns over 200+ steps stay within ±5.
+# γ=0.995 is intentional for long-horizon flag-capture planning;
+# the tighter support (vs old ±30) ensures shaping rewards are C51-visible.
+V_MIN = -10.0   # Tightened from -30 for finer C51 atom resolution (0.4/atom vs 1.2)
+V_MAX = 10.0    # Matches rescaled reward range (terminal ±1.0, accumulated shaping ±~5)
 NUM_ATOMS = 51
 
 
@@ -515,8 +515,8 @@ class RainbowAgent:
         reward_clipped = max(self.v_min, min(self.v_max, reward))
         
         # SELF-IMITATION LEARNING: Detect winning experiences for priority boost
-        # Win rewards are 10-15, so use 10.0 as threshold
-        is_winning_experience = (reward_clipped >= 10.0 and done)
+        # Win rewards are now ±1.0, so use 0.8 as threshold
+        is_winning_experience = (reward_clipped >= 0.8 and done)
         
         # Pass priority boost flags to PER (ignored by StandardBuffer)
         if hasattr(self.memory, 'add') and 'is_winning_experience' in self.memory.add.__code__.co_varnames:

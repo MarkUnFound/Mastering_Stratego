@@ -614,25 +614,17 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                 if lane_pending_transitions[i]:
                     pending = lane_pending_transitions[i]
                     
-                    # Calculate P1 reward impact from P2's move
-                    p1_additional_reward = lane_dist_rewards[i](
-                        previous_state=lane_game_states[i],
-                        action=actions[i],
-                        current_state=next_states[i],
-                        done=done_bool,
-                        winner=infos[i].get('winner'),
-                        info=infos[i]
-                    )
-                    
-                    total_p1_reward = pending['reward'] + p1_additional_reward
-                    lane_episode_rewards_p1[i] += p1_additional_reward
+                    # FIX #5: P1's reward is ONLY from P1's own action.
+                    # No double-counting — we do NOT re-evaluate the shaper on P2's action.
+                    # The TD target will naturally capture P2's impact via the next_state
+                    # (which is the board state AFTER P2 acted).
                     
                     # Complete the transition
                     done_bool = dones[i].item() if hasattr(dones[i], 'item') else dones[i]
                     
                     batch_states.append(pending['state'])
                     batch_actions.append(pending['action'])
-                    batch_rewards.append(total_p1_reward)
+                    batch_rewards.append(pending['reward'])
                     batch_next_states.append(next_states[i].board)
                     batch_dones.append(done_bool)
                     batch_active_mask.append(True)

@@ -4,6 +4,14 @@ Centralized Reward System for Stratego DQN (C51-Compatible)
 This module is the SINGLE SOURCE OF TRUTH for all reward calculations.
 Logic previously in environment.py, reward_shaping.py, and legacy distributional modules
 is now consolidated here for transparency and consistent scaling.
+
+DESIGN PRINCIPLES (v2 — 2026-02-14):
+  1. Terminal and shaping rewards share the same order of magnitude so that
+     C51 atoms (support [-10, +10], 51 atoms, ~0.4 per atom) can resolve both.
+  2. Piece-loss penalties are rank-weighted (losing Marshal >> losing Scout).
+  3. Forward-movement reward is gated on piece rank to prevent suicidal rushes.
+  4. Scout penetration zone tightened to actual enemy back rank (2 rows).
+  5. Curiosity tracker resets per episode for consistent exploration pressure.
 """
 
 import torch
@@ -31,6 +39,11 @@ PIECE_RANKS = {
     PieceType.BOMB: 0,
 }
 
+# Maximum piece rank for gating forward-movement reward.
+# Only pieces with rank <= this get the flag-distance incentive.
+# Marshal(10), General(9), Colonel(8) should NOT rush forward.
+OFFENSIVE_RANK_THRESHOLD = 6  # Captain and below
+
 @dataclass
 class StrategoRewardConfig:
     """Consolidated configuration for all reward components."""
@@ -40,84 +53,68 @@ class StrategoRewardConfig:
         """Creates a configuration instance from training_config.py constants."""
         try:
             import training_config
-            # Create default instance
             config = cls()
-            
-            # Application of REWARD_SCALE if present
-            if hasattr(training_config, 'REWARD_SCALE'):
-                scale = getattr(training_config, 'REWARD_SCALE')
-                # For now, we trust the defaults in this file as the source of truth,
-                # but we respect the global scale if defined.
-                pass 
-                
             return config
         except ImportError:
             return cls()
-    # Weights for component mixing
+
+    # ── Component Weights ───────────────────────────────────────────────
     outcome_weight: float = 1.0     # Win/Loss/Draw
-    material_weight: float = 0.2    # Combat rewards (REDUCED from 0.5 to discourage grinding)
-    epistemic_weight: float = 0.1   # Reduced to favor terminal outcome
-    positional_weight: float = 0.05 # Strictly guidance, not a primary objective
-    
-    # Terminal rewards - DIFFERENTIATED by win type (BOOSTED for faster learning)
-    # NOTE: C51 support bounds expanded to [-30.0, +30.0] to accommodate these values
-    win_reward_flag: float = 25.0   # Flag capture = primary objective (BOOSTED from 15.0)
-    win_reward_depletion: float = 10.0  # Opponent immobilized = secondary (BOOSTED)
-    win_reward: float = 15.0        # Fallback if win_type not specified (BOOSTED)
-    loss_penalty: float = -15.0     # Symmetric loss penalty (BOOSTED)
-    draw_penalty: float = -5.0      # Increased from -3.0 to discourage passive draws
-    
-    # MATERIAL-ADVANTAGE DRAWS: Adjust draw reward based on piece count
-    # If agent has more pieces at draw, reduce penalty (agent was winning)
-    # If agent has fewer pieces, increase penalty (agent was losing)
-    draw_material_bonus: float = 2.0  # Max bonus for having more pieces at draw
-    
-    # Per-step penalties (scaled for 1000 step max)
-    step_penalty: float = -0.001    # 10x increase to encourage faster games
-    step_penalty_mid: float = -0.001 # consistency
-    step_penalty_late: float = -0.001 # consistency
-    stalemate_penalty: float = -0.05 # Penalty when mobility is suddenly restricted
-    
-    # Material rewards
-    capture_scale: float = 0.05     # Enemy rank * scale (Normalized)
-    loss_scale: float = -0.05       # Flat piece loss penalty (negated for opponent)
-    attack_bonus: float = 0.03      # Bonus for initiating combat (encourages aggression)
-    spy_marsh_bonus: float = 0.3    # Extra for Spy killing Marshal
-    miner_bomb_bonus: float = 0.15  # Extra for Miner defusing Bomb
-    
-    # Epistemic rewards
-    reveal_bonus: float = 0.01      # Revealed any enemy rank
-    first_reveal_bonus: float = 0.02 # First time seeing this piece type
-    
-    # Positional rewards - BOOSTED to encourage flag-seeking
-    territory_advance: float = 0.2   # One-time reward for reaching a new row (increased 4x)
-    center_control: float = 0.005
-    flag_proximity_bonus: float = 0.3  # Near enemy back rank (increased 6x)
-    
-    # FLAG DISTANCE REWARD: Continuous reward for moving pieces toward enemy flag
-    # This teaches the agent that getting closer to the objective is good
-    flag_distance_reward: float = 0.15  # Increased 7.5x to dominate reward signal
-    
-    # Scout penetration bonus (encourage flag hunting)
-    scout_penetration_bonus: float = 0.3  # Scout reaching enemy back rank
-    
-    # Intrinsic Curiosity (exploration bonus)
-    curiosity_weight: float = 0.1   # Weight for novelty bonus
-    curiosity_bonus_scale: float = 0.01  # Max bonus per novel state
-    
-    # HABR Information Gain (rewards active deduction)
-    # R_gain = H(PBS_{t-1}) - H(PBS_t) = entropy reduction
-    info_gain_weight: float = 0.05  # Weight for information gain reward
+    material_weight: float = 1.0    # Combat rewards (raised from 0.2 so captures are visible to C51)
+    epistemic_weight: float = 0.5   # Reveal rewards
+    positional_weight: float = 0.3  # Positional guidance
+
+    # ── Terminal Rewards ────────────────────────────────────────────────
+    # Scaled to fit C51 support [-10, +10] with room for accumulated shaping.
+    win_reward_flag: float = 1.0        # Flag capture = primary objective
+    win_reward_depletion: float = 0.5   # Opponent immobilized = secondary
+    win_reward: float = 0.75            # Fallback if win_type not specified
+    loss_penalty: float = -1.0          # Symmetric loss penalty
+    draw_penalty: float = -0.3          # Discourage passive draws
+
+    # Material-advantage draws: adjust draw reward based on piece count
+    draw_material_bonus: float = 0.15   # Max bonus for having more pieces at draw
+
+    # ── Per-Step Penalties ──────────────────────────────────────────────
+    step_penalty: float = -0.002        # Encourage faster games
+    stalemate_penalty: float = -0.05    # When mobility drops below threshold
+
+    # ── Material Rewards (rank-weighted) ────────────────────────────────
+    capture_scale: float = 0.1          # Reward = scale × (defender_rank / 10)
+    loss_scale: float = -0.1            # Penalty = scale × (our_piece_rank / 10) — FIX #3
+    attack_bonus: float = 0.02          # Small bonus for initiating combat
+    spy_marsh_bonus: float = 0.3        # Spy killing Marshal
+    miner_bomb_bonus: float = 0.15      # Miner defusing Bomb
+
+    # ── Epistemic Rewards ───────────────────────────────────────────────
+    reveal_bonus: float = 0.02          # Revealed any enemy piece position
+    first_reveal_bonus: float = 0.05    # First time seeing this piece type
+
+    # ── Positional Rewards ──────────────────────────────────────────────
+    territory_advance: float = 0.05     # One-time per new row reached
+    center_control: float = 0.005       # In center zone
+    flag_proximity_bonus: float = 0.1   # Near enemy back rank
+
+    # Flag distance reward — FIX #2 & #9: reduced, applied directly (not × positional_weight),
+    # gated on piece rank (only offensive pieces rank ≤ 6)
+    flag_distance_reward: float = 0.02
+
+    # Scout penetration bonus — FIX #8: tightened to actual back rank (rows 0-1 / 8-9)
+    scout_penetration_bonus: float = 0.1
+
+    # ── Curiosity (exploration bonus) ───────────────────────────────────
+    curiosity_weight: float = 0.1
+    curiosity_bonus_scale: float = 0.01
 
 
 class UnifiedRewardShaper:
     """Standardized reward calculator for all Stratego RL components."""
-    
+
     def __init__(self, player_id: int, config: Optional[StrategoRewardConfig] = None, device: str = 'cuda'):
         self.player_id = player_id
         self.config = config or StrategoRewardConfig()
         self.device = device
-        
+
         # Initialize novelty tracker for intrinsic curiosity
         self.novelty_tracker = StateNoveltyTracker(
             bonus_scale=self.config.curiosity_bonus_scale,
@@ -125,24 +122,22 @@ class UnifiedRewardShaper:
             device=device
         )
         self.reset()
-        
+
     def reset(self):
         """Reset per-episode tracking."""
         self.revealed_types: Set[PieceType] = set()
         self.revealed_positions: Set[Tuple[int, int]] = set()
         self.max_row_reached: int = 10 if self.player_id == 1 else -1
-        # Note: We don't reset novelty_tracker - it persists across episodes
-        # to encourage exploration of truly novel states
-        
-        # HABR info gain tracking for this episode
-        self._episode_info_gain: float = 0.0
-        
-    def __call__(self, previous_state: GameState, action: Optional[Tuple], 
-                 current_state: GameState, done: bool, 
+
+        # FIX #6: Reset curiosity tracker each episode for consistent exploration
+        self.novelty_tracker.reset()
+
+    def __call__(self, previous_state: GameState, action: Optional[Tuple],
+                 current_state: GameState, done: bool,
                  winner: Optional[int], info: Dict[str, Any]) -> float:
         """Calculate the total normalized reward for this step."""
-        
-        # 1. Terminal Outcomes - differentiated by win type
+
+        # ── 1. Terminal Outcomes ─────────────────────────────────────────
         if done:
             if winner == self.player_id:
                 win_type = info.get('win_type', 'unknown')
@@ -155,179 +150,150 @@ class UnifiedRewardShaper:
             elif winner == -self.player_id:
                 return self.config.outcome_weight * self.config.loss_penalty
             elif winner == 0:
-                # MATERIAL-ADVANTAGE DRAWS: Adjust based on piece count
-                # Count pieces for both players
+                # Material-advantage draws
                 board = current_state.board
                 my_pieces = ((board > 0) & (board < 13)).sum().item() if self.player_id == 1 else ((board < 0) & (board > -13)).sum().item()
                 enemy_pieces = ((board < 0) & (board > -13)).sum().item() if self.player_id == 1 else ((board > 0) & (board < 13)).sum().item()
-                
-                # Material advantage: +1 if we have more, -1 if they have more, 0 if equal
+
                 piece_diff = my_pieces - enemy_pieces
                 material_bonus = min(max(piece_diff / 10.0, -1.0), 1.0) * self.config.draw_material_bonus
-                
-                draw_reward = self.config.draw_penalty + material_bonus
-                return self.config.outcome_weight * draw_reward
+
+                return self.config.outcome_weight * (self.config.draw_penalty + material_bonus)
             return 0.0
 
         if action is None:
             return 0.0
 
         (r_from, c_from), (r_to, c_to) = action
-        
-        # 1.5 Linear Step Penalty
-        current_step_penalty = self.config.step_penalty
-            
-        reward_components = {'step': current_step_penalty}
-        
-        # 2. Combat / Material Logic
+
+        # ── 1.5 Step Penalty ────────────────────────────────────────────
+        reward_components = {'step': self.config.step_penalty}
+
+        # ── 2. Combat / Material Logic (rank-weighted) ──────────────────
         prev_board = previous_state.board
         curr_board = current_state.board
-        
-        # Get piece values safely
+
         moving_val = prev_board[r_from, c_from].item()
         target_val = prev_board[r_to, c_to].item()
-        
-        # If target was enemy piece, it's a battle
+
         was_battle = (target_val != 0 and target_val != 13) and \
-                     ((self.player_id == 1 and target_val < 0) or \
+                     ((self.player_id == 1 and target_val < 0) or
                       (self.player_id == -1 and target_val > 0))
-        
+
         if was_battle:
-            # Safely get ranks (handling 0, HIDDEN, LAKE)
             def _get_rank(val):
                 abs_val = abs(int(val))
                 if 1 <= abs_val <= 12:
                     return PIECE_RANKS.get(PieceType(abs_val), 5)
-                return 5 # Fallback rank
-            
+                return 5  # Fallback rank
+
             defender_rank = _get_rank(target_val)
             attacker_rank = _get_rank(moving_val)
-            
-            # Determine outcome from current board
+
             result_val = curr_board[r_to, c_to].item()
             source_val = curr_board[r_from, c_from].item()
-            
+
             we_won = (self.player_id == 1 and result_val > 0) or (self.player_id == -1 and result_val < 0)
             we_lost = (source_val == 0 and result_val != 0 and not we_won)
-            
+
             material_r = 0.0
-            
-            # Attack bonus: reward for initiating combat (encourages aggression)
+
+            # Attack bonus: small reward for initiating combat
             material_r += self.config.attack_bonus
-            
+
             if we_won:
+                # Reward proportional to captured piece rank
                 material_r += self.config.capture_scale * (defender_rank / 10.0)
                 # Strategic bonuses
-                if abs(int(moving_val)) == 1 and abs(int(target_val)) == 10: # Spy vs Marshal
+                if abs(int(moving_val)) == 1 and abs(int(target_val)) == 10:  # Spy vs Marshal
                     material_r += self.config.spy_marsh_bonus
-                if abs(int(moving_val)) == 3 and abs(int(target_val)) == 11: # Miner vs Bomb
+                if abs(int(moving_val)) == 3 and abs(int(target_val)) == 11:  # Miner vs Bomb
                     material_r += self.config.miner_bomb_bonus
             elif we_lost:
-                material_r += self.config.loss_scale
-            
+                # FIX #3: Penalty proportional to OUR piece rank (losing Marshal >> losing Scout)
+                material_r += self.config.loss_scale * (attacker_rank / 10.0)
+
             reward_components['material'] = material_r * self.config.material_weight
-            
-            # 3. Epistemic (Info Gain)
+
+            # ── 3. Epistemic (Info Gain from combat) ────────────────────
             epistemic_r = 0.0
             if (r_to, c_to) not in self.revealed_positions:
                 self.revealed_positions.add((r_to, c_to))
                 epistemic_r += self.config.reveal_bonus
-                
+
             def_abs = abs(int(target_val))
             if 1 <= def_abs <= 12:
                 def_type = PieceType(def_abs)
                 if def_type not in self.revealed_types:
                     self.revealed_types.add(def_type)
                     epistemic_r += self.config.first_reveal_bonus
-                
+
             reward_components['epistemic'] = epistemic_r * self.config.epistemic_weight
-            
-        # 4. Positional / Strategic (State-based, not move-based)
+
+        # ── 4. Positional / Strategic ───────────────────────────────────
         positional_r = 0.0
-        
-        # Advance toward enemy base (One-time reward per row)
+
+        # Territory advance (one-time per row)
         is_new_territory = False
-        if self.player_id == 1: # Red (moves up, row indices decrease)
+        if self.player_id == 1:  # Red moves up (row indices decrease)
             if r_to < self.max_row_reached:
                 self.max_row_reached = r_to
                 is_new_territory = True
-        else: # Blue (moves down, row indices increase)
+        else:  # Blue moves down (row indices increase)
             if r_to > self.max_row_reached:
                 self.max_row_reached = r_to
                 is_new_territory = True
-        
+
         if is_new_territory:
             positional_r += self.config.territory_advance
-        
-        # FLAG DISTANCE REWARD: Continuous small reward for moving toward enemy flag
-        # This gives immediate feedback that approaching objective is good
-        if self.player_id == 1:  # P1 wants to go UP (lower row number)
-            old_dist = r_from  # Distance from row 0 (enemy back rank)
-            new_dist = r_to
-            if new_dist < old_dist:  # Moving toward enemy
-                positional_r += self.config.flag_distance_reward
-        else:  # P2 wants to go DOWN (higher row number)
-            old_dist = 9 - r_from  # Distance from row 9 (enemy back rank)
-            new_dist = 9 - r_to
-            if new_dist < old_dist:  # Moving toward enemy
-                positional_r += self.config.flag_distance_reward
-            
+
+        # FIX #9: Flag distance reward — only for offensive pieces (rank ≤ Captain)
+        # High-value pieces (Marshal, General, Colonel) should NOT rush forward.
+        moving_piece_type = abs(int(prev_board[r_from, c_from].item()))
+        piece_rank = PIECE_RANKS.get(PieceType(moving_piece_type), 5) if 1 <= moving_piece_type <= 12 else 5
+
+        if piece_rank <= OFFENSIVE_RANK_THRESHOLD:
+            if self.player_id == 1:  # P1 wants to go UP
+                if r_to < r_from:
+                    # FIX #2: Applied directly, not multiplied by positional_weight
+                    reward_components['flag_distance'] = self.config.flag_distance_reward
+            else:  # P2 wants to go DOWN
+                if r_to > r_from:
+                    reward_components['flag_distance'] = self.config.flag_distance_reward
+
         # Center control
         if 3 <= c_to <= 6 and 4 <= r_to <= 5:
             positional_r += self.config.center_control
-            
-        # Flag proximity (Corner focus)
+
+        # Flag proximity (corner focus)
         is_p1_near_top = (self.player_id == 1 and r_to <= 1)
         is_p2_near_bot = (self.player_id == -1 and r_to >= 8)
         if is_p1_near_top or is_p2_near_bot:
             corner_mult = 1.0 if c_to in (0, 1, 8, 9) else 0.5
             positional_r += self.config.flag_proximity_bonus * corner_mult
-        
-        # Scout penetration bonus (encourage flag hunting)
-        moving_piece_type = abs(int(prev_board[r_from, c_from].item()))
+
+        # FIX #8: Scout penetration — tightened to actual enemy back rank (2 rows)
         if moving_piece_type == PieceType.SCOUT.value:
-            # P1 scouts reaching rows 0-3 (enemy back rank)
-            if self.player_id == 1 and r_to <= 3:
+            if self.player_id == 1 and r_to <= 1:     # Back 2 rows only
                 positional_r += self.config.scout_penetration_bonus
-            # P2 scouts reaching rows 6-9 (enemy back rank)
-            elif self.player_id == -1 and r_to >= 6:
+            elif self.player_id == -1 and r_to >= 8:  # Back 2 rows only
                 positional_r += self.config.scout_penetration_bonus
-            
-        # Stalemate prevention (Penalty only, no positive mobility bonus)
+
+        # Stalemate prevention
         curr_mob = info.get('num_valid_moves', 0)
-        if curr_mob < 5: # Critical mobility threshold
+        if curr_mob < 5:
             reward_components['stalemate'] = self.config.stalemate_penalty
-            
+
         reward_components['positional'] = positional_r * self.config.positional_weight
-        
-        # 5. Intrinsic Curiosity (Novelty Bonus)
+
+        # ── 5. Intrinsic Curiosity (Novelty Bonus) ──────────────────────
         state_tensor = current_state.board
         novelty_bonus = self.novelty_tracker.get_novelty_bonus(state_tensor)
         reward_components['curiosity'] = novelty_bonus * self.config.curiosity_weight
-        
+
         total_reward = sum(reward_components.values())
         return total_reward
-    
-    def add_info_gain_reward(self, info_gain: float):
-        """
-        Add HABR Information Gain reward to the episode total.
-        
-        Called by the training loop when PBS updates occur.
-        R_gain = H(PBS_{t-1}) - H(PBS_t) = entropy reduction
-        
-        Args:
-            info_gain: The information gain from a PBS update
-        """
-        self._episode_info_gain += info_gain * self.config.info_gain_weight
-    
-    def get_episode_info_gain_reward(self) -> float:
-        """
-        Get the total information gain reward for this episode.
-        
-        Returns:
-            Accumulated info gain reward (weighted by config)
-        """
-        return self._episode_info_gain
+
 
 def create_unified_reward_shaper(player_id: int = 1, config: Optional[StrategoRewardConfig] = None, device: str = 'cuda'):
     """Factory function for creating the shaper."""

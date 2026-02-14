@@ -1,15 +1,16 @@
 # Stratego Modular: Project Status & Agent Guide
 
-**Last Updated:** 2026-02-12
+**Last Updated:** 2026-02-15
 **Objective:** Achieve human-like or better strategic play in Stratego (Partial Observability).
 
 ## Recent Progress
+- **Long-Horizon Tuning:** Architecture adjusted for 200–500 move games. `MAX_HISTORY_LENGTH` raised from 20 to 50 (AAREN supervised training buffer retains more early-game movement patterns). Turn normalization aligned with `DEFAULT_MAX_TURNS=1000` (was 500; late-game turns were previously indistinguishable). `N_STEPS` increased from 3 to 5 for deeper multi-step credit assignment (`γ^5 = 0.975`).
 - **AAREN Integration Verified:** All 6 diagnostic tests passed (`check_aaren_integration.py`). AAREN correctly feeds embeddings into the Rainbow DQN — dimensions match, embeddings are non-zero, channel concatenation works, gradients flow correctly, and no sparse death detected.
 - **AAREN Implicit Memory System:** The MARQ framework now fully relies on AAREN (Action-Augmented Recurrent Encoder) for history-based piece inference. This replaces legacy explicit belief systems with a DeepNash-inspired implicit representation. All associated modules (`HistoryAggregator`, `PieceActionAaren`) have been verified for gradient flow and output stability.
 - **Inferred Piece Identity:** Piece identities are handled implicitly via learned 64-dimensional embeddings. The `HistoryAggregator` processes action sequences to produce these embeddings, which are then interpreted end-to-end by the Rainbow DQN's convolutional backbone. This eliminates the need for explicit probability distributions or manual belief updates.
 - **Sparse Death Fix:** Learnable default embedding implemented. Verified stable — after 5 simulated updates, all 5 positions produce diverse, non-zero embeddings.
 - **Exploration:** Epsilon-Greedy disabled (`EXPLORATION_EPSILON_START = 0.0`). Noisy Networks handle state-dependent exploration.
-- **Reward Consolidation:** All rewards centralized in `distributional_reward.py` via `UnifiedRewardShaper`.
+- **Reward System Overhaul (v2):** All rewards rescaled for C51 atom visibility. Terminal: ±1.0 (was ±15–25). C51 support tightened to [-10,+10] (was [-30,+30], now 0.4/atom resolution). Piece-loss penalties are rank-weighted. Forward-movement reward gated on piece rank ≤ Captain. Scout bonus tightened to enemy back rank (2 rows). Pending transition double-counting removed. Curiosity tracker resets per episode. Dead info-gain code removed.
 - **Literature Review Expanded:** Integrated modern research on DQN variants (Rainbow 2021), ResNets in board games (AlphaZero 2023, Ataraxos 2025), and Transformer-based self-attention (2025). Adhered to a strict 5-year reference rule (2021 or newer) for all new theoretical integrations.
 - **Documentation Refined:** Stylistically overhauled the **Methodology** and **Technical Background** chapters. Removed "marketing vibes" and corporate jargon in favor of a direct, research-assistant tone while maintaining all technical data and equations.
 - **Computational Optimization:** AMP (Mixed-Precision) and `torch.compile` support for faster throughput.
@@ -69,7 +70,11 @@ The attention layer operates as a standard transformer block: multi-head self-at
 | Struggle | Status | Resolution |
 | :--- | :--- | :--- |
 | **Sparse Death** | Fixed | Learnable default embedding; verified stable via diagnostics. |
-| **High Draw Rate** | Ongoing | Material advantage reward for draws; step penalties. |
+| **Reward Scale vs C51** | Fixed | Terminal ±1.0, shaping 0.01–0.3, support [-10,+10]. Atoms now resolve intermediate rewards. |
+| **Double-Counting Rewards** | Fixed | Removed ghost reward from P2's action being credited to P1's pending transition. |
+| **Suicidal Forward Bias** | Fixed | Forward reward gated on rank ≤ Captain; high-value pieces don't rush. |
+| **Flat Piece-Loss Penalty** | Fixed | Loss penalty now rank-weighted (Marshal 10× Scout). |
+| **High Draw Rate** | Ongoing | Material-advantage draws, step penalties, rank-weighted combat incentives. |
 | **Gradient Flow** | Fixed | Multi-step returns (n=3) and centralized scaling. |
 | **Action Entropy** | High | Noisy Networks help; strategic focus remains a challenge. |
 
@@ -92,7 +97,7 @@ The `policy_search.py` module provides a 2-ply minimax lookahead that improves m
 **Key constraints:**
 - **Inference only** — never used during training to preserve iterations/sec.
 - Uses the agent's full 79-channel AAREN state representation (`agent.get_state_representation()`).
-- C51 support range reads from agent (`[-30, 30]`, 51 atoms).
+- C51 support range reads from agent (`[-10, 10]`, 51 atoms, 0.4/atom).
 - Computational cost: ~5 forward passes per decision.
 
 **Integration:** `PolicyRefinedSearch(agent)` accepts a `RainbowAgent` instance. Used in `visual_train_dqn.py` and `dqn_bot_logic.py` for test-time evaluation.

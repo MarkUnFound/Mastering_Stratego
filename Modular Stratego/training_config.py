@@ -50,7 +50,7 @@ IMITATION_EPISODES = 2000     # Only use imitation for first N episodes (then pu
 IMITATION_REWARD_BOOST = 1.5  # Multiply reward for imitation actions (encourages learning good moves)
 
 # Multi-Step Returns (N-Step DQN)
-N_STEPS = 3               # Reduced from 5 for faster, more stable credit assignment
+N_STEPS = 5               # 5-step returns for deeper credit assignment in long-horizon games (200-500 moves)
 GAMMA_N = GAMMA ** N_STEPS  # Pre-computed gamma^n
 
 # Learning Rate Scheduler
