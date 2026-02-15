@@ -16,7 +16,7 @@ SAVE_INTERVAL = 1000       # Save model/export agent every N episodes
 PLOT_INTERVAL = 500       # Save metrics plots every N episodes
 EVAL_INTERVAL = 500       # Evaluate agent every N episodes
 REPLAY_UPDATE_INTERVAL = 2    # Train every 2 steps (balances data diversity vs update frequency)
-TARGET_UPDATE_INTERVAL = 5000   # Faster target updates for early learning (was 10000)
+TARGET_UPDATE_INTERVAL = 2000   # Faster target updates for Phase 1 learning (was 5000)
 REWARD_SCALE = 1.0        # Scaling factor for reward calculations
 
 # =============================================================================
@@ -32,20 +32,20 @@ EXPLORATION_EPSILON_DECAY = 1     # Not used
 # CURRICULUM TURN LIMITS (Shorter games for faster learning)
 # =============================================================================
 # Start with shorter games to force faster decisions, increase as agent improves
-PHASE_1_MAX_TURNS = 200   # Doubled from 100 for longer games
+PHASE_1_MAX_TURNS = 100   # Shorter games for faster terminal feedback in Phase 1
 PHASE_2_MAX_TURNS = 600   # Medium games for memory testing
 PHASE_3_MAX_TURNS = 800   # Longer for self-play strategy
 PHASE_4_MAX_TURNS = 1000  # Full length for league training
 DEFAULT_MAX_TURNS = 1000  # Fallback
 
 # Warmup Period (must collect this many experiences before training starts)
-WARMUP_STEPS = 3000       # Reduced from 10k for faster training start
+WARMUP_STEPS = 1000       # Reduced further for faster Phase 1 start
 
 # =============================================================================
 # IMITATION LEARNING SETTINGS (Learn from Heuristic Expert)
 # =============================================================================
 IMITATION_ENABLED = True      # Use heuristic policy as expert demonstration
-IMITATION_RATIO = 0.20        # 20% of actions use heuristic expert (mixed policy)
+IMITATION_RATIO = 0.10        # 10% of actions use heuristic expert (reduced for Phase 1)
 IMITATION_EPISODES = 2000     # Only use imitation for first N episodes (then pure RL)
 IMITATION_REWARD_BOOST = 1.5  # Multiply reward for imitation actions (encourages learning good moves)
 
@@ -149,8 +149,8 @@ REF_POLICY_UPDATE_INTERVAL = 50000  # Update reference network every N steps
 # ENTROPY REGULARIZATION SETTINGS (Bluffing/Mixed Strategies)
 # =============================================================================
 # Encourages stochastic policies to avoid being exploited
-ENTROPY_REG_ENABLED = True       # Enable entropy bonus
-ENTROPY_COEFF_START = 0.1        # Initial entropy coefficient
+ENTROPY_REG_ENABLED = False      # Disabled for Phase 1 to favor exploitation vs random opponents
+ENTROPY_COEFF_START = 0.1        # Initial entropy coefficient (used when re-enabled)
 ENTROPY_COEFF_END = 0.01         # Final entropy coefficient (decays over training)
 ENTROPY_ANNEAL_EPISODES = 50000  # Episodes to anneal entropy coefficient
 

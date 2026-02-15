@@ -59,11 +59,12 @@ class StrategoRewardConfig:
     epistemic_weight: float = 0.1   # Reduced to favor terminal outcome
     positional_weight: float = 0.05 # Strictly guidance, not a primary objective
     
-    # Terminal rewards - DIFFERENTIATED by win type
-    win_reward_flag: float = 15.0   # Flag capture = primary objective (BOOSTED)
-    win_reward_depletion: float = 5.0  # Opponent immobilized = secondary
-    win_reward: float = 10.0        # Fallback if win_type not specified
-    loss_penalty: float = -10.0     # Symmetric loss penalty
+    # Terminal rewards - DIFFERENTIATED by win type (BOOSTED for faster learning)
+    # NOTE: C51 support bounds expanded to [-30.0, +30.0] to accommodate these values
+    win_reward_flag: float = 25.0   # Flag capture = primary objective (BOOSTED from 15.0)
+    win_reward_depletion: float = 10.0  # Opponent immobilized = secondary (BOOSTED)
+    win_reward: float = 15.0        # Fallback if win_type not specified (BOOSTED)
+    loss_penalty: float = -15.0     # Symmetric loss penalty (BOOSTED)
     draw_penalty: float = -5.0      # Increased from -3.0 to discourage passive draws
     
     # MATERIAL-ADVANTAGE DRAWS: Adjust draw reward based on piece count
@@ -103,6 +104,10 @@ class StrategoRewardConfig:
     # Intrinsic Curiosity (exploration bonus)
     curiosity_weight: float = 0.1   # Weight for novelty bonus
     curiosity_bonus_scale: float = 0.01  # Max bonus per novel state
+    
+    # HABR Information Gain (rewards active deduction)
+    # R_gain = H(PBS_{t-1}) - H(PBS_t) = entropy reduction
+    info_gain_weight: float = 0.05  # Weight for information gain reward
 
 
 class UnifiedRewardShaper:
@@ -127,7 +132,10 @@ class UnifiedRewardShaper:
         self.revealed_positions: Set[Tuple[int, int]] = set()
         self.max_row_reached: int = 10 if self.player_id == 1 else -1
         # Note: We don't reset novelty_tracker - it persists across episodes
-        # to encourage exploration of truly novel states 
+        # to encourage exploration of truly novel states
+        
+        # HABR info gain tracking for this episode
+        self._episode_info_gain: float = 0.0
         
     def __call__(self, previous_state: GameState, action: Optional[Tuple], 
                  current_state: GameState, done: bool, 
@@ -299,6 +307,27 @@ class UnifiedRewardShaper:
         
         total_reward = sum(reward_components.values())
         return total_reward
+    
+    def add_info_gain_reward(self, info_gain: float):
+        """
+        Add HABR Information Gain reward to the episode total.
+        
+        Called by the training loop when PBS updates occur.
+        R_gain = H(PBS_{t-1}) - H(PBS_t) = entropy reduction
+        
+        Args:
+            info_gain: The information gain from a PBS update
+        """
+        self._episode_info_gain += info_gain * self.config.info_gain_weight
+    
+    def get_episode_info_gain_reward(self) -> float:
+        """
+        Get the total information gain reward for this episode.
+        
+        Returns:
+            Accumulated info gain reward (weighted by config)
+        """
+        return self._episode_info_gain
 
 def create_unified_reward_shaper(player_id: int = 1, config: Optional[StrategoRewardConfig] = None, device: str = 'cuda'):
     """Factory function for creating the shaper."""

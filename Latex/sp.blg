@@ -17,52 +17,50 @@ Reallocating 'name_of_file' (item size: 1) to 23 items.
 A level-1 auxiliary file: chapters/AppendixA.aux
 Reallocating 'name_of_file' (item size: 1) to 23 items.
 A level-1 auxiliary file: chapters/AppendixB.aux
-Reallocating 'name_of_file' (item size: 1) to 5 items.
-The style file: siam.bst
+Reallocating 'name_of_file' (item size: 1) to 4 items.
+The style file: acm.bst
 Reallocating 'name_of_file' (item size: 1) to 11 items.
 Reallocating 'name_of_file' (item size: 1) to 14 items.
 A level-1 auxiliary file: misc/vita.aux
 Database file #1: references.bib
-Warning--I didn't find a database entry for "Ataraxos"
-You've used 42 entries,
-            2030 wiz_defined-function locations,
-            783 strings with 13452 characters,
-and the built_in function-call counts, 17361 in all, are:
-= -- 1618
-> -- 990
+You've used 56 entries,
+            2253 wiz_defined-function locations,
+            895 strings with 16594 characters,
+and the built_in function-call counts, 21489 in all, are:
+= -- 1997
+> -- 1282
 < -- 0
-+ -- 392
-- -- 346
-* -- 1399
-:= -- 2710
-add.period$ -- 48
-call.type$ -- 42
-change.case$ -- 295
++ -- 526
+- -- 466
+* -- 1766
+:= -- 3524
+add.period$ -- 172
+call.type$ -- 56
+change.case$ -- 396
 chr.to.int$ -- 0
-cite$ -- 42
-duplicate$ -- 763
-empty$ -- 1158
-format.name$ -- 346
-if$ -- 3673
+cite$ -- 56
+duplicate$ -- 708
+empty$ -- 1552
+format.name$ -- 466
+if$ -- 4402
 int.to.chr$ -- 0
-int.to.str$ -- 42
-missing$ -- 41
-newline$ -- 135
-num.names$ -- 88
-pop$ -- 302
+int.to.str$ -- 56
+missing$ -- 50
+newline$ -- 285
+num.names$ -- 116
+pop$ -- 418
 preamble$ -- 1
-purify$ -- 253
+purify$ -- 340
 quote$ -- 0
-skip$ -- 633
+skip$ -- 484
 stack$ -- 0
-substring$ -- 954
-swap$ -- 334
+substring$ -- 1123
+swap$ -- 216
 text.length$ -- 0
 text.prefix$ -- 0
 top$ -- 0
-type$ -- 166
+type$ -- 220
 warning$ -- 0
-while$ -- 151
-width$ -- 44
-write$ -- 395
-(There was 1 warning)
+while$ -- 179
+width$ -- 58
+write$ -- 574

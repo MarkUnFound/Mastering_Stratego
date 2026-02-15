@@ -35,6 +35,20 @@ try:
 except ImportError:
     PBS_EVALUATOR_AVAILABLE = False
 
+# Import HABR module for Hindsight-Aided Belief Refinement
+try:
+    from habr_module import (
+        HABRBeliefTracker, 
+        SinkhornLayer, 
+        RetrospectiveBuffer,
+        InformationGainReward,
+        create_belief_matrix_from_distributions,
+        update_distributions_from_matrix
+    )
+    HABR_AVAILABLE = True
+except ImportError:
+    HABR_AVAILABLE = False
+
 
 class ProbabilisticBeliefState:
     """Probabilistic belief state that infers piece values from actions."""
@@ -153,6 +167,27 @@ class ProbabilisticBeliefState:
         # Uncertainty Map Cache (Optimization)
         self._cached_uncertainty_map: Dict[Tuple[int, int], float] = {}
         self._uncertainty_map_dirty: bool = True
+        
+        # HABR Module Integration (Hindsight-Aided Belief Refinement)
+        # Replaces instantaneous supervised loss with retrospective learning
+        self.habr_enabled = HABR_AVAILABLE
+        if self.habr_enabled:
+            self.habr_tracker = HABRBeliefTracker(
+                num_piece_types=NUM_PIECE_TYPES,
+                sinkhorn_iterations=10,
+                decay_factor=0.9,
+                device=device
+            )
+            self.info_gain_reward = InformationGainReward()
+        else:
+            self.habr_tracker = None
+            self.info_gain_reward = None
+        
+        # Track accumulated HABR losses for this episode
+        self.episode_habr_losses: List[torch.Tensor] = []
+        
+        # Track info gain rewards for this episode
+        self.episode_info_gains: List[float] = []
 
         
     def reset(self):
@@ -179,6 +214,14 @@ class ProbabilisticBeliefState:
         # Reset uncertainty cache
         self._cached_uncertainty_map = {}
         self._uncertainty_map_dirty = True
+        
+        # Reset HABR tracker
+        if hasattr(self, 'habr_tracker') and self.habr_tracker is not None:
+            self.habr_tracker.reset()
+        if hasattr(self, 'episode_habr_losses'):
+            self.episode_habr_losses = []
+        if hasattr(self, 'episode_info_gains'):
+            self.episode_info_gains = []
 
     
     def _update_belief_tensor(self, pos: Tuple[int, int]):
@@ -413,6 +456,33 @@ class ProbabilisticBeliefState:
         # Turn count
         if hasattr(game_state, 'turn_count'):
             self.turn_count = game_state.turn_count
+        
+        # HABR: Record PBS snapshot for retrospective learning
+        if self.habr_enabled and self.habr_tracker is not None:
+            # Get current PBS as tensor for this position
+            beliefs = self.belief_distributions[pos]
+            pbs_tensor = torch.zeros(NUM_PIECE_TYPES, device=self.device)
+            for i, pt in enumerate(self._sorted_piece_types):
+                pbs_tensor[i] = beliefs.get(pt, 0.0)
+            
+            # Record snapshot with hidden state
+            hidden_tensor = None
+            if new_hidden_state is not None:
+                # Flatten hidden state for storage
+                try:
+                    hidden_tensor = torch.cat([s[0] for s in new_hidden_state], dim=-1)
+                except:
+                    pass
+            
+            self.habr_tracker.record_pbs_snapshot(pos, pbs_tensor, hidden_tensor)
+            
+            # Compute information gain reward
+            info_gain = self.habr_tracker.compute_info_gain_reward(pos, pbs_tensor)
+            if abs(info_gain) > 1e-6:
+                self.episode_info_gains.append(info_gain)
+            
+            # Increment HABR time
+            self.habr_tracker.increment_time()
 
     def apply_aaren_update(self, pos: Tuple[int, int], 
                           aaren_probs: Optional[torch.Tensor],
@@ -564,6 +634,18 @@ class ProbabilisticBeliefState:
         if pos in self.piece_action_history and len(self.piece_action_history[pos]) > 0:
             action_sequence = list(self.piece_action_history[pos])
             self.aaren_training_buffer.append((action_sequence, piece_type, pos))
+        
+        # HABR: Compute retrospective KL divergence loss
+        # This is the core A1 Objective - learning from verified signals
+        if self.habr_enabled and self.habr_tracker is not None:
+            # Get piece type index (1-indexed to 0-indexed)
+            revealed_type_idx = piece_type.value
+            
+            # Compute retrospective loss across entire history
+            habr_loss = self.habr_tracker.on_piece_revealed(pos, revealed_type_idx)
+            
+            if habr_loss is not None:
+                self.episode_habr_losses.append(habr_loss)
     
     def get_evaluator_feedback(self, pos: Tuple[int, int], 
                                ground_truth: Optional[PieceType] = None) -> Optional[Dict]:
@@ -694,6 +776,89 @@ class ProbabilisticBeliefState:
     def get_aaren_buffer_size(self) -> int:
         """Get current AAREN training buffer size."""
         return len(self.aaren_training_buffer)
+    
+    # ==================== HABR Methods ====================
+    
+    def get_habr_loss(self) -> Optional[torch.Tensor]:
+        """
+        Get accumulated HABR retrospective loss for this episode.
+        
+        Returns:
+            Sum of all retrospective KL losses, or None if no losses
+        """
+        if not self.episode_habr_losses:
+            return None
+        return sum(self.episode_habr_losses)
+    
+    def get_episode_info_gain(self) -> float:
+        """
+        Get total information gain reward for this episode.
+        
+        Returns:
+            Sum of all info gain rewards
+        """
+        if not self.episode_info_gains:
+            return 0.0
+        return sum(self.episode_info_gains)
+    
+    def get_avg_info_gain(self) -> float:
+        """
+        Get average information gain per observation.
+        
+        Returns:
+            Average info gain per PBS update
+        """
+        if not self.episode_info_gains:
+            return 0.0
+        return sum(self.episode_info_gains) / len(self.episode_info_gains)
+    
+    def clear_habr_episode_data(self):
+        """Clear HABR data at the end of an episode."""
+        self.episode_habr_losses.clear()
+        self.episode_info_gains.clear()
+        if self.habr_tracker is not None:
+            self.habr_tracker.clear_accumulated_losses()
+    
+    def apply_sinkhorn_global_constraints(self):
+        """
+        Apply Sinkhorn normalization across all tracked positions.
+        
+        This enforces global piece-count constraints, preventing
+        'identity inflation' where multiple pieces are predicted
+        as the same rare type (e.g., multiple pieces predicting Flag).
+        """
+        if not self.habr_enabled or self.habr_tracker is None:
+            return
+        
+        # Get all unrevealed positions
+        positions = [pos for pos in self.belief_distributions 
+                     if pos not in self.revealed_pieces]
+        
+        if len(positions) < 2:
+            return
+        
+        # Create belief matrix
+        belief_matrix = create_belief_matrix_from_distributions(
+            self.belief_distributions,
+            positions,
+            NUM_PIECE_TYPES,
+            self.device
+        )
+        
+        # Apply Sinkhorn normalization
+        normalized_matrix = self.habr_tracker.apply_sinkhorn_constraints(belief_matrix)
+        
+        # Update belief distributions
+        update_distributions_from_matrix(
+            self.belief_distributions,
+            normalized_matrix,
+            positions,
+            PieceType
+        )
+        
+        # Update belief tensors for all modified positions
+        for pos in positions:
+            self._update_belief_tensor(pos)
     
     def get_belief_distribution(self, pos: Tuple[int, int]) -> Dict[PieceType, float]:
         """Get the belief distribution for a piece at a given position."""

@@ -33,12 +33,12 @@ from heuristic_filter import HeuristicMoveFilter
 
 # C51 Hyperparameters - CRITICAL FOR DISTRIBUTIONAL RL
 # The support range must match the expected return scale!
-# With boosted rewards (win_reward=±10.0):
-#   - Max expected return: ~+15 (win + captures + bonuses)
-#   - Min expected return: ~-15 (loss + losses + penalties)
-# Using [-15.0, +15.0] covers the full range with margin
-V_MIN = -15.0   # Expanded to match boosted reward scale
-V_MAX = 15.0    # Expanded to match boosted reward scale
+# With heavily boosted rewards (win_reward_flag=25.0):
+#   - Max expected return: ~+30 (win + captures + bonuses + N-step returns)
+#   - Min expected return: ~-30 (loss + losses + penalties + N-step returns)
+# Using [-30.0, +30.0] covers the full boosted range with margin
+V_MIN = -30.0   # Expanded to match heavily boosted reward scale
+V_MAX = 30.0    # Expanded to match heavily boosted reward scale
 NUM_ATOMS = 51
 
 

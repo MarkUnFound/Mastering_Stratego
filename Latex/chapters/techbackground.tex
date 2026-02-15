@@ -1,20 +1,41 @@
 \chapter{Theoretical Frameworks}
-The main idea of the MARQ framework, a Multi-Agent Rainbow Deep Q-Networks, is to employ self-play techniques and deep reinforcement learning to train agents capable of handling Stratego's large game state space and imperfect information. The MARQ framework uses a league-based self-play system where agents learn by competing against a diverse pool of opponents, including their own previous versions and exploratory variants.
+
+\section{Stratego Game Domain}
+
+Stratego is an imperfect information board game with European roots, popularized in the Netherlands in the 1940s and released in North America in 1961 \cite{StrategoOrigin}. The game is played on a 10x10 board that includes two 2x2 ``lake'' areas in the center, which are impassable. Each player commands an army of 40 pieces of varying ranks, and during the game, the identity and rank of the pieces are kept secret from the opposing player. The objective is to capture the opponent's flag or eliminate all of their movable pieces.
+
+Each army consists of 12 different types of pieces, with ranks ranging from 1 (the Spy) to 10 (the Marshal), alongside Bombs and a Flag. Higher-ranked pieces defeat lower-ranked ones during combat, except in special situations: the Spy can defeat a Marshal if attacking first, the Miner is the only piece that can defuse Bombs, and Scouts can move multiple squares in a straight line. Victory is achieved by capturing the opponent's Flag, immobilizing all movable enemy pieces, or forcing the opponent to run out of time.
+
+
+\begin{figure}[ht]
+    \centering
+    \includegraphics[width=0.5\textwidth]{figures/stratego_piece.png}
+    \caption{Stratego Pieces}
+\end{figure}
+
+\begin{figure}[ht]
+    \centering
+    \includegraphics[width=0.7\textwidth]{figures/stratego.png}
+    \caption{Stratego Game board.}
+    \label{fig:stratego_tech}
+\end{figure}
+
+The theoretical state space of Stratego demonstrates the computational challenge:
+
+\begin{equation}
+|\mathcal{S}| = \binom{40}{1,1,2,3,4,4,4,5,8} \times 10^{10} \times 2^{40} \approx 10^{535}
+\end{equation}
+
+This state space complexity estimate was established by Perolat et al. \cite{RLStratego}. This high complexity necessitates knowledge-limited reasoning and belief state management rather than exhaustive enumeration of possible states.
+
+
+\section{MARQ Framework Overview}
+
+The MARQ framework, a Multi-Agent Rainbow Deep Q-Networks system, employs self-play techniques and deep reinforcement learning to train agents capable of handling Stratego's large game state space and imperfect information \cite{AlphaStratego}. The framework uses a league-based self-play system where agents learn by competing against a diverse pool of opponents, including their own previous versions and exploratory variants.
 
 This approach addresses the fundamental challenge of Stratego: reasoning about hidden information without computing intractable common-knowledge sets. While the number of possible game states exceeds $10^{535}$ and initial setups alone reach $10^{66}$ per player \cite{RLStratego}, the MARQ framework manages this complexity through belief state management, probabilistic reasoning, and strategic pattern recognition. The framework combines deep reinforcement learning for value estimation, attention mechanisms for processing game history, and controlled strategy mixing to prevent exploitation, while maintaining computational tractability even in this vast imperfect-information domain.
 
-
-\section{MARQ Architecture Integration}
-The MARQ framework operates through the hierarchical integration of its components. The system starts the observation processing, where the AAREN module ingests raw game positions to construct and maintain a probabilistic belief state(PBS). This belief state forms the base of information used for all subsequent reasoning.
-
-Finally, the entire architecture is embedded within a league-based training paradigm. This involves the simultaneous training and evaluation of MARQ agents.
-
-
-\subsection{Convergence and Theoretical Guarantees}
-
-The league training system ensures improvement through three complementary mechanisms. First, the system maintains best response values against historical opponents, ensuring that the current policy remains competitive against the full distribution of strategies encountered during training. Second, promotion to the main agent pool requires a positive win rate against previous versions before replacement, preventing regression in overall performance. Third, diversity bonuses in the opponent selection distribution prevent premature convergence to strategies that may be exploitable by counter-strategies.
-
-These properties, combined with extensive validation, provide confidence that the MARQ framework will achieve strong, robust play despite the theoretical compromises necessary for tractability.
+The MARQ framework operates through the hierarchical integration of its components. The system starts with observation processing, where the AAREN module ingests raw game positions to construct and maintain a probabilistic belief state (PBS). This belief state forms the base of information used for all subsequent reasoning. The entire architecture is embedded within a league-based training paradigm involving simultaneous training and evaluation of MARQ agents.
 
 \begin{table}[htbp]
     \centering
@@ -51,9 +72,10 @@ These properties, combined with extensive validation, provide confidence that th
     \end{tabular}
 \end{table}
 
+
 \section{MARQ Policy Definition}
 
-Policy optimization in reinforcement learning refers to the iterative refinement of an agent's decision-making strategy to maximize cumulative expected reward. In multi-agent environments characterized by imperfect information, this optimization process must produce policies that are not only effective against static opponents but also robust to the inherent uncertainty of hidden game states and the adaptive behaviors of learning adversaries. The MARQ framework addresses these challenges through a hierarchical policy architecture that integrates belief state reasoning with value-based decision making.
+Policy optimization in reinforcement learning refers to the iterative refinement of an agent's decision-making strategy to maximize cumulative expected reward \cite{DRLImperfectInfo2023}. In multi-agent environments characterized by imperfect information, this optimization process must produce policies that are not only effective against static opponents but also robust to the inherent uncertainty of hidden game states and the adaptive behaviors of learning adversaries. The MARQ framework addresses these challenges through a hierarchical policy architecture that integrates belief state reasoning with value-based decision making.
 
 The policy learning process in MARQ operates across multiple interconnected objectives. The primary objective concerns game outcomes, where the agent learns to maximize win probability through strategic piece deployment and tactical combat decisions. A secondary objective involves belief state accuracy, where the Probabilistic Belief State maintained by the AAREN module is continuously refined through comparison with revealed ground truth positions during gameplay. These objectives are jointly optimized, as accurate belief states enable better decision-making, while strategic decisions that reveal opponent information improve future belief quality.
 
@@ -71,7 +93,7 @@ To address this challenge, the MARQ policy operates on belief states $\mathcal{B
 
 This formulation captures the key insight that optimal play in imperfect information games requires probabilistic reasoning over hidden states. The policy learns to weight actions based on their expected value across the belief distribution, rather than optimizing for any single assumed opponent configuration.
 
-\subsubsection{PBS-to-Reality Optimization}
+\subsection{Belief State Optimization}
 
 The quality of the Probabilistic Belief State directly impacts decision quality, as inaccurate beliefs lead to poorly calibrated action values. MARQ therefore incorporates belief accuracy as an auxiliary training objective, using revealed piece identities as supervised labels for belief refinement.
 
@@ -95,16 +117,7 @@ The optimal policy is then defined as the policy that maximizes the joint object
 \pi^*_i = \arg\max_{\pi_i} \mathbb{E}_{\tau \sim \pi_i}\left[\sum_{t=0}^T \gamma^t \left(R_{\text{game}}(t) + \eta \cdot R_{\text{accuracy}}(t)\right)\right]
 \end{equation}
 
-The hyperparameter $\eta \in \mathbb{R}^+$ controls the relative importance of belief accuracy versus immediate game rewards. Higher values of $\eta$ produce policies that prioritize information gathering and belief refinement, while lower values emphasize direct strategic objectives. The optimal balance depends on game phase, with information gathering more valuable in early and middle game positions where uncertainty remains high.
-
-\paragraph{Belief Calibration Loss.}
-Beyond individual prediction accuracy, the MARQ framework monitors systematic biases in belief predictions through a calibration loss computed across training episodes:
-
-\begin{equation}
-\mathcal{L}_{\text{calib}} = \frac{1}{|\mathcal{D}|}\sum_{(t,p) \in \mathcal{D}} \left\|\text{PBS}_t(p) - \mathbb{1}[s_p = s^*_p]\right\|_2^2
-\end{equation}
-
-The dataset $\mathcal{D}$ aggregates all revelation events across training, and $\mathbb{1}[s_p = s^*_p]$ is the indicator vector with value one at the true piece type and zero elsewhere. This loss identifies cases where the belief system systematically over-predicts or under-predicts certain piece types, enabling targeted corrections to the belief update mechanism.
+The hyperparameter $\eta \in \mathbb{R}^+$ controls the relative importance of belief accuracy versus immediate game rewards.
 
 \subsection{Bellman Equation with Belief States}
 
@@ -114,43 +127,274 @@ The value function in MARQ extends the standard Bellman equation to incorporate 
 v^{\pi}_i(I, \mathcal{B}_t) = \mathbb{E}_{\pi}\left[R^{\text{capture}}_{i,t+1} + \lambda_1 R^{\text{info}}_{i,t+1} + \lambda_2 R^{\text{position}}_{i,t+1} + \gamma v^{\pi}_i(I_{t+1}, \mathcal{B}_{t+1}) \mid I_t = I, \mathcal{B}_t\right]
 \end{equation}
 
-The reward function decomposes into three components that capture different aspects of strategic value. The capture reward $R^{\text{capture}}$ reflects the immediate material consequences of combat, weighted by the relative values of pieces captured and lost. The information reward $R^{\text{info}}$ quantifies the strategic value of revealing opponent pieces, as this information improves future decision quality. The positional reward $R^{\text{position}}$ measures territorial control and piece mobility, encouraging positions that provide strategic advantages. The discount factor $\gamma$ determines the relative weight placed on immediate versus future rewards, and $\mathcal{B}_{t+1}$ represents the updated belief state after observing action outcomes.
+The reward function decomposes into three components that capture different aspects of strategic value. The capture reward $R^{\text{capture}}$ reflects the immediate material consequences of combat, weighted by the relative values of pieces captured and lost. The information reward $R^{\text{info}}$ quantifies the strategic value of revealing opponent pieces. The positional reward $R^{\text{position}}$ measures territorial control and piece mobility.
 
 \subsection{Nash Equilibrium in Imperfect Information}
 
-The strategic objective of MARQ training is to discover policies that approximate Nash equilibrium strategies. A Nash equilibrium represents a strategy profile where no player can improve their expected payoff through unilateral deviation. In the context of imperfect information games, the equilibrium condition is expressed as:
+The strategic objective of MARQ training is to discover policies that approximate Nash equilibrium strategies \cite{SubgameSolving2021}. A Nash equilibrium represents a strategy profile where no player can improve their expected payoff through unilateral deviation:
 
 \begin{equation}
 v_i(\pi^*) = \max_{\pi_i} v_i(\pi_i, \pi^*_{-i})
 \end{equation}
 
-This condition states that the equilibrium policy $\pi^*$ for player $i$ maximizes expected value against the equilibrium strategies of all other players $\pi^*_{-i}$. Finding exact Nash equilibria in large imperfect information games is computationally intractable, so MARQ instead seeks approximate equilibria through self-play training with diverse opponent populations.
+Finding exact Nash equilibria in large imperfect information games is computationally intractable, so MARQ instead seeks approximate equilibria through self-play training with diverse opponent populations.
 
-\subsection{Implementation Framework}
 
-The practical implementation of the MARQ policy relies on an attention-based memory system that processes observation sequences to maintain coherent belief representations. Given an observation sequence $O = \{o_1, \ldots, o_t\}$ representing the history of visible board states and action outcomes, the AAREN module computes attention weights that determine the relevance of each historical observation to the current belief state:
+\section{Deep Q-Network Architecture}
 
+Deep Q-Networks in the MARQ framework operate on belief states rather than complete game states \cite{DRLImperfectInfo2023}. The network approximates Q-values for probability distributions over opponent configurations, $\mathcal{B}_t$:
+$$Q(s, a) = \mathbb{E}_{s' \sim \mathcal{S}_t \subseteq \mathcal{B}_t}[Q_{network}(s', a)]$$
+
+The system uses a standard replay buffer for experience storage, sampling transitions $(\mathcal{B}_t, a_t, r_t, \mathcal{B}_{t+1})$ uniformly to train the value function.
+
+\subsection{Rainbow DQN Components}
+The implementation incorporates key enhancements from the Rainbow DQN architecture \cite{RainbowJMLR2021} to improve stability and sample efficiency.
+
+\paragraph{Distributional RL (Categorical DQN).}
+Stratego's inherent uncertainty leads to multimodal value distributions \cite{DistributionalRL2023}. The value distribution $Z(s, a)$ is modeled directly rather than just its expectation. The distribution is approximated by a discrete distribution over $N=51$ atoms $\{z_i\}_{i=1}^{N}$, with support ranging from $V_{min}$ to $V_{max}$:
 \begin{equation}
-\alpha_i = \text{softmax}(W_q h_t \cdot W_k o_i)
+Z_\theta(s, a) = \sum_{i=1}^{N} p_i(s, a) \delta_{z_i}
+\end{equation}
+The training objective minimizes the Kullback-Leibler divergence between the predicted distribution and the projected target distribution:
+\begin{equation}
+D_{KL}(\Phi \hat{\mathcal{T}} Z_{\theta'} || Z_\theta)
+\end{equation}
+where $\Phi$ is the projection operator mapping the Bellman update onto the fixed support atoms.
+
+\paragraph{Noisy Networks for Exploration.}
+To ensure consistent exploration without the need for discrete $\epsilon$-greedy schedules, the framework employs Noisy Linear layers. The weights and biases are perturbed by a deterministic function of factorized Gaussian noise:
+\begin{equation}
+y = (\mu_w + \sigma_w \odot \epsilon_w)x + (\mu_b + \sigma_b \odot \epsilon_b)
+\end{equation}
+where $\epsilon_w, \epsilon_b$ are random variables. This allows the network to learn the degree of exploration required for different states.
+
+\paragraph{Dueling Network Architecture.}
+The network explicitly separates the estimation of state values $V(s)$ and advantage values $A(s, a)$ using two separate streams that share a common convolutional feature extractor:
+\begin{equation}
+Q(s, a; \theta, \alpha, \beta) = V(s; \theta, \beta) + \left( A(s, a; \theta, \alpha) - \frac{1}{|\mathcal{A}|} \sum_{a'} A(s, a'; \theta, \alpha) \right)
+\end{equation}
+This decomposition leads to better policy evaluation in the presence of many similar-valued actions.
+
+\subsection{Exploration-Driven Q-Value Adjustment}
+The Q-values are augmented with an exploration bonus based on the uncertainty of the belief state, utilizing an optimism in the face of uncertainty approach:
+\begin{equation}
+Q_{augmented}(s, a) = Q_{base}(s, a) + \lambda \cdot U(a)
+\end{equation}
+where $U(a)$ represents the entropy of the belief distribution at the target location, encouraging the agent to investigate unknown opponent pieces.
+
+\subsection{Training Stability via Regularization}
+
+Recent advances in imperfect-information game solving, exemplified by the Ataraxos system which achieved superhuman performance in no-press Diplomacy, demonstrate that training stability is as critical as algorithmic innovation \cite{Ataraxos2025}. Deep reinforcement learning agents often struggle with two related problems: sample inefficiency, where most training experiences provide little learning signal, and strategy cycling, where the policy oscillates between different approaches without settling on a robust solution. The MARQ framework incorporates two complementary regularization techniques inspired by this work.
+
+\paragraph{Advantage Filtering for Sample Efficiency.}
+Advantage filtering techniques have been shown to improve sample efficiency in imperfect-information game training \cite{RegularizationStrategyExploration}. In value-based reinforcement learning, agents learn by comparing their predicted values with observed outcomes. The temporal-difference (TD) error quantifies this discrepancy. Standard experience replay samples transitions uniformly from a buffer of past experiences, treating all transitions equally even though some carry more learning potential. Advantage filtering focuses training on high-error transitions by oversampling the replay buffer and retaining only the top quartile by TD error magnitude:
+\begin{equation}
+\mathcal{B}_{filtered} = \text{Top}_{n/k}\left(\mathcal{B}_{sampled}, |\delta_i|\right)
+\end{equation}
+where $\delta_i = r_i + \gamma^n V(s'_i) - V(s_i)$ is the $n$-step TD error for transition $i$.
+
+\paragraph{Dynamic Damping with Power-Law Annealing.}
+To address strategy cycling, the loss function incorporates two regularization terms based on Kullback-Leibler divergence:
+\begin{equation}
+\mathcal{L}_{total} = \mathcal{L}_{C51} + \alpha(t) \cdot D_{KL}(\pi \| \pi_{uniform}) + \beta(t) \cdot D_{KL}(\pi_{target} \| \pi)
 \end{equation}
 
-These attention weights enable the system to selectively aggregate information from the game history, prioritizing observations that are most informative for current decision-making. The resulting belief representation is then used by the Rainbow DQN to estimate action values and select moves.
+The coefficients follow power-law schedules with opposing dynamics:
+\begin{align}
+\alpha(t) &= \alpha_0 \cdot (1 - t/T)^p \\
+\beta(t) &= \beta_0 + (\beta_T - \beta_0) \cdot (t/T)^p
+\end{align}
+where $t$ is the current episode, $T$ is the total training duration, and $p=2$ produces quadratic curves. This schedule ensures strong exploration when the policy is uncertain and gradual transition to stable exploitation as the policy matures.
 
-The multi-agent learning process maintains several agent populations that interact during training. The main agents represent the current best-performing policies and are actively optimized through gradient descent. Exploration variants with modified action selection mechanisms discover novel strategic approaches that may otherwise remain unexplored. Historical checkpoints of previous agent versions prevent strategy forgetting by ensuring that new policies maintain competence against earlier strategies.
 
-\subsection{Convergence Properties}
+\section{AAREN and Probabilistic Belief State}
 
-The MARQ training procedure provides probabilistic guarantees on convergence to approximate equilibrium strategies. For any tolerance level $\epsilon > 0$, the average strategy profile $(\bar{x}, \bar{y})$ computed over training iterations converges to an $\epsilon$-Nash equilibrium of the constructed game as the number of training iterations $T$ approaches infinity.
+The AAREN module (Attention as Recurrent Neural Network) \cite{Aaren} serves as the core memory and belief state system within the MARQ architecture. It is specifically designed to process extended sequences of partial observations in Stratego, integrating information over hundreds of moves while avoiding the vanishing gradient problem that affects recurrent models like LSTMs or GRUs in long tasks. AAREN leverages an attention mechanism to provide direct, weighted access to the entire history of observations, enabling more coherent and computationally efficient belief tracking \cite{Aaren}.
 
-The league training methodology ensures monotonic improvement toward equilibrium through several mechanisms. The system maintains best response values against historical opponents, ensuring that new policies perform at least as well as their predecessors against the training distribution. Promotion to the main agent pool requires a positive win rate against the previous best policy, preventing regression in overall performance. Diversity bonuses in the opponent selection distribution prevent premature convergence to strategies that may be exploitable by novel counter-strategies.
+\subsection{Recurrent Attention Computation}
+AAREN implements an attention-based recurrent computation that maintains a state triplet $(a_t, c_t, m_t)$ across the observation sequence. Unlike traditional recurrent neural networks that suffer from vanishing gradients over long sequences, AAREN provides direct access to the entire history through attention weights while maintaining O(1) inference complexity per timestep.
 
-These theoretical guarantees, combined with empirical validation across extensive training runs, establish that the MARQ framework can discover effective and robust strategies for imperfect information gameplay while remaining computationally tractable on consumer-grade hardware.
+Given a sequence of observations $O = \{o_1, \ldots, o_t\}$ where each $o_i$ encapsulates the visible board state and public action outcomes, the AAREN cell first projects each observation into key and value representations:
 
+\begin{equation}
+k_t = W_k(o_t), \quad v_t = W_v(o_t)
+\end{equation}
+
+The projection matrices $W_k$ and $W_v$ are learned during training. The key $k_t$ determines how relevant the current observation is for belief updates, while the value $v_t$ encodes the informational content to be integrated into the belief representation. The attention score $s_t$ measures the relevance of the current observation relative to the learned query vector $q$:
+
+\begin{equation}
+s_t = q^T k_t
+\end{equation}
+
+The weighted value accumulator $a_t$ aggregates value representations across the sequence:
+
+\begin{equation}
+a_t = a_{t-1} \exp(m_{t-1} - m_t) + v_t \exp(s_t - m_t)
+\end{equation}
+
+The term $\exp(m_{t-1} - m_t)$ rescales the previous accumulator when a new maximum is encountered, while $\exp(s_t - m_t)$ computes the relative attention weight for the current observation. The normalization constant $c_t = c_{t-1} \exp(m_{t-1} - m_t) + \exp(s_t - m_t)$ ensures that the effective attention weights sum to unity. The output representation $h_t = a_t / c_t$ represents an attention-weighted aggregation of all observations up to time $t$.
+
+\subsection{Piece Type Inference}
+The AAREN model learns to infer piece values from action sequences using 24-dimensional feature vectors encoding movement patterns, contextual information, and game state features. The network outputs probability distributions over piece types:
+
+\begin{equation}
+P(\text{piece\_type} = t \mid \text{action\_sequence}) = \text{softmax}(W_{out} \cdot h_T + b_{out})_t
+\end{equation}
+
+This allows the PBS to combine AAREN predictions with rule-based inference and historical pattern matching for robust piece identification under uncertainty.
+
+\subsection{PBS Quality Evaluation}
+
+The MARQ framework incorporates a PBS evaluation system that assesses prediction quality and provides feedback for continuous improvement. The PBS Evaluator employs a neural network architecture that takes belief distributions as input and outputs quality scores $Q_{eval}(\mathcal{B}) = \text{MLP}(\mathcal{B}; \theta_{eval})$. The training objective is based on rewards computed from ground truth comparisons:
+
+\begin{equation}
+R_{quality}(\mathcal{B}, g) = \alpha \cdot \mathcal{B}[g] - \beta \cdot |V_{pred} - V_{actual}| - \gamma \cdot \text{distance\_penalty}
+\end{equation}
+
+The system determines when additional information gathering is beneficial through uncertainty assessment:
+
+\begin{equation}
+\text{NeedMoreInfo}(\mathcal{B}) = \mathbb{1}\{H(\mathcal{B}) > \theta_H\} \cdot \mathbb{1}\{Q_{eval}(\mathcal{B}) < \theta_Q\}
+\end{equation}
+
+\subsection{Belief Updates on Piece Revelation}
+
+When a battle reveals a piece's true type, the PBS synchronizes with ground truth through several update steps. Upon revealing piece type $g$ at position $pos$, the belief distribution collapses to certainty:
+\begin{equation}
+\mathcal{B}_{pos}[t] = \begin{cases}
+1.0 & \text{if } t = g \\
+0.0 & \text{otherwise}
+\end{cases}
+\end{equation}
+
+The revealed piece count is incremented, and remaining beliefs are adjusted to respect piece count constraints. For unrevealed positions $p \neq pos$:
+\begin{equation}
+\mathcal{B}_p[t] \leftarrow \mathcal{B}_p[t] \cdot \frac{\text{max\_count}[t] - \text{revealed\_count}[t]}{\text{remaining\_count}[t]}
+\end{equation}
+
+For example, when the single Marshal is revealed, the probability of any other piece being a Marshal drops to zero.
+
+\subsection{Hindsight-Aided Belief Refinement}
+
+While the AAREN module provides inference during gameplay, the Hindsight-Aided Belief Refinement (HABR) module enables learning from verified information. When a piece is revealed through combat, HABR applies retrospective learning across the entire history of that piece, using the ground truth as a supervisory signal for past predictions.
+
+\paragraph{Information Gain Reward.}
+The Information Gain reward quantifies the value of observations that reduce uncertainty about opponent pieces. Let $H(P)$ denote the Shannon entropy of a probability distribution $P$. The KL divergence from a uniform prior $U$ over $N$ piece types is:
+\begin{equation}
+D_{KL}(P \parallel U) = \log(N) - H(P)
+\end{equation}
+The Information Gain reward measures the change in this divergence between consecutive PBS updates:
+\begin{equation}
+R_{gain}(t) = D_{KL}(PBS_{t-1} \parallel U) - D_{KL}(PBS_t \parallel U)
+\end{equation}
+Substituting the divergence formula yields:
+\begin{equation}
+R_{gain}(t) = (\log(N) - H(PBS_{t-1})) - (\log(N) - H(PBS_t)) = H(PBS_{t-1}) - H(PBS_t)
+\end{equation}
+This result shows that $R_{gain}$ equals the reduction in entropy. A positive reward is achieved only when the observation at time $t$ increases certainty about piece identity compared to $t-1$. This aligns the agent's incentives with active information gathering.
+
+\paragraph{Sinkhorn Constraint Normalization.}
+Independent belief updates for each piece position can lead to inconsistent global predictions. For example, if piece count constraints are not enforced, the model might assign high probability to multiple pieces being the single Marshal. This phenomenon, termed identity inflation, violates the physical constraints of the game.
+
+The Sinkhorn normalization addresses this through iterative proportional fitting. Given a belief matrix $M \in \mathbb{R}^{P \times S}$ where $P$ is the number of tracked pieces and $S$ is the number of piece types, two constraints must hold: the row constraint $\sum_{s} PBS(p, s) = 1$ ensures each piece has exactly one identity, and the column constraint $\sum_{p} PBS(p, s) = Count(s)$ ensures the total predicted count of each piece type matches the remaining count.
+
+The Sinkhorn algorithm alternates between row and column normalization until convergence:
+\begin{align}
+M^{(k+1)} &= D_r^{(k)} M^{(k)} D_c^{(k)} \\
+D_r^{(k)} &= \text{diag}\left(\frac{1_P}{M^{(k)} 1_S}\right), \quad D_c^{(k)} = \text{diag}\left(\frac{c}{M^{(k)T} 1_P}\right)
+\end{align}
+where $c$ is the vector of remaining piece counts. This operator is differentiable, allowing gradients from the training loss to propagate through the normalization. When piece A is confirmed as the Spy, the Sinkhorn layer automatically forces the Spy probability for all other pieces toward zero, creating a federated update across the entire belief state.
+
+\paragraph{Retrospective KL Divergence.}
+When a piece with identity $s^*_p$ is revealed at time $t$, the retrospective loss applies across the entire history of that piece:
+\begin{equation}
+\mathcal{L}_{retro} = \sum_{k=1}^{t} \lambda^{t-k} D_{KL}(PBS_k(p) \parallel \delta_{s^*_p})
+\end{equation}
+where $\delta_{s^*_p}$ is the Dirac delta distribution concentrated on the true piece type. The temporal decay factor $\lambda < 1$ (typically 0.9) assigns higher weight to recent predictions.
+
+The decay factor addresses the non-stationary nature of piece behavior in Stratego. A piece may exhibit deceptive behavior in the early game, such as a Marshal moving conservatively to avoid revealing its identity, before adopting more characteristic patterns in the endgame. By weighting recent observations more heavily, the loss function prioritizes learning from high-information behaviors near the revelation event while still providing a smoothed learning signal over the piece's history.
+
+
+\section{Multi-Agent Learning and Strategy Mixing}
+
+MARQ employs a league reinforcement learning system that minimizes non-stationarity, a fundamental challenge in multi-agent learning where policy updates by one agent alter the environment experienced by others.
+
+\subsection{League-Based Training Architecture}
+The league consists of a dynamic pool of agents designed to ensure robust generalizability \cite{AlphaStar}. The main agent represents the current best-performing policy that is being actively optimized through gradient descent. The historical pool contains saved collections of past main agent checkpoints representing distinct strategic eras discovered during training.
+
+During training, opponents are sampled using a probability distribution:
+\begin{equation}
+P(\text{opponent}) = 
+\begin{cases} 
+0.5 & \text{Main Agent (Self-Play)} \\
+0.5 & \text{Uniform}(\text{Historical Pool})
+\end{cases}
+\end{equation}
+This prevents cycling where the agent re-learns and un-learns the same strategies endlessly, forcing it to defeat all previous versions of itself.
+
+\subsection{Population-Based Training}
+Population-Based Training (PBT) extends the league training paradigm by treating hyperparameter optimization as a parallel evolutionary process. Rather than training a single agent with fixed hyperparameters, PBT maintains a population of $K$ workers, each training independently with potentially different hyperparameter configurations.
+
+At regular intervals (typically hourly), the supervisor evaluates the population and performs exploitation: workers in the bottom quantile are terminated, and their training is restarted using weights cloned from top-performing workers. This mechanism allows the population to collectively discover effective hyperparameter schedules during training rather than requiring extensive tuning prior to training.
+
+To prevent the population from collapsing to a single strategy, cloned workers receive perturbed hyperparameters:
+\begin{equation}
+\theta'_i = \theta_i \cdot \xi, \quad \xi \sim U(0.8, 1.2)
+\end{equation}
+The exploration rate $\epsilon$ is reset to a non-zero value (typically 0.1) for cloned workers, enabling renewed exploration from the inherited policy. This combination of exploitation (copying successful weights) and exploration (perturbing hyperparameters) allows PBT to adapt the training configuration as the policy evolves, addressing the observation that optimal hyperparameters change over the course of training.
+
+\subsection{Strategy Mixing for Exploitation Resistance}
+
+Extensive-form imperfect information games with deterministic strategies are inherently suboptimal and vulnerable to exploitation \cite{RLStratego, MARLGametheoretic}. An adversary with knowledge of a deterministic policy effectively reduces the game to a perfect information setting, nullifying the strategic uncertainty fundamental to games like Stratego. The MARQ framework addresses this challenge through two complementary mechanisms.
+
+At the action selection level, MARQ employs Noisy Linear layers that inject learned, state-dependent noise into the policy. Rather than using fixed exploration schedules such as $\epsilon$-greedy, the network learns the appropriate degree of randomization for each game state.
+
+At the strategy level, MARQ achieves mixing through diverse opponent exposure during training. The league system maintains a population of historical agent checkpoints representing different strategic approaches discovered during training. The combination of action-level noise and strategy-level diversity produces policies that are both unpredictable in individual games and robust across different opponent types.
+
+\subsection{Multi-Dimensional Reward Structure}
+
+The reward function $R(s, a, s')$ is shaped to guide learning in the sparse-reward Stratego environment \cite{PBRSModern2022}:
+
+\begin{equation}
+R_{total} = R_{move} + R_{capture} + R_{tactical} + R_{info}
+\end{equation}
+
+The move reward $R_{move}$ provides small rewards for advancing pieces (approximately $+0.05$) to encourage active play. The capture reward $R_{capture}$ is scaled by the rank of the captured piece according to $0.15 \times \frac{\text{Rank}}{11.0}$. The tactical reward $R_{tactical}$ gives specific bonuses for key strategic captures, including $+0.5$ for Miner vs Bomb defusals and $+1.0$ for Spy vs Marshal assassinations. The information reward $R_{info}$ provides $+0.3$ for revealing high-value opponent pieces.
+
+
+\section{Specialized Agent Architectures}
+
+\subsection{Setup Agent via Distributional RL}
+
+The game's initial setup is handled by a specialized SetupAgent that learns optimal piece configurations by treating the placement phase as a sequential decision process. The state representation consists of a 3-channel input tensor encoding the current board state with already-placed pieces, a valid positions mask indicating legal placement locations, and a current piece type mask identifying which piece is being placed.
+
+The agent outputs a distributional Q-value for each of the 100 board positions, mapping $Q(s, pos)$ to a distribution over $[V_{min}, V_{max}]$. This distributional approach captures the inherent uncertainty in setup quality, where the true value of a placement depends on the unknown opponent configuration.
+
+To prevent creating static, easily countered setups, the agent includes an exploitability critic network that penalizes predictable placements:
+
+\begin{equation}
+\mathcal{L}_{total} = \mathcal{L}_{C51} + \lambda \cdot \mathcal{L}_{predictability}
+\end{equation}
+
+
+\subsection{Information Set Monte Carlo Tree Search (IS-MCTS)}
+
+For high-stakes decision making, particularly in the endgame, MARQ employs an Information Set MCTS agent \cite{UpdatedISMCTS} that combines search with learned value functions. The search process proceeds in three phases.
+
+First, during the determinization phase, the agent samples a consistent concrete world state $s_{det}$ from the PBS beliefs according to $s_{det} \sim P(S | \mathcal{B}_t)$. This converts the imperfect information game into a perfect information instance for the duration of the simulation.
+
+Second, during tree traversal, the search tree is navigated using a UCB1 variant to balance exploration and exploitation of move sequences. Nodes in the tree represent information sets rather than individual states, allowing the tree to be shared across multiple determinizations.
+
+Third, during leaf evaluation, terminal or unexpanded nodes are evaluated using the Rainbow DQN value function rather than random rollouts:
+
+\begin{equation}
+V(s_{leaf}) \approx Q_{DRQN}(s_{leaf}, a_{best})
+\end{equation}
 
 
 \section{Game Environment and State Management}
 
-The Stratego environment provides the foundation for agent training and evaluation, managing the complex dynamics of imperfect information and simultaneous move selection.
+The Stratego environment provides the foundation for agent training and evaluation, managing the complex dynamics of imperfect information.
 
 \subsection{Information Set Management}
 The environment maintains distinct representations for different information contexts:
@@ -160,15 +404,6 @@ The environment maintains distinct representations for different information con
 \end{equation}
 
 Each player receives only the subset of game state information available through their observation function.
-
-\subsection{State Space Complexity}
-The theoretical state space of Stratego demonstrates the challenge addressed by MARQ:
-
-\begin{equation}
-|\mathcal{S}| = \binom{40}{1,1,2,3,4,4,4,5,8} \times 10^{10} \times 2^{40} \approx 10^{535}
-\end{equation}
-
-This high complexity necessitates knowledge-limited reasoning and belief state management.
 
 \subsection{Temporal State Evolution}
 Game states evolve according to the update function:
@@ -195,11 +430,10 @@ The initial game setup involves strategic piece placement governed by setup poli
 \pi_{setup}(\text{placement}|player) = \text{NeuralNetworkSetup}(\text{strategic\_features}, \theta_{setup})
 \end{equation}
 
-where strategic features include positional value maps, piece interaction potentials, and defensive vulnerabilities.
+where strategic features include positional value maps, piece interaction potentials, and defensive vulnerabilities. The setup phase represents a critical strategic decision that influences the entire game trajectory \cite{PlacementSetup}.
 
-The setup phase represents a critical strategic decision that influences the entire game trajectory, making it a key component of the overall MARQ training framework \cite{PlacementSetup}.
 
-\section{Theoretical Convergence Guarantees}
+\section{Convergence Properties}
 
 The MARQ framework provides theoretical guarantees for convergence and performance under specific conditions.
 
@@ -230,462 +464,6 @@ The league training methodology ensures convergence to $\epsilon$-Nash equilibri
 
 for some $\epsilon > 0$ depending on the exploration parameters and opponent diversity.
 
-These theoretical foundations provide confidence in the MARQ framework's ability to learn robust, effective strategies in the challenging domain of imperfect information strategic gameplay.
+The league training system ensures improvement through three complementary mechanisms. First, the system maintains best response values against historical opponents, ensuring that the current policy remains competitive against the full distribution of strategies encountered during training. Second, promotion to the main agent pool requires a positive win rate against previous versions before replacement, preventing regression in overall performance. Third, diversity bonuses in the opponent selection distribution prevent premature convergence to strategies that may be exploitable by counter-strategies.
 
-
-\section{Deep Q-Network with Belief States}
-Deep Q-Networks in the MARQ framework operate on belief states rather than complete game states. The network approximates Q-values for probability distributions over opponent configurations, $\mathcal{B}_t$:
-$$Q(s, a) = \mathbb{E}_{s' \sim \mathcal{S}_t \subseteq \mathcal{B}_t}[Q_{network}(s', a)]$$
-
-The system uses a \textbf{Standard Replay Buffer} for experience storage, sampling transitions $(\mathcal{B}_t, a_t, r_t, \mathcal{B}_{t+1})$ uniformly to train the value function.
-
-\subsection{Rainbow DQN Components}
-The implementation incorporates key enhancements from the Rainbow DQN architecture to improve stability and sample efficiency:
-
-\subsubsection{Distributional RL (Categorical DQN)}
-Stratego's inherent uncertainty leads to multimodal value distributions. We model the value distribution $Z(s, a)$ directly rather than just its expectation. The distribution is approximated by a discrete distribution over $N=51$ atoms $\{z_i\}_{i=1}^{N}$, with support ranging from $V_{min}$ to $V_{max}$:
-\begin{equation}
-Z_\theta(s, a) = \sum_{i=1}^{N} p_i(s, a) \delta_{z_i}
-\end{equation}
-The training objective minimizes the Kullback-Leibler divergence between the predicted distribution and the projected target distribution:
-\begin{equation}
-D_{KL}(\Phi \hat{\mathcal{T}} Z_{\theta'} || Z_\theta)
-\end{equation}
-where $\Phi$ is the projection operator mapping the Bellman update onto the fixed support atoms.
-
-\subsubsection{Noisy Networks for Exploration}
-To ensure consistent exploration without the need for discrete $\epsilon$-greedy schedules, we employ Noisy Linear layers. The weights and biases are perturbed by a deterministic function of factorized Gaussian noise:
-\begin{equation}
-y = (\mu_w + \sigma_w \odot \epsilon_w)x + (\mu_b + \sigma_b \odot \epsilon_b)
-\end{equation}
-where $\epsilon_w, \epsilon_b$ are random variables. This allows the network to learn the degree of exploration required for different states.
-
-\subsubsection{Dueling Network Architecture}
-The network explicitly separates the estimation of state values $V(s)$ and advantage values $A(s, a)$ using two separate streams that share a common convolutional feature extractor:
-\begin{equation}
-Q(s, a; \theta, \alpha, \beta) = V(s; \theta, \beta) + \left( A(s, a; \theta, \alpha) - \frac{1}{|\mathcal{A}|} \sum_{a'} A(s, a'; \theta, \alpha) \right)
-\end{equation}
-This decomposition leads to better policy evaluation in the presence of many similar-valued actions.
-
-\subsection{Exploration-Driven Q-Value Adjustment}
-We augment the Q-values with an exploration bonus based on the uncertainty of the belief state, utilizing an "optimism in the face of uncertainty" approach:
-\begin{equation}
-Q_{augmented}(s, a) = Q_{base}(s, a) + \lambda \cdot U(a)
-\end{equation}
-where $U(a)$ represents the entropy of the belief distribution at the target location, encouraging the agent to investigate unknown opponent pieces.
-
-\subsection{Adaptive Learning Rate Scheduling}
-MARQ employs adaptive learning rate adjustment based on loss trends and performance metrics. The learning rate $\eta_t$ is dynamically adjusted according to:
-
-\begin{equation}
-\eta_{t+1} = \begin{cases}
-\eta_t \cdot \alpha_{decay} & \text{if } \mathcal{L}_{recent} > \mathcal{L}_{baseline} \cdot \tau_{increase} \\
-\eta_t \cdot \alpha_{increase} & \text{if } \mathcal{L}_{recent} < \eta_{threshold} \\
-\eta_t \cdot \alpha_{time} & \text{time-based decay}
-\end{cases}
-\end{equation}
-
-where $\mathcal{L}_{recent}$ is the average loss over recent training steps, $\tau_{increase}$ is the increase threshold, and $\alpha$ parameters control the rate of adjustment.
-
-\subsection{Training Stability via Ataraxos-Inspired Regularization}
-
-Recent advances in imperfect-information game solving, exemplified by the Ataraxos system which achieved superhuman performance in no-press Diplomacy, demonstrate that training stability is as critical as algorithmic innovation \cite{Ataraxos}. Deep reinforcement learning agents often struggle with two related problems: sample inefficiency, where most training experiences provide little learning signal, and strategy cycling, where the policy oscillates between different approaches without settling on a robust solution. The MARQ framework incorporates two complementary regularization techniques inspired by this work to address both challenges.
-
-\subsubsection{Advantage Filtering for Sample Efficiency}
-In value-based reinforcement learning, agents learn by comparing their predicted values with observed outcomes. The temporal-difference (TD) error quantifies this discrepancy: when the agent predicts a state is worth 5 points but observes an outcome of 8 points, the TD error is 3. Large TD errors indicate situations the agent does not yet understand well, making these transitions particularly valuable for learning.
-
-Standard experience replay samples transitions uniformly from a buffer of past experiences. This uniform sampling treats all transitions equally, even though some carry far more learning potential than others. A routine move that shuffles a piece sideways may have near-zero TD error because the agent already understands such situations, while a surprising capture that reveals hidden information may have large TD error because the outcome differed substantially from predictions.
-
-Advantage filtering addresses this inefficiency by focusing training on high-error transitions. The procedure works in three steps. First, the system samples more transitions than needed for a single training batch. Specifically, if the target batch size is $n$ transitions, the system samples $k \cdot n$ candidates, where $k=4$ in the current implementation. Second, each candidate's TD error is computed using the current value network. Third, the candidates are ranked by absolute TD error magnitude, and only the top $n$ transitions (the top quartile when $k=4$) are retained for gradient computation:
-\begin{equation}
-\mathcal{B}_{filtered} = \text{Top}_{n/k}\left(\mathcal{B}_{sampled}, |\delta_i|\right)
-\end{equation}
-where $\delta_i = r_i + \gamma^n V(s'_i) - V(s_i)$ is the $n$-step TD error for transition $i$, $r_i$ is the observed reward, $\gamma$ is the discount factor, and $V(\cdot)$ denotes the value function. This selective training focuses gradient updates on experiences where the agent's understanding is weakest, accelerating convergence without increasing computational cost per update.
-
-\subsubsection{Dynamic Damping with Power-Law Annealing}
-Strategy cycling occurs when a reinforcement learning agent repeatedly switches between different policies without converging to a stable solution. In Stratego, an agent might learn an aggressive attacking strategy, then shift to a defensive approach when attacks fail, then return to attacking when defense proves insufficient. This oscillation wastes training time and results in a policy that is easily exploited because it lacks consistency.
-
-The MARQ framework prevents strategy cycling through a technique called dynamic damping, which adds two regularization terms to the training loss function. These terms use Kullback-Leibler (KL) divergence, a mathematical measure of how different two probability distributions are from each other. When applied to policies, KL divergence quantifies how much an agent's action preferences have changed.
-
-The total loss function becomes:
-\begin{equation}
-\mathcal{L}_{total} = \mathcal{L}_{C51} + \alpha(t) \cdot D_{KL}(\pi \| \pi_{uniform}) + \beta(t) \cdot D_{KL}(\pi_{target} \| \pi)
-\end{equation}
-
-The first regularization term, weighted by coefficient $\alpha(t)$, measures the divergence between the current policy $\pi$ and a uniform distribution $\pi_{uniform}$ where all legal actions have equal probability. This term serves as an exploration incentive: a policy that assigns very high probability to one action and near-zero probability to others will incur a large penalty. By encouraging the agent to maintain some probability mass across multiple actions, this term prevents premature convergence to deterministic strategies that opponents could exploit.
-
-The second regularization term, weighted by coefficient $\beta(t)$, measures the divergence between the target network policy $\pi_{target}$ and the current policy $\pi$. In deep reinforcement learning, the target network is a slowly-updated copy of the main network that provides stable learning targets. By penalizing deviation from the target network's action preferences, this term acts as an anchor that prevents the policy from changing too rapidly between updates.
-
-The key insight of dynamic damping is that the optimal balance between exploration and stability changes over training. Early in training, when the agent knows little about effective strategies, strong exploration is beneficial. Later in training, when a good policy has been discovered, stability becomes more important to refine and consolidate the learned strategy. The coefficients therefore follow power-law schedules with opposing dynamics:
-\begin{align}
-\alpha(t) &= \alpha_0 \cdot (1 - t/T)^p \\
-\beta(t) &= \beta_0 + (\beta_T - \beta_0) \cdot (t/T)^p
-\end{align}
-where $t$ is the current episode, $T$ is the total training duration, and $p=2$ produces quadratic curves. The exploration coefficient $\alpha(t)$ starts at $\alpha_0 = 0.1$ and decays toward $0.001$, while the stability coefficient $\beta(t)$ starts at $\beta_0 = 0.001$ and grows toward $\beta_T = 0.1$. This schedule ensures strong exploration when the policy is uncertain and gradual transition to stable exploitation as the policy matures.
-
-\subsection{Cross-System Performance Monitoring}
-
-The framework includes comprehensive performance monitoring to detect misalignment between PBS and DQN components. The system tracks four key metrics: PBS prediction accuracy trends that measure how well the belief state predicts revealed piece identities, DQN loss convergence patterns that indicate training stability, action prediction alignment scores that compare selected actions against high-value alternatives, and reward distribution analysis that monitors the statistical properties of received rewards across episodes.
-
-Misalignment is detected when PBS accuracy falls below $\theta_{pbs} = 0.5$ while DQN loss exceeds $\theta_{dqn} = 0.5$, triggering corrective measures in the training process.
-
-
-
-\section{Attention as Recurrent Neural Network (AAREN)}
-
-The AAREN module acts as the core memory and belief state system within the MARQ architecture. It is specifically designed to process extended sequences of partial observations in Stratego, integrating information over hundreds of moves while avoiding the vanishing gradient problem that affects recurrent models like LSTMs or GRUs in long tasks. AAREN leverages an attention mechanism to provide direct, weighted access to the entire history of observations, enabling more coherent and computationally efficient belief tracking \cite{Aaren}.
-
-\paragraph{Recurrent Attention Computation.}
-AAREN implements an attention-based recurrent computation that maintains a state triplet $(a_t, c_t, m_t)$ across the observation sequence. Unlike traditional recurrent neural networks that suffer from vanishing gradients over long sequences, AAREN provides direct access to the entire history through attention weights while maintaining O(1) inference complexity per timestep.
-
-Given a sequence of observations $O = \{o_1, \ldots, o_t\}$ where each $o_i$ encapsulates the visible board state and public action outcomes, the AAREN cell first projects each observation into key and value representations:
-
-\begin{equation}
-k_t = W_k(o_t), \quad v_t = W_v(o_t)
-\end{equation}
-
-The projection matrices $W_k$ and $W_v$ are learned during training. The key $k_t$ determines how relevant the current observation is for belief updates, while the value $v_t$ encodes the informational content to be integrated into the belief representation. The attention score $s_t$ measures the relevance of the current observation relative to the learned query vector $q$:
-
-\begin{equation}
-s_t = q^T k_t
-\end{equation}
-
-Higher attention scores indicate observations that are more informative for piece identification. To prevent numerical overflow when computing exponentials of attention scores, AAREN maintains a running maximum $m_t = \max(m_{t-1}, s_t)$, enabling the log-sum-exp trick for numerical stability even for sequences spanning hundreds of moves.
-
-The weighted value accumulator $a_t$ aggregates value representations across the sequence, with weights determined by the attention scores:
-
-\begin{equation}
-a_t = a_{t-1} \exp(m_{t-1} - m_t) + v_t \exp(s_t - m_t)
-\end{equation}
-
-The term $\exp(m_{t-1} - m_t)$ rescales the previous accumulator when a new maximum is encountered, while $\exp(s_t - m_t)$ computes the relative attention weight for the current observation. The normalization constant $c_t = c_{t-1} \exp(m_{t-1} - m_t) + \exp(s_t - m_t)$ ensures that the effective attention weights sum to unity. Finally, the output representation $h_t = a_t / c_t$ represents an attention-weighted aggregation of all observations up to time $t$, with more informative observations receiving higher weights.
-
-\paragraph{Parallel Training and Piece Value Inference.}
-For training efficiency, AAREN employs parallel prefix scan computation across the observation sequence. This allows processing of entire sequences in parallel while maintaining the O(1) per-timestep inference complexity for deployment. The parallel implementation computes cumulative sums of exponentially-weighted values, enabling efficient GPU utilization during training.
-
-The AAREN model learns to infer piece values from action sequences using 24-dimensional feature vectors encoding movement patterns, contextual information, and game state features. The network outputs probability distributions over piece types:
-
-\begin{equation}
-P(\text{piece\_type} = t \mid \text{action\_sequence}) = \text{softmax}(W_{out} \cdot h_T + b_{out})_t
-\end{equation}
-
-This allows the PBS to combine AAREN predictions with rule-based inference and historical pattern matching for robust piece identification under uncertainty.
-
-\section{PBS Quality Evaluation Framework}
-
-The MARQ framework incorporates a PBS evaluation system that assesses prediction quality and provides feedback for continuous improvement. This system addresses the challenge of determining when and how much to trust PBS predictions.
-
-\paragraph{Evaluator Network and Quality Assessment.}
-The PBS Evaluator employs a neural network architecture that takes belief distributions as input and outputs quality scores $Q_{eval}(\mathcal{B}) = \text{MLP}(\mathcal{B}; \theta_{eval})$, where $\mathcal{B}$ is the belief distribution over piece types. The evaluator learns to predict the expected reward of PBS predictions based on historical outcomes. The training objective is based on rewards computed from ground truth comparisons:
-
-\begin{equation}
-R_{quality}(\mathcal{B}, g) = \alpha \cdot \mathcal{B}[g] - \beta \cdot |V_{pred} - V_{actual}| - \gamma \cdot \text{distance\_penalty}
-\end{equation}
-
-In this formulation, $g$ represents the ground truth piece type revealed during combat, while $V_{pred} = \sum_{t} r_t \cdot \mathcal{B}[t]$ is the expected piece value computed from the belief distribution and $V_{actual}$ is the actual piece rank. Higher-value pieces receive greater reward or penalty weighting, reflecting their strategic importance in the game.
-
-\paragraph{Bias Detection and Feature Learning.}
-The system includes bias tracking that identifies systematic over/under-prediction patterns for different piece types. For each piece type $t$, a correction factor $\phi_t = \frac{\text{actual\_rate}_t}{\text{predicted\_rate}_t} \cdot \text{accuracy\_adjustment}_t$ is computed, and corrected belief distributions are obtained as $\mathcal{B}_{corrected}[t] = \phi_t \cdot \mathcal{B}[t]$.
-
-The framework also learns which action features are most predictive for PBS inference through a dedicated neural network that outputs importance weights $\mathbf{w}_{importance} = \text{FeatureNet}(\mathbf{x}_{action}; \theta_{feat})$ for the 24-dimensional action feature vector.
-
-\paragraph{Active Learning for Information Gathering.}
-The system determines when additional information gathering is beneficial through uncertainty assessment. A position requires more observation when both the entropy of beliefs exceeds a threshold and the quality score falls below a quality threshold:
-
-\begin{equation}
-\text{NeedMoreInfo}(\mathcal{B}) = \mathbb{1}\{H(\mathcal{B}) > \theta_H\} \cdot \mathbb{1}\{Q_{eval}(\mathcal{B}) < \theta_Q\}
-\end{equation}
-
-This active learning approach prioritizes scouting moves that can reduce uncertainty in strategically important positions.
-
-\section{Specialized Agent Architectures}
-
-\subsection{Setup Agent via Distributional RL}
-
-The game's initial setup is handled by a specialized SetupAgent that learns optimal piece configurations by treating the placement phase as a sequential decision process. The state representation consists of a 3-channel input tensor encoding the current board state with already-placed pieces, a valid positions mask indicating legal placement locations, and a current piece type mask identifying which piece is being placed.
-
-The agent outputs a distributional Q-value for each of the 100 board positions, mapping $Q(s, pos)$ to a distribution over $[V_{min}, V_{max}]$. This distributional approach captures the inherent uncertainty in setup quality, where the true value of a placement depends on the unknown opponent configuration.
-
-To prevent creating static, easily countered setups, the agent includes an exploitability critic network that penalizes predictable placements. The total training loss combines the C51 distributional loss with a predictability penalty:
-
-\begin{equation}
-\mathcal{L}_{total} = \mathcal{L}_{C51} + \lambda \cdot \mathcal{L}_{predictability}
-\end{equation}
-
-
-\subsection{Information Set Monte Carlo Tree Search (IS-MCTS)}
-
-For high-stakes decision making, particularly in the endgame, MARQ employs an Information Set MCTS agent that combines search with learned value functions. The search process proceeds in three phases.
-
-First, during the determinization phase, the agent samples a consistent concrete world state $s_{det}$ from the PBS beliefs according to $s_{det} \sim P(S | \mathcal{B}_t)$. This converts the imperfect information game into a perfect information instance for the duration of the simulation.
-
-Second, during tree traversal, the search tree is navigated using a UCB1 variant to balance exploration and exploitation of move sequences. Nodes in the tree represent information sets rather than individual states, allowing the tree to be shared across multiple determinizations.
-
-Third, during leaf evaluation, terminal or unexpanded nodes are evaluated using the Rainbow DQN value function rather than random rollouts, providing a high-quality heuristic estimate:
-
-\begin{equation}
-V(s_{leaf}) \approx Q_{DRQN}(s_{leaf}, a_{best})
-\end{equation}
-
-This hybrid approach allows deep lookahead while respecting the uncertainty inherent in the belief state.
-
-\section{Multi-Agent Reinforcement Learning}
-MARQ employs a league reinforcement learning system that minimizes non-stationarity, a fundamental challenge in multi-agent learning where policy updates by one agent alter the environment experienced by others. The system mitigates this through several mechanisms:
-
-\subsection{League-Based Training Architecture}
-The league consists of a dynamic pool of agents designed to ensure robust generalizability. The main agent represents the current best-performing policy that is being actively optimized through gradient descent. The historical pool contains a saved collection of past main agent checkpoints representing distinct strategic eras discovered during training.
-
-
-During training, opponents are sampled using a 50/50 distribution:
-\begin{equation}
-P(\text{opponent}) = 
-\begin{cases} 
-0.5 & \text{Main Agent (Self-Play)} \\
-0.5 & \text{Uniform}(\text{Historical Pool})
-\end{cases}
-\end{equation}
-This prevents "cycling" where the agent re-learns and un-learns the same strategies endlessly, forcing it to defeat all previous versions of itself.
-
-\subsection{Experience Replay}
-The framework employs a \textbf{Standard Replay Buffer} that stores transitions $(\mathcal{B}_t, a_t, r_t, \mathcal{B}_{t+1}, \pi_t)$. Uniform sampling is used to stabilize the training distribution across the agent's history.
-
-\subsection{Multi-Dimensional Reward Structure}
-
-The reward function $R(s, a, s')$ is carefully shaped to guide learning in the sparse-reward Stratego environment:
-
-\begin{equation}
-R_{total} = R_{move} + R_{capture} + R_{tactical} + R_{info}
-\end{equation}
-
-The move reward $R_{move}$ provides small rewards for advancing pieces (approximately $+0.05$) to encourage active play and prevent overly defensive strategies. The capture reward $R_{capture}$ is scaled by the rank of the captured piece according to $0.15 \times \frac{\text{Rank}}{11.0}$, providing proportional feedback for material gains. The tactical reward $R_{tactical}$ gives specific bonuses for key strategic captures, including $+0.5$ for Miner vs Bomb defusals and $+1.0$ for Spy vs Marshal assassinations. The information reward $R_{info}$ provides $+0.3$ for revealing high-value opponent pieces with Rank $\ge 9$. Game phase multipliers adjust these weights dynamically, prioritizing material accumulation in the early game and safe positioning in the endgame.
-
-\section{Strategy Mixing}
-
-Extensive-form imperfect information games with deterministic strategies are inherently suboptimal and vulnerable to exploitation. An adversary with knowledge of a deterministic policy effectively reduces the game to a perfect information setting, nullifying the strategic uncertainty fundamental to games like Stratego. The MARQ framework addresses this challenge through two complementary mechanisms that provide stochasticity at different levels of the decision hierarchy.
-
-\paragraph{Action-Level Stochasticity via Noisy Networks.}
-At the action selection level, MARQ employs Noisy Linear layers that inject learned, state-dependent noise into the policy. Rather than using fixed exploration schedules such as $\epsilon$-greedy, the network learns the appropriate degree of randomization for each game state. The noisy layer output is computed as:
-
-\begin{equation}
-y = (\mu_w + \sigma_w \odot \epsilon_w)x + (\mu_b + \sigma_b \odot \epsilon_b)
-\end{equation}
-
-where $\mu_w, \mu_b$ are learned mean parameters, $\sigma_w, \sigma_b$ are learned noise scale parameters, and $\epsilon_w, \epsilon_b$ are factorized Gaussian noise samples regenerated at each forward pass. This approach provides exploitation resistance without explicit entropy constraints, as the learned noise ensures that even an adversary with access to the network weights cannot perfectly predict action selection.
-
-\paragraph{Strategy-Level Diversity via League Training.}
-At the strategy level, MARQ achieves mixing through diverse opponent exposure during training. The league system maintains a population of historical agent checkpoints representing different strategic approaches discovered during training. The opponent selection distribution ensures that the main agent must perform well against a mixture of strategies rather than optimizing against a single fixed opponent, including historical league agents (50\%), random agents (20\%), greedy heuristics (20\%), and self-play (10\%). The combination of action-level noise and strategy-level diversity produces policies that are both unpredictable in individual games and robust across different opponent types.
-
-\section{Stratego Game Domain}
-
-Stratego is an imperfect information board game with European roots, popularized in the Netherlands in the 1940s and released in North America in 1961. The game is played on a 10x10 board that includes two 2x2 ``lake'' areas in the center, which are impassable. Each player commands an army of 40 pieces of varying ranks, and during the game, the identity and rank of the pieces are kept secret from the opposing player. The objective is to capture the opponent's flag or eliminate all of their movable pieces.
-
-Each army consists of 12 different types of pieces, with ranks ranging from 1 (the Spy) to 10 (the Marshal), alongside Bombs and a Flag. Higher-ranked pieces defeat lower-ranked ones during combat, except in special situations: the Spy can defeat a Marshal if attacking first, the Miner is the only piece that can defuse Bombs, and Scouts can move multiple squares in a straight line. Victory is achieved by capturing the opponent's Flag, immobilizing all movable enemy pieces, or forcing the opponent to run out of time.
-
-
-\begin{figure}[ht]
-    \centering
-    \includegraphics[width=0.5\textwidth]{figures/stratego_piece.png}
-    \caption{Stratego Pieces}
-\end{figure}
-
-\begin{figure}[ht]
-    \centering
-    \includegraphics[width=0.7\textwidth]{figures/stratego.png}
-    \caption{Stratego Game board.}
-    \label{fig:stratego_tech}
-\end{figure}
-
-\section{League Training Implementation}
-
-The league training system maintains a collection of historical agent checkpoints, enabling training against diverse opponents that represent different strategic approaches discovered during training. This prevents policy cycling and ensures generalization.
-
-\subsection{League Manager Architecture}
-The \texttt{LeagueManager} class persists agent checkpoints as PyTorch state dictionaries, storing both the network weights and episode metadata. The league capacity is capped at $N_{max} = 50$ agents; when this limit is exceeded, the oldest checkpoint is removed. New checkpoints are saved every 500 episodes, ensuring that distinct strategic eras are captured without excessive storage overhead.
-
-Opponent selection follows a configurable probability distribution during training:
-\begin{equation}
-P(\text{opponent}) = \begin{cases}
-0.5 & \text{League (historical agents)} \\
-0.2 & \text{Random agent} \\
-0.2 & \text{Greedy heuristic} \\
-0.1 & \text{Self-play (current weights)}
-\end{cases}
-\end{equation}
-
-\subsection{Opponent Pool Dynamics}
-The \texttt{OpponentPool} class implements the opponent selection logic. At each episode, a uniform random value $r \in [0, 1)$ determines which opponent type is selected. If the league is non-empty and $r < P_{league}$, an agent is sampled uniformly from the historical pool. Otherwise, the random agent, greedy heuristic, or current self are selected based on the cumulative probability thresholds.
-
-\begin{equation}
-\text{select\_opponent()} = \begin{cases}
-\text{Uniform}(\mathcal{L}) & \text{if } |\mathcal{L}| > 0 \land r < P_{league} \\
-\pi_{random} & \text{if } r < P_{league} + P_{random} \\
-\pi_{greedy} & \text{if } r < P_{league} + P_{random} + P_{greedy} \\
-\pi_{self} & \text{otherwise}
-\end{cases}
-\end{equation}
-
-\subsection{Exploiter Agents}
-Three specialized exploiter agents probe specific weaknesses. The \textbf{RusherAgent} prioritizes aggressive forward advancement, adding $+0.5$ to Q-values for each row moved toward the opponent and $+1.0$ for any attack action. The \textbf{TurtleAgent} implements a defensive stance with a $-2.0$ penalty for attacks and $+0.3$ bonus for remaining in the player's starting territory (rows 6-9 for Player 1). The \textbf{FlankingAgent} focuses on the board edges, adding $+0.4$ for moves in columns 0-2 or 7-9, while penalizing central columns 3-6 by $-0.2$. These exploiters are introduced during Phase 4 to verify the main agent handles diverse playstyles.
-
-\section{Reward Shaping Module}
-
-The \texttt{RewardCalculator} class computes multi-component rewards with configurable weights. The default configuration assigns weight $1.0$ to game outcomes, $0.5$ to material exchanges, $0.3$ to information gain, and $0.2$ to positional advantage.
-
-\subsection{Material Reward}
-Combat outcomes generate material rewards scaled by piece rank. When the attacking piece wins, it receives a base reward of $+0.5$ plus an additional $0.05 \times \frac{\text{captured\_rank}}{11}$, proportional to the captured piece's value. Losing an attack incurs $-0.3$ minus a rank-scaled penalty. Mutual destruction results in zero material reward.
-
-\begin{equation}
-R_{material} = \begin{cases}
-+0.5 + 0.05 \times \frac{\text{captured\_rank}}{11} & \text{if attacker wins} \\
--0.3 - 0.05 \times \frac{\text{lost\_rank}}{11} & \text{if defender wins} \\
-0 & \text{if mutual destruction}
-\end{cases}
-\end{equation}
-
-Special cases receive fixed bonuses: Miners defusing Bombs earn $R_{special} = +0.5$, Spies assassinating the Marshal earn $+1.0$, and capturing the Flag yields the terminal reward $R_{terminal} = +10.0$.
-
-\subsection{Epistemic Reward}
-Information gain is quantified as the reduction in belief entropy when pieces are revealed:
-
-\begin{equation}
-R_{epistemic} = \sum_{pos \in \text{revealed}} \left( H_{before}(\mathcal{B}_{pos}) - H_{after}(\mathcal{B}_{pos}) \right)
-\end{equation}
-
-where $H(\mathcal{B}) = -\sum_{t} \mathcal{B}[t] \log \mathcal{B}[t]$ is the Shannon entropy of the belief distribution. Additional small rewards are given for Scout identification via multi-square movement ($+0.02$), Bomb discovery through failed attacks ($+0.03$), and narrowing the probable Flag location ($+0.05$).
-
-\subsection{Positional Reward (PBRS)}
-Potential-based reward shaping (PBRS) provides dense feedback while preserving optimal policy invariance. The reward is computed as the discounted difference in state potential:
-
-\begin{equation}
-R_{positional} = \gamma \Phi(s') - \Phi(s)
-\end{equation}
-
-The potential function $\Phi(s)$ combines three terms: the negative Manhattan distance from friendly pieces to the enemy Flag region (encouraging advancement), a bonus of $+0.01$ per piece occupying central columns 3-6 (rewarding board control), and $+0.05$ for Miners positioned near suspected Bomb locations (facilitating defusal):
-
-\begin{equation}
-\Phi(s) = w_1 \cdot \text{FlagDistance}(s) + w_2 \cdot \text{CenterControl}(s) + w_3 \cdot \text{MinerPosition}(s)
-\end{equation}
-
-
-\section{Information Hiding Architecture}
-
-The environment maintains separate board tensors to enforce Stratego's hidden information constraints.
-
-\subsection{Board Representation}
-Three tensors represent the game state: \texttt{actual\_board} contains the ground truth with all piece values, while \texttt{visible\_board\_p1} and \texttt{visible\_board\_p2} store each player's observed state. Enemy pieces appear as a constant \texttt{HIDDEN\_PIECE = -20} in visible boards, encoding the presence of an opponent piece without revealing its rank.
-
-\subsection{Observation Function}
-The game state returned to agents depends on the training mode. During curriculum Phase 1, full observability is enabled and agents receive the actual board. In all other phases, agents receive their player-specific visible board:
-\begin{equation}
-\mathcal{O}_{player}(s) = \begin{cases}
-s_{actual} & \text{if full\_observability} \\
-s_{visible}^{player} & \text{otherwise}
-\end{cases}
-\end{equation}
-
-Each cell in the visible board is set according to:
-\begin{equation}
-s_{visible}^{player}[r,c] = \begin{cases}
-s_{actual}[r,c] & \text{if own piece or previously revealed} \\
-\text{HIDDEN} & \text{if unrevealed enemy piece} \\
-\text{EMPTY} & \text{if empty square} \\
-\text{LAKE} & \text{if lake square}
-\end{cases}
-\end{equation}
-
-\subsection{Piece Revelation}
-When a battle occurs, the \texttt{reveal\_pieces} function updates both visible boards simultaneously:
-\begin{equation}
-\text{reveal\_pieces}(pos_1, pos_2) \rightarrow \begin{cases}
-s_{visible}^{p1}[pos_1] \leftarrow s_{actual}[pos_1] \\
-s_{visible}^{p1}[pos_2] \leftarrow s_{actual}[pos_2] \\
-s_{visible}^{p2}[pos_1] \leftarrow s_{actual}[pos_1] \\
-s_{visible}^{p2}[pos_2] \leftarrow s_{actual}[pos_2]
-\end{cases}
-\end{equation}
-
-Revelations are permanent and tracked for PBS updates.
-
-\section{PBS Update on Piece Revelation}
-
-When a battle reveals a piece's true type, the PBS synchronizes with ground truth through several update steps.
-
-\subsection{Belief Collapse}
-Upon revealing piece type $g$ at position $pos$, the belief distribution collapses to certainty:
-\begin{equation}
-\mathcal{B}_{pos}[t] = \begin{cases}
-1.0 & \text{if } t = g \\
-0.0 & \text{otherwise}
-\end{cases}
-\end{equation}
-
-\subsection{Constraint Propagation}
-The revealed piece count is incremented, and remaining beliefs are adjusted to respect piece count constraints. For unrevealed positions $p \neq pos$:
-\begin{equation}
-\mathcal{B}_p[t] \leftarrow \mathcal{B}_p[t] \cdot \frac{\text{max\_count}[t] - \text{revealed\_count}[t]}{\text{remaining\_count}[t]}
-\end{equation}
-
-For example, when the single Marshal is revealed, the probability of any other piece being a Marshal drops to zero.
-
-\subsection{Training Data Collection}
-Each revelation generates a supervised training example for AAREN. The action sequence observed for the now-revealed piece becomes a labeled sample:
-\begin{equation}
-\mathcal{D}_{AAREN} \leftarrow \mathcal{D}_{AAREN} \cup \{(\text{action\_sequence}_{pos}, g, pos)\}
-\end{equation}
-
-\section{Curriculum Learning}
-
-Training is organized into five phases that progressively introduce complexity, starting with simplified conditions and advancing to full league training.
-
-\subsection{Phase 1: Full Observability}
-The agent initially trains with \texttt{full\_observability = True}, allowing it to see all piece values. This removes uncertainty and enables learning of basic game mechanics: piece movement rules, combat outcomes, and tactical patterns. Opponents consist of random agents (60\%) and heuristic policies (40\%). Training continues for 500 to 2000 episodes until the agent achieves $\geq 90\%$ win rate against random and $\geq 60\%$ against heuristic.
-
-\subsection{Phase 2: Partial Observability}
-Observability is disabled (\texttt{full\_observability = False}), requiring the agent to rely on the PBS for hidden pieces. The opponent is a frozen heuristic agent, providing a stable training target. This phase runs for 1000 to 3000 episodes, with transition requiring PBS accuracy $\geq 70\%$ and win rate $\geq 55\%$.
-
-\subsection{Phase 3: Self-Play}
-The agent trains against a delayed copy of itself (from 500 episodes prior), discovering novel strategies through iterated self-improvement. This phase runs 2000 to 5000 episodes, transitioning when the win rate variance falls below 0.1, indicating strategic stability.
-
-\subsection{Phase 4: League Training}
-The full opponent distribution is activated: league agents (50\%), random (20\%), greedy heuristic (20\%), and self-play (10\%). The exploiter agents (Rusher, Turtle, Flanking) are periodically introduced to probe for weaknesses. This is the main training phase, running for 5000+ episodes.
-
-\subsection{Phase 5: Scenario Drills}
-Every 1000 episodes during Phase 4, specialized board configurations are initialized for targeted training: Miner vs Bomb defusal patterns, Marshal tracking and elimination, and endgame Flag search. These drills reinforce specific tactical skills that may be underrepresented in normal games.
-
-The phase transition logic follows:
-\begin{equation}
-\text{Transition}(phase) = (\text{episodes} \geq \text{min}) \land (\text{metrics} \geq \text{thresholds})
-\end{equation}
-
-
-
-\section{Reward Shaping}
-
-The reward function is carefully designed with four components to guide learning in the sparse-reward Stratego environment.
-
-\paragraph{Material Rewards.}
-Combat outcomes are weighted by piece strategic value according to the following relationship: 
-\[ R_{material} = w_{capture} \cdot \text{CaptureReward} + w_{loss} \cdot \text{LossPenalty} + w_{special} \cdot \text{SpecialBonus} \]
-Special bonuses are awarded for tactically significant captures: a Miner defusing a Bomb receives $+0.5$ for enabling strategic flag access, a Spy assassinating the Marshal receives $+1.0$ reflecting the game-changing nature of eliminating the highest-ranked piece, and favorable trades receive $+0.1 \times (V_{captured} - V_{lost})$ based on the value differential.
-
-\paragraph{Epistemic Rewards.}
-Information gain is measured through entropy reduction: $R_{epistemic} = \alpha \cdot \Delta H(\mathcal{B}) + \beta \cdot \text{ScoutDeduction} + \gamma \cdot \text{BombIdentification}$, where $\Delta H(\mathcal{B}) = H(\mathcal{B}_{t-1}) - H(\mathcal{B}_t)$ represents the reduction in belief entropy. Scout identification provides immediate entropy reduction when multi-square movement is observed.
-
-\paragraph{Positional Rewards.}
-Territorial control is rewarded through potential-based reward shaping (PBRS): $R_{positional} = \gamma \Phi(s') - \Phi(s)$. The potential function $\Phi(s)$ combines flag proximity, center control, and Miner positioning near suspected Bombs. PBRS guarantees that the optimal policy remains unchanged while providing denser learning signals.
-
-\paragraph{Composite Reward.}
-Auxiliary prediction tasks provide additional learning signals. This is achieved through $R_{prediction} = \lambda_{piece} \cdot \text{PieceTypeAccuracy} + \lambda_{outcome} \cdot \text{BattleOutcomePrediction}$. The total reward combines components with configurable weights:
-
-\begin{equation}
-R_{total} = w_o \cdot R_{outcome} + w_m \cdot R_{material} + w_e \cdot R_{epistemic} + w_p \cdot R_{positional}
-\end{equation}
-
-Default weights are: $w_o = 1.0$, $w_m = 0.5$, $w_e = 0.3$, $w_p = 0.2$.
-
-\section{Parallel Environment Architecture}
-
-MARQ utilizes parallel environment execution to accelerate training through batch processing. Each environment runs in a separate process to avoid Python GIL limitations, with workers communicating via pipes to receive commands and return game states. The parallel environment supports dynamic observability switching for curriculum learning, allowing seamless transition between training phases.
-
-Actions, states, and PBS updates are processed in batches: $\text{step\_batch}(\mathbf{a}) \rightarrow (\mathbf{s}', \mathbf{r}, \mathbf{d}, \mathbf{info})$, where vectors represent parallel environment states, enabling efficient GPU utilization.
-
+These theoretical foundations provide confidence in the MARQ framework's ability to learn effective strategies in the challenging domain of imperfect information strategic gameplay while remaining computationally tractable.

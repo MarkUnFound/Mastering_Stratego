@@ -42,6 +42,7 @@ from league import LeagueManager
 from random_starting_player import swap_placements
 from distributional_reward import StrategoRewardConfig
 from policy_search import PolicyRefinedSearch, SearchConfig
+from curriculum import CurriculumManager
 
 # Helper to capture gradients
 class GradientCatcher:
