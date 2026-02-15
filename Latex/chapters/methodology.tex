@@ -241,6 +241,21 @@ G_t^{(n)} = \sum_{k=0}^{n-1} \gamma^k r_{t+k} + \gamma^n Q(s_{t+n}, a^*)
 
 \noindent where $a^* = \arg\max_a Q(s_{t+n}, a)$ under Double Q-learning. With $n=5$ and $\gamma = 0.995$, the effective discount for the bootstrapped value is $\gamma^5 \approx 0.975$. This deeper horizon was selected to improve credit assignment in Stratego games lasting 200--500 moves, where sparse terminal rewards must propagate across hundreds of decisions. The 5-step return provides a meaningful balance between reduced bias from longer direct reward accumulation and controlled variance from the bootstrapped tail.
 
+\paragraph{Episode-Level Replay via Trajectory Segment Sampling.}
+While $n$-step returns extend credit assignment over a fixed window, they cannot capture longer-horizon strategic patterns such as multi-move flanking maneuvers or gradual positional improvements that unfold over dozens of transitions. Flat experience replay compounds this limitation by sampling individual transitions independently, discarding the temporal structure of the episodes from which they originated.
+
+To address this, the framework employs a dual-buffer replay architecture inspired by the trajectory storage mechanism of R2D2~\cite{kapturowski2018recurrent}. An \texttt{EpisodicReplayBuffer} operates alongside the existing Prioritized Experience Replay buffer as a shadow storage. During data collection, every transition is stored in both buffers: the PER buffer indexes transitions individually by TD-error priority, while the episode buffer groups transitions by episode and retains episode-level metadata (game outcome, cumulative reward, episode length).
+
+During each training step, the minibatch of $B = 512$ transitions is composed from both sources using a mixing ratio $\alpha$:
+
+\begin{equation}
+\mathcal{B} = \underbrace{\mathcal{B}_{\text{PER}}}_{\lfloor (1-\alpha) \cdot B \rfloor} \cup \underbrace{\mathcal{B}_{\text{episode}}}_{B - \lfloor (1-\alpha) \cdot B \rfloor}
+\end{equation}
+
+\noindent where $\alpha = 0.25$ allocates 25\% of the batch to episode segment samples. Episode segments are sampled in two stages: first, an episode is selected with probability proportional to $|\text{outcome}|$, biasing toward decisive games (wins and losses) over draws. Second, a contiguous window of $L = 16$ transitions is uniformly sampled from within the selected episode. The final transition in each segment serves as the training tuple, with its reward accumulated across the segment length.
+
+The episode buffer stores up to 500 complete episodes. When capacity is reached, the oldest episodes are evicted in FIFO order. This dual-buffer approach can be disabled without modifying the training loop by setting the mixing ratio to zero, in which case the system reverts to standard PER sampling.
+
 \paragraph{Learning Rate Scheduling.}
 Convergence can be accelerated through adaptive learning rate control. A step decay schedule reduces the learning rate by factor $\eta = 0.9$ every 5,000 episodes:
 

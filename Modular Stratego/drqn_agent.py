@@ -269,6 +269,32 @@ class RainbowAgent:
             self.memory = StandardReplayBuffer(buffer_size, device=device)
             print(f"[OK] [P{self.player_id}] Standard Replay Buffer enabled")
         
+        # Episode-Level Replay Buffer (shadow storage alongside PER)
+        try:
+            from training_config import (
+                EPISODE_REPLAY_ENABLED, EPISODE_REPLAY_MAX_EPISODES,
+                EPISODE_REPLAY_SEGMENT_LENGTH, EPISODE_REPLAY_MIX_RATIO
+            )
+            self.episode_replay_enabled = EPISODE_REPLAY_ENABLED
+            self.episode_replay_mix_ratio = EPISODE_REPLAY_MIX_RATIO
+        except ImportError:
+            self.episode_replay_enabled = False
+            EPISODE_REPLAY_MAX_EPISODES = 500
+            EPISODE_REPLAY_SEGMENT_LENGTH = 16
+            self.episode_replay_mix_ratio = 0.25
+        
+        if self.episode_replay_enabled:
+            from prioritized_memory import EpisodicReplayBuffer
+            self.episode_memory = EpisodicReplayBuffer(
+                max_episodes=EPISODE_REPLAY_MAX_EPISODES,
+                segment_length=EPISODE_REPLAY_SEGMENT_LENGTH,
+                device=device,
+                num_envs=num_envs if hasattr(self, 'num_envs') else 8
+            )
+            print(f"[OK] [P{self.player_id}] Episode Replay enabled (max={EPISODE_REPLAY_MAX_EPISODES}, seg={EPISODE_REPLAY_SEGMENT_LENGTH}, mix={self.episode_replay_mix_ratio})")
+        else:
+            self.episode_memory = None
+        
         # Data Augmentation Settings
         try:
             from training_config import ENABLE_DATA_AUGMENTATION, AUGMENTATION_TYPES
@@ -599,6 +625,12 @@ class RainbowAgent:
                 revealed = infos[i].get('revealed_in_step', [])
                 is_battle = len(revealed) > 0  # Any piece revealed = battle occurred
             
+            # Episode buffer: shadow-store every raw transition
+            if self.episode_replay_enabled and self.episode_memory is not None:
+                self.episode_memory.add(
+                    i, state_tensors[i], action, reward, next_state_tensors[i], dones[i]
+                )
+            
             # N-Step returns processing
             if self.n_step_buffers is not None and i < len(self.n_step_buffers):
                 # Buffers expect the action as it was taken (tuple or index)
@@ -623,6 +655,13 @@ class RainbowAgent:
             else:
                 # Standard 1-step: add directly using central helper
                 self._add_experience(state_tensors[i], action, reward, next_state_tensors[i], dones[i], is_battle=is_battle)
+            
+            # Episode buffer: finalize episode on done
+            if dones[i] and self.episode_replay_enabled and self.episode_memory is not None:
+                # Outcome: sign of terminal reward (+1 win, -1 loss, 0 draw)
+                outcome = 1.0 if reward > 0.5 else (-1.0 if reward < -0.5 else 0.0)
+                total_reward = reward  # terminal reward as proxy
+                self.episode_memory.end_episode(i, outcome, total_reward)
 
     def act(self, state, valid_moves: List[Tuple[Tuple[int, int], Tuple[int, int]]], game_state=None):
         """
@@ -1001,13 +1040,20 @@ class RainbowAgent:
             return None
         
         # --- Sample Batch (PER or Standard) with ATARAXOS OVERSAMPLING ---
+        # Episode replay: split batch between PER and episode segments
         indices = None
         weights = None
+        self._per_priority_mask = None  # Reset per-call
+        
+        n_episode_samples = 0
+        if self.episode_replay_enabled and self.episode_memory is not None and self.episode_memory.num_episodes >= 5:
+            n_episode_samples = int(batch_size * self.episode_replay_mix_ratio)
+        n_per_samples = batch_size - n_episode_samples
         
         # Determine sample size (oversample if advantage filtering enabled)
-        sample_size = batch_size
+        sample_size = n_per_samples
         if self.advantage_filtering:
-            sample_size = batch_size * self.oversample_factor
+            sample_size = n_per_samples * self.oversample_factor
         
         if self.per_enabled:
             # Anneal beta
@@ -1023,6 +1069,28 @@ class RainbowAgent:
             if sample_result is None:
                 return None
             states, actions, rewards, next_states, dones = sample_result
+        
+        # --- Mix in Episode Segment Samples ---
+        if n_episode_samples > 0:
+            ep_result = self.episode_memory.sample_segments(n_episode_samples)
+            if ep_result is not None:
+                ep_states, ep_actions, ep_rewards, ep_next_states, ep_dones = ep_result
+                # Clip episode rewards to C51 support range
+                ep_rewards = ep_rewards.clamp(self.v_min, self.v_max)
+                # Concatenate with PER batch
+                states = torch.cat([states, ep_states], dim=0)
+                actions = torch.cat([actions, ep_actions], dim=0)
+                rewards = torch.cat([rewards, ep_rewards], dim=0)
+                next_states = torch.cat([next_states, ep_next_states], dim=0)
+                dones = torch.cat([dones, ep_dones], dim=0)
+                # Extend PER weights with uniform weight for episode samples
+                if weights is not None:
+                    ep_weights = torch.ones(ep_states.size(0), device=weights.device)
+                    weights = torch.cat([weights, ep_weights], dim=0)
+                # Extend PER indices with -1 sentinels for episode samples
+                # so advantage filtering can index without going out of range
+                if indices is not None:
+                    indices = indices + [-1] * ep_states.size(0)
         
         # Use n-step gamma if available
         gamma_to_use = self.gamma_n if hasattr(self, 'gamma_n') and self.n_steps > 1 else self.gamma
@@ -1060,7 +1128,12 @@ class RainbowAgent:
                 if weights is not None:
                     weights = weights[top_k_indices]
                 if indices is not None:
-                    indices = [indices[i] for i in top_k_indices.cpu().tolist()]
+                    filtered_indices = [indices[i] for i in top_k_indices.cpu().tolist()]
+                    # Track which positions are real PER indices (not episode sentinels)
+                    per_mask = [i for i, idx in enumerate(filtered_indices) if idx != -1]
+                    indices = [filtered_indices[i] for i in per_mask]
+                    # Store mask for slicing td_errors during priority update
+                    self._per_priority_mask = per_mask
 
         # --- Distributional RL Target Calculation ---
         with torch.no_grad():
@@ -1192,9 +1265,17 @@ class RainbowAgent:
              return None
         
         # Update PER priorities with TD-errors
-        if self.per_enabled and indices is not None:
+        if self.per_enabled and indices is not None and len(indices) > 0:
             td_errors = elementwise_loss.detach().cpu().numpy()
-            self.memory.update_priorities(indices, td_errors)
+            # If advantage filtering mixed PER + episode samples, slice to PER-only entries
+            if hasattr(self, '_per_priority_mask') and self._per_priority_mask is not None:
+                td_errors = td_errors[self._per_priority_mask]
+                self._per_priority_mask = None  # Reset for next call
+            # Safety: ensure lengths match
+            if len(indices) == len(td_errors):
+                self.memory.update_priorities(indices, td_errors)
+            elif len(indices) < len(td_errors):
+                self.memory.update_priorities(indices, td_errors[:len(indices)])
              
         self.optimizer.zero_grad()
         

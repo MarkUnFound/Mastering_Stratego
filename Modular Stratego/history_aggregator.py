@@ -17,6 +17,7 @@ from collections import defaultdict, deque
 
 from aaren.network import PieceActionAaren
 from piece import PieceType, NUM_PIECE_TYPES
+from training_config import DEFAULT_MAX_TURNS
 
 # Default configuration
 DEFAULT_HIDDEN_SIZE = 64
@@ -139,7 +140,7 @@ class HistoryAggregator:
         
         # Turn info
         turn = game_state.turn_count if hasattr(game_state, 'turn_count') else 0
-        turn_norm = min(turn / 1000.0, 1.0)  # Aligned with DEFAULT_MAX_TURNS=1000
+        turn_norm = min(turn / float(DEFAULT_MAX_TURNS), 1.0)  # Aligned with DEFAULT_MAX_TURNS from training_config
         
         # Scout indicator (distance > 1)
         is_scout_move = 1.0 if dist > 1 else 0.0

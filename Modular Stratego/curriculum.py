@@ -15,6 +15,8 @@ from typing import Dict, Tuple, Optional, List, Any
 from dataclasses import dataclass, asdict
 from enum import IntEnum
 
+from training_config import PHASE_MAX_TURNS, DEFAULT_MAX_TURNS
+
 
 class TrainingPhase(IntEnum):
     """Training curriculum phases."""
@@ -35,6 +37,7 @@ class PhaseConfig:
     opponents: List[str]
     reward_focus: str  # Which reward component to emphasize
     success_metrics: Dict[str, float]
+    max_turns: int = 0  # Max steps per episode (0 = use DEFAULT_MAX_TURNS)
 
 
 # DYNAMIC PHASE CONFIGURATIONS
@@ -52,7 +55,8 @@ PHASE_CONFIGS = {
             # Dynamic criteria: 70% vs random, 50% vs heuristic
             "win_rate_vs_random": 0.70,
             "win_rate_vs_heuristic": 0.50
-        }
+        },
+        max_turns=PHASE_MAX_TURNS.get(1, DEFAULT_MAX_TURNS),
     ),
     TrainingPhase.MEMORY_GAP: PhaseConfig(
         name="Memory Gap",
@@ -65,7 +69,8 @@ PHASE_CONFIGS = {
             # Dynamic criteria: PBS accuracy + win rate
             "pbs_accuracy": 0.70,
             "win_rate": 0.55
-        }
+        },
+        max_turns=PHASE_MAX_TURNS.get(2, DEFAULT_MAX_TURNS),
     ),
     TrainingPhase.SELF_PLAY: PhaseConfig(
         name="Simple Self-Play",
@@ -78,7 +83,8 @@ PHASE_CONFIGS = {
             # Dynamic criteria: stable win rate (low variance)
             "win_rate_variance_max": 0.1,
             "recent_games_required": 100
-        }
+        },
+        max_turns=PHASE_MAX_TURNS.get(3, DEFAULT_MAX_TURNS),
     ),
     TrainingPhase.LEAGUE_TRAINING: PhaseConfig(
         name="League Training",
@@ -91,7 +97,8 @@ PHASE_CONFIGS = {
             # Dynamic criteria: ELO-based
             "league_elo": 1500,
             "win_rate_stable": True
-        }
+        },
+        max_turns=PHASE_MAX_TURNS.get(4, DEFAULT_MAX_TURNS),
     ),
     TrainingPhase.SCENARIO_DRILLS: PhaseConfig(
         name="Scenario Drills",
@@ -103,7 +110,8 @@ PHASE_CONFIGS = {
         success_metrics={
             # Dynamic criteria: scenario completion
             "scenario_completion_rate": 0.80
-        }
+        },
+        max_turns=DEFAULT_MAX_TURNS,
     )
 }
 
@@ -210,6 +218,11 @@ class CurriculumManager:
     def get_phase_config(self) -> PhaseConfig:
         """Get configuration for current phase."""
         return PHASE_CONFIGS[self.current_phase]
+    
+    def get_max_turns(self) -> int:
+        """Get max turns for the current curriculum phase."""
+        config = self.get_phase_config()
+        return config.max_turns if config.max_turns > 0 else DEFAULT_MAX_TURNS
     
     def should_use_full_observability(self) -> bool:
         """

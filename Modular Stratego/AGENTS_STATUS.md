@@ -4,7 +4,8 @@
 **Objective:** Achieve human-like or better strategic play in Stratego (Partial Observability).
 
 ## Recent Progress
-- **Long-Horizon Tuning:** Architecture adjusted for 200–500 move games. `MAX_HISTORY_LENGTH` raised from 20 to 50 (AAREN supervised training buffer retains more early-game movement patterns). Turn normalization aligned with `DEFAULT_MAX_TURNS=1000` (was 500; late-game turns were previously indistinguishable). `N_STEPS` increased from 3 to 5 for deeper multi-step credit assignment (`γ^5 = 0.975`).
+- **Episode-Level Replay (Trajectory Segment Sampling):** Dual-buffer architecture introduced alongside PER. An `EpisodicReplayBuffer` stores up to 500 complete episodes and samples contiguous 16-step trajectory segments during training. 25% of each training batch is drawn from episode segments (prioritized by game outcome), 75% from PER. This enables temporal credit assignment across multi-move strategies and episode-level prioritization of decisive games.
+- **Long-Horizon Tuning:** Architecture adjusted for 200–500 move games. Per-phase turn limits increased (Phase 1: 300, Phase 2: 800, Phase 3: 1000, Phase 4: 1500; `DEFAULT_MAX_TURNS=1500`). Turn limits consolidated into a single `PHASE_MAX_TURNS` dict in `training_config.py` and carried as `PhaseConfig.max_turns` in `curriculum.py` — the duplicated inline dicts in `train_dqn.py` are removed. `MAX_HISTORY_LENGTH` remains 50. Turn normalization in `history_aggregator.py` now dynamically reads `DEFAULT_MAX_TURNS` instead of using a hardcoded `1000.0`. `N_STEPS` set to 5 for deeper multi-step credit assignment (`γ^5 = 0.975`).
 - **AAREN Integration Verified:** All 6 diagnostic tests passed (`check_aaren_integration.py`). AAREN correctly feeds embeddings into the Rainbow DQN — dimensions match, embeddings are non-zero, channel concatenation works, gradients flow correctly, and no sparse death detected.
 - **AAREN Implicit Memory System:** The MARQ framework now fully relies on AAREN (Action-Augmented Recurrent Encoder) for history-based piece inference. This replaces legacy explicit belief systems with a DeepNash-inspired implicit representation. All associated modules (`HistoryAggregator`, `PieceActionAaren`) have been verified for gradient flow and output stability.
 - **Inferred Piece Identity:** Piece identities are handled implicitly via learned 64-dimensional embeddings. The `HistoryAggregator` processes action sequences to produce these embeddings, which are then interpreted end-to-end by the Rainbow DQN's convolutional backbone. This eliminates the need for explicit probability distributions or manual belief updates.
@@ -75,13 +76,15 @@ The attention layer operates as a standard transformer block: multi-head self-at
 | **Suicidal Forward Bias** | Fixed | Forward reward gated on rank ≤ Captain; high-value pieces don't rush. |
 | **Flat Piece-Loss Penalty** | Fixed | Loss penalty now rank-weighted (Marshal 10× Scout). |
 | **High Draw Rate** | Ongoing | Material-advantage draws, step penalties, rank-weighted combat incentives. |
-| **Gradient Flow** | Fixed | Multi-step returns (n=3) and centralized scaling. |
+| **Gradient Flow** | Fixed | Multi-step returns (n=5) and centralized scaling. |
 | **Action Entropy** | High | Noisy Networks help; strategic focus remains a challenge. |
+| **Advantage Filtering Slowdown** | Fixed | Disabled for early phases (4× oversampled batch + 2 extra forward passes = 5× slowdown). Re-enable at Phase 3+. |
 
 ## Tech Stack
 - **Core:** Rainbow DQN (C51, Dueling, Noisy, Multi-step, PER).
 - **History:** AAREN (Action-Augmented Recurrent Encoder) — 3-layer, 64-dim, parallel training / O(1) inference.
 - **Vision:** 6-block ResNet (64ch) + Spatial Self-Attention (4-head). Total 21.7M params.
+- **Replay:** Dual-buffer — `PrioritizedReplayBuffer` (150K flat) + `EpisodicReplayBuffer` (500 episodes, deque-backed O(1) eviction, 16-step segments, 25% mix ratio).
 - **Training:** Curriculum-based (5 Phases), League-based opponent pool.
 - **GUI Inference:** `DQNBotLogic` adapter (`Python Stratego Game/dqn_bot_logic.py`) bridges the Pygame GUI to the trained Rainbow DQN. Translates GUI `Board` (Piece objects) → 79-channel tensor → C51 Q-values → legal move selection. AAREN history runs alongside for opponent piece-type inference. Compatible checkpoint: `History/12/agent1_rainbow_episode_8000.pth`.
 
@@ -102,10 +105,22 @@ The `policy_search.py` module provides a 2-ply minimax lookahead that improves m
 
 **Integration:** `PolicyRefinedSearch(agent)` accepts a `RainbowAgent` instance. Used in `visual_train_dqn.py` and `dqn_bot_logic.py` for test-time evaluation.
 
+## Episode-Level Replay Architecture
+
+The dual-buffer replay system addresses four limitations of flat PER for long-horizon Stratego:
+
+1. **Temporal credit assignment** — contiguous 16-step segments allow the agent to learn from multi-move strategic maneuvers rather than isolated transitions.
+2. **Episode-level prioritization** — winning and losing episodes are sampled at higher rates than draws, ensuring the agent focuses on decisive game patterns.
+3. **N-step extension** — within each segment, the reward is accumulated across all 16 steps, extending the effective credit horizon beyond the standard 5-step returns.
+4. **Zero-risk integration** — the `EpisodicReplayBuffer` runs alongside PER without modifying the existing training pipeline; disabling it restores the original behavior.
+
+**Episode lifecycle:** `start_episode(lane_id)` initializes tracking when a lane resets. Each step appends `(s, a, r, s', done)` to the current episode. `end_episode(lane_id, outcome, total_reward)` finalizes and stores with metadata. During `replay()`, 25% of the batch is drawn from the episode buffer (contiguous segments), 75% from PER.
+
 ## Future Directions
 1. **Strategic Intent:** Moving pieces with purpose towards high-value targets.
 2. **Belief Interpretation:** Improving how the agent uses AAREN embeddings to bluff or deduce.
 3. **Decisiveness:** Reducing repetitive moves in the mid-game.
+4. **R2D2-style AAREN Burn-in:** Potential future upgrade to recompute AAREN embeddings at training time, addressing representational drift in the episode buffer.
 
 ---
 > **Tip:** Check `training_config.py` for current hyperparameters. Run `check_aaren_integration.py` to verify AAREN-DQN pipeline health. Run `visual_train_dqn.py` to observe agent behavior in real-time.

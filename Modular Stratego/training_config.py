@@ -29,14 +29,22 @@ EXPLORATION_EPSILON_END = 0.0     # Disabled
 EXPLORATION_EPSILON_DECAY = 1     # Not used
 
 # =============================================================================
-# CURRICULUM TURN LIMITS (Shorter games for faster learning)
+# CURRICULUM TURN LIMITS (Per-phase game length)
 # =============================================================================
-# Start with shorter games to force faster decisions, increase as agent improves
-PHASE_1_MAX_TURNS = 150   # Shorter games for faster terminal feedback in Phase 1
-PHASE_2_MAX_TURNS = 600   # Medium games for memory testing
-PHASE_3_MAX_TURNS = 800   # Longer for self-play strategy
-PHASE_4_MAX_TURNS = 1000  # Full length for league training
-DEFAULT_MAX_TURNS = 1000  # Fallback
+# Longer episodes let the agent experience full-game dynamics at each phase
+PHASE_1_MAX_TURNS = 300   # Full obs — enough turns to learn material + flag capture
+PHASE_2_MAX_TURNS = 800   # Partial obs — memory-intensive games need room
+PHASE_3_MAX_TURNS = 1000  # Self-play — full strategic depth
+PHASE_4_MAX_TURNS = 1500  # League — unrestricted competitive games
+DEFAULT_MAX_TURNS = 1500  # Fallback (matches Phase 4)
+
+# Single source of truth: phase number -> max turns
+PHASE_MAX_TURNS = {
+    1: PHASE_1_MAX_TURNS,
+    2: PHASE_2_MAX_TURNS,
+    3: PHASE_3_MAX_TURNS,
+    4: PHASE_4_MAX_TURNS,
+}
 
 # Warmup Period (must collect this many experiences before training starts)
 WARMUP_STEPS = 1000       # Reduced further for faster Phase 1 start
@@ -52,6 +60,13 @@ IMITATION_REWARD_BOOST = 1.5  # Multiply reward for imitation actions (encourage
 # Multi-Step Returns (N-Step DQN)
 N_STEPS = 5               # 5-step returns for deeper credit assignment in long-horizon games (200-500 moves)
 GAMMA_N = GAMMA ** N_STEPS  # Pre-computed gamma^n
+
+# Episode-Level Replay Settings (Option B: Trajectory Segment Sampling)
+EPISODE_REPLAY_ENABLED = True         # Toggle dual-buffer episode replay
+EPISODE_REPLAY_MAX_EPISODES = 500     # Max stored complete episodes (FIFO eviction)
+EPISODE_REPLAY_SEGMENT_LENGTH = 16    # Contiguous steps per segment sample
+EPISODE_REPLAY_MIX_RATIO = 0.25      # 25% of batch from episode segments, 75% from PER
+
 
 # Learning Rate Scheduler
 LR_SCHEDULER_ENABLED = False
@@ -162,7 +177,7 @@ ENTROPY_ANNEAL_EPISODES = 50000  # Episodes to anneal entropy coefficient
 # ATARAXOS ADVANTAGE FILTERING (Training Efficiency)
 # =============================================================================
 # Filter training to high-impact transitions based on TD error magnitude
-ADVANTAGE_FILTERING_ENABLED = True
+ADVANTAGE_FILTERING_ENABLED = False  # DISABLED: causes 4× slowdown (2 extra forward passes on 4× batch every 2 steps). Re-enable at Phase 3+ when Q-values are meaningful.
 ADVANTAGE_OVERSAMPLE_FACTOR = 4   # Sample 4× batch, keep top 25% by TD error
 ADVANTAGE_MIN_BATCH = 64          # Minimum batch size after filtering
 

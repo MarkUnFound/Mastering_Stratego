@@ -182,9 +182,8 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
             print("   Full observability mode: ENABLED (Phase 1)")
         
         # Set max turns based on curriculum phase
-        from training_config import PHASE_1_MAX_TURNS, PHASE_2_MAX_TURNS, PHASE_3_MAX_TURNS, PHASE_4_MAX_TURNS, DEFAULT_MAX_TURNS
-        phase_max_turns = {1: PHASE_1_MAX_TURNS, 2: PHASE_2_MAX_TURNS, 3: PHASE_3_MAX_TURNS, 4: PHASE_4_MAX_TURNS}
-        max_turns = phase_max_turns.get(curriculum.current_phase.value, DEFAULT_MAX_TURNS)
+        from training_config import PHASE_MAX_TURNS, DEFAULT_MAX_TURNS
+        max_turns = PHASE_MAX_TURNS.get(curriculum.current_phase.value, DEFAULT_MAX_TURNS)
         parallel_env.set_max_turns(max_turns)
         print(f"   Max turns per game: {max_turns} (Phase {curriculum.current_phase.value})")
     
@@ -470,6 +469,11 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
     # Reset AAREN history for all lanes
     agent1.reset_history()
     agent2.reset_history()
+    
+    # Initialize episode tracking for episode replay buffer
+    if hasattr(agent1, 'episode_replay_enabled') and agent1.episode_replay_enabled and agent1.episode_memory is not None:
+        for i in range(num_envs):
+            agent1.episode_memory.start_episode(i)
     
     # State tracking for intervals
     last_replay_step = 0
@@ -812,6 +816,10 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                     agent1.history_instances[i].reset()
                 if lane_opponent_uses_history[i] and agent2.history_instances and i < len(agent2.history_instances):
                     agent2.history_instances[i].reset()
+                
+                # Start new episode tracking for episode replay buffer
+                if hasattr(agent1, 'episode_replay_enabled') and agent1.episode_replay_enabled and agent1.episode_memory is not None:
+                    agent1.episode_memory.start_episode(i)
             else:
                 # Continue Game
                 lane_current_player[i] *= -1
@@ -875,7 +883,10 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                         lane_episode_loss_count_p1[i] += 1
         
 
-        # --- TARGET NETWORK UPDATE ---
+        # --- PERIODIC CUDA CLEANUP (prevent fragmentation-induced slowdown) ---
+        if device.type == 'cuda' and global_step % 5000 == 0:
+            torch.cuda.empty_cache()
+        
         # --- TARGET NETWORK UPDATE ---
         # Use threshold check to prevent double updates or skips
         if global_step - last_target_update_step >= TARGET_UPDATE_INTERVAL:
@@ -895,9 +906,8 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                     parallel_env.set_full_observability(use_full_obs)
                     
                     # Update max turns for new phase
-                    from training_config import PHASE_1_MAX_TURNS, PHASE_2_MAX_TURNS, PHASE_3_MAX_TURNS, PHASE_4_MAX_TURNS, DEFAULT_MAX_TURNS
-                    phase_max_turns = {1: PHASE_1_MAX_TURNS, 2: PHASE_2_MAX_TURNS, 3: PHASE_3_MAX_TURNS, 4: PHASE_4_MAX_TURNS}
-                    new_max_turns = phase_max_turns.get(curriculum.current_phase.value, DEFAULT_MAX_TURNS)
+                    from training_config import PHASE_MAX_TURNS, DEFAULT_MAX_TURNS
+                    new_max_turns = PHASE_MAX_TURNS.get(curriculum.current_phase.value, DEFAULT_MAX_TURNS)
                     parallel_env.set_max_turns(new_max_turns)
                     tqdm.write(f"[INFO] Max turns updated to {new_max_turns}")
                     

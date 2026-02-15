@@ -337,3 +337,212 @@ class NStepBuffer:
         """Clear buffer (call at episode start)."""
         self.buffer.clear()
 
+
+class EpisodicReplayBuffer:
+    """
+    Episode-level replay buffer that stores complete episodes and supports
+    contiguous trajectory segment sampling. Runs alongside PER as shadow storage.
+    
+    Design inspired by R2D2 (Kapturowski et al., 2019) trajectory storage,
+    adapted for the MARQ architecture without AAREN burn-in.
+    """
+    
+    def __init__(self, max_episodes=500, segment_length=16, device='cpu', num_envs=1):
+        """
+        Args:
+            max_episodes: Maximum number of complete episodes to store
+            segment_length: Length of contiguous segments to sample (default 16)
+            device: Torch device for tensor operations
+            num_envs: Number of parallel environments (lanes)
+        """
+        self.max_episodes = max_episodes
+        self.segment_length = segment_length
+        self.device = device
+        self.num_envs = num_envs
+        
+        # Completed episode storage: deque with maxlen for O(1) FIFO eviction
+        self.episodes = deque(maxlen=max_episodes)  # Each: {'transitions': [...], 'outcome': float, 'total_reward': float, 'length': int}
+        
+        # In-progress episode buffers per lane
+        self.current_episodes = {i: [] for i in range(num_envs)}
+        
+        # Total transition count across all stored episodes
+        self._total_transitions = 0
+    
+    def start_episode(self, env_id):
+        """Begin tracking a new episode for a lane."""
+        self.current_episodes[env_id] = []
+    
+    def add(self, env_id, state, action, reward, next_state, done):
+        """
+        Append a transition to the current episode for a lane.
+        
+        Args:
+            env_id: Lane/environment index
+            state: State tensor (already on device)
+            action: Action (tuple or index)
+            reward: Scalar reward
+            next_state: Next state tensor
+            done: Whether episode ended
+        """
+        # Store as detached CPU tensors to save GPU memory
+        transition = (
+            state.detach().cpu() if hasattr(state, 'detach') else state,
+            action,
+            float(reward),
+            next_state.detach().cpu() if hasattr(next_state, 'detach') else next_state,
+            bool(done)
+        )
+        self.current_episodes[env_id].append(transition)
+    
+    def end_episode(self, env_id, outcome, total_reward):
+        """
+        Finalize and store a completed episode.
+        
+        Args:
+            env_id: Lane/environment index
+            outcome: Game outcome (+1 win, -1 loss, 0 draw)
+            total_reward: Cumulative reward for the episode
+        """
+        episode_transitions = self.current_episodes.get(env_id, [])
+        if len(episode_transitions) < 2:
+            # Too short to be useful — discard
+            self.current_episodes[env_id] = []
+            return
+        
+        episode = {
+            'transitions': episode_transitions,
+            'outcome': float(outcome),
+            'total_reward': float(total_reward),
+            'length': len(episode_transitions)
+        }
+        
+        # Deque auto-evicts oldest when at maxlen — track transitions for evicted episode
+        if len(self.episodes) == self.max_episodes:
+            evicted = self.episodes[0]  # Will be evicted by append
+            self._total_transitions -= evicted['length']
+        
+        self.episodes.append(episode)
+        self._total_transitions += episode['length']
+        
+        # Reset the lane buffer
+        self.current_episodes[env_id] = []
+    
+    def sample_segments(self, n):
+        """
+        Sample n contiguous trajectory segments from stored episodes.
+        
+        Episodes are selected with probability proportional to |outcome| + epsilon,
+        so wins and losses are preferred over draws. Within each episode, a random
+        start index is chosen such that the full segment fits.
+        
+        Returns:
+            Tuple of (states, actions, rewards, next_states, dones) tensors,
+            each with batch dimension n. Returns None if insufficient data.
+        """
+        if len(self.episodes) == 0:
+            return None
+        
+        # Filter episodes that are long enough for a full segment
+        valid_episodes = [ep for ep in self.episodes if ep['length'] >= self.segment_length]
+        
+        if len(valid_episodes) == 0:
+            # Fall back to episodes of any length (sample what we can)
+            valid_episodes = [ep for ep in self.episodes if ep['length'] >= 2]
+            if len(valid_episodes) == 0:
+                return None
+        
+        # Compute sampling weights: |outcome| + epsilon (so draws still have some chance)
+        epsilon = 0.1
+        weights = [abs(ep['outcome']) + epsilon for ep in valid_episodes]
+        total_weight = sum(weights)
+        probs = [w / total_weight for w in weights]
+        
+        # Sample episodes (with replacement)
+        import random
+        sampled_episodes = random.choices(valid_episodes, weights=probs, k=n)
+        
+        # Extract segments
+        states_list = []
+        actions_list = []
+        rewards_list = []
+        next_states_list = []
+        dones_list = []
+        
+        for ep in sampled_episodes:
+            ep_len = ep['length']
+            seg_len = min(self.segment_length, ep_len)
+            
+            # Random start index
+            max_start = ep_len - seg_len
+            start_idx = random.randint(0, max_start) if max_start > 0 else 0
+            
+            segment = ep['transitions'][start_idx:start_idx + seg_len]
+            
+            # Use the LAST transition in the segment as the training tuple
+            # with reward accumulated across the segment for extended credit
+            last_state, last_action, _, last_next_state, last_done = segment[-1]
+            
+            # Accumulate reward across the segment (simple sum — 
+            # the PER buffer already handles γ-discounted n-step returns,
+            # so we use raw accumulation here for complementary signal)
+            segment_reward = sum(t[2] for t in segment)
+            
+            states_list.append(last_state)
+            actions_list.append(last_action)
+            rewards_list.append(segment_reward)
+            next_states_list.append(last_next_state)
+            dones_list.append(last_done)
+        
+        # Stack into tensors
+        import torch
+        states = torch.stack(states_list).to(self.device)
+        next_states = torch.stack(next_states_list).to(self.device)
+        rewards = torch.tensor(rewards_list, dtype=torch.float32, device=self.device)
+        dones = torch.tensor(dones_list, dtype=torch.float32, device=self.device)
+        
+        # Convert actions to indices
+        action_indices = []
+        for act in actions_list:
+            if isinstance(act, (tuple, list)):
+                # Convert move tuple to action index (same as agent logic)
+                (r1, c1), (r2, c2) = act
+                dr, dc = r2 - r1, c2 - c1
+                direction_map = {(-1, 0): 0, (1, 0): 1, (0, -1): 2, (0, 1): 3}
+                d = direction_map.get((dr, dc), 0)
+                action_idx = r1 * 40 + c1 * 4 + d
+                action_indices.append(action_idx)
+            else:
+                action_indices.append(int(act))
+        
+        actions = torch.tensor(action_indices, dtype=torch.long, device=self.device)
+        
+        return states, actions, rewards, next_states, dones
+    
+    def __len__(self):
+        """Total transitions stored across all episodes."""
+        return self._total_transitions
+    
+    @property
+    def num_episodes(self):
+        """Number of complete episodes stored."""
+        return len(self.episodes)
+    
+    def get_stats(self):
+        """Return buffer statistics for logging."""
+        if len(self.episodes) == 0:
+            return {'episodes': 0, 'transitions': 0, 'avg_length': 0, 'wins': 0, 'losses': 0, 'draws': 0}
+        
+        wins = sum(1 for ep in self.episodes if ep['outcome'] > 0.5)
+        losses = sum(1 for ep in self.episodes if ep['outcome'] < -0.5)
+        draws = len(self.episodes) - wins - losses
+        avg_length = self._total_transitions / len(self.episodes)
+        
+        return {
+            'episodes': len(self.episodes),
+            'transitions': self._total_transitions,
+            'avg_length': avg_length,
+            'wins': wins,
+            'losses': losses,
+            'draws': draws
+        }
