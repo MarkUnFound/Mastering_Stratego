@@ -41,12 +41,6 @@ from training_visualizer import plot_training_progress, create_training_gif, cre
 from piece import PieceType, PIECE_RANKS
 from board import LAKE_SQUARE
 
-# Import reset function (optional)
-try:
-    from reset_dqn import reset_existing_agents
-    RESET_AVAILABLE = True
-except ImportError:
-    RESET_AVAILABLE = False
 
 # Random starting player removed - was only swapping positions, not turn order
 from league import LeagueManager
