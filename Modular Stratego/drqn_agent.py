@@ -52,6 +52,17 @@ import sys
 
 
 
+def strip_orig_mod_prefix(state_dict):
+    """Strip '_orig_mod.' prefix from state_dict keys (from torch.compile)"""
+    return {k.replace('_orig_mod.', ''): v for k, v in state_dict.items()}
+
+
+
+
+
+
+
+
 class RainbowAgent:
     """Rainbow DQN Agent for Stratego"""
     
@@ -170,7 +181,7 @@ class RainbowAgent:
             output_size=action_size, 
             num_atoms=self.num_atoms
         ).to(device)
-        self.reference_network.load_state_dict(self.q_network.state_dict())
+        self.reference_network.load_state_dict(strip_orig_mod_prefix(self.q_network.state_dict()))
         self.reference_network.eval()  # Never train directly
         self.reference_update_counter = 0
         
@@ -1327,7 +1338,7 @@ class RainbowAgent:
         if self.kl_reg_enabled:
             self.reference_update_counter += 1
             if self.reference_update_counter >= self.ref_update_interval:
-                self.reference_network.load_state_dict(self.q_network.state_dict())
+                self.reference_network.load_state_dict(strip_orig_mod_prefix(self.q_network.state_dict()))
                 self.reference_update_counter = 0
         
         # Check for NaN/Inf (handle tensor properly)
