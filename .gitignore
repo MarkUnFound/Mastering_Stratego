@@ -2,7 +2,7 @@
 History/
 dqn_models/
 setup_agent_models/
-
+Python Stratego Game/
 # Ignore Python cache directories
 __pycache__/
 *.pyc
@@ -13,7 +13,6 @@ Modular Stratego/pbs/__pycache__/
 Modular Stratego/networks/__pycache__/
 Modular Stratego/dqn_models/
 Modular Stratego/logs/
-
 # Ignore debug logs
 debug_log.txt
 **/debug_log.txt
