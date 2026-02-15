@@ -1271,11 +1271,16 @@ class RainbowAgent:
             if hasattr(self, '_per_priority_mask') and self._per_priority_mask is not None:
                 td_errors = td_errors[self._per_priority_mask]
                 self._per_priority_mask = None  # Reset for next call
-            # Safety: ensure lengths match
-            if len(indices) == len(td_errors):
-                self.memory.update_priorities(indices, td_errors)
-            elif len(indices) < len(td_errors):
-                self.memory.update_priorities(indices, td_errors[:len(indices)])
+            # Filter out -1 sentinel indices (episode replay samples that bypass PER)
+            valid_mask = [i for i, idx in enumerate(indices) if idx >= 0]
+            if valid_mask:
+                filtered_indices = [indices[i] for i in valid_mask]
+                filtered_td = td_errors[valid_mask] if len(valid_mask) < len(td_errors) else td_errors
+                # Safety: ensure lengths match
+                if len(filtered_indices) == len(filtered_td):
+                    self.memory.update_priorities(filtered_indices, filtered_td)
+                elif len(filtered_indices) < len(filtered_td):
+                    self.memory.update_priorities(filtered_indices, filtered_td[:len(filtered_indices)])
              
         self.optimizer.zero_grad()
         
@@ -1318,7 +1323,19 @@ class RainbowAgent:
     def load_model(self, filepath):
         """Load model checkpoint"""
         try:
-            checkpoint = torch.load(filepath, map_location=self.device)
+            # PyTorch 2.6+ defaults weights_only=True; allowlist deque for our checkpoints
+            import collections
+            try:
+                torch.serialization.add_safe_globals([collections.deque])
+            except AttributeError:
+                pass  # Older PyTorch versions don't have this
+            
+            try:
+                checkpoint = torch.load(filepath, map_location=self.device, weights_only=True)
+            except Exception:
+                # Fallback for complex checkpoints (we trust our own saves)
+                checkpoint = torch.load(filepath, map_location=self.device, weights_only=False)
+            
             self.q_network.load_state_dict(checkpoint['q_network_state_dict'])
             self.target_network.load_state_dict(checkpoint['target_network_state_dict'])
             self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])

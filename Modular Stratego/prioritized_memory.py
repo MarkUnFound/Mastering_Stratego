@@ -92,11 +92,11 @@ class SumTree:
         self.n_entries = 0
     
     def _propagate(self, idx, change):
-        """Propagate priority change up the tree."""
-        parent = (idx - 1) // 2
-        self.tree[parent] += change
-        if parent != 0:
-            self._propagate(parent, change)
+        """Propagate priority change up the tree (iterative to avoid stack overflow)."""
+        while idx != 0:
+            parent = (idx - 1) // 2
+            self.tree[parent] += change
+            idx = parent
     
     def _retrieve(self, idx, s):
         """Find leaf index for a given cumulative sum s."""
@@ -127,6 +127,8 @@ class SumTree:
     
     def update(self, idx, priority):
         """Update priority at tree index."""
+        if idx < 0 or idx >= len(self.tree):
+            return  # Guard against invalid indices (e.g. episode replay sentinels)
         change = priority - self.tree[idx]
         self.tree[idx] = priority
         self._propagate(idx, change)
