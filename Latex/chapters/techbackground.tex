@@ -37,6 +37,8 @@ This approach helps solve the main challenge of Stratego: thinking about hidden 
 
 The MARQ framework works by connecting its different parts together. It starts with observation processing, where the AAREN module takes raw game positions and moves to create learned embeddings that help guess piece identities. These embeddings are the base for all subsequent reasoning. The whole architecture uses a league-based training method where MARQ agents are trained and tested at the same time.
 
+
+
 \begin{table}[htbp]
     \centering
     \caption{Key Symbols and Descriptions from the MARQ Framework}
@@ -397,6 +399,19 @@ The environment maintains distinct representations for different information con
 
 Each player receives only the subset of game state information available through their observation function.
 
+\section{Generalizability of the MARQ Architecture}
+
+While we developed the MARQ framework for the game of Stratego, its architectural design is applicable to broader real-world problems involving partial observability and adversarial decision-making.
+
+\subsection{Inference in Degraded Environments}
+The combination of an occlusion-based curriculum and AAREN history aggregation provides a robust method for training agents to operate in degraded environments. In autonomous drone applications, for example, sensors may fail or be obstructed by smoke or weather. MARQ's ability to maintain an implicit belief state from a history of partial observations allows for continued navigation and objective completion when direct visual data is unreliable.
+
+\subsection{Signal Intelligence and Pattern Discovery}
+In adversarial signal environments, such as electronic warfare, identifying hidden transmitter types or strategic patterns from incomplete signal bursts is a critical challenge. The implicit representation learning used in MARQ can be adapted to discover these latent "identities" in high-dimensional signal data. By treating signal history as an action sequence, the network can learn to categorize threats without explicit labeling of every transmission.
+
+\subsection{Industrial Automation and Predictive Maintenance}
+The temporal history aggregation used by MARQ is also valuable for industrial automation. In complex manufacturing pipelines, sensors often provide only a partial view of the system's internal state. MARQ's architecture can be used to integrate these sparse sensor readings over time to predict hidden anomalies or maintenance needs, allowing for proactive adjustments before a system failure occurs.
+
 \subsection{Temporal State Evolution}
 Game states evolve according to the update function:
 
@@ -438,8 +453,8 @@ Under standard RL assumptions (independent identical distribution of experiences
 
 where $C$ depends on reward bounds and discount factor, and $\epsilon_{approx}$ represents function approximation error.
 
-\subsection{Belief State Accuracy Bounds}
-The PBS accuracy improves with additional observations according to:
+\subsection{Implicit Representation Accuracy Bounds}
+The representation accuracy improves with additional observations according to:
 
 \begin{equation}
 \mathbb{E}[\text{Accuracy}(\mathcal{B}_t)] \geq 1 - \exp(-\alpha \cdot N_{obs}(t))

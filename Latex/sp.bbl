@@ -194,6 +194,13 @@
   2017.
 \newblock Course project, Winter semester.
 
+\bibitem{kapturowski2018recurrent}
+{\sc Kapturowski, S., Ostrovski, G., Quan, J., Munos, R., and Dabney, W.}
+\newblock Recurrent experience replay in distributed reinforcement learning.
+\newblock {\em International Conference on Learning Representations (ICLR)\/}
+  (2019).
+\newblock Originally presented 2018; published ICLR 2019.
+
 \bibitem{DQNPBS}
 {\sc Kaur, A., Kumar, K., Prakash, A., and Tripathi, R.}
 \newblock Imperfect csi-based resource management in cognitive iot networks: A

@@ -283,6 +283,32 @@ class HistoryAggregator:
         
         return embedding
     
+    def get_piece_predictions(self, pos: Tuple[int, int]) -> Optional[Dict[PieceType, float]]:
+        """
+        Get piece type predictions (probabilities) for a given position.
+        
+        Args:
+            pos: Position to query
+            
+        Returns:
+            Dictionary mapping PieceType to probability, or None if no history
+        """
+        if pos not in self.position_hidden_states or self.position_hidden_states[pos] is None:
+            return None
+            
+        with torch.no_grad():
+            # Use dummy zero feature for current timestep if just querying state
+            feature = torch.zeros(1, self.input_size, device=self.device)
+            probs, _ = self.aaren.forward_sequential(feature, self.position_hidden_states[pos])
+            probs = probs.squeeze(0).cpu().numpy()
+            
+            # Map to PieceType
+            result = {}
+            for i in range(min(len(probs), NUM_PIECE_TYPES)):
+                pt = PieceType(i + 1)
+                result[pt] = float(probs[i])
+            return result
+
     def train(self, epochs: int = 1) -> Optional[float]:
         """
         Train AAREN on collected reveal data.

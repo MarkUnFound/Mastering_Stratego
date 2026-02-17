@@ -659,6 +659,10 @@ class StrategoEnvironment:
         game_state.actual_board = self.board.actual_board.clone()
         return game_state
     
+    def get_state(self) -> GameState:
+        """Public alias for _get_game_state() for dashboard/GUI compatibility."""
+        return self._get_game_state()
+
     def set_full_observability(self, enabled: object):
         """
         Set full observability mode.

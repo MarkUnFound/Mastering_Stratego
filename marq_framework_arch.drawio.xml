@@ -250,7 +250,7 @@
         <mxCell id="dist_slice_3" value="&lt;b&gt;Q-Dist&lt;/b&gt;&lt;br&gt;(C51)" style="shape=cube;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;darkOpacity=0.1;fillColor=#f8cecc;strokeColor=#b85450;opacity=90;fontSize=9;" vertex="1" parent="1">
           <mxGeometry x="1405" y="360" width="30" height="75" as="geometry" />
         </mxCell>
-        <mxCell id="c51_note" value="51 atoms over [-30, 30]&lt;br&gt;delta_z = 1.2" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=7;fontColor=#b85450;" vertex="1" parent="1">
+        <mxCell id="c51_note" value="51 atoms over [-10, +10]&lt;br&gt;delta_z = 0.4" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=7;fontColor=#b85450;" vertex="1" parent="1">
           <mxGeometry x="1365" y="437" width="80" height="20" as="geometry" />
         </mxCell>
 

@@ -1,11 +1,12 @@
 \addvspace {10\p@ }
 \addvspace {10\p@ }
 \addvspace {10\p@ }
-\contentsline {table}{\numberline {3.1}{\ignorespaces Key Symbols and Descriptions from the MARQ Framework}}{20}{table.3.1}%
+\contentsline {table}{\numberline {3.1}{\ignorespaces Key Symbols and Descriptions from the MARQ Framework}}{20}{table.caption.8}%
 \addvspace {10\p@ }
-\contentsline {table}{\numberline {4.1}{\ignorespaces Strategic ability bonuses for pieces with special capabilities.}}{37}{table.4.1}%
-\contentsline {table}{\numberline {4.2}{\ignorespaces Computed piece values with associated combat and survival metrics.}}{38}{table.4.2}%
-\contentsline {table}{\numberline {4.3}{\ignorespaces State representation input channels for the Rainbow DQN.}}{40}{table.4.3}%
-\contentsline {table}{\numberline {4.4}{\ignorespaces Heuristic scoring criteria for move filtering.}}{46}{table.4.4}%
+\contentsline {table}{\numberline {4.1}{\ignorespaces Strategic ability bonuses for pieces with special capabilities.}}{39}{table.caption.21}%
+\contentsline {table}{\numberline {4.2}{\ignorespaces Computed piece values with associated combat and survival metrics.}}{40}{table.caption.23}%
+\contentsline {table}{\numberline {4.3}{\ignorespaces State representation input channels for the Rainbow DQN.}}{42}{table.caption.29}%
+\contentsline {table}{\numberline {4.4}{\ignorespaces Heuristic scoring criteria for move filtering.}}{49}{table.caption.43}%
+\addvspace {10\p@ }
 \addvspace {10\p@ }
 \addvspace {10\p@ }

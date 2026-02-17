@@ -129,7 +129,7 @@ class RainbowAgent:
                     self.history_instances.append(history_instance)
                 self.history = self.history_instances[0]
             else:
-                self.history = HistoryAggregator(player_id, device, hidden_size=AAREN_HIDDEN_SIZE)
+                self.history = HistoryAggregator(player_id, device, hidden_size=AAREN_HIDDEN_SIZE, num_layers=AAREN_NUM_LAYERS)
                 self.history_instances = [self.history]
         
         # Legacy aliases (point to history)
@@ -1338,7 +1338,13 @@ class RainbowAgent:
             
             self.q_network.load_state_dict(checkpoint['q_network_state_dict'])
             self.target_network.load_state_dict(checkpoint['target_network_state_dict'])
-            self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+            
+            try:
+                self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+            except Exception as opt_err:
+                # Common when switching between single-env and multi-env (optimizer param count changes)
+                print(f"[WARN] Failed to load optimizer state (architecture/env mismatch): {opt_err}")
+                
             self.step_count = checkpoint.get('step_count', 0)
             
             # Load history aggregator (AAREN) state

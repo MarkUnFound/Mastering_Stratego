@@ -106,11 +106,12 @@ INPUT C:\Users\Mark Lawrence Quibot\AppData\Local\Programs\MiKTeX\tex\latex\amsm
 INPUT C:\Users\Mark Lawrence Quibot\AppData\Local\Programs\MiKTeX\tex\latex\amsmath\amsopn.sty
 INPUT C:\Users\Mark Lawrence Quibot\AppData\Local\Programs\MiKTeX\tex\latex\float\float.sty
 INPUT C:\Users\Mark Lawrence Quibot\AppData\Local\Programs\MiKTeX\tex\latex\float\float.sty
-INPUT C:\Users\Mark Lawrence Quibot\AppData\Local\Programs\MiKTeX\tex\latex\subfigure\subfigure.sty
-INPUT C:\Users\Mark Lawrence Quibot\AppData\Local\Programs\MiKTeX\tex\latex\subfigure\subfigure.sty
-INPUT C:\Users\Mark Lawrence Quibot\AppData\Local\Programs\MiKTeX\tex\latex\subfigure\subfigure.cfg
-INPUT C:\Users\Mark Lawrence Quibot\AppData\Local\Programs\MiKTeX\tex\latex\subfigure\subfigure.cfg
-INPUT C:\Users\Mark Lawrence Quibot\AppData\Local\Programs\MiKTeX\tex\latex\subfigure\subfigure.cfg
+INPUT C:\Users\Mark Lawrence Quibot\AppData\Local\Programs\MiKTeX\tex\latex\caption\subcaption.sty
+INPUT C:\Users\Mark Lawrence Quibot\AppData\Local\Programs\MiKTeX\tex\latex\caption\subcaption.sty
+INPUT C:\Users\Mark Lawrence Quibot\AppData\Local\Programs\MiKTeX\tex\latex\caption\caption.sty
+INPUT C:\Users\Mark Lawrence Quibot\AppData\Local\Programs\MiKTeX\tex\latex\caption\caption.sty
+INPUT C:\Users\Mark Lawrence Quibot\AppData\Local\Programs\MiKTeX\tex\latex\caption\caption3.sty
+INPUT C:\Users\Mark Lawrence Quibot\AppData\Local\Programs\MiKTeX\tex\latex\caption\caption3.sty
 INPUT C:\Users\Mark Lawrence Quibot\AppData\Local\Programs\MiKTeX\tex\latex\algorithms\algorithm.sty
 INPUT C:\Users\Mark Lawrence Quibot\AppData\Local\Programs\MiKTeX\tex\latex\algorithms\algorithm.sty
 INPUT C:\Users\Mark Lawrence Quibot\AppData\Local\Programs\MiKTeX\tex\latex\algorithms\algorithmic.sty
@@ -267,6 +268,9 @@ INPUT chapters\techbackground.aux
 INPUT .\chapters\methodology.aux
 INPUT .\chapters\methodology.aux
 INPUT chapters\methodology.aux
+INPUT .\chapters\results.aux
+INPUT .\chapters\results.aux
+INPUT chapters\results.aux
 INPUT .\chapters\AppendixA.aux
 INPUT .\chapters\AppendixA.aux
 INPUT chapters\AppendixA.aux
@@ -397,6 +401,13 @@ OUTPUT chapters\methodology.aux
 INPUT .\chapters\methodology.tex
 INPUT .\chapters\methodology.tex
 INPUT chapters\methodology.tex
+INPUT .\figures\MARQArchi.png
+INPUT .\figures\MARQArchi.png
+INPUT .\figures\MARQArchi.png
+INPUT .\figures\MARQArchi.png
+INPUT .\figures\MARQArchi.png
+INPUT .\figures\MARQArchi.png
+INPUT .\figures\MARQArchi.png
 INPUT C:\Users\Mark Lawrence Quibot\AppData\Local\Programs\MiKTeX\fonts\tfm\public\cm\cmr8.tfm
 INPUT C:\Users\Mark Lawrence Quibot\AppData\Local\Programs\MiKTeX\fonts\tfm\public\cm\cmr6.tfm
 INPUT C:\Users\Mark Lawrence Quibot\AppData\Local\Programs\MiKTeX\fonts\tfm\public\cm\cmmi8.tfm
@@ -429,6 +440,26 @@ INPUT .\figures\Game diagram.png
 INPUT .\figures\Game diagram.png
 INPUT .\figures\Game diagram.png
 INPUT .\figures\Game diagram.png
+INPUT .\chapters\results.tex
+INPUT .\chapters\results.tex
+OUTPUT chapters\results.aux
+INPUT .\chapters\results.tex
+INPUT .\chapters\results.tex
+INPUT chapters\results.tex
+INPUT .\figures\Results\training_progress_episode_34000.png
+INPUT .\figures\Results\training_progress_episode_34000.png
+INPUT .\figures\Results\training_progress_episode_34000.png
+INPUT .\figures\Results\training_progress_episode_34000.png
+INPUT .\figures\Results\training_progress_episode_34000.png
+INPUT .\figures\Results\training_progress_episode_34000.png
+INPUT .\figures\Results\training_progress_episode_34000.png
+INPUT .\figures\Results\additional_metrics_episode_34000.png
+INPUT .\figures\Results\additional_metrics_episode_34000.png
+INPUT .\figures\Results\additional_metrics_episode_34000.png
+INPUT .\figures\Results\additional_metrics_episode_34000.png
+INPUT .\figures\Results\additional_metrics_episode_34000.png
+INPUT .\figures\Results\additional_metrics_episode_34000.png
+INPUT .\figures\Results\additional_metrics_episode_34000.png
 INPUT .\chapters\AppendixA.tex
 INPUT .\chapters\AppendixA.tex
 OUTPUT chapters\AppendixA.aux
@@ -511,62 +542,24 @@ INPUT .\figures\Victory.png
 INPUT .\figures\Victory.png
 INPUT .\figures\Victory.png
 INPUT .\figures\Victory.png
-INPUT .\figures\training_progress_episode_200.png
-INPUT .\figures\training_progress_episode_200.png
-INPUT .\figures\training_progress_episode_200.png
-INPUT .\figures\training_progress_episode_200.png
-INPUT .\figures\training_progress_episode_200.png
-INPUT .\figures\training_progress_episode_200.png
-INPUT .\figures\training_progress_episode_200.png
-INPUT .\figures\training_progress_episode_400.png
-INPUT .\figures\training_progress_episode_400.png
-INPUT .\figures\training_progress_episode_400.png
-INPUT .\figures\training_progress_episode_400.png
-INPUT .\figures\training_progress_episode_400.png
-INPUT .\figures\training_progress_episode_400.png
-INPUT .\figures\training_progress_episode_400.png
-INPUT .\figures\training_progress_episode_600.png
-INPUT .\figures\training_progress_episode_600.png
-INPUT .\figures\training_progress_episode_600.png
-INPUT .\figures\training_progress_episode_600.png
-INPUT .\figures\training_progress_episode_600.png
-INPUT .\figures\training_progress_episode_600.png
-INPUT .\figures\training_progress_episode_600.png
-INPUT .\figures\training_progress_episode_800.png
-INPUT .\figures\training_progress_episode_800.png
-INPUT .\figures\training_progress_episode_800.png
-INPUT .\figures\training_progress_episode_800.png
-INPUT .\figures\training_progress_episode_800.png
-INPUT .\figures\training_progress_episode_800.png
-INPUT .\figures\training_progress_episode_800.png
-INPUT .\figures\training_progress_episode_1000.png
-INPUT .\figures\training_progress_episode_1000.png
-INPUT .\figures\training_progress_episode_1000.png
-INPUT .\figures\training_progress_episode_1000.png
-INPUT .\figures\training_progress_episode_1000.png
-INPUT .\figures\training_progress_episode_1000.png
-INPUT .\figures\training_progress_episode_1000.png
-INPUT .\figures\setup_agent_progress_episode_400.png
-INPUT .\figures\setup_agent_progress_episode_400.png
-INPUT .\figures\setup_agent_progress_episode_400.png
-INPUT .\figures\setup_agent_progress_episode_400.png
-INPUT .\figures\setup_agent_progress_episode_400.png
-INPUT .\figures\setup_agent_progress_episode_400.png
-INPUT .\figures\setup_agent_progress_episode_400.png
-INPUT .\figures\pbs_visualization_episode_1000_setup.png
-INPUT .\figures\pbs_visualization_episode_1000_setup.png
-INPUT .\figures\pbs_visualization_episode_1000_setup.png
-INPUT .\figures\pbs_visualization_episode_1000_setup.png
-INPUT .\figures\pbs_visualization_episode_1000_setup.png
-INPUT .\figures\pbs_visualization_episode_1000_setup.png
-INPUT .\figures\pbs_visualization_episode_1000_setup.png
-INPUT .\figures\pbs_visualization_episode_1000_end.png
-INPUT .\figures\pbs_visualization_episode_1000_end.png
-INPUT .\figures\pbs_visualization_episode_1000_end.png
-INPUT .\figures\pbs_visualization_episode_1000_end.png
-INPUT .\figures\pbs_visualization_episode_1000_end.png
-INPUT .\figures\pbs_visualization_episode_1000_end.png
-INPUT .\figures\pbs_visualization_episode_1000_end.png
+INPUT .\figures\Results\training_progress_episode_10000.png
+INPUT .\figures\Results\training_progress_episode_10000.png
+INPUT .\figures\Results\training_progress_episode_10000.png
+INPUT .\figures\Results\training_progress_episode_10000.png
+INPUT .\figures\Results\training_progress_episode_10000.png
+INPUT .\figures\Results\training_progress_episode_10000.png
+INPUT .\figures\Results\training_progress_episode_10000.png
+INPUT .\figures\Results\training_progress_episode_20000.png
+INPUT .\figures\Results\training_progress_episode_20000.png
+INPUT .\figures\Results\training_progress_episode_20000.png
+INPUT .\figures\Results\training_progress_episode_20000.png
+INPUT .\figures\Results\training_progress_episode_20000.png
+INPUT .\figures\Results\training_progress_episode_20000.png
+INPUT .\figures\Results\training_progress_episode_20000.png
+INPUT .\figures\Results\training_progress_episode_34000.png
+INPUT .\figures\Results\training_progress_episode_34000.png
+INPUT .\figures\Results\training_progress_episode_34000.png
+INPUT .\figures\Results\training_progress_episode_34000.png
 INPUT .\sp.bbl
 INPUT .\sp.bbl
 INPUT sp.bbl
@@ -596,6 +589,9 @@ INPUT chapters\techbackground.aux
 INPUT .\chapters\methodology.aux
 INPUT .\chapters\methodology.aux
 INPUT chapters\methodology.aux
+INPUT .\chapters\results.aux
+INPUT .\chapters\results.aux
+INPUT chapters\results.aux
 INPUT .\chapters\AppendixA.aux
 INPUT .\chapters\AppendixA.aux
 INPUT chapters\AppendixA.aux

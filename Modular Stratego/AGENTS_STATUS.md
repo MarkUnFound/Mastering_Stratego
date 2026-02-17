@@ -15,6 +15,12 @@
 - **Literature Review Expanded:** Integrated modern research on DQN variants (Rainbow 2021), ResNets in board games (AlphaZero 2023, Ataraxos 2025), and Transformer-based self-attention (2025). Adhered to a strict 5-year reference rule (2021 or newer) for all new theoretical integrations.
 - **Documentation Refined:** Stylistically overhauled the **Methodology** and **Technical Background** chapters. Removed "marketing vibes" and corporate jargon in favor of a direct, research-assistant tone while maintaining all technical data and equations.
 - **Computational Optimization:** AMP (Mixed-Precision) and `torch.compile` support for faster throughput.
+- **Interpretability Dashboard (Discrete Thinking):** A real-time Matplotlib-based visualizer for frozen Rainbow DQN agents. It features a $2 \times 3$ grid visualizing:
+    1. **Main Board:** 10x10 perception grid with AAREN-inferred piece identities.
+    2. **C51 PDF:** Real-time atom distribution for selected actions.
+    3. **Q-Heatmap:** Expected return intensity across the board.
+    4. **Spatial Attention:** Dynamic heatmaps showing inter-square dependency (attending to own flag, enemy marshals, etc.).
+    5. **AAREN Latent Space:** PCA projection of the 64-dimensional piece-inference embeddings.
 
 ## AAREN Data Flow (Verified)
 
@@ -62,10 +68,20 @@ Diagnostic (`check_spatial_attention.py`) — **5/5 tests passed:**
 
 The attention layer operates as a standard transformer block: multi-head self-attention (4 heads, 64-dim) with LayerNorm and feed-forward network. It allows each board position to attend to all other positions, enabling the network to reason about long-range piece relationships (e.g., attacker-defender pairings, flag proximity) without requiring additional ResNet depth.
 
-## Current Results
-- **Phase 1 (Full Obs):** High win rates (>90%) against random and basic heuristic opponents.
-- **Phase 2 (Partial Obs):** Agents struggle with high draw rates and passive shuffling. Being addressed via anti-stall rewards and material advantage incentives.
-- **Inference:** AAREN generates piece-identity embeddings that correlate with true piece types; ResNet interpretation is still maturing.
+## Current Results (First 1000 Episodes — Phase 1, 300 steps/episode)
+
+| Metric | Value |
+|--------|-------|
+| **Flag-capture wins** | 30 (3.0%) |
+| **Flag-capture losses** | 1 (0.1%) |
+| **Depletion losses** | 33 (3.3%) |
+| **Draws (timeout)** | 936 (93.6%) |
+| **Flag efficiency** | 30:1 (wins:losses) |
+| **Avg P1 reward** | 1.74 ± 0.39 |
+| **AAREN accuracy** | ~9.7% (vs 8.3% random baseline) |
+| **AAREN buffer** | 10,000 (full) |
+
+**Interpretation:** The agent is in pure exploration phase. All 30 wins are flag captures (not depletion), indicating the agent discovered the primary win condition. The 33 depletion losses stem from indiscriminate piece usage — the agent does not yet understand piece-value hierarchy or bomb avoidance. The 93.6% timeout rate reflects extensive exploration without strategic intent to close games. AAREN accuracy is marginally above random, consistent with the reveal-data buffer only recently filling. Q-values are stabilizing (0.26 ± 0.02) as the C51 distribution calibrates. DQN gradient flow is healthy (grad norm 0.012).
 
 ## Known Struggles & Fixes
 | Struggle | Status | Resolution |
@@ -86,7 +102,7 @@ The attention layer operates as a standard transformer block: multi-head self-at
 - **Vision:** 6-block ResNet (64ch) + Spatial Self-Attention (4-head). Total 21.7M params.
 - **Replay:** Dual-buffer — `PrioritizedReplayBuffer` (150K flat) + `EpisodicReplayBuffer` (500 episodes, deque-backed O(1) eviction, 16-step segments, 25% mix ratio).
 - **Training:** Curriculum-based (5 Phases), League-based opponent pool.
-- **GUI Inference:** `DQNBotLogic` adapter (`Python Stratego Game/dqn_bot_logic.py`) bridges the Pygame GUI to the trained Rainbow DQN. Translates GUI `Board` (Piece objects) → 79-channel tensor → C51 Q-values → legal move selection. AAREN history runs alongside for opponent piece-type inference. Compatible checkpoint: `History/12/agent1_rainbow_episode_8000.pth`.
+- **GUI Inference:** `DQNBotLogic` adapter (`Python Stratego Game/dqn_bot_logic.py`) bridges the Pygame GUI to the trained Rainbow DQN. Translates GUI `Board` (Piece objects) → 79-channel tensor → C51 Q-values → legal move selection. AAREN history runs alongside for opponent piece-type inference. Compatible checkpoint: `dqn_models/agent1_rainbow_episode_1000.pth`.
 
 ## Test-Time Search (PolicyRefinedSearch)
 

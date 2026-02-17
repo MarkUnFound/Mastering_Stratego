@@ -13,7 +13,7 @@ def run_live_dqn_game(num_games: int = 1, move_delay: float = 1.0,
     
     # Load trained models if available
     try:
-        agent1.load_model("dqn_models/agent1_final.pth")
+        agent1.load_model("dqn_models/agent1_rainbow_episode_1000.pth")
         agent2.load_model("dqn_models/agent2_final.pth")
         print("✅ Loaded trained DQN models")
     except FileNotFoundError:

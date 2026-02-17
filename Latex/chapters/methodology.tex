@@ -15,7 +15,14 @@ One-on-one matches between human participants and the MARQ framework will be con
 Each session will last one (1) hour, during which participants must complete at least two (2) games against the MARQ framework. Additional games may be played if the time permits. The following game statistics will be recorded will include the winner, total game duration, total moves per player, and the number and type of remaining pieces for both players. Immediately following the session, each participant will be given an evaluation form to provide open-ended feedback on their experience.
 
 \section{System Development}
-The system development consists of two components: the game environment and the MARQ framework. The game environment will be developed to serve as the interface for human players and the world in which the trained agent operates. The MARQ framework provides the trained agent that competes against human players.
+The system development consists of two components: the game environment and the MARQ framework. The game environment was developed to serve as the interface for human players and the world in which the trained agent operates. The MARQ framework provides the trained agent that competes against human players.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.9\textwidth]{figures/MARQArchi.png}
+    \caption{MARQ Framework Architecture: The input pipeline processes board states and move history through AAREN to produce implicit belief embeddings. These are concatenated with board features and fed into a ResNet-based Rainbow DQN with Spatial Attention and Dueling Heads.}
+    \label{fig:marq_architecture}
+\end{figure}
 
 \subsection{Piece Value Computation}
 The reward function requires a quantitative assessment of piece value to guide learning. This section presents an analytical method for computing piece values based on probability theory, providing a deterministic alternative to empirical estimation through gameplay simulation.
