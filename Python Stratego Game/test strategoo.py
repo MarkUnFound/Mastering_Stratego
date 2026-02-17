@@ -1,4 +1,3 @@
-
 import pygame
 import time
 import random
@@ -43,6 +42,10 @@ lost_pieces_player2 = []
 
 # Button animation state
 button_states = {}
+
+# Battle popup state
+battle_popup = None  # dict with attacker, defender, result, timer when active
+BATTLE_POPUP_DURATION = 2.5  # seconds to show popup
 
 # Setup board
 board = Board()
@@ -328,8 +331,11 @@ def draw_button(text, x, y, width, height, action=None, primary=False, danger=Fa
             button_states[action]['pressed'] = False
     return None
 
-def draw_piece(piece, x, y, size, highlight=False, semi_transparent=False):
-    """Draw piece — uses image if available, otherwise drawn fallback"""
+def draw_piece(piece, x, y, size, highlight=False, semi_transparent=False, revealed=False):
+    """Draw piece — uses image if available, otherwise drawn fallback.
+    semi_transparent=True means it's a hidden enemy piece.
+    revealed=True means the piece was exposed in combat — show its real image.
+    """
     if not piece:
         return
 
@@ -342,33 +348,38 @@ def draw_piece(piece, x, y, size, highlight=False, semi_transparent=False):
 
     piece_rect = pygame.Rect(x + size // 8, y + size // 8, size - size // 4, size - size // 4)
 
-    if not semi_transparent:
+    # Hidden pieces get a dimmed shadow; revealed/own pieces get full shadow
+    if not semi_transparent or revealed:
         draw_shadow(piece_rect, offset=2, alpha=50)
 
-    # --- IMAGE PATH ---
-    if (piece_type, player) in piece_images:
-        img = pygame.transform.smoothscale(
-            piece_images[(piece_type, player)],
-            (piece_rect.width, piece_rect.height)
-        )
-        if semi_transparent:
-            img = img.copy()
-            img.set_alpha(160)
-        screen.blit(img, piece_rect.topleft)
-
-    # --- FALLBACK DRAWN PATH ---
-    else:
-        alpha = 180 if semi_transparent else 255
-        draw_rounded_rect(screen, primary_color, piece_rect, radius=6, alpha=alpha)
+    if semi_transparent and not revealed:
+        # --- HIDDEN ENEMY: draw ?? box ---
+        draw_rounded_rect(screen, GREY_700, piece_rect, radius=6, alpha=180)
         font_size = int(size * 0.4)
-        piece_text = piece_type if not semi_transparent else "??"
-        draw_text(piece_text, piece_rect.centerx, piece_rect.centery, font_size, WHITE, bold=True)
+        draw_text("??", piece_rect.centerx, piece_rect.centery, font_size, GREY_300, bold=True)
+        # Small enemy-colour dot so you know whose piece it is
         dot_radius = max(3, size // 12)
-        pygame.draw.circle(screen, light_color,
+        pygame.draw.circle(screen, get_player_color(player, 'light'),
                            (piece_rect.right - dot_radius - 3, piece_rect.top + dot_radius + 3),
                            dot_radius)
+    else:
+        # --- VISIBLE PIECE: use image or fallback ---
+        if (piece_type, player) in piece_images:
+            img = pygame.transform.smoothscale(
+                piece_images[(piece_type, player)],
+                (piece_rect.width, piece_rect.height)
+            )
+            screen.blit(img, piece_rect.topleft)
+        else:
+            draw_rounded_rect(screen, primary_color, piece_rect, radius=6)
+            font_size = int(size * 0.4)
+            draw_text(piece_type, piece_rect.centerx, piece_rect.centery, font_size, WHITE, bold=True)
+            dot_radius = max(3, size // 12)
+            pygame.draw.circle(screen, light_color,
+                               (piece_rect.right - dot_radius - 3, piece_rect.top + dot_radius + 3),
+                               dot_radius)
 
-    # Highlight / border drawn on top in both cases
+    # Highlight / border drawn on top in all cases
     if highlight:
         pygame.draw.rect(screen, TILE_SELECTED, piece_rect, 3, border_radius=6)
     else:
@@ -417,9 +428,11 @@ def draw_board():
                 else:
                     visible = (piece.owner == human_side) or piece.revealed
                 if visible:
-                    draw_piece(piece, x, y, tile_size, highlight=is_selected)
+                    draw_piece(piece, x, y, tile_size, highlight=is_selected,
+                               revealed=piece.revealed)
                 else:
-                    draw_piece(piece, x, y, tile_size, highlight=is_selected, semi_transparent=True)
+                    draw_piece(piece, x, y, tile_size, highlight=is_selected,
+                               semi_transparent=True, revealed=piece.revealed)
     coord_size = get_font_size(12)
     coord_color = GREY_300
     for i in range(BOARD_SIZE):
@@ -477,9 +490,126 @@ def draw_lost_pieces_tracker():
     draw_text(f"Red: {len(lost_pieces_player2)} lost", p2_rect.centerx, p2_rect.centery,
               get_font_size(12), get_player_color(2, 'light'), bold=True)
 
+def draw_battle_popup():
+    """Draw a small popup showing attacker vs defender and the result."""
+    global battle_popup
+    if battle_popup is None:
+        return
+
+    # Auto-dismiss after duration
+    elapsed = time.time() - battle_popup['start_time']
+    if elapsed > BATTLE_POPUP_DURATION:
+        battle_popup = None
+        return
+
+    # Fade out in last 0.5s
+    alpha = 255
+    fade_time = 0.5
+    if elapsed > BATTLE_POPUP_DURATION - fade_time:
+        alpha = int(255 * (BATTLE_POPUP_DURATION - elapsed) / fade_time)
+    alpha = max(0, min(255, alpha))
+
+    current_width, current_height = screen.get_size()
+    dims = get_board_dimensions()
+
+    popup_w = 320
+    popup_h = 160
+    popup_x = dims['board_start_x'] + dims['board_width_with_borders'] // 2 - popup_w // 2
+    popup_y = dims['board_start_y'] + dims['board_height_with_borders'] // 2 - popup_h // 2
+
+    # Shadow
+    shadow = pygame.Surface((popup_w + 8, popup_h + 8), pygame.SRCALPHA)
+    pygame.draw.rect(shadow, (0, 0, 0, int(alpha * 0.5)), shadow.get_rect(), border_radius=14)
+    screen.blit(shadow, (popup_x + 4, popup_y + 4))
+
+    # Background panel
+    panel = pygame.Surface((popup_w, popup_h), pygame.SRCALPHA)
+    pygame.draw.rect(panel, (*CARD_BG, alpha), panel.get_rect(), border_radius=14)
+    screen.blit(panel, (popup_x, popup_y))
+
+    # Border
+    border_surf = pygame.Surface((popup_w, popup_h), pygame.SRCALPHA)
+    pygame.draw.rect(border_surf, (*GREY_700, alpha), border_surf.get_rect(), width=2, border_radius=14)
+    screen.blit(border_surf, (popup_x, popup_y))
+
+    # "BATTLE" header bar
+    header_h = 30
+    result = battle_popup['result']
+    if result == 'attacker_wins':
+        header_color = get_player_color(battle_popup['attacker_owner'], 'primary')
+    elif result == 'defender_wins':
+        header_color = get_player_color(battle_popup['defender_owner'], 'primary')
+    else:
+        header_color = WARNING
+
+    header_surf = pygame.Surface((popup_w, header_h), pygame.SRCALPHA)
+    pygame.draw.rect(header_surf, (*header_color, alpha), header_surf.get_rect(), border_radius=10)
+    screen.blit(header_surf, (popup_x, popup_y))
+
+    font_header = pygame.font.Font(None, get_font_size(18))
+    font_header.set_bold(True)
+    header_text = font_header.render("  BATTLE  ", True, (*WHITE, alpha))
+    header_rect = header_text.get_rect(center=(popup_x + popup_w // 2, popup_y + header_h // 2))
+    screen.blit(header_text, header_rect)
+
+    # Piece icon helper — draws image or coloured rank box
+    def draw_popup_piece(ptype, owner, cx, cy, box_size=56):
+        box = pygame.Rect(cx - box_size // 2, cy - box_size // 2, box_size, box_size)
+        if (ptype, owner) in piece_images:
+            img = pygame.transform.smoothscale(piece_images[(ptype, owner)], (box_size, box_size))
+            img_alpha = img.copy()
+            img_alpha.set_alpha(alpha)
+            screen.blit(img_alpha, box.topleft)
+        else:
+            col = get_player_color(owner, 'primary')
+            surf = pygame.Surface((box_size, box_size), pygame.SRCALPHA)
+            pygame.draw.rect(surf, (*col, alpha), surf.get_rect(), border_radius=8)
+            screen.blit(surf, box.topleft)
+            font_r = pygame.font.Font(None, get_font_size(22))
+            font_r.set_bold(True)
+            rt = font_r.render(ptype, True, (*WHITE, alpha))
+            rr = rt.get_rect(center=(cx, cy))
+            screen.blit(rt, rr)
+        border_s = pygame.Surface((box_size, box_size), pygame.SRCALPHA)
+        pygame.draw.rect(border_s, (*get_player_color(owner, 'dark'), alpha),
+                         border_s.get_rect(), width=2, border_radius=8)
+        screen.blit(border_s, box.topleft)
+
+    # Positions
+    mid_y = popup_y + header_h + (popup_h - header_h) // 2 - 10
+    left_cx  = popup_x + popup_w // 4
+    right_cx = popup_x + 3 * popup_w // 4
+    vs_cx    = popup_x + popup_w // 2
+
+    draw_popup_piece(battle_popup['attacker_type'], battle_popup['attacker_owner'], left_cx, mid_y)
+    draw_popup_piece(battle_popup['defender_type'], battle_popup['defender_owner'], right_cx, mid_y)
+
+    # VS text
+    font_vs = pygame.font.Font(None, get_font_size(26))
+    font_vs.set_bold(True)
+    vs_surf = font_vs.render("VS", True, (*GREY_300, alpha))
+    screen.blit(vs_surf, vs_surf.get_rect(center=(vs_cx, mid_y)))
+
+    # Result label
+    if result == 'attacker_wins':
+        result_text = "Attacker Wins!"
+        result_color = get_player_color(battle_popup['attacker_owner'], 'light')
+    elif result == 'defender_wins':
+        result_text = "Defender Wins!"
+        result_color = get_player_color(battle_popup['defender_owner'], 'light')
+    else:
+        result_text = "Both Eliminated!"
+        result_color = WARNING
+
+    font_res = pygame.font.Font(None, get_font_size(20))
+    font_res.set_bold(True)
+    res_surf = font_res.render(result_text, True, (*result_color, alpha))
+    screen.blit(res_surf, res_surf.get_rect(center=(popup_x + popup_w // 2, popup_y + popup_h - 18)))
+
+
 def handle_click(pos):
     """Handle mouse click on board"""
-    global selected, current_player, message, game_state
+    global selected, current_player, message, game_state, battle_popup
     dims = get_board_dimensions()
     tile_size = dims['tile_size']
     border_size = dims['border_size']
@@ -521,9 +651,30 @@ def handle_click(pos):
                 move_notation = f"{FILES[src[1]]}{10-src[0]} to {FILES[dst[1]]}{10-dst[0]}"
                 if defender:
                     move_notation += f" ({attacker.short()} vs {defender.short()})"
+                # Snapshot before resolve for popup
+                atk_type  = attacker.short()
+                atk_owner = attacker.owner
+                def_type  = defender.short() if defender else None
+                def_owner = defender.owner   if defender else None
                 msg, winner = board.move_and_resolve(src, dst, human_side if vs_bot else None)
                 piece_after_dst = board.get(dst)
                 piece_after_src = board.get(src)
+                # Determine battle result and show popup
+                if defender:
+                    if piece_after_dst and piece_after_dst.owner == atk_owner:
+                        result = 'attacker_wins'
+                    elif not piece_after_dst and not piece_after_src:
+                        result = 'tie'
+                    else:
+                        result = 'defender_wins'
+                    battle_popup = {
+                        'attacker_type':  atk_type,
+                        'attacker_owner': atk_owner,
+                        'defender_type':  def_type,
+                        'defender_owner': def_owner,
+                        'result':         result,
+                        'start_time':     time.time(),
+                    }
                 if defender and not piece_after_dst:
                     if defender.owner == 1: lost_pieces_player1.append(defender)
                     else: lost_pieces_player2.append(defender)
@@ -556,7 +707,7 @@ def handle_click(pos):
 
 def bot_turn():
     """Execute bot's turn"""
-    global current_player, message, game_state, selected
+    global current_player, message, game_state, selected, battle_popup
     time.sleep(0.5)
     if bot_logic is None:
         return
@@ -571,9 +722,30 @@ def bot_turn():
     move_notation = f"{FILES[src[1]]}{10-src[0]} to {FILES[dst[1]]}{10-dst[0]}"
     if defender:
         move_notation += f" ({attacker.short()} vs {defender.short()})"
+    # Snapshot before resolve for popup
+    atk_type  = attacker.short()
+    atk_owner = attacker.owner
+    def_type  = defender.short() if defender else None
+    def_owner = defender.owner   if defender else None
     msg, winner = board.move_and_resolve(src, dst, human_side)
     piece_after_dst = board.get(dst)
     piece_after_src = board.get(src)
+    # Determine battle result and show popup
+    if defender:
+        if piece_after_dst and piece_after_dst.owner == atk_owner:
+            result = 'attacker_wins'
+        elif not piece_after_dst and not piece_after_src:
+            result = 'tie'
+        else:
+            result = 'defender_wins'
+        battle_popup = {
+            'attacker_type':  atk_type,
+            'attacker_owner': atk_owner,
+            'defender_type':  def_type,
+            'defender_owner': def_owner,
+            'result':         result,
+            'start_time':     time.time(),
+        }
     if defender and not piece_after_dst:
         if defender.owner == 1: lost_pieces_player1.append(defender)
         else: lost_pieces_player2.append(defender)
@@ -624,7 +796,7 @@ while running:
         center_x = menu_area_width // 2
         title_y = get_font_size(150)
         draw_text("STRATEGO", center_x, title_y, get_font_size(72), PLAYER1_PRIMARY, bold=True)
-        draw_text("with MARQ", center_x, title_y + get_font_size(60), get_font_size(24), PLAYER2_PRIMARY, bold=True)
+        draw_text("with MARQ", center_x, title_y + get_font_size(40), get_font_size(36), PLAYER2_PRIMARY, bold=True)
         button_width = max(250, min(int(menu_area_width * 0.4), 400))
         button_height = get_font_size(35) + 20
         button_spacing = button_height + 25
@@ -730,6 +902,7 @@ while running:
             hint_text = f"Press H to {'show' if not show_history_panel else 'hide'} history"
             draw_text(hint_text, msg_bar_center_x, msg_bar_y + msg_bar_height + 20,
                       get_font_size(12), GREY_500)
+        draw_battle_popup()
 
     elif game_state == "pause":
         menu_area_width = current_width - history_width if history_width > 0 else current_width
@@ -772,6 +945,7 @@ while running:
             bot_logic = None
             setup_agent = None
             button_states.clear()
+            battle_popup = None
             show_history_panel = True
             lost_pieces_player1.clear()
             lost_pieces_player2.clear()
