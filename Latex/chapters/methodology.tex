@@ -342,10 +342,9 @@ This search is exclusively applied during inference and is never used during the
 
 \subsection{Deployment}
 Upon completion of the training and validation cycles, the best-performing MARQ model weights will be saved and finalized for deployment. Deploy the trained model into the Stratego game environment described in Section 2 of the methodology.
-
 The deployed system will function as the complete application used during the user testing phase. It will be configured to run locally on the single device designated for the experimental procedures. In this production mode, the model's exploratory functions will be deactivated for a more measured approach from the agent, always selecting the action with the highest predicted Q-value. This ensures that all human participants compete against the identical, optimized version of the MARQ framework, providing a consistent baseline for the quantitative and qualitative evaluations.
 
-\begin{figure}[ht]
+\begin{figure}[H]
     \centering
     \includegraphics[width=.5\textwidth]{figures/Game diagram.png}
     \caption{Game Sequence Diagram}
@@ -353,6 +352,26 @@ The deployed system will function as the complete application used during the us
 \end{figure}
 
 In the figure above, the player starts the game and the loop begins until either the player wins by capturing the opponent's flag or loses if the agent captures the player's flag. The agent receives the current board state and updates the AAREN module, which produces learned embeddings encoding implicit piece identity inference from observed action history. The DQN then evaluates Q-values for all legal actions given this embedding-enhanced state representation and selects the action with the highest expected value.
+
+
+\section{Game Environment Development}
+The game environment used in this project is a digital version of Stratego, a two-player board game of incomplete information. This version was developed using Python and Pygame, featuring a GUI with blue and red color schemes, an image-based piece system, a battle popup that displays the combat of the player and enemy pieces, and a history panel.
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=.5\textwidth]{figures/Game Snapshots/StrategoWithMARQ_GameStart.png}
+    \caption{Game Start}
+    \label{fig:Game Start}
+\end{figure}
+
+\subsection{Asset Design}
+The game assets were designed in pixel art style, with each piece represented by a unique image. The pieces are designed to be easily distinguishable, with clear visual cues indicating their rank and special abilities. The assets for the game pieces were created in pixilart.
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=.5\textwidth]{figures/Game Snapshots/StrategoPieces.png}
+    \caption{Stratego Pieces}
+    \label{fig:Stratego Pieces}
+\end{figure}
+
 \section{Evaluation}
 
 A comprehensive evaluation approach combining quantitative and qualitative methods will be used to assess the MARQ framework's performance and the user experience.
