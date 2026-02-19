@@ -1,71 +1,79 @@
 \relax 
 \providecommand\hyper@newdestlabel[2]{}
-\@writefile{toc}{\contentsline {chapter}{\numberline {4}Methodology}{36}{chapter.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {chapter}{\numberline {4}Methodology}{39}{chapter.4}\protected@file@percent }
 \@writefile{lof}{\addvspace {10\p@ }}
 \@writefile{lot}{\addvspace {10\p@ }}
-\@writefile{toc}{\contentsline {section}{\numberline {4.1}Project Planning}{36}{section.4.1}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.1.1}Community Introduction to Stratego}{36}{subsection.4.1.1}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.1.2}Experimental Procedures}{37}{subsection.4.1.2}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {4.2}System Development}{37}{section.4.2}\protected@file@percent }
-\@writefile{lof}{\contentsline {figure}{\numberline {4.1}{\ignorespaces MARQ Framework Architecture: The input pipeline processes board states and move history through AAREN to produce implicit belief embeddings. These are concatenated with board features and fed into a ResNet-based Rainbow DQN with Spatial Attention and Dueling Heads.}}{37}{figure.caption.17}\protected@file@percent }
-\newlabel{fig:marq_architecture}{{4.1}{37}{MARQ Framework Architecture: The input pipeline processes board states and move history through AAREN to produce implicit belief embeddings. These are concatenated with board features and fed into a ResNet-based Rainbow DQN with Spatial Attention and Dueling Heads}{figure.caption.17}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.2.1}Piece Value Computation}{38}{subsection.4.2.1}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsubsection}{Combat Dominance Score}{38}{section*.18}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsubsection}{Survival Rate}{38}{section*.19}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsubsection}{Auxiliary Value Components}{38}{section*.20}\protected@file@percent }
-\citation{perolat2022mastering}
-\@writefile{lot}{\contentsline {table}{\numberline {4.1}{\ignorespaces Strategic ability bonuses for pieces with special capabilities.}}{39}{table.caption.21}\protected@file@percent }
-\newlabel{tab:strategic_bonus}{{4.1}{39}{Strategic ability bonuses for pieces with special capabilities}{table.caption.21}{}}
-\@writefile{toc}{\contentsline {subsubsection}{Composite Value Function}{39}{section*.22}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.2.2}Using AAREN to Remember Game History}{39}{subsection.4.2.2}\protected@file@percent }
-\@writefile{lot}{\contentsline {table}{\numberline {4.2}{\ignorespaces Computed piece values with associated combat and survival metrics.}}{40}{table.caption.23}\protected@file@percent }
-\newlabel{tab:piece_values}{{4.2}{40}{Computed piece values with associated combat and survival metrics}{table.caption.23}{}}
-\@writefile{toc}{\contentsline {paragraph}{Action Feature Extraction.}{40}{section*.24}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Recurrent Embedding Generation.}{40}{section*.25}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{End-to-End Training.}{41}{section*.26}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {4.3}Model Training}{41}{section.4.3}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Rainbow DQN Architecture.}{41}{section*.27}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Network Structure.}{41}{section*.28}\protected@file@percent }
-\@writefile{lot}{\contentsline {table}{\numberline {4.3}{\ignorespaces State representation input channels for the Rainbow DQN.}}{42}{table.caption.29}\protected@file@percent }
-\newlabel{tab:state_channels}{{4.3}{42}{State representation input channels for the Rainbow DQN}{table.caption.29}{}}
-\@writefile{toc}{\contentsline {paragraph}{Training Hyperparameters.}{42}{section*.30}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Computational Optimizations.}{42}{section*.31}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{League-Based Training.}{43}{section*.32}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Population-Based Training.}{43}{section*.33}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.3.1}Centralized Reward System and Defensive Normalization}{44}{subsection.4.3.1}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Composite Reward Mixing.}{44}{section*.34}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Rationale for Distributional Scaling.}{44}{section*.35}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Positional and Anti-Stall Mechanisms.}{45}{section*.36}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Experience Replay Optimization.}{45}{section*.37}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Advantage Filtering.}{46}{section*.38}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {4.1}Project Planning}{39}{section.4.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.1.1}Community Introduction to Stratego}{39}{subsection.4.1.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.1.2}Experimental Procedures}{40}{subsection.4.1.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {4.2}System Development}{40}{section.4.2}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {4.1}{\ignorespaces MARQ Framework Architecture. The input pipeline processes board states and move history through AAREN to produce implicit belief embeddings. These are concatenated with board features and fed into a ResNet-based Rainbow DQN with Spatial Attention and Dueling Heads.}}{40}{figure.caption.27}\protected@file@percent }
+\newlabel{fig:marq_architecture}{{4.1}{40}{MARQ Framework Architecture. The input pipeline processes board states and move history through AAREN to produce implicit belief embeddings. These are concatenated with board features and fed into a ResNet-based Rainbow DQN with Spatial Attention and Dueling Heads}{figure.caption.27}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.2.1}Piece Value Computation}{41}{subsection.4.2.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{Combat Dominance Score}{41}{section*.28}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{Survival Rate}{41}{section*.29}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{Auxiliary Value Components}{41}{section*.30}\protected@file@percent }
+\citation{perolat2022stratego}
+\@writefile{lot}{\contentsline {table}{\numberline {4.1}{\ignorespaces Strategic ability bonuses for pieces with special capabilities.}}{42}{table.caption.31}\protected@file@percent }
+\newlabel{tab:strategic_bonus}{{4.1}{42}{Strategic ability bonuses for pieces with special capabilities}{table.caption.31}{}}
+\@writefile{toc}{\contentsline {subsubsection}{Composite Value Function}{42}{section*.32}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.2.2}Using AAREN to Remember Game History}{42}{subsection.4.2.2}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {4.2}{\ignorespaces Computed piece values with associated combat and survival metrics.}}{43}{table.caption.33}\protected@file@percent }
+\newlabel{tab:piece_values}{{4.2}{43}{Computed piece values with associated combat and survival metrics}{table.caption.33}{}}
+\@writefile{toc}{\contentsline {paragraph}{Action Feature Extraction.}{43}{section*.34}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Recurrent Embedding Generation.}{43}{section*.35}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{End-to-End Training.}{44}{section*.36}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {4.3}Model Training}{44}{section.4.3}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {4.2}{\ignorespaces MARQ Training Architecture. The system employs a dual-buffer replay mechanism (PER and Episodic) alongside a league-based opponent pool to facilitate stable policy development in imperfect information settings.}}{44}{figure.caption.37}\protected@file@percent }
+\newlabel{fig:training_architecture}{{4.2}{44}{MARQ Training Architecture. The system employs a dual-buffer replay mechanism (PER and Episodic) alongside a league-based opponent pool to facilitate stable policy development in imperfect information settings}{figure.caption.37}{}}
+\@writefile{toc}{\contentsline {paragraph}{Rainbow DQN Architecture.}{44}{section*.38}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {4.3}{\ignorespaces Dueling Network Heads. The architecture separates the value stream $V(s)$ and the advantage stream $A(s, a)$, allowing the agent to stabilize learning by identifying state importance independently of action selection.}}{45}{figure.caption.39}\protected@file@percent }
+\newlabel{fig:dueling_heads}{{4.3}{45}{Dueling Network Heads. The architecture separates the value stream $V(s)$ and the advantage stream $A(s, a)$, allowing the agent to stabilize learning by identifying state importance independently of action selection}{figure.caption.39}{}}
+\@writefile{toc}{\contentsline {paragraph}{Network Structure.}{45}{section*.40}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {4.4}{\ignorespaces ResNet Backbone. The six-block residual architecture provides a $27 \times 27$ receptive field, ensuring full spatial coverage and effective feature propagation for the $10 \times 10$ board representation.}}{45}{figure.caption.41}\protected@file@percent }
+\newlabel{fig:resnet_backbone}{{4.4}{45}{ResNet Backbone. The six-block residual architecture provides a $27 \times 27$ receptive field, ensuring full spatial coverage and effective feature propagation for the $10 \times 10$ board representation}{figure.caption.41}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {4.5}{\ignorespaces 79-Channel Input Representation. The state is encoded as a multi-channel tensor consisting of binary board features and 64-dimensional AAREN-generated embeddings for piece-type inference.}}{46}{figure.caption.42}\protected@file@percent }
+\newlabel{fig:input_layer}{{4.5}{46}{79-Channel Input Representation. The state is encoded as a multi-channel tensor consisting of binary board features and 64-dimensional AAREN-generated embeddings for piece-type inference}{figure.caption.42}{}}
+\@writefile{toc}{\contentsline {paragraph}{Training Hyperparameters.}{46}{section*.44}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {4.3}{\ignorespaces State representation input channels for the Rainbow DQN.}}{47}{table.caption.43}\protected@file@percent }
+\newlabel{tab:state_channels}{{4.3}{47}{State representation input channels for the Rainbow DQN}{table.caption.43}{}}
+\@writefile{toc}{\contentsline {paragraph}{Computational Optimizations.}{47}{section*.45}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{League-Based Training.}{47}{section*.46}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Multi-Phase Curriculum.}{48}{section*.47}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.3.1}Centralized Reward System and Defensive Normalization}{48}{subsection.4.3.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Composite Reward Mixing.}{48}{section*.48}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Rationale for Distributional Scaling.}{49}{section*.49}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Positional and Anti-Stall Mechanisms.}{49}{section*.50}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Experience Replay Optimization.}{49}{section*.51}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Advantage Filtering.}{50}{section*.52}\protected@file@percent }
 \citation{kapturowski2018recurrent}
-\@writefile{toc}{\contentsline {paragraph}{Multi-Step Returns.}{47}{section*.39}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Episode-Level Replay via Trajectory Segment Sampling.}{47}{section*.40}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Learning Rate Scheduling.}{48}{section*.41}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.3.2}Action Space Reduction via Heuristic Filtering}{48}{subsection.4.3.2}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Heuristic Move Scoring.}{48}{section*.42}\protected@file@percent }
-\@writefile{lot}{\contentsline {table}{\numberline {4.4}{\ignorespaces Heuristic scoring criteria for move filtering.}}{49}{table.caption.43}\protected@file@percent }
-\newlabel{tab:heuristic_scoring}{{4.4}{49}{Heuristic scoring criteria for move filtering}{table.caption.43}{}}
-\@writefile{toc}{\contentsline {paragraph}{Action Masking Integration.}{49}{section*.44}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.3.3}Test-Time Search}{49}{subsection.4.3.3}\protected@file@percent }
-\@writefile{lof}{\contentsline {figure}{\numberline {4.2}{\ignorespaces MARQ Framework}}{50}{figure.caption.45}\protected@file@percent }
-\newlabel{fig:my_label}{{4.2}{50}{MARQ Framework}{figure.caption.45}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.3.4}Deployment}{51}{subsection.4.3.4}\protected@file@percent }
-\@writefile{lof}{\contentsline {figure}{\numberline {4.3}{\ignorespaces Game Sequence Diagram}}{52}{figure.caption.46}\protected@file@percent }
-\newlabel{fig:Sequence Diagram}{{4.3}{52}{Game Sequence Diagram}{figure.caption.46}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {4.4}Game Environment Development}{52}{section.4.4}\protected@file@percent }
-\@writefile{lof}{\contentsline {figure}{\numberline {4.4}{\ignorespaces Game Start}}{53}{figure.caption.47}\protected@file@percent }
-\newlabel{fig:Game Start}{{4.4}{53}{Game Start}{figure.caption.47}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.4.1}Asset Design}{53}{subsection.4.4.1}\protected@file@percent }
-\@writefile{lof}{\contentsline {figure}{\numberline {4.5}{\ignorespaces Stratego Pieces}}{53}{figure.caption.48}\protected@file@percent }
-\newlabel{fig:Stratego Pieces}{{4.5}{53}{Stratego Pieces}{figure.caption.48}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {4.5}Evaluation}{53}{section.4.5}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Quantitative Analysis.}{54}{section*.49}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Qualitative Analysis.}{54}{section*.50}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Multi-Step Returns.}{51}{section*.53}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Episode-Level Replay via Trajectory Segment Sampling.}{51}{section*.54}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Learning Rate Scheduling.}{52}{section*.55}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.3.2}Action Space Reduction via Heuristic Filtering}{52}{subsection.4.3.2}\protected@file@percent }
+\citation{novikov2024analysis}
+\citation{novikov2024analysis}
+\@writefile{toc}{\contentsline {paragraph}{Heuristic Move Scoring.}{53}{section*.56}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {4.4}{\ignorespaces Heuristic scoring criteria for move filtering.}}{53}{table.caption.57}\protected@file@percent }
+\newlabel{tab:heuristic_scoring}{{4.4}{53}{Heuristic scoring criteria for move filtering}{table.caption.57}{}}
+\@writefile{toc}{\contentsline {paragraph}{Action Masking Integration.}{53}{section*.58}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.3.3}Test-Time Search}{54}{subsection.4.3.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.3.4}Deployment}{55}{subsection.4.3.4}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {4.6}{\ignorespaces Game Sequence Diagram}}{55}{figure.caption.59}\protected@file@percent }
+\newlabel{fig:Sequence Diagram}{{4.6}{55}{Game Sequence Diagram}{figure.caption.59}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {4.4}Game Environment Development}{56}{section.4.4}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {4.7}{\ignorespaces Game Start}}{56}{figure.caption.60}\protected@file@percent }
+\newlabel{fig:Game Start}{{4.7}{56}{Game Start}{figure.caption.60}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.4.1}Asset Design}{56}{subsection.4.4.1}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {4.8}{\ignorespaces Stratego Pieces}}{57}{figure.caption.61}\protected@file@percent }
+\newlabel{fig:Stratego Pieces}{{4.8}{57}{Stratego Pieces}{figure.caption.61}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {4.5}Evaluation}{57}{section.4.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Quantitative Analysis.}{57}{section*.62}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Qualitative Analysis.}{57}{section*.63}\protected@file@percent }
 \@setckpt{chapters/methodology}{
-\setcounter{page}{55}
+\setcounter{page}{59}
 \setcounter{equation}{12}
-\setcounter{enumi}{5}
+\setcounter{enumi}{3}
 \setcounter{enumii}{0}
 \setcounter{enumiii}{0}
 \setcounter{enumiv}{0}
@@ -78,21 +86,21 @@
 \setcounter{subsubsection}{0}
 \setcounter{paragraph}{0}
 \setcounter{subparagraph}{0}
-\setcounter{figure}{5}
+\setcounter{figure}{8}
 \setcounter{table}{4}
 \setcounter{section@level}{4}
-\setcounter{Item}{13}
+\setcounter{Item}{11}
 \setcounter{Hfootnote}{0}
-\setcounter{bookmark@seq@number}{77}
+\setcounter{bookmark@seq@number}{79}
 \setcounter{parentequation}{0}
 \setcounter{float@type}{16}
 \setcounter{caption@flags}{2}
 \setcounter{continuedfloat}{0}
 \setcounter{subfigure}{0}
 \setcounter{subtable}{0}
-\setcounter{algorithm}{0}
-\setcounter{ALC@unique}{0}
-\setcounter{ALC@line}{0}
+\setcounter{algorithm}{1}
+\setcounter{ALC@unique}{16}
+\setcounter{ALC@line}{16}
 \setcounter{ALC@rem}{0}
 \setcounter{ALC@depth}{0}
 \setcounter{lstnumber}{1}

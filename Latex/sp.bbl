@@ -33,6 +33,11 @@
 \newblock In {\em Proceedings of the International Joint Conference on
   Artificial Intelligence\/} (2025).
 
+\bibitem{Ballard1983}
+{\sc Ballard, B.~W.}
+\newblock The *-minimax search procedure.
+\newblock {\em Artificial Intelligence 21}, 3 (1983), 327--355.
+
 \bibitem{barreto2017successor}
 {\sc Barreto, A., Dabney, W., Munos, R., Hunt, J.~J., Schaul, T., van Hasselt,
   H., and Silver, D.}
@@ -153,13 +158,6 @@
   Learning\/} (2016), vol.~48 of {\em Proceedings of Machine Learning
   Research}, PMLR, pp.~1804--1813.
 
-\bibitem{hessel2018rainbow}
-{\sc Hessel, M., Modayil, J., van Hasselt, H., Schaul, T., Ostrovski, G.,
-  Dabney, W., Horgan, D., Piot, B., Azar, M., and Silver, D.}
-\newblock Rainbow: Combining improvements in deep reinforcement learning.
-\newblock In {\em Proceedings of the AAAI Conference on Artificial
-  Intelligence\/} (2018), vol.~32, pp.~3215--3222.
-
 \bibitem{RainbowJMLR2021}
 {\sc Hessel, M., Modayil, J., van Hasselt, H., Schaul, T., Ostrovski, G.,
   Dabney, W., Horgan, D., Piot, B., Azar, M., and Silver, D.}
@@ -172,11 +170,6 @@
   perspectives.
 \newblock {\em IEEE Transactions on Artificial Intelligence 5}, 12 (2024),
   5949--5968.
-
-\bibitem{DQN}
-{\sc Huang, Y.}
-\newblock {\em Deep Q-Networks}.
-\newblock Springer Singapore, Singapore, 2020, pp.~135--160.
 
 \bibitem{deepRL-chapter4-2020}
 {\sc Huang, Y.}
@@ -256,24 +249,30 @@
 \newblock {\em arXiv preprint arXiv:2406.07848v1\/} (2024).
 \newblock Version v1, June 2024.
 
+\bibitem{Michie1966}
+{\sc Michie, D.}
+\newblock Game-playing and game-learning automata.
+\newblock In {\em Advances in Programming and Non-numerical Computation},
+  L.~Fox, Ed. Pergamon, Oxford, UK, 1966, pp.~183--200.
+
 \bibitem{alphabeta}
 {\sc Nair, R.~R., Babu, T., Kishore, S., Pavithra, K., and Sumana, S.~G.}
 \newblock Improving alpha-beta pruning efficiency in chess engines.
 \newblock In {\em 2024 International Conference on IT Innovation and Knowledge
   Discovery (ITIKD)\/} (Manama, Bahrain, 2025), IEEE, pp.~1--6.
 
+\bibitem{novikov2024analysis}
+{\sc Novikov, A., and Yanovskyi, V.}
+\newblock Analysis of the decision-making algorithm efficiency in complex game
+  environments on the example of pac-man.
+\newblock {\em Information Technologies and Computer Engineering 3}, 21 (2024),
+  108--118.
+
 \bibitem{AIAgent}
 {\sc Ouyang, X., and Zhou, T.}
 \newblock Imperfect-information game ai agent based on reinforcement learning
   using tree search and a deep neural network.
 \newblock {\em Electronics 12}, 11 (2023), 2453.
-
-\bibitem{RLStratego}
-{\sc Perolat, J., De~Vylder, B., Hennes, D., Tarassov, E., Strub, F., de~Boer,
-  V., Muller, P., Connor, J.~T., Burch, N., Anthony, T., et~al.}
-\newblock Mastering the game of stratego with model-free multiagent
-  reinforcement learning.
-\newblock {\em Science 378}, 6623 (2022), 990--996.
 
 \bibitem{boardgamecom}
 {\sc Petersen, C.}
@@ -311,14 +310,6 @@
 \bibitem{StudeGame}
 {\sc Schmid, M., Morav{\v{c}}{\'\i}k, M., Burch, N., Kadlec, R., Davidson, J.,
   Waugh, K., Bard, N., Timbers, F., Lanctot, M., Holland, G.~Z., et~al.}
-\newblock Student of games: A unified learning algorithm for both perfect and
-  imperfect information games.
-\newblock {\em Science Advances 9}, 46 (2023), eadg3256.
-
-\bibitem{StudeGame2}
-{\sc Schmid, M., Moravčík, M., Burch, N., Kadlec, R., Davidson, J., Waugh,
-  K., Bard, N., Timbers, F., Lanctot, M., Holland, G.~Z., Davoodi, E.,
-  Christianson, A., and Bowling, M.}
 \newblock Student of games: A unified learning algorithm for both perfect and
   imperfect information games.
 \newblock {\em Science Advances 9}, 46 (2023), eadg3256.
