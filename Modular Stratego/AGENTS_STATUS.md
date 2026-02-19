@@ -1,19 +1,23 @@
 # Stratego Modular: Project Status & Agent Guide
 
-**Last Updated:** 2026-02-15
-**Objective:** Achieve human-like or better strategic play in Stratego (Partial Observability).
+**Last Updated:** 2026-02-19
+**Current Checkpoint:** `agent1_rainbow_episode_11000.pth` (Deployed in GUI)
 
 ## Recent Progress
+- **Episode 11000 Deployment (Feb 19, 2026):** Transitioned the GUI production bot from Episode 1000 to Episode 11000. This model features significantly more stable Q-values and better piece-value recognition.
+- **Expectamax-Style Test-Time Search:** Integrated `UpdateEquivalenceSearch` (Ataraxos-style) into the GUI. This replaces shallow 2-ply minimax with a more robust world-sampling approach. By evaluating candidate piece moves across 50 plausible AAREN-generated worlds, the bot mitigates "hallucination" (over-optimistic attacks on hidden pieces).
+- **History Tracking in GUI:** Re-enabled AAREN history aggregation in the Pygame GUI. The bot now 'remembers' human moves, allowing for increasingly accurate piece-identity inference as the game progresses.
 - **Episode-Level Replay (Trajectory Segment Sampling):** Dual-buffer architecture introduced alongside PER. An `EpisodicReplayBuffer` stores up to 500 complete episodes and samples contiguous 16-step trajectory segments during training. 25% of each training batch is drawn from episode segments (prioritized by game outcome), 75% from PER. This enables temporal credit assignment across multi-move strategies and episode-level prioritization of decisive games.
+- **Git Repository Maintenance (Feb 19, 2026):** Resolved a push failure caused by large `.pth` model binaries (up to 1.2GB) exceeding GitHub's 100MB limit. Cleaned the Git history of the `UpdateMemory` branch to remove binary tracking while preserving all LaTeX and Python logic updates. Updated `.gitignore` to prevent accidental staging of `.pth` files.
 - **Long-Horizon Tuning:** Architecture adjusted for 200–500 move games. Per-phase turn limits increased (Phase 1: 300, Phase 2: 800, Phase 3: 1000, Phase 4: 1500; `DEFAULT_MAX_TURNS=1500`). Turn limits consolidated into a single `PHASE_MAX_TURNS` dict in `training_config.py` and carried as `PhaseConfig.max_turns` in `curriculum.py` — the duplicated inline dicts in `train_dqn.py` are removed. `MAX_HISTORY_LENGTH` remains 50. Turn normalization in `history_aggregator.py` now dynamically reads `DEFAULT_MAX_TURNS` instead of using a hardcoded `1000.0`. `N_STEPS` set to 5 for deeper multi-step credit assignment (`γ^5 = 0.975`).
 - **AAREN Integration Verified:** All 6 diagnostic tests passed (`check_aaren_integration.py`). AAREN correctly feeds embeddings into the Rainbow DQN — dimensions match, embeddings are non-zero, channel concatenation works, gradients flow correctly, and no sparse death detected.
-- **AAREN Implicit Memory System:** The MARQ framework now fully relies on AAREN (Action-Augmented Recurrent Encoder) for history-based piece inference. This replaces legacy explicit belief systems with a DeepNash-inspired implicit representation. All associated modules (`HistoryAggregator`, `PieceActionAaren`) have been verified for gradient flow and output stability.
+- **AAREN Implicit Memory System:** The MARQ framework now fully relies on AAREN (Attention-as-a-Recurrent-Neural-Network) for history-based piece inference. This replaces legacy explicit belief systems with a DeepNash-inspired implicit representation. All associated modules (`HistoryAggregator`, `PieceActionAaren`) have been verified for gradient flow and output stability.
 - **Inferred Piece Identity:** Piece identities are handled implicitly via learned 64-dimensional embeddings. The `HistoryAggregator` processes action sequences to produce these embeddings, which are then interpreted end-to-end by the Rainbow DQN's convolutional backbone. This eliminates the need for explicit probability distributions or manual belief updates.
 - **Sparse Death Fix:** Learnable default embedding implemented. Verified stable — after 5 simulated updates, all 5 positions produce diverse, non-zero embeddings.
 - **Exploration:** Epsilon-Greedy disabled (`EXPLORATION_EPSILON_START = 0.0`). Noisy Networks handle state-dependent exploration.
 - **Reward System Overhaul (v2):** All rewards rescaled for C51 atom visibility. Terminal: ±1.0 (was ±15–25). C51 support tightened to [-10,+10] (was [-30,+30], now 0.4/atom resolution). Piece-loss penalties are rank-weighted. Forward-movement reward gated on piece rank ≤ Captain. Scout bonus tightened to enemy back rank (2 rows). Pending transition double-counting removed. Curiosity tracker resets per episode. Dead info-gain code removed.
 - **Literature Review Expanded:** Integrated modern research on DQN variants (Rainbow 2021), ResNets in board games (AlphaZero 2023, Ataraxos 2025), and Transformer-based self-attention (2025). Adhered to a strict 5-year reference rule (2021 or newer) for all new theoretical integrations.
-- **Documentation Refined:** Stylistically overhauled the **Methodology** and **Technical Background** chapters. Removed "marketing vibes" and corporate jargon in favor of a direct, research-assistant tone while maintaining all technical data and equations.
+- **Refined Paper Style (Feb 18, 2026)**: Conducted a comprehensive stylistic overhaul of the methodology and technical background chapters. Eliminated informal summaries, em-dashes, and colons in favor of a mature academic tone. Verified all core RL formulas for accuracy and added technical figures for architectural clarity.
 - **Computational Optimization:** AMP (Mixed-Precision) and `torch.compile` support for faster throughput.
 - **Interpretability Dashboard (Discrete Thinking):** A real-time Matplotlib-based visualizer for frozen Rainbow DQN agents. It features a $2 \times 3$ grid visualizing:
     1. **Main Board:** 10x10 perception grid with AAREN-inferred piece identities.
@@ -98,20 +102,19 @@ The attention layer operates as a standard transformer block: multi-head self-at
 
 ## Tech Stack
 - **Core:** Rainbow DQN (C51, Dueling, Noisy, Multi-step, PER).
-- **History:** AAREN (Action-Augmented Recurrent Encoder) — 3-layer, 64-dim, parallel training / O(1) inference.
+- **History:** AAREN (Attention-as-a-Recurrent-Neural-Network) — 3-layer, 64-dim, parallel training / O(1) inference.
 - **Vision:** 6-block ResNet (64ch) + Spatial Self-Attention (4-head). Total 21.7M params.
 - **Replay:** Dual-buffer — `PrioritizedReplayBuffer` (150K flat) + `EpisodicReplayBuffer` (500 episodes, deque-backed O(1) eviction, 16-step segments, 25% mix ratio).
 - **Training:** Curriculum-based (5 Phases), League-based opponent pool.
-- **GUI Inference:** `DQNBotLogic` adapter (`Python Stratego Game/dqn_bot_logic.py`) bridges the Pygame GUI to the trained Rainbow DQN. Translates GUI `Board` (Piece objects) → 79-channel tensor → C51 Q-values → legal move selection. AAREN history runs alongside for opponent piece-type inference. Compatible checkpoint: `dqn_models/agent1_rainbow_episode_1000.pth`.
+- **GUI Inference:** `DQNBotLogic` adapter (`Python Stratego Game/dqn_bot_logic.py`) bridges the Pygame GUI to the trained Rainbow DQN. Translates GUI `Board` (Piece objects) → 79-channel tensor → C51 Q-values → Formal Expectamax refinement → legal move selection. AAREN history tracking is strictly enforced turn-by-turn. Compatible checkpoint: `agent1_rainbow_episode_11000.pth`.
 
-## Test-Time Search (PolicyRefinedSearch)
 
-The `policy_search.py` module provides a 2-ply minimax lookahead that improves move selection at inference time without any additional training. The search:
+The MARQ framework utilizes a formal **Expectamax** search for move refinement at test-time. This replaces standard minimax in partially observable environments by incorporating chance nodes for hidden information.
 
-1. **Gets Q-value prior** — evaluates all legal moves via the C51 network.
-2. **Expands top-K=5 moves** — simulates each via `deep_copy + step_fn`.
-3. **Models opponent response** — uses the same Q-network from opponent's perspective.
-4. **Evaluates leaf states** — `V(s,a) = R + γ * max Q(s'', a'')` after opponent's best response.
+1. **Max Nodes (Bot Moves)** — The bot evaluates all legal moves.
+2. **Chance Nodes (Piece Identities)** — For each potential attack, the system calculates the expected utility by performing an exact summation over piece-rank probabilities provided by AAREN:
+   $$\mathbb{E}[V] = \sum_{r=1}^{12} P(\text{target is rank } r | \mathcal{H}) \cdot \text{CombatUtility}(\text{attacker}, r)$$
+3. **Utility Weighting** — Final move scores are a weighted mixture of the DQN's positional prior (Q-values) and the search-derived combat expectation. This ensures the bot avoids "hallucinating" successful attacks on squares with high probabilities of being Bombs or Marshals.
 
 **Key constraints:**
 - **Inference only** — never used during training to preserve iterations/sec.
@@ -131,6 +134,17 @@ The dual-buffer replay system addresses four limitations of flat PER for long-ho
 4. **Zero-risk integration** — the `EpisodicReplayBuffer` runs alongside PER without modifying the existing training pipeline; disabling it restores the original behavior.
 
 **Episode lifecycle:** `start_episode(lane_id)` initializes tracking when a lane resets. Each step appends `(s, a, r, s', done)` to the current episode. `end_episode(lane_id, outcome, total_reward)` finalizes and stores with metadata. During `replay()`, 25% of the batch is drawn from the episode buffer (contiguous segments), 75% from PER.
+
+## Architectural Evolutions and Ablations
+
+The current MARQ architecture resulted from extensive ablation studies and performance benchmarking. Several key transitions defined the evolution of the system.
+
+- **Value-Based Evolution.** The agent transitioned from a vanilla DQN with $\epsilon$-greedy exploration to a Rainbow DQN that utilizes Noisy Networks. Additionally, the Double-DQN (DDQN) configuration was replaced with Dueling Heads to improve multi-action utility resolution.
+- **Cognitive Shift.** The framework replaced explicit Probabilistic Belief States (PBS) with implicit AAREN embeddings. This change addressed the $O(N^2)$ computational complexity and significantly increased training iterations per second.
+- **Memory Optimization.** LSTMs were replaced with AAREN. The attention-as-a-recurrent-network architecture provides superior gradient stability for the 100-move horizons common in Stratego and handles non-Markovian history with O(1) inference.
+- **Vision Backbone.** After testing deeper configurations, the system settled on 6 ResNet blocks with 64 channels. This arrangement provides the $27 \times 27$ receptive field required for a $10 \times 10$ board without excessive parameterization.
+- **Setup Efficiency.** The architecture transitioned from an agentic SetupAgent trained via distributional RL to a fixed Heuristic Setup Agent. This move reduced exploitability because random flag and bomb positioning prevents opponent memorization of setup patterns. Furthermore, it reduced setup time from approximately 2 seconds to less than 100 milliseconds. This optimization halved the total training compute requirement by eliminating the need to train a separate model for the placement phase.
+- **Optimizer Tuning.** The project migrated from ADAM to ADAMW to ensure more stable weight decay behaviors in policy loss.
 
 ## Future Directions
 1. **Strategic Intent:** Moving pieces with purpose towards high-value targets.

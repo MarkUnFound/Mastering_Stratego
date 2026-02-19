@@ -13,7 +13,7 @@ import random
 import csv
 import os
 from stratego import Board, auto_setup, side_name, FILES, Piece
-from bot_logic import EnhancedBotLogic
+from dqn_bot_logic import DQNBotLogic
 from setup_agent_integration import StrategicSetupAgent
 
 pygame.init()
@@ -60,9 +60,10 @@ auto_setup(board, 2)
 # Determine model paths
 model_dir = os.path.dirname(os.path.abspath(__file__))
 possible_paths = [
+    os.path.join(model_dir, 'agent1_rainbow_episode_11000.pth'),
     os.path.join(model_dir, 'dqn_agent_final.pth'),
     os.path.join(model_dir, 'user_input_files', 'dqn_agent_final.pth'),
-    'dqn_models/dqn_agent_final.pth',
+    'dqn_models/agent1_rainbow_episode_11000.pth',
     os.path.join(model_dir, '..', 'dqn_models', 'dqn_agent_final.pth'),
 ]
 
@@ -74,8 +75,8 @@ for path in possible_paths:
         break
 
 if agent_model_path is None:
-    agent_model_path = os.path.join(model_dir, 'dqn_agent_final.pth')
-    print(f"⚠️  Warning: dqn_agent_final.pth not found in any expected location, using: {agent_model_path}")
+    agent_model_path = os.path.join(model_dir, 'agent1_rainbow_episode_11000.pth')
+    print(f"⚠️  Warning: agent1_rainbow_episode_11000.pth not found in any expected location, using: {agent_model_path}")
 
 # Setup model paths
 possible_setup_paths = [
@@ -596,6 +597,10 @@ def handle_click(pos):
                 
                 msg, winner = board.move_and_resolve(src, dst, human_side if vs_bot else None)
                 
+                # Update AAREN history for DQN piece inference
+                if vs_bot and bot_logic is not None:
+                    bot_logic.update_from_opponent_move(board, src, dst)
+                
                 # Track lost pieces
                 piece_after_dst = board.get(dst)
                 piece_after_src = board.get(src)
@@ -775,9 +780,11 @@ while running:
             lost_pieces_player2.clear()
             
             try:
-                bot_logic = EnhancedBotLogic(agent_model_path, player_id=2)
-            except:
-                bot_logic = EnhancedBotLogic(None, player_id=2)
+                bot_logic = DQNBotLogic(agent_model_path, player_id=2)
+                bot_logic.reset()
+            except Exception as e:
+                print(f"Failed to load MARQ Bot: {e}")
+                bot_logic = None
             
         if draw_button("2-Player Mode", center_x - button_width//2, start_y + button_spacing, 
                       button_width, button_height, action="2p") == "2p":
