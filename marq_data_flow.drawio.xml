@@ -1,0 +1,153 @@
+<mxfile host="app.diagrams.net" modified="2026-02-21T06:35:00.000Z" agent="Antigravity Agent" version="21.0.0" type="device">
+  <diagram id="marq-dataflow" name="MARQ Data Flow">
+    <mxGraphModel dx="1200" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1200" pageHeight="800" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        
+        <!-- TITLE -->
+        <mxCell id="title1" value="&lt;b&gt;MARQ Data Flow (AAREN to DQN Pipeline)&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=16;fontColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="400" y="40" width="400" height="25" as="geometry" />
+        </mxCell>
+        
+        <!-- STAGE 1: FEATURE EXTRACTION -->
+        <mxCell id="stage1_box" value="&lt;b&gt;1. Feature Extraction&lt;/b&gt;&lt;br&gt;&lt;i&gt;HistoryAggregator._extract_action_features()&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;verticalAlign=top;align=left;spacingLeft=10;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="80" y="120" width="260" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="raw_act" value="&lt;b&gt;Raw Opponent Action&lt;/b&gt;&lt;br&gt;(Move/Combat)" style="ellipse;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="140" y="160" width="140" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="feature_vec" value="&lt;b&gt;24-Dim Feature Vector&lt;/b&gt;&lt;br&gt;(direction, distance, attack flag, etc.)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="110" y="220" width="200" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="s1_line" edge="1" parent="1" source="raw_act" target="feature_vec">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- STAGE 2: SEQUENTIAL ENCODING -->
+        <mxCell id="stage2_box" value="&lt;b&gt;2. Sequential Encoding&lt;/b&gt;&lt;br&gt;&lt;i&gt;PieceActionAaren.forward_sequential()&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;verticalAlign=top;align=left;spacingLeft=10;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="420" y="120" width="260" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="aaren_stack" value="&lt;b&gt;3-Layer AAREN Stack&lt;/b&gt;&lt;br&gt;(input_size=24, hidden_size=64)&lt;br&gt;&lt;i&gt;Runs under torch.no_grad()&lt;/i&gt;" style="shape=process;whiteSpace=wrap;html=1;backgroundOutline=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1">
+          <mxGeometry x="450" y="160" width="200" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="hidden_state" value="&lt;b&gt;Per-Position Hidden States&lt;/b&gt;&lt;br&gt;[64]" style="shape=cube;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;darkOpacity=0.1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1">
+          <mxGeometry x="495" y="225" width="110" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="s2_line" edge="1" parent="1" source="aaren_stack" target="hidden_state">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="link_1_2" edge="1" parent="1" source="feature_vec" target="aaren_stack">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- STAGE 3: EMBEDDING ASSEMBLY -->
+        <mxCell id="stage3_box" value="&lt;b&gt;3. Embedding Assembly&lt;/b&gt;&lt;br&gt;&lt;i&gt;HistoryAggregator.get_embedding_tensor()&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;verticalAlign=top;align=left;spacingLeft=10;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="760" y="120" width="260" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="tensor_pack" value="Pack States into Grid&lt;br&gt;(Empty positions = 0)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="830" y="160" width="120" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="aaren_tensor" value="&lt;b&gt;AAREN Embeddings&lt;/b&gt;&lt;br&gt;(64, 10, 10)" style="shape=cube;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;darkOpacity=0.1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1">
+          <mxGeometry x="815" y="210" width="150" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="s3_line" edge="1" parent="1" source="tensor_pack" target="aaren_tensor">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="link_2_3" edge="1" parent="1" source="hidden_state" target="tensor_pack">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- STAGE 4: CHANNEL CONCATENATION -->
+        <mxCell id="stage4_box" value="&lt;b&gt;4. Channel Concatenation&lt;/b&gt;&lt;br&gt;&lt;i&gt;RainbowAgent.get_state_representation()&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;verticalAlign=top;align=left;spacingLeft=10;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="250" y="320" width="260" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="board_feats" value="&lt;b&gt;Board Features&lt;/b&gt;&lt;br&gt;(15, 10, 10)" style="shape=cube;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;darkOpacity=0.1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="270" y="360" width="100" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="concat_op" value="&lt;b&gt;Concat&lt;/b&gt;" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fillColor=#ffffff;strokeColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="400" y="410" width="40" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="full_tensor" value="&lt;b&gt;Total Input Tensor&lt;/b&gt;&lt;br&gt;(79, 10, 10)" style="shape=cube;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;darkOpacity=0.1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="360" y="460" width="120" height="40" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="s4_line1" edge="1" parent="1" source="board_feats" target="concat_op">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s4_line2" edge="1" parent="1" source="concat_op" target="full_tensor">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="link_3_4" edge="1" parent="1" source="aaren_tensor" target="concat_op">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="890" y="290"/>
+              <mxPoint x="420" y="290"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- STAGE 5: DQN CONSUMPTION -->
+        <mxCell id="stage5_box" value="&lt;b&gt;5. DQN Consumption&lt;/b&gt;&lt;br&gt;&lt;i&gt;RainbowDQN.forward()&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;verticalAlign=top;align=left;spacingLeft=10;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="590" y="320" width="260" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="resnet_bb" value="&lt;b&gt;conv_in + 6x ResBlocks&lt;/b&gt;&lt;br&gt;+ Spatial Attention" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="635" y="360" width="170" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="dqn_out" value="&lt;b&gt;C51 Distribution&lt;/b&gt;&lt;br&gt;400 actions x 51 atoms" style="shape=cube;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;darkOpacity=0.1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="645" y="420" width="150" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="s5_line" edge="1" parent="1" source="resnet_bb" target="dqn_out">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="link_4_5" edge="1" parent="1" source="full_tensor" target="resnet_bb">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="420" y="520"/>
+              <mxPoint x="540" y="520"/>
+              <mxPoint x="540" y="380"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- TRAINING SUPERVISION -->
+        <mxCell id="train_zone" value="&lt;b&gt;Training Supervision (Parallel/Asynchronous)&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;dashed=1;verticalAlign=top;align=left;spacingLeft=10;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="250" y="550" width="600" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="reveal_data" value="&lt;b&gt;Reveal Data Buffer&lt;/b&gt;&lt;br&gt;True piece identities&lt;br&gt;from combat" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=10;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="280" y="580" width="130" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="ce_loss" value="&lt;b&gt;Cross-Entropy Loss&lt;/b&gt;&lt;br&gt;History prediction vs Truth" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="460" y="590" width="160" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="aaren_update" value="&lt;b&gt;AAREN Gradient Update&lt;/b&gt;&lt;br&gt;&lt;i&gt;train_history()&lt;/i&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1">
+          <mxGeometry x="670" y="590" width="160" height="40" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="t1_line" edge="1" parent="1" source="reveal_data" target="ce_loss">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="t2_line" edge="1" parent="1" source="ce_loss" target="aaren_update">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="t3_line" edge="1" parent="1" source="aaren_update" target="aaren_stack">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="750" y="100"/>
+              <mxPoint x="550" y="100"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        
+        <!-- END-TO-END NOTE -->
+        <mxCell id="e2e_note" value="DQN also learns to interpret AAREN embeddings&lt;br&gt;through end-to-end gradient flow on the conv_in layer." style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;fontColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="600" y="470" width="240" height="30" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

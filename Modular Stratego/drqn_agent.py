@@ -57,7 +57,8 @@ class RainbowAgent:
                  state_size: int = 200, action_size: int = 400,
                  lr: float = 0.0001, gamma: float = 0.99, 
                  buffer_size: int = 10000, batch_size: int = 32,
-                 use_pbs: bool = True, num_envs: int = 1):
+                 use_pbs: bool = True, num_envs: int = 1,
+                 inference_only: bool = False):
         
         self.player_id = player_id
         self.device = device
@@ -68,6 +69,7 @@ class RainbowAgent:
         self.name = f"Rainbow Agent {player_id}"
         self.num_envs = num_envs
         self.use_pbs = use_pbs
+        self.inference_only = inference_only
         
         # Epsilon-greedy exploration (hybrid with Noisy Nets)
         try:
@@ -171,6 +173,15 @@ class RainbowAgent:
             output_size=action_size, 
             num_atoms=self.num_atoms
         ).to(device)
+        
+        # PyTorch 2.0+ Compilation (optional speedup)
+        try:
+            from training_config import USE_TORCH_COMPILE, TORCH_COMPILE_MODE
+            if USE_TORCH_COMPILE:
+                self.reference_network = torch.compile(self.reference_network, mode=TORCH_COMPILE_MODE)
+        except (ImportError, Exception):
+            pass  # Silently skip if unavailable
+            
         self.reference_network.load_state_dict(self.q_network.state_dict())
         self.reference_network.eval()  # Never train directly
         self.reference_update_counter = 0
@@ -234,15 +245,17 @@ class RainbowAgent:
         
         # Combined Optimizer: DQN + AAREN (end-to-end training)
         # AAREN learns jointly with Rainbow DQN via shared gradient flow
-        all_parameters = list(self.q_network.parameters())
-        if self.use_pbs and hasattr(self, 'shared_aaren') and self.shared_aaren:
-            all_parameters.extend(self.shared_aaren.parameters())
-            print(f"[OK] AAREN params added to optimizer (end-to-end training)")
-        elif self.use_pbs and self.history and self.history.owns_aaren:
-            all_parameters.extend(self.history.aaren.parameters())
-            print(f"[OK] AAREN params added to optimizer (end-to-end training)")
-        
-        self.optimizer = optim.AdamW(all_parameters, lr=lr, weight_decay=0.01)
+        self.optimizer = None
+        if not self.inference_only:
+            all_parameters = list(self.q_network.parameters())
+            if self.use_pbs and hasattr(self, 'shared_aaren') and self.shared_aaren:
+                all_parameters.extend(self.shared_aaren.parameters())
+                print(f"[OK] AAREN params added to optimizer (end-to-end training)")
+            elif self.use_pbs and self.history and self.history.owns_aaren:
+                all_parameters.extend(self.history.aaren.parameters())
+                print(f"[OK] AAREN params added to optimizer (end-to-end training)")
+            
+            self.optimizer = optim.AdamW(all_parameters, lr=lr, weight_decay=0.01)
         
         # Import PER and N-Step settings
         try:
@@ -258,16 +271,18 @@ class RainbowAgent:
         
         # Replay Buffer (Prioritized or Standard)
         self.per_enabled = PER_ENABLED
-        if PER_ENABLED:
-            self.memory = PrioritizedReplayBuffer(
-                buffer_size, device=device, alpha=PER_ALPHA,
-                beta_start=PER_BETA_START, beta_end=PER_BETA_END,
-                beta_anneal_episodes=PER_BETA_ANNEAL_EPISODES
-            )
-            print(f"[OK] [P{self.player_id}] Prioritized Experience Replay enabled (alpha={PER_ALPHA})")
-        else:
-            self.memory = StandardReplayBuffer(buffer_size, device=device)
-            print(f"[OK] [P{self.player_id}] Standard Replay Buffer enabled")
+        self.memory = None
+        if not self.inference_only:
+            if PER_ENABLED:
+                self.memory = PrioritizedReplayBuffer(
+                    buffer_size, device=device, alpha=PER_ALPHA,
+                    beta_start=PER_BETA_START, beta_end=PER_BETA_END,
+                    beta_anneal_episodes=PER_BETA_ANNEAL_EPISODES
+                )
+                print(f"[OK] [P{self.player_id}] Prioritized Experience Replay enabled (alpha={PER_ALPHA})")
+            else:
+                self.memory = StandardReplayBuffer(buffer_size, device=device)
+                print(f"[OK] [P{self.player_id}] Standard Replay Buffer enabled")
         
         # Episode-Level Replay Buffer (shadow storage alongside PER)
         try:
@@ -283,7 +298,7 @@ class RainbowAgent:
             EPISODE_REPLAY_SEGMENT_LENGTH = 16
             self.episode_replay_mix_ratio = 0.25
         
-        if self.episode_replay_enabled:
+        if self.episode_replay_enabled and not self.inference_only:
             from prioritized_memory import EpisodicReplayBuffer
             self.episode_memory = EpisodicReplayBuffer(
                 max_episodes=EPISODE_REPLAY_MAX_EPISODES,
@@ -307,7 +322,7 @@ class RainbowAgent:
         # N-Step Buffer for multi-step returns
         self.n_steps = N_STEPS
         self.gamma_n = GAMMA_N
-        if N_STEPS > 1:
+        if N_STEPS > 1 and not self.inference_only:
             self.n_step_buffers = [NStepBuffer(n_steps=N_STEPS, gamma=gamma) for _ in range(max(num_envs, 1))]
             print(f"[OK] [P{self.player_id}] N-Step returns enabled (n={N_STEPS})")
         else:
@@ -315,7 +330,7 @@ class RainbowAgent:
         
         # Learning Rate Scheduler
         self.scheduler = None
-        if LR_SCHEDULER_ENABLED:
+        if LR_SCHEDULER_ENABLED and not self.inference_only:
             self.scheduler = optim.lr_scheduler.StepLR(
                 self.optimizer, step_size=LR_SCHEDULER_STEP_SIZE, gamma=LR_SCHEDULER_GAMMA
             )
@@ -663,7 +678,7 @@ class RainbowAgent:
                 total_reward = reward  # terminal reward as proxy
                 self.episode_memory.end_episode(i, outcome, total_reward)
 
-    def act(self, state, valid_moves: List[Tuple[Tuple[int, int], Tuple[int, int]]], game_state=None):
+    def act(self, state, valid_moves: List[Tuple[Tuple[int, int], Tuple[int, int]]], game_state=None, temperature: float = 0.0):
         """
         Choose action using Noisy Nets (Exploration is implicit).
         Uses HeuristicMoveFilter to reduce action space for faster decisions.
@@ -745,7 +760,13 @@ class RainbowAgent:
             # Fallback
             return valid_moves[0] if valid_moves else None
 
-        best_move_idx = np.argmax(valid_q_values)
+        if temperature > 0.0:
+            # Boltzmann exploration
+            q_tensor = torch.tensor(valid_q_values, dtype=torch.float32)
+            probs = torch.softmax(q_tensor / temperature, dim=0).numpy()
+            best_move_idx = np.random.choice(len(valid_q_values), p=probs)
+        else:
+            best_move_idx = np.argmax(valid_q_values)
         best_move = valid_moves_filtered[best_move_idx]
         
         if self.history and game_state:
@@ -782,7 +803,7 @@ class RainbowAgent:
         # Stack into batch
         return torch.stack(state_tensors)
 
-    def act_batch(self, states, valid_moves_list, game_states=None, env_indices=None, full_observability=False) -> List[Optional[Tuple[Tuple[int, int], Tuple[int, int]]]]:
+    def act_batch(self, states, valid_moves_list, game_states=None, env_indices=None, full_observability=False, temperature: float = 0.0) -> List[Optional[Tuple[Tuple[int, int], Tuple[int, int]]]]:
         """Batch action selection with epsilon-greedy exploration
         
         Args:
@@ -907,7 +928,11 @@ class RainbowAgent:
                             masked_q[action_idx] += uncertainty * self.uncertainty_exploration_multiplier
                 
                 # Select best action from masked Q-values
-                best_action_idx = masked_q.argmax().item()
+                if temperature > 0.0:
+                    probs = torch.softmax(masked_q / temperature, dim=0)
+                    best_action_idx = torch.multinomial(probs, 1).item()
+                else:
+                    best_action_idx = masked_q.argmax().item()
                 best_move = self._action_index_to_move(best_action_idx)
                 
                 if best_move is not None:
@@ -950,7 +975,12 @@ class RainbowAgent:
                         actions[i] = valid_moves[0]
                     continue
                 
-                best_move_idx = np.argmax(valid_q_values)
+                if temperature > 0.0:
+                    q_tensor = torch.tensor(valid_q_values, dtype=torch.float32)
+                    probs = torch.softmax(q_tensor / temperature, dim=0).numpy()
+                    best_move_idx = np.random.choice(len(valid_q_values), p=probs)
+                else:
+                    best_move_idx = np.argmax(valid_q_values)
                 actions[i] = valid_moves_filtered[best_move_idx]
             
             if self.history_instances and game_states and game_states[i]:
@@ -1139,13 +1169,15 @@ class RainbowAgent:
         with torch.no_grad():
             # 1. Select best action in next state (Double DQN)
             # Use Online Network to select action
-            next_log_probs_online = self.q_network(next_states)
+            with torch.amp.autocast('cuda', enabled=self.amp_enabled):
+                next_log_probs_online = self.q_network(next_states)
             next_probs_online = next_log_probs_online.exp()
             next_q_values_online = (next_probs_online * self.support).sum(dim=2)
             next_actions = next_q_values_online.argmax(dim=1) # (batch)
             
             # 2. Get distribution of best action from Target Network
-            next_log_probs_target = self.target_network(next_states)
+            with torch.amp.autocast('cuda', enabled=self.amp_enabled):
+                next_log_probs_target = self.target_network(next_states)
             next_probs_target = next_log_probs_target.exp()
             
             # Gather distribution for the selected actions
@@ -1184,7 +1216,8 @@ class RainbowAgent:
             
         # --- Calculate Loss ---
         # Get current log probabilities
-        current_log_probs = self.q_network(states)
+        with torch.amp.autocast('cuda', enabled=self.amp_enabled):
+            current_log_probs = self.q_network(states)
         
         # Gather log probs for the actions taken
         # actions: (batch) -> (batch, 1, atoms)
@@ -1203,7 +1236,8 @@ class RainbowAgent:
         kl_loss = torch.tensor(0.0, device=self.device)
         if self.kl_reg_enabled:
             with torch.no_grad():
-                ref_log_probs = self.reference_network(states)
+                with torch.amp.autocast('cuda', enabled=self.amp_enabled):
+                    ref_log_probs = self.reference_network(states)
             # KL(ref || current) for each action's distribution
             # Using log-space: KL = sum(p * (log_p - log_q))
             ref_probs = ref_log_probs.exp()
@@ -1242,7 +1276,8 @@ class RainbowAgent:
             # beta(t) = beta_0 + (beta_T - beta_0) * t^p
             beta_t = self.target_kl_start + (self.target_kl_end - self.target_kl_start) * (t ** self.target_kl_power)
             with torch.no_grad():
-                target_log_probs = self.target_network(states)
+                with torch.amp.autocast('cuda', enabled=self.amp_enabled):
+                    target_log_probs = self.target_network(states)
             target_probs = target_log_probs.exp()
             target_kl_loss = beta_t * (target_probs * (target_log_probs - current_log_probs)).sum(dim=2).mean()
         
@@ -1259,9 +1294,7 @@ class RainbowAgent:
         # Check for NaN/Inf (handle tensor properly)
         if torch.isnan(loss).any() or torch.isinf(loss).any():
              print(f"[WARN] Warning: NaN/Inf detected in loss. Skipping update.")
-             self.optimizer.zero_grad()
-             return None
-             self.optimizer.zero_grad()
+             self.optimizer.zero_grad(set_to_none=True)
              return None
         
         # Update PER priorities with TD-errors
@@ -1282,7 +1315,7 @@ class RainbowAgent:
                 elif len(filtered_indices) < len(filtered_td):
                     self.memory.update_priorities(filtered_indices, filtered_td[:len(filtered_indices)])
              
-        self.optimizer.zero_grad()
+        self.optimizer.zero_grad(set_to_none=True)
         
         if self.amp_enabled:
             self.scaler.scale(loss).backward()
@@ -1336,8 +1369,23 @@ class RainbowAgent:
                 # Fallback for complex checkpoints (we trust our own saves)
                 checkpoint = torch.load(filepath, map_location=self.device, weights_only=False)
             
-            self.q_network.load_state_dict(checkpoint['q_network_state_dict'])
-            self.target_network.load_state_dict(checkpoint['target_network_state_dict'])
+            # Robust state dict unwrapping for backward compatibility
+            # Checkpoints saved without torch.compile lack '_orig_mod.', while loaded models may expect it (or vice versa)
+            def load_robustly(module, state_dict):
+                module_keys = set(module.state_dict().keys())
+                dict_keys = set(state_dict.keys())
+                
+                # If module expects _orig_mod. but dict doesn't have it (older checkpoint into compiled model)
+                if any(k.startswith('_orig_mod.') for k in module_keys) and not any(k.startswith('_orig_mod.') for k in dict_keys):
+                    state_dict = {f'_orig_mod.{k}': v for k, v in state_dict.items()}
+                # If dict has _orig_mod. but module doesn't expect it (newer checkpoint into uncompiled model)
+                elif any(k.startswith('_orig_mod.') for k in dict_keys) and not any(k.startswith('_orig_mod.') for k in module_keys):
+                    state_dict = {k.replace('_orig_mod.', ''): v for k, v in state_dict.items()}
+                    
+                module.load_state_dict(state_dict)
+
+            load_robustly(self.q_network, checkpoint['q_network_state_dict'])
+            load_robustly(self.target_network, checkpoint['target_network_state_dict'])
             
             try:
                 self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
@@ -1358,6 +1406,54 @@ class RainbowAgent:
             print(f"[OK] Model loaded from {filepath} (Step: {self.step_count})")
         except Exception as e:
             print(f"[ERROR] Failed to load model from {filepath}: {e}")
+
+    def state_dict(self, include_buffers=True) -> dict:
+        """Get full agent state dict."""
+        state = {
+            'q_network_state_dict': self.q_network.state_dict(),
+            'target_network_state_dict': self.target_network.state_dict(),
+            'step_count': self.step_count
+        }
+        if getattr(self, 'optimizer', None) is not None:
+            state['optimizer_state_dict'] = self.optimizer.state_dict()
+        if self.history:
+            state['history_state_dict'] = self.history.state_dict(include_buffers=include_buffers)
+        
+        if include_buffers:
+            if self.memory is not None:
+                state['memory_state_dict'] = self.memory.state_dict()
+            if hasattr(self, 'episode_memory') and self.episode_memory:
+                 state['episode_memory_state_dict'] = self.episode_memory.state_dict()
+        
+        return state
+
+    def load_state_dict(self, state_dict):
+        """Load full agent state from dict."""
+        def load_robustly(module, sd):
+            module_keys = set(module.state_dict().keys())
+            dict_keys = set(sd.keys())
+            if any(k.startswith('_orig_mod.') for k in module_keys) and not any(k.startswith('_orig_mod.') for k in dict_keys):
+                sd = {f'_orig_mod.{k}': v for k, v in sd.items()}
+            elif any(k.startswith('_orig_mod.') for k in dict_keys) and not any(k.startswith('_orig_mod.') for k in module_keys):
+                sd = {k.replace('_orig_mod.', ''): v for k, v in sd.items()}
+            module.load_state_dict(sd)
+            
+        load_robustly(self.q_network, state_dict['q_network_state_dict'])
+        load_robustly(self.target_network, state_dict['target_network_state_dict'])
+        
+        if 'optimizer_state_dict' in state_dict and getattr(self, 'optimizer', None) is not None:
+            self.optimizer.load_state_dict(state_dict['optimizer_state_dict'])
+            
+        self.step_count = state_dict.get('step_count', 0)
+        
+        if self.history and 'history_state_dict' in state_dict:
+            self.history.load_state_dict(state_dict['history_state_dict'])
+            
+        if 'memory_state_dict' in state_dict and self.memory is not None:
+            self.memory.load_state_dict(state_dict['memory_state_dict'])
+            
+        if 'episode_memory_state_dict' in state_dict and hasattr(self, 'episode_memory') and self.episode_memory:
+            self.episode_memory.load_state_dict(state_dict['episode_memory_state_dict'])
 
     def get_average_q(self) -> float:
         """
@@ -1449,11 +1545,16 @@ class RainbowAgent:
     
     def get_aaren_grad_norm(self) -> float:
         """
-        Get the cached AAREN gradient norm (computed during replay).
+        Get the cached AAREN gradient norm.
         
-        This measures how much the DQN loss is affecting AAREN (end-to-end training).
-        Higher values = AAREN is learning more actively from DQN feedback.
+        Since AAREN is currently trained via supervised learning (train_history)
+        rather than end-to-end through the DQN, this returns the gradient norm
+        captured during the last supervised training pass.
         """
+        if self.history and hasattr(self.history, '_last_grad_norm'):
+            return self.history._last_grad_norm
+        
+        # Fallback to the value captured during end-to-end replay (if applicable)
         return getattr(self, '_cached_aaren_grad_norm', 0.0)
     
     def get_dqn_grad_norm(self) -> float:

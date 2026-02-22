@@ -52,12 +52,12 @@ class StandardReplayBuffer:
             states = torch.stack([e.state for e in batch]).float()
         else:
             # Move from CPU to GPU during sampling
-            states = torch.stack([e.state for e in batch]).to(self.device).float()
+            states = torch.stack([e.state for e in batch]).to(self.device, non_blocking=True).float()
         
         # Handle actions (might be int or tensor)
         actions_list = [e.action for e in batch]
         if isinstance(actions_list[0], torch.Tensor):
-             actions = torch.stack(actions_list).to(self.device).long()
+             actions = torch.stack(actions_list).to(self.device, non_blocking=True).long()
         else:
              actions = torch.tensor(actions_list, dtype=torch.long, device=self.device)
              
@@ -66,7 +66,7 @@ class StandardReplayBuffer:
         if self.store_on_gpu:
             next_states = torch.stack([e.next_state for e in batch]).float()
         else:
-            next_states = torch.stack([e.next_state for e in batch]).to(self.device).float()
+            next_states = torch.stack([e.next_state for e in batch]).to(self.device, non_blocking=True).float()
             
         dones = torch.tensor([e.done for e in batch], dtype=torch.float32, device=self.device)
         
@@ -77,6 +77,18 @@ class StandardReplayBuffer:
     
     def clear(self):
         self.buffer.clear()
+
+    def state_dict(self):
+        """Get state dict for checkpointing."""
+        return {
+            'buffer': list(self.buffer),
+            'capacity': self.capacity,
+            'use_float16': self.use_float16
+        }
+
+    def load_state_dict(self, state_dict):
+        """Load state from dict."""
+        self.buffer = deque(state_dict['buffer'], maxlen=self.capacity)
 
 
 class SumTree:
@@ -138,6 +150,23 @@ class SumTree:
         idx = self._retrieve(0, s)
         data_idx = idx - self.capacity + 1
         return idx, self.tree[idx], self.data[data_idx]
+
+    def state_dict(self):
+        """Get state dict for checkpointing."""
+        return {
+            'tree': self.tree,
+            'data': self.data,
+            'write_idx': self.write_idx,
+            'n_entries': self.n_entries,
+            'capacity': self.capacity
+        }
+
+    def load_state_dict(self, state_dict):
+        """Load state from dict."""
+        self.tree = state_dict['tree']
+        self.data = state_dict['data']
+        self.write_idx = state_dict['write_idx']
+        self.n_entries = state_dict['n_entries']
 
 
 class PrioritizedReplayBuffer:
@@ -238,12 +267,12 @@ class PrioritizedReplayBuffer:
             states = torch.stack([e.state for e in batch]).float()
             next_states = torch.stack([e.next_state for e in batch]).float()
         else:
-            states = torch.stack([e.state for e in batch]).to(self.device).float()
-            next_states = torch.stack([e.next_state for e in batch]).to(self.device).float()
+            states = torch.stack([e.state for e in batch]).to(self.device, non_blocking=True).float()
+            next_states = torch.stack([e.next_state for e in batch]).to(self.device, non_blocking=True).float()
         
         actions_list = [e.action for e in batch]
         if isinstance(actions_list[0], torch.Tensor):
-            actions = torch.stack(actions_list).to(self.device).long()
+            actions = torch.stack(actions_list).to(self.device, non_blocking=True).long()
         else:
             actions = torch.tensor(actions_list, dtype=torch.long, device=self.device)
         
@@ -271,6 +300,28 @@ class PrioritizedReplayBuffer:
     def clear(self):
         self.tree = SumTree(self.capacity)
         self.max_priority = 1.0
+
+    def state_dict(self):
+        """Get state dict for checkpointing."""
+        return {
+            'tree': self.tree.state_dict(),
+            'alpha': self.alpha,
+            'beta': self.beta,
+            'max_priority': self.max_priority,
+            'beta_start': self.beta_start,
+            'beta_end': self.beta_end,
+            'beta_anneal_episodes': self.beta_anneal_episodes
+        }
+
+    def load_state_dict(self, state_dict):
+        """Load state from dict."""
+        self.tree.load_state_dict(state_dict['tree'])
+        self.alpha = state_dict.get('alpha', self.alpha)
+        self.beta = state_dict.get('beta', self.beta)
+        self.max_priority = state_dict.get('max_priority', self.max_priority)
+        self.beta_start = state_dict.get('beta_start', self.beta_start)
+        self.beta_end = state_dict.get('beta_end', self.beta_end)
+        self.beta_anneal_episodes = state_dict.get('beta_anneal_episodes', self.beta_anneal_episodes)
 
 
 class NStepBuffer:
@@ -548,3 +599,17 @@ class EpisodicReplayBuffer:
             'losses': losses,
             'draws': draws
         }
+
+    def state_dict(self):
+        """Get state dict for checkpointing."""
+        return {
+            'episodes': list(self.episodes),
+            'max_episodes': self.max_episodes,
+            'total_transitions': self._total_transitions,
+            'segment_length': self.segment_length
+        }
+
+    def load_state_dict(self, state_dict):
+        """Load state from dict."""
+        self.episodes = deque(state_dict['episodes'], maxlen=self.max_episodes)
+        self._total_transitions = state_dict.get('total_transitions', sum(ep['length'] for ep in self.episodes))

@@ -9,7 +9,7 @@ NUM_LANES = 2             # Reduced to 8 (Safe for 6GB VRAM)
 NUM_ENVS = NUM_LANES      # LEGACY alias - always equals NUM_LANES (kept for compatibility)
 BATCH_SIZE = 256         # Reduced to 256 (Safe for 6GB VRAM)
 GAMMA = 0.995           # Discount factor - HIGH for long-term flag capture planning
-MEMORY_SIZE = 85000      # 200k on GPU (~2.2GB) to leave room for model and batches
+MEMORY_SIZE = 75000      # 200k on GPU (~2.2GB) to leave room for model and batches
 LEARNING_RATE = 0.00003    # Reduced from 0.0001 for stable distributional RL
 NUM_EPISODES = 1000000    # Effectively infinite - train until manually stopped
 SAVE_INTERVAL = 1000       # Save model/export agent every N episodes
@@ -32,8 +32,8 @@ EXPLORATION_EPSILON_DECAY = 1     # Not used
 # CURRICULUM TURN LIMITS (Per-phase game length)
 # =============================================================================
 # Longer episodes let the agent experience full-game dynamics at each phase
-PHASE_1_MAX_TURNS = 300   # Full obs — enough turns to learn material + flag capture
-PHASE_2_MAX_TURNS = 800   # Partial obs — memory-intensive games need room
+PHASE_1_MAX_TURNS = 200   # (Accelerated) Enough turns to learn material + flag capture (100 per agent)
+PHASE_2_MAX_TURNS = 400   # (Accelerated) Partial obs — memory-intensive games with restricted length
 PHASE_3_MAX_TURNS = 1000  # Self-play — full strategic depth
 PHASE_4_MAX_TURNS = 1500  # League — unrestricted competitive games
 DEFAULT_MAX_TURNS = 1500  # Fallback (matches Phase 4)
@@ -136,10 +136,10 @@ PHASE_2_PBS_ACCURACY_THRESHOLD = 0.70   # 70% PBS prediction accuracy
 PHASE_2_WIN_THRESHOLD = 0.55            # 55% overall win rate
 
 # Phase Episode Limits (min, max)
-PHASE_1_MIN_EPISODES = 5000
-PHASE_1_MAX_EPISODES = 10000
-PHASE_2_MIN_EPISODES = 5000
-PHASE_2_MAX_EPISODES = 10000
+PHASE_1_MIN_EPISODES = 2000
+PHASE_1_MAX_EPISODES = 5000
+PHASE_2_MIN_EPISODES = 3000
+PHASE_2_MAX_EPISODES = 7000
 PHASE_3_MIN_EPISODES = 5000
 PHASE_3_MAX_EPISODES = 15000
 

@@ -342,6 +342,8 @@ R_{total} = R_{move} + R_{capture} + R_{tactical} + R_{info}
 
 The move reward $R_{move}$ provides small rewards for advancing pieces (approximately $+0.05$) to encourage active play. The capture reward $R_{capture}$ is scaled by the rank of the captured piece according to $0.15 \times \frac{\text{Rank}}{11.0}$. The tactical reward $R_{tactical}$ gives specific bonuses for key strategic captures, including $+0.5$ for Miner vs Bomb defusals and $+1.0$ for Spy vs Marshal assassinations. The information reward $R_{info}$ provides $+0.3$ for revealing high-value opponent pieces.
 
+To facilitate the transition from tactical learning to strategic gameplay, the framework employs \textit{Reward Annealing}. Dense shaping rewards, such as material and information gains, are scaled down as the training curriculum advances. In later training phases, these auxiliary signals are completely annealed out, forcing the agent to rely exclusively on sparse, terminal win/loss rewards. This progression prevents the agent from developing sub-optimal local behaviors driven by short-term shaping incentives.
+
 
 \section{Specialized Agent Architectures}
 
@@ -420,7 +422,7 @@ The culmination of the MARQ framework's architectural components is the real-tim
 \begin{algorithm}
 \caption{MARQ: Decision-making and Move Selection}
 \begin{algorithmic}[1]
-\REQUIRE Public Observations $O$, Board State $S$, DQN weights $\theta$, AAREN weights $\phi$
+\REQUIRE Public Observations $O$, Board State $S$, DQN weights $\theta$, AAREN weights $\phi$, Temperature $T$
 \ENSURE Optimal Action $a^*$
 \STATE $\mathcal{H}_t \gets \text{UpdateAggregation}(O, \phi)$ 
 \STATE $\mathcal{B}_t \gets \text{GetSoftmaxBeliefs}(\mathcal{H}_t)$ 
@@ -437,7 +439,12 @@ The culmination of the MARQ framework's architectural components is the real-tim
         \STATE $V_{final}(a_i) \gets Q(s, a_i)$
     \ENDIF
 \ENDFOR
-\STATE \textbf{return} $a^* \gets \arg\max_{a_i \in \mathcal{A}} V_{final}(a_i)$
+\IF{Training/Self-Play and $T > 0$}
+    \STATE $\pi(a_i) \gets \frac{\exp(V_{final}(a_i) / T)}{\sum_{a \in \mathcal{A}} \exp(V_{final}(a) / T)}$
+    \STATE \textbf{return} $a^* \sim \pi(\cdot)$
+\ELSE
+    \STATE \textbf{return} $a^* \gets \arg\max_{a_i \in \mathcal{A}} V_{final}(a_i)$
+\ENDIF
 \end{algorithmic}
 \label{alg:marq_decision}
 \end{algorithm}
@@ -468,6 +475,13 @@ In the case of Stratego, the identity of an opponent piece encountered during an
 \mathbb{E}[V] = \sum_{r \in \mathcal{R}} P(\text{target is rank } r) \cdot \mathbb{U}(\text{outcome vs } r)
 \end{equation}
 This allows for tactical aggression when the probability of a successful capture outweighs the risk of piece loss, grounded in the AAREN's inference history.
+
+\subsection{Stochastic Action Selection (Temperature Scaling)}
+To prevent the agent from collapsing into rigid, exploitable behavior loops during self-play and evaluation, the final action selection step incorporates Temperature Scaling (Boltzmann Options). Rather than systematically choosing the action with the absolute highest expected value via a hard \textit{argmax} function, the agent adopts a stochastic softmax mechanism parameterized by a temperature variable $T$. For a given state, the probability of selecting action $a_i$ is determined by the Boltzmann distribution over the action values $V_{final}$:
+\begin{equation}
+\pi(a_i) = \frac{\exp\left(V_{final}(a_i) / T\right)}{\sum_{a \in \mathcal{A}} \exp\left(V_{final}(a) / T\right)}
+\end{equation}
+As $T$ approaches zero, the selection strategy becomes deterministically greedy (equivalent to \textit{argmax}). When $T$ increases, near-optimal actions receive proportionally higher selection probabilities, injecting controlled variance. This stochasticity provides two key operational benefits: it generates a more diverse and unpredictable curriculum roster during league training, and it prevents tactical stagnation within recurring, indecisive positional maneuvers.
 
 \section{Generalizability}
 
@@ -513,14 +527,14 @@ These theoretical foundations and the adaptability of the learned embeddings pro
 
 \section{AI Transparency, Inclusion, and Originality of Intent}
 
-The development of the MARQ framework for Stratego was governed by intentionality and human-led architectural design. While large language models and generative AI have become ubiquitous in modern software development, their role in this research was strictly limited to tasks such as grammatical refinement and high-level brainstorming. Every core component of the MARQ system, including the AAREN history aggregator and the ResNet-based policy heads, was researched, evaluated, and implemented with the intent of mastering imperfect information games in the Stratego domain.
+The development of the MARQ framework for Stratego was governed by intentionality and human-led architectural design. While large language models and generative AI have become ubiquitous in modern software development, their role in this research was strictly limited to tasks such as grammatical refinement, high-level brainstorming, and code debugging for modules and networking. Every core component of the MARQ system, including the AAREN history aggregator and the ResNet-based policy heads, was researched, evaluated, and implemented with the intent of mastering imperfect information games in the Stratego domain.
 
 \section{Algorithmic Evolution and Architecture Ablations}
 
 The final MARQ architecture resulted from systematic experimentation and the refinement of several key reinforcement learning components. Throughout the development process, multiple established algorithms were evaluated and subsequently replaced because of performance bottlenecks or insufficient strategic depth in the Stratego domain.
 
 \paragraph{Value Optimization and Exploration.} 
-Early iterations of the agent utilized a vanilla DQN with $\epsilon$-greedy exploration. This approach proved inadequate for the sparse-reward nature of Stratego and led to early stagnation. The implementation was upgraded to a Rainbow DQN architecture that incorporates Noisy Networks for state-dependent exploration. Furthermore, the standard double-DQN configuration was replaced with a Dueling Head architecture, which significantly improved value estimation accuracy in states where multiple actions provide similar utility.
+Early iterations of the agent utilized a vanilla DQN with $\epsilon$-greedy exploration. This approach proved inadequate for the sparse-reward nature of Stratego and led to early stagnation. The implementation was upgraded to a Rainbow DQN architecture that incorporates Noisy Networks for state-dependent exploration. Furthermore, the standard double-DQN configuration was replaced with a Dueling Head architecture, which significantly improved value estimation accuracy in states where multiple actions provide similar utility. Additionally, to mitigate the risk of overfitting to deterministic opponent policies during self-play, the system employs \textit{Boltzmann Exploration} (Temperature Scaling). Rather than acting purely greedily, the opponent's action selection process utilizes a temperature-scaled softmax over Q-values, injecting controlled stochasticity to generate a more robust and unpredictable training curriculum.
 
 \paragraph{History and Memory Representation.} 
 Initial attempts to manage hidden information relied on explicit Probabilistic Belief States. However, these states introduced prohibitive computational complexity and memory overhead because they required $O(N^2)$ updates that throttled training throughput. The framework subsequently moved to an implicit belief system powered by the AAREN architecture. Similarly, the use of Long Short-Term Memory cells for trajectory embeddings was ablated in favor of the attention-based recurrence of AAREN, which provided more stable gradient flow over long sequences and better handled the non-Markovian nature of piece identity inference.

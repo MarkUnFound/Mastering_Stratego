@@ -39,7 +39,6 @@ from training_config import *
 from opponents import RandomAgent, OpponentPool, RandomSetupAgent, GreedyAgent
 from heuristic_setup import HeuristicSetupAgent
 from league import LeagueManager
-from random_starting_player import swap_placements
 from distributional_reward import StrategoRewardConfig
 from policy_search import PolicyRefinedSearch, SearchConfig
 from curriculum import CurriculumManager
@@ -395,7 +394,7 @@ def visual_train():
                 
             # Random starting player swap (50%)
             if random.random() < 0.5:
-                p1_place, p2_place = swap_placements(p1_place, p2_place)
+                p1_place, p2_place = p2_place, p1_place
                 
             # Reset Environment with placements
             state = env.reset(p1_placement=p1_place, p2_placement=p2_place)

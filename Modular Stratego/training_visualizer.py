@@ -703,12 +703,8 @@ def plot_pbs_evaluator_progress(
                      len(aaren_grad_norms) > 0 and len(aaren_embedding_stds) > 0)
     has_aaren = has_legacy_aaren or has_e2e_aaren
     
-    # Create figure with 2x2 grid if AAREN data available, else 2x1
-    if has_aaren:
-        fig, axes = plt.subplots(2, 2, figsize=(14, 12))
-        axes = axes.flatten()
-    else:
-        fig, axes = plt.subplots(2, 1, figsize=(12, 12))
+    # Always create a 2x1 grid for AAREN metrics
+    fig, axes = plt.subplots(2, 1, figsize=(12, 10))
     fig.patch.set_facecolor('white')
     
     # Title
@@ -716,109 +712,9 @@ def plot_pbs_evaluator_progress(
     if total_episodes is not None:
         title += f' | Total Episodes: {total_episodes:,}'
     fig.suptitle(title, fontsize=16, fontweight='bold')
-    
-    # 1. AAREN vs DQN Gradient Norms (shows if AAREN is learning alongside DQN)
-    ax1 = axes[0]
-    
-    if has_e2e_aaren and aaren_grad_norms and dqn_grad_norms and len(dqn_grad_norms) > 0:
-        # Filter valid data
-        valid_eps_aaren = []
-        valid_aaren_grads = []
-        valid_eps_dqn = []
-        valid_dqn_grads = []
-        
-        for i, (ep, ag, dg) in enumerate(zip(episode_history[:len(aaren_grad_norms)], 
-                                              aaren_grad_norms, 
-                                              dqn_grad_norms[:len(aaren_grad_norms)])):
-            if ag is not None and ag > 0:
-                valid_eps_aaren.append(ep)
-                valid_aaren_grads.append(ag)
-            if dg is not None and dg > 0:
-                valid_eps_dqn.append(ep)
-                valid_dqn_grads.append(dg)
-        
-        if valid_aaren_grads:
-            ax1.scatter(valid_eps_aaren, valid_aaren_grads, c='green', alpha=0.3, s=15, label='AAREN Grad')
-            # Moving average
-            window = min(50, len(valid_aaren_grads) // 2) if len(valid_aaren_grads) > 1 else 1
-            if len(valid_aaren_grads) >= window and window > 1:
-                ma_vals = []
-                ma_eps = []
-                for i in range(window, len(valid_aaren_grads) + 1):
-                    ma_vals.append(np.mean(valid_aaren_grads[i-window:i]))
-                    ma_eps.append(valid_eps_aaren[i-1])
-                if ma_eps:
-                    ax1.plot(ma_eps, ma_vals, 'g-', linewidth=2.5, label=f'AAREN MA ({window})')
-        
-        if valid_dqn_grads:
-            ax1.scatter(valid_eps_dqn, valid_dqn_grads, c='blue', alpha=0.2, s=10, label='DQN Grad')
-            # Moving average
-            window = min(50, len(valid_dqn_grads) // 2) if len(valid_dqn_grads) > 1 else 1
-            if len(valid_dqn_grads) >= window and window > 1:
-                ma_vals = []
-                ma_eps = []
-                for i in range(window, len(valid_dqn_grads) + 1):
-                    ma_vals.append(np.mean(valid_dqn_grads[i-window:i]))
-                    ma_eps.append(valid_eps_dqn[i-1])
-                if ma_eps:
-                    ax1.plot(ma_eps, ma_vals, 'b-', linewidth=2, label=f'DQN MA ({window})')
-        
-        ax1.set_yscale('log')
-        ax1.set_title('Gradient Norms: AAREN vs DQN (log scale)')
-    else:
-        ax1.text(0.5, 0.5, 'Waiting for gradient data...', ha='center', va='center', transform=ax1.transAxes)
-        ax1.set_title('Gradient Norms: AAREN vs DQN')
-    
-    ax1.set_xlabel('Episodes')
-    ax1.set_ylabel('Gradient Norm (log)')
-    ax1.legend(loc='upper right')
-    ax1.grid(True, alpha=0.3)
-    
-    # 2. Gradient Ratio: AAREN / DQN (shows relative learning rate)
-    ax2 = axes[1]
-    
-    if has_e2e_aaren and aaren_grad_norms and dqn_grad_norms and len(dqn_grad_norms) > 0:
-        valid_eps_ratio = []
-        valid_ratios = []
-        
-        for ep, ag, dg in zip(episode_history[:len(aaren_grad_norms)], 
-                              aaren_grad_norms, 
-                              dqn_grad_norms[:len(aaren_grad_norms)]):
-            if ag is not None and dg is not None and ag > 0 and dg > 0:
-                valid_eps_ratio.append(ep)
-                valid_ratios.append(ag / dg)  # Ratio of gradients
-        
-        if valid_ratios:
-            ax2.scatter(valid_eps_ratio, valid_ratios, c='purple', alpha=0.4, s=15, label='AAREN/DQN Ratio')
-            # Moving average
-            window = min(50, len(valid_ratios) // 2) if len(valid_ratios) > 1 else 1
-            if len(valid_ratios) >= window and window > 1:
-                ma_vals = []
-                ma_eps = []
-                for i in range(window, len(valid_ratios) + 1):
-                    ma_vals.append(np.mean(valid_ratios[i-window:i]))
-                    ma_eps.append(valid_eps_ratio[i-1])
-                if ma_eps:
-                    ax2.plot(ma_eps, ma_vals, 'purple', linewidth=2.5, label=f'MA ({window})')
-            
-            # Reference line at 1.0 (equal gradients)
-            ax2.axhline(y=1.0, color='gray', linestyle='--', linewidth=1, alpha=0.7, label='Equal (1.0)')
-            ax2.set_title('AAREN/DQN Gradient Ratio')
-        else:
-            ax2.text(0.5, 0.5, 'Waiting for ratio data...', ha='center', va='center', transform=ax2.transAxes)
-            ax2.set_title('AAREN/DQN Gradient Ratio')
-    else:
-        ax2.text(0.5, 0.5, 'Waiting for gradient data...', ha='center', va='center', transform=ax2.transAxes)
-        ax2.set_title('AAREN/DQN Gradient Ratio')
-        
-    ax2.set_xlabel('Episodes')
-    ax2.set_ylabel('Gradient Ratio')
-    ax2.legend(loc='upper right')
-    ax2.grid(True, alpha=0.3)
-    
-    # 3. AAREN Metrics (gradient norm for end-to-end OR loss for legacy)
+    # 1. AAREN Metrics (gradient norm for end-to-end OR loss for legacy)
     if has_aaren:
-        ax3 = axes[2]
+        ax3 = axes[0]
         
         if has_e2e_aaren and aaren_grad_norms:
             # End-to-end training: plot gradient norms
@@ -885,8 +781,8 @@ def plot_pbs_evaluator_progress(
             ax3.legend()
             ax3.grid(True, alpha=0.3)
         
-        # 4. AAREN Embedding Std (end-to-end) OR Accuracy (legacy)
-        ax4 = axes[3]
+        # 2. AAREN Embedding Std (end-to-end) OR Accuracy (legacy)
+        ax4 = axes[1]
         
         if has_e2e_aaren and aaren_embedding_stds:
             # End-to-end training: plot embedding std

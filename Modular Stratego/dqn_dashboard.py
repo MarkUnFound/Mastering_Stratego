@@ -375,7 +375,7 @@ class DQNDashboard:
 
 if __name__ == "__main__":
     # Path to model
-    model_path = r"c:\Users\Mark Lawrence Quibot\repo\Research\Modular Stratego\dqn_models\agent1_rainbow_episode_1000.pth"
+    model_path = r"c:\Users\Mark Lawrence Quibot\repo\Research\Modular Stratego\dqn_models\agent1_rainbow_episode_1000.pt"
     
     dashboard = DQNDashboard(model_path)
     dashboard.run()

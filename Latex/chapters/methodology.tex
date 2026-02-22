@@ -208,33 +208,41 @@ To prevent policy cycling, the agent trains against a diverse opponent pool. The
 \paragraph{Multi-Phase Curriculum.}
 The training progression follows a multi-phase curriculum. Phase 1 establishes foundational rules under full observability. To facilitate the transition to partial observability, the curriculum introduces mixed observability as win rates stabilize. This requires the agent to utilize AAREN-based inference before full information occlusion is enforced.
 
-Training proceeds for 5,000--10,000 episodes against a progressively challenging opponent mix. This includes initially random opponents, then basic heuristic agents, and finally a sophisticated multi-factor heuristic opponent. Phase advancement requires $\geq$95\% win rate against random opponents, $\geq$75\% against the basic heuristic, and $\geq$60\% against the strategic heuristic.
+Training proceeds for 5,000--10,000 episodes against a progressively challenging opponent mix. This includes initially random opponents, then basic heuristic agents, and finally a sophisticated multi-factor heuristic opponent. Phase advancement requires $\geq$95\% win rate against random opponents, $\geq$75\% against the basic heuristic, and $\geq$60\% against the strategic heuristic. To ensure statistical robustness given the high frequency of early-stage draws, all win-rate metrics are calculated relative to decisive games (wins and losses) rather than total episodes.
 
-Phase 2 (Partial Observability) disables full observability, requiring reliance on AAREN-generated embeddings for 5,000--10,000 episodes. The opponent distribution allocates 40\% to frozen heuristic agents and 60\% to the strategic heuristic opponent. Phase advancement requires embedding-based inference accuracy $\geq$75\% and overall win rate $\geq$60\%.
+Phase 2 (Partial Observability) disables full observability, requiring reliance on AAREN-generated embeddings for 5,000--10,000 episodes. The opponent distribution allocates 40\% to frozen heuristic agents and 60\% to the strategic heuristic opponent. Phase advancement requires embedding-based inference accuracy $\geq$75\% and an overall win rate $\geq$60\% relative to decisive games.
 
-Phase 3 (Self-Play) trains against a mixture of delayed agent copies (60\%) and strategic heuristic opponents (40\%) for 5,000--15,000 episodes to discover novel strategies while preventing policy collapse. Phase 4 (League Training) activates the full opponent distribution with 40\% historical league agents, 30\% strategic heuristic, 20\% greedy agents, and 10\% self-play. Phase 5 (Scenario Drills) introduces specialized board configurations every 1,000 episodes for targeted skill training.
+Phase 3 (Self-Play) trains against a mixture of delayed agent copies (60\%) and strategic heuristic opponents (40\%) for 5,000--15,000 episodes to discover novel strategies while preventing policy collapse. Phase 4 (League Training) activates the full opponent distribution with 40\% historical league agents, 30\% strategic heuristic, 20\% greedy agents, and 10\% self-play. This phase additionally activates independent parallel-learning (MARL) for Agent 2, transitioning the opponent from a fixed policy pool to a continuously updating student agent. Phase 5 (Scenario Drills) introduces specialized board configurations every 1,000 episodes for targeted skill training.
 
 \subsection{Centralized Reward System and Defensive Normalization}
 The reward function is the primary driver of agent behavior, transforming tactical events into learning signals. To ensure consistency and numerical stability, the framework employs a centralized \texttt{UnifiedRewardShaper} that consolidates all reward logic.
 
-\paragraph{Composite Reward Mixing.}
-The framework aggregates weight reward categories using a linear combination.
+\paragraph{Potential-Based Reward Shaping.}
+The framework employs Potential-Based Reward Shaping (PBRS) as its primary mechanism for providing dense learning signals. Rather than assigning additive rewards for individual events (material capture, positional advance, curiosity), all intermediate shaping is unified into a single potential function $\Phi(s)$ that measures game progress. The shaping reward for each transition is defined as:
+
 \begin{equation}
-R_{total} = w_o R_{outcome} + w_m R_{material} + w_e R_{epistemic} + w_p R_{positional} + R_{flag} + R_{curiosity}
+F(s, a, s') = \gamma \cdot \Phi(s') - \Phi(s)
 \end{equation}
-where weights are established as $w_o = 1.0$, $w_m = 1.0$, $w_e = 0.5$, and $w_p = 0.3$. The flag-distance reward ($R_{flag}$) and curiosity bonus ($R_{curiosity}$) are applied directly without component-level weighting. This hierarchy ensures that the primary objective (winning) remains paramount, while auxiliary tactical signals provide gradient-visible guidance within the C51 atom resolution.
+
+\noindent This formulation, originally established by Ng et al. \cite{ng1999policy} and extended to intrinsic motivation settings by Potential-Based Intrinsic Motivation (AAMAS, 2024), guarantees optimal policy invariance: the same optimal policy is recovered regardless of the choice of $\Phi$, while convergence speed improves when $\Phi$ approximates the true value function. Crucially, stationary behavior ($s' \approx s$) yields $F \approx 0$, eliminating the reward-farming failure mode observed in additive shaping schemes.
+
+The potential function $\Phi(s)$ combines four normalized components:
+\begin{equation}
+\Phi(s) = 0.4 \cdot \Delta_{\text{material}} + 0.35 \cdot d_{\text{proximity}} + 0.15 \cdot d_{\text{penetration}} + 0.1 \cdot \frac{|\mathcal{T}_{\text{revealed}}|}{12}
+\end{equation}
+
+\noindent where $\Delta_{\text{material}}$ is the rank-weighted material advantage normalized by the maximum possible material sum, $d_{\text{proximity}}$ measures the minimum distance of any offensive piece (rank $\leq 6$) to the enemy back rank, $d_{\text{penetration}}$ captures the deepest territorial advance of any offensive piece, and $|\mathcal{T}_{\text{revealed}}|/12$ represents the fraction of enemy piece types revealed through combat. All components are bounded in $[0, 1]$, ensuring $\Phi(s) \in [-1, 1]$ for C51 compatibility.
+
+Phase-based annealing is applied multiplicatively to the PBRS signal: Phase 1 (1.0$\times$), Phase 2 (0.5$\times$), Phase 3 (0.2$\times$), Phase 4+ (0.0$\times$), so that later training phases rely entirely on terminal rewards.
+
+\paragraph{Terminal Rewards with Game-Length Modifier.}
+Terminal outcomes are set to $+1.0$ (flag capture win), $+0.5$ (depletion win), $-1.0$ (loss), and $-0.3$ (draw). Instead of a per-step penalty that distorts intermediate Q-values, a terminal game-length modifier adjusts the final reward based on game duration. Quick victories receive a speed bonus of up to $+0.3$, while prolonged draws incur an additional penalty of up to $-0.3$, both scaling linearly with the fraction of maximum turns consumed. This ensures that slow wins remain positive while fast, decisive play is rewarded.
 
 \paragraph{Rationale for Distributional Scaling.}
-The support range $[V_{min}, V_{max}] = [-10, 10]$ with 51 atoms yields a resolution of $\delta_z = 0.4$ per atom. Terminal outcomes are set to $\pm 1.0$ (flag capture win/loss), $+0.5$ (depletion win), and $-0.3$ (draw), which occupy 2--3 atoms each and produce meaningful distributional shifts. Per-step shaping rewards range from $0.01$ to $0.3$, spanning at least one atom and ensuring the network can distinguish captures, positional advances, and penalties from noise.
+The support range $[V_{min}, V_{max}] = [-10, 10]$ with 51 atoms yields a resolution of $\delta_z = 0.4$ per atom. Terminal outcomes span 2--3 atoms. The PBRS signal is bounded by the potential function range and the discount factor, producing per-step shaping in the order of $\pm 0.1$, which remains atom-visible without overwhelming terminal signals.
 
-Piece-loss penalties are rank-weighted: losing a Marshal incurs $-0.1 \times (10/10) = -0.1$, while losing a Scout costs $-0.1 \times (2/10) = -0.02$, reflecting the asymmetric strategic impact of high-rank piece losses. Capture rewards are similarly scaled by defender rank. A constant step penalty of $-0.002$ per step provides time pressure; over a 500-step game, this accumulates to $-1.0$, comparable to the terminal reward and encouraging efficient play.
-
-The forward-movement incentive ($R_{flag} = +0.02$) is gated on piece rank: only offensive pieces with rank $\leq 6$ (Captain and below) receive this bonus. High-value pieces (Marshal, General, Colonel) are not incentivized to advance, preventing suicidal rushes. Scout penetration bonuses apply only within the actual enemy back rank (2 rows), not the broader enemy half.
-
-This reward system underwent multiple revisions. Early versions placed reward logic inside the game environment, causing confusion and reward spikes. Version 2 (current) rescaled all rewards for C51 atom visibility, introduced rank-weighted combat penalties, and eliminated double-counting in the turn-pair transition mechanism.
-
-\paragraph{Positional and Anti-Stall Mechanisms.}
-Beyond combat, the system implements specific shaping to guide behavior. A constant base step penalty of $-0.002$ creates time pressure toward efficiency. For stalemate prevention, sudden mobility restrictions (dropping below 5 legal moves) trigger a $-0.05$ penalty, discouraging the agent from boxing itself into immovable positions. Strategic proximity shaping grants a $+0.1$ bonus for moving pieces toward the opponent's back-rank corners, guiding the agent toward typical flag locations. A per-episode curiosity tracker provides decaying novelty bonuses for visiting new board states, and resets at episode boundaries to maintain consistent exploration pressure throughout training.
+\paragraph{Anti-Stagnation Mechanisms.}
+Three mechanisms prevent the agent from converging to passive, non-progressing policies. First, a per-piece oscillation detector tracks position histories and applies escalating penalties ($-0.02$ per oscillation) when a piece repeatedly returns to previously visited squares (A$\rightarrow$B$\rightarrow$A patterns). Second, a move diversity tracker monitors a 20-move lookback window; if fewer than 3 unique source-destination pairs appear, a $-0.05$ penalty discourages repetitive shuffling. Third, a near-immobility penalty of $-0.1$ triggers when fewer than 5 legal moves remain, directing the agent away from self-boxing positions. A constant combat-initiation bonus of $+0.02$ is maintained outside the PBRS framework to universally encourage engagement over passivity.
 
 \paragraph{Experience Replay Optimization.}
 Standard uniform sampling from the replay buffer treats all transitions equally, which is sample-inefficient when important learning events (e.g., flag captures, high-value combat) occur infrequently. Prioritized Experience Replay (PER) addresses this by sampling transitions with probability proportional to their temporal-difference (TD) error magnitude:
@@ -250,6 +258,9 @@ w_i = \left(\frac{1}{N \cdot P(i)}\right)^\beta
 \end{equation}
 
 \noindent where $\beta$ is annealed from 0.4 to 1.0 over training to gradually enforce unbiased updates. The implementation uses a sum-tree data structure for $O(\log N)$ sampling complexity. PER increases sample efficiency by focusing learning on transitions where the current value function is least accurate.
+
+\paragraph{Full-State Serialization.}
+To ensure mathematical consistency during continuous training sessions, the framework utilizes a full-state serialization mechanism. Unlike standard weight saving, this approach archives the complete agent state, including network weights, optimizer parameters, and the internal states of all replay buffers. For main checkpoints, the system generates compressed \texttt{.tar.gz} archives containing the serialized PyTorch tensors. This prevents the "forgetting" effect associated with empty buffers upon restart and ensures that gradient updates remain continuous across sessions. Conversely, league and deployment models utilize a stripped \texttt{.pt} format, which excludes training-specific overhead to optimize for inference speed and security.
 
 \paragraph{Advantage Filtering.}
 In standard deep reinforcement learning, the experience replay buffer stores past transitions (state, action, reward, next state) and samples them uniformly during training. However, not all experiences are equally valuable for learning. A routine move that shuffles a piece sideways provides less learning signal than a decisive capture that changes the game trajectory. Building upon Prioritized Experience Replay, the framework implements advantage filtering inspired by the Ataraxos system for imperfect-information games.

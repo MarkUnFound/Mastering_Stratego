@@ -31,10 +31,10 @@ class LeagueManager:
         
     def _refresh_agent_list(self):
         """Refresh the list of available agents from disk."""
-        self.agents = glob.glob(os.path.join(self.league_dir, "agent_episode_*.pth"))
+        self.agents = glob.glob(os.path.join(self.league_dir, "agent_episode_*.pt"))
         self.agents.sort(key=lambda x: int(os.path.basename(x).split('_episode_')[1].split('.')[0]))
         print(f"[INFO] League Manager initialized with {len(self.agents)} historical agents.")
-        
+    
     def save_agent(self, agent_path: str, episode: int):
         """
         Save a copy of the current agent to the league.
@@ -47,7 +47,7 @@ class LeagueManager:
             print(f"[WARN] Cannot save to league: Agent file {agent_path} not found.")
             return
             
-        league_path = os.path.join(self.league_dir, f"agent_episode_{episode}.pth")
+        league_path = os.path.join(self.league_dir, f"agent_episode_{episode}.pt")
         
         try:
             shutil.copy2(agent_path, league_path)

@@ -327,6 +327,7 @@ class HistoryAggregator:
         
         self.aaren.train()
         total_loss = 0
+        total_grad_norm = 0.0
         num_batches = 0
         
         batch_size = min(32, len(self.training_buffer))
@@ -364,7 +365,14 @@ class HistoryAggregator:
             
             # Backward pass
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(self.aaren.parameters(), 1.0)
+            grad_norm = torch.nn.utils.clip_grad_norm_(self.aaren.parameters(), 1.0)
+            
+            # Handle PyTorch version differences for grad_norm return type
+            if hasattr(grad_norm, 'item'):
+                total_grad_norm += grad_norm.item()
+            else:
+                total_grad_norm += float(grad_norm)
+                
             self.optimizer.step()
             
             total_loss += loss.item()
@@ -372,6 +380,9 @@ class HistoryAggregator:
         
         avg_loss = total_loss / max(num_batches, 1)
         self.training_losses.append(avg_loss)
+        
+        # Store latest gradient norm for metrics plotting
+        self._last_grad_norm = total_grad_norm / max(num_batches, 1)
         
         return avg_loss
     
@@ -392,15 +403,20 @@ class HistoryAggregator:
         """Get current training buffer size."""
         return len(self.training_buffer)
     
-    def state_dict(self) -> dict:
+    def state_dict(self, include_buffers=True) -> dict:
         """Get state dict for checkpointing."""
-        return {
+        state = {
             'aaren_state_dict': self.aaren.state_dict() if self.owns_aaren else None,
             'optimizer_state_dict': self.optimizer.state_dict() if self.optimizer else None,
-            'training_losses': self.training_losses,
             'predictions_correct': self.predictions_correct,
             'predictions_total': self.predictions_total,
         }
+        
+        if include_buffers:
+            state['training_buffer'] = self.training_buffer
+            state['training_losses'] = self.training_losses
+            
+        return state
     
     def load_state_dict(self, state_dict: dict):
         """Load state dict from checkpoint."""
@@ -408,6 +424,7 @@ class HistoryAggregator:
             self.aaren.load_state_dict(state_dict['aaren_state_dict'])
         if state_dict.get('optimizer_state_dict') and self.optimizer:
             self.optimizer.load_state_dict(state_dict['optimizer_state_dict'])
-        self.training_losses = state_dict.get('training_losses', [])
+        self.training_buffer = state_dict.get('training_buffer', [])
+        self.training_losses = state_dict.get('training_losses', deque(maxlen=1000))
         self.predictions_correct = state_dict.get('predictions_correct', 0)
         self.predictions_total = state_dict.get('predictions_total', 0)

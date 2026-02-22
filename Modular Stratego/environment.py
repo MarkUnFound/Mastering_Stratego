@@ -511,6 +511,7 @@ class StrategoEnvironment:
             "revealed_in_step": revealed_in_step, 
             "game_phase": game_phase, 
             "turn_count": self.turn_count,
+            "max_turns": self.max_turns,
             "num_valid_moves": avail_moves
         }
         

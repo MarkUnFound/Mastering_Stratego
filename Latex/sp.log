@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.27 (MiKTeX 25.4) (preloaded format=pdflatex 2025.12.6)  19 FEB 2026 14:59
+This is pdfTeX, Version 3.141592653-2.6-1.40.27 (MiKTeX 25.4) (preloaded format=pdflatex 2025.12.6)  21 FEB 2026 06:19
 entering extended mode
  restricted \write18 enabled.
  file:line:error style messages enabled.
@@ -780,7 +780,7 @@ Chapter 2.
 
 
 ] [8] [9] [10] [11] [12]
-<figures/stratego.png, id=740, 642.4pt x 481.8pt>
+<figures/stratego.png, id=745, 642.4pt x 481.8pt>
 File: figures/stratego.png Graphic file (type png)
 <use figures/stratego.png>
 Package pdftex.def Info: figures/stratego.png  used on input line 59.
@@ -790,7 +790,7 @@ Package pdftex.def Info: figures/stratego.png  used on input line 59.
 
  (chapters/techbackground.tex
 Chapter 3.
-<figures/stratego_piece.png, id=770, 225.84375pt x 234.8775pt>
+<figures/stratego_piece.png, id=775, 225.84375pt x 234.8775pt>
 File: figures/stratego_piece.png Graphic file (type png)
 <use figures/stratego_piece.png>
 Package pdftex.def Info: figures/stratego_piece.png  used on input line 12.
@@ -860,54 +860,59 @@ Overfull \hbox (10.11348pt too wide) in paragraph at lines 214--215
  []
 
 [25] [26] [27] [28] [29] [30] [31]
-Package hyperref Info: bookmark level for unknown algorithm defaults to 0 on input line 421.
- [32] [33] [34] [35] [36]) [37] [38]
+Package hyperref Info: bookmark level for unknown algorithm defaults to 0 on input line 423.
+ [32] [33] [34]
+Overfull \hbox (1.0228pt too wide) in paragraph at lines 483--485
+\OT1/cmr/m/n/10 As $\OML/cmm/m/it/10 T$ \OT1/cmr/m/n/10 ap-proaches zero, the se-lec-tion strat-egy be-comes de-ter-min-is-ti-cally greedy (equiv-a-lent to \OT1/cmr/m/it/10 argmax\OT1/cmr/m/n/10 ).
+ []
+
+[35] [36] [37] [38]) [39]
 \openout2 = `chapters/methodology.aux'.
 
  (chapters/methodology.tex
 Chapter 4.
-[39
+[40
 
 
 
 
 ]
-<figures/MARQArchi.png, id=981, 2074.75125pt x 624.3325pt>
+<figures/MARQArchi.png, id=997, 2074.75125pt x 624.3325pt>
 File: figures/MARQArchi.png Graphic file (type png)
 <use figures/MARQArchi.png>
 Package pdftex.def Info: figures/MARQArchi.png  used on input line 22.
 (pdftex.def)             Requested size: 390.25534pt x 117.43358pt.
- [40 <./figures/MARQArchi.png>]
-
-LaTeX Warning: `h' float specifier changed to `ht'.
-
-[41]
+ [41 <./figures/MARQArchi.png>]
 
 LaTeX Warning: `h' float specifier changed to `ht'.
 
 [42]
+
+LaTeX Warning: `h' float specifier changed to `ht'.
+
+[43]
 Overfull \hbox (10.8093pt too wide) in paragraph at lines 120--121
  []\OT1/cmr/bx/n/10 Action Fea-ture Ex-trac-tion.[] \OT1/cmr/m/n/10 For each ob-served op-po-nent ac-tion, AAREN ex-tracts a 24-dimensional
  []
 
-[43]
-<figures/Training Architecture.drawio.png, id=1013, 1315.91624pt x 581.17125pt>
+[44]
+<figures/Training Architecture.drawio.png, id=1029, 1315.91624pt x 581.17125pt>
 File: figures/Training Architecture.drawio.png Graphic file (type png)
 <use figures/Training Architecture.drawio.png>
 Package pdftex.def Info: figures/Training Architecture.drawio.png  used on input line 139.
 (pdftex.def)             Requested size: 433.62pt x 191.50333pt.
-<figures/Dueling Heads.png, id=1014, 1065.9825pt x 499.8675pt>
+<figures/Dueling Heads.png, id=1030, 1065.9825pt x 499.8675pt>
 File: figures/Dueling Heads.png Graphic file (type png)
 <use figures/Dueling Heads.png>
 Package pdftex.def Info: figures/Dueling Heads.png  used on input line 151.
 (pdftex.def)             Requested size: 346.89731pt x 162.66856pt.
- [44 <./figures/Training Architecture.drawio.png>]
-<figures/Resnet.png, id=1022, 799.98875pt x 265.99374pt>
+ [45 <./figures/Training Architecture.drawio.png>]
+<figures/Resnet.png, id=1038, 799.98875pt x 265.99374pt>
 File: figures/Resnet.png Graphic file (type png)
 <use figures/Resnet.png>
 Package pdftex.def Info: figures/Resnet.png  used on input line 161.
 (pdftex.def)             Requested size: 346.89731pt x 115.34105pt.
-<figures/Input layer.png, id=1023, 669.50125pt x 426.59375pt>
+<figures/Input layer.png, id=1039, 669.50125pt x 426.59375pt>
 File: figures/Input layer.png Graphic file (type png)
 <use figures/Input layer.png>
 Package pdftex.def Info: figures/Input layer.png  used on input line 170.
@@ -916,101 +921,102 @@ Package pdftex.def Info: figures/Input layer.png  used on input line 170.
 
 LaTeX Warning: `h' float specifier changed to `ht'.
 
-[45 <./figures/Dueling Heads.png> <./figures/Resnet.png>] [46 <./figures/Input layer.png>] [47]
+[46 <./figures/Dueling Heads.png> <./figures/Resnet.png>] [47 <./figures/Input layer.png>] [48]
 Overfull \hbox (1.2419pt too wide) in paragraph at lines 213--214
 []\OT1/cmr/m/n/10 Phase 2 (Par-tial Ob-serv-abil-ity) dis-ables full ob-serv-abil-ity, re-quir-ing re-liance on AAREN-generated
  []
 
-[48] [49] [50] [51] [52] [53] [54]
-<figures/Game diagram.png, id=1107, 703.62875pt x 874.26625pt>
+[49] [50] [51] [52] [53] [54] [55]
+<figures/Game diagram.png, id=1120, 703.62875pt x 874.26625pt>
 File: figures/Game diagram.png Graphic file (type png)
 <use figures/Game diagram.png>
-Package pdftex.def Info: figures/Game diagram.png  used on input line 363.
+Package pdftex.def Info: figures/Game diagram.png  used on input line 366.
 (pdftex.def)             Requested size: 216.81pt x 269.37889pt.
- [55 <./figures/Game diagram.png>]
-<figures/StrategoWithMARQ_GameStart.png, id=1113, 1926.44719pt x 1082.54437pt>
+ [56]
+<figures/StrategoWithMARQ_GameStart.png, id=1129, 1926.44719pt x 1082.54437pt>
 File: figures/StrategoWithMARQ_GameStart.png Graphic file (type png)
 <use figures/StrategoWithMARQ_GameStart.png>
-Package pdftex.def Info: figures/StrategoWithMARQ_GameStart.png  used on input line 375.
+Package pdftex.def Info: figures/StrategoWithMARQ_GameStart.png  used on input line 378.
 (pdftex.def)             Requested size: 216.81pt x 121.82228pt.
-<figures/StrategoPieces.png, id=1114, 560.0925pt x 412.54124pt>
+ [57 <./figures/Game diagram.png>]
+<figures/StrategoPieces.png, id=1135, 560.0925pt x 412.54124pt>
 File: figures/StrategoPieces.png Graphic file (type png)
 <use figures/StrategoPieces.png>
-Package pdftex.def Info: figures/StrategoPieces.png  used on input line 384.
+Package pdftex.def Info: figures/StrategoPieces.png  used on input line 387.
 (pdftex.def)             Requested size: 216.81pt x 159.69441pt.
- [56 <./figures/StrategoWithMARQ_GameStart.png>] [57 <./figures/StrategoPieces.png>]) [58]
+ [58 <./figures/StrategoWithMARQ_GameStart.png> <./figures/StrategoPieces.png>]) [59]
 \openout2 = `chapters/results.aux'.
 
  (chapters/results.tex
 Chapter 5.
-<figures/Results/training_progress_episode_34000.png, id=1132, 859.0494pt x 1238.226pt>
+<figures/Results/training_progress_episode_34000.png, id=1150, 859.0494pt x 1238.226pt>
 File: figures/Results/training_progress_episode_34000.png Graphic file (type png)
 <use figures/Results/training_progress_episode_34000.png>
 Package pdftex.def Info: figures/Results/training_progress_episode_34000.png  used on input line 15.
 (pdftex.def)             Requested size: 97.14354pt x 140.02182pt.
-<figures/Results/additional_metrics_episode_34000.png, id=1133, 1074.8958pt x 826.287pt>
+<figures/Results/additional_metrics_episode_34000.png, id=1151, 1074.8958pt x 826.287pt>
 File: figures/Results/additional_metrics_episode_34000.png Graphic file (type png)
 <use figures/Results/additional_metrics_episode_34000.png>
 Package pdftex.def Info: figures/Results/additional_metrics_episode_34000.png  used on input line 21.
 (pdftex.def)             Requested size: 182.1394pt x 140.01303pt.
-[59
+[60
 
 
 
 
-]) [60 <./figures/Results/training_progress_episode_34000.png> <./figures/Results/additional_metrics_episode_34000.png>] [61]
+]) [61 <./figures/Results/training_progress_episode_34000.png> <./figures/Results/additional_metrics_episode_34000.png>] [62]
 \openout2 = `chapters/AppendixA.aux'.
 
  (chapters/AppendixA.tex
 Appendix A.
-[62
+[63
 
 
 
 
 ]
-<figures/aug1-sept5.png, id=1153, 678.73575pt x 425.79076pt>
+<figures/aug1-sept5.png, id=1170, 678.73575pt x 425.79076pt>
 File: figures/aug1-sept5.png Graphic file (type png)
 <use figures/aug1-sept5.png>
 Package pdftex.def Info: figures/aug1-sept5.png  used on input line 12.
 (pdftex.def)             Requested size: 433.62pt x 272.02437pt.
-<figures/sept11-nov30.png, id=1154, 994.917pt x 357.13425pt>
+<figures/sept11-nov30.png, id=1171, 994.917pt x 357.13425pt>
 File: figures/sept11-nov30.png Graphic file (type png)
 <use figures/sept11-nov30.png>
 Package pdftex.def Info: figures/sept11-nov30.png  used on input line 19.
 (pdftex.def)             Requested size: 433.62pt x 155.65186pt.
-<figures/oct27.png, id=1155, 955.1685pt x 277.63725pt>
+<figures/oct27.png, id=1172, 955.1685pt x 277.63725pt>
 File: figures/oct27.png Graphic file (type png)
 <use figures/oct27.png>
 Package pdftex.def Info: figures/oct27.png  used on input line 26.
 (pdftex.def)             Requested size: 433.62pt x 126.03706pt.
-<figures/dec1-feb14.png, id=1156, 823.878pt x 159.59625pt>
+<figures/dec1-feb14.png, id=1173, 823.878pt x 159.59625pt>
 File: figures/dec1-feb14.png Graphic file (type png)
 <use figures/dec1-feb14.png>
 Package pdftex.def Info: figures/dec1-feb14.png  used on input line 33.
 (pdftex.def)             Requested size: 433.62pt x 83.99626pt.
-<figures/feb15-may4.png, id=1157, 1284.59924pt x 124.0635pt>
+<figures/feb15-may4.png, id=1174, 1284.59924pt x 124.0635pt>
 File: figures/feb15-may4.png Graphic file (type png)
 <use figures/feb15-may4.png>
 Package pdftex.def Info: figures/feb15-may4.png  used on input line 41.
 (pdftex.def)             Requested size: 433.62pt x 41.87624pt.
-) [63 <./figures/aug1-sept5.png>] [64 <./figures/sept11-nov30.png> <./figures/oct27.png> <./figures/dec1-feb14.png> <./figures/feb15-may4.png>]
+) [64 <./figures/aug1-sept5.png>] [65 <./figures/sept11-nov30.png> <./figures/oct27.png> <./figures/dec1-feb14.png> <./figures/feb15-may4.png>]
 \openout2 = `chapters/AppendixB.aux'.
 
  (chapters/AppendixB.tex
 Appendix B.
-[65
+[66
 
 
 
 
 ]
-<figures/StrategoWithMARQ_Menu.png, id=1176, 1540.5555pt x 865.43324pt>
+<figures/StrategoWithMARQ_Menu.png, id=1193, 1540.5555pt x 865.43324pt>
 File: figures/StrategoWithMARQ_Menu.png Graphic file (type png)
 <use figures/StrategoWithMARQ_Menu.png>
 Package pdftex.def Info: figures/StrategoWithMARQ_Menu.png  used on input line 13.
 (pdftex.def)             Requested size: 390.23894pt x 219.22336pt.
-<figures/Arrange.png, id=1177, 1445.4pt x 921.4425pt>
+<figures/Arrange.png, id=1194, 1445.4pt x 921.4425pt>
 File: figures/Arrange.png Graphic file (type png)
 <use figures/Arrange.png>
 Package pdftex.def Info: figures/Arrange.png  used on input line 20.
@@ -1019,58 +1025,58 @@ File: figures/StrategoWithMARQ_GameStart.png Graphic file (type png)
 <use figures/StrategoWithMARQ_GameStart.png>
 Package pdftex.def Info: figures/StrategoWithMARQ_GameStart.png  used on input line 27.
 (pdftex.def)             Requested size: 390.2504pt x 219.29663pt.
- [66 <./figures/StrategoWithMARQ_Menu.png> <./figures/Arrange.png>]
-<figures/StrategoWithMARQ_Battlepopup.png, id=1183, 1923.43594pt x 1082.54437pt>
+ [67 <./figures/StrategoWithMARQ_Menu.png> <./figures/Arrange.png>]
+<figures/StrategoWithMARQ_Battlepopup.png, id=1200, 1923.43594pt x 1082.54437pt>
 File: figures/StrategoWithMARQ_Battlepopup.png Graphic file (type png)
 <use figures/StrategoWithMARQ_Battlepopup.png>
 Package pdftex.def Info: figures/StrategoWithMARQ_Battlepopup.png  used on input line 34.
 (pdftex.def)             Requested size: 390.25673pt x 219.64351pt.
-<figures/Victory.png, id=1184, 5335.935pt x 2947.01pt>
+<figures/Victory.png, id=1201, 5335.935pt x 2947.01pt>
 File: figures/Victory.png Graphic file (type png)
 <use figures/Victory.png>
 Package pdftex.def Info: figures/Victory.png  used on input line 42.
 (pdftex.def)             Requested size: 390.24466pt x 215.53015pt.
- [67 <./figures/StrategoWithMARQ_Battlepopup.png>]
-<figures/Results/training_progress_episode_10000.png, id=1190, 859.0494pt x 1238.226pt>
+ [68 <./figures/StrategoWithMARQ_Battlepopup.png>]
+<figures/Results/training_progress_episode_10000.png, id=1207, 859.0494pt x 1238.226pt>
 File: figures/Results/training_progress_episode_10000.png Graphic file (type png)
 <use figures/Results/training_progress_episode_10000.png>
 Package pdftex.def Info: figures/Results/training_progress_episode_10000.png  used on input line 50.
 (pdftex.def)             Requested size: 97.14354pt x 140.02182pt.
-<figures/Results/training_progress_episode_20000.png, id=1191, 859.0494pt x 1238.226pt>
+<figures/Results/training_progress_episode_20000.png, id=1208, 859.0494pt x 1238.226pt>
 File: figures/Results/training_progress_episode_20000.png Graphic file (type png)
 <use figures/Results/training_progress_episode_20000.png>
 Package pdftex.def Info: figures/Results/training_progress_episode_20000.png  used on input line 57.
 (pdftex.def)             Requested size: 97.14354pt x 140.02182pt.
- [68 <./figures/Victory.png> <./figures/Results/training_progress_episode_10000.png>]
+ [69 <./figures/Victory.png> <./figures/Results/training_progress_episode_10000.png>]
 File: figures/Results/training_progress_episode_34000.png Graphic file (type png)
 <use figures/Results/training_progress_episode_34000.png>
 Package pdftex.def Info: figures/Results/training_progress_episode_34000.png  used on input line 64.
 (pdftex.def)             Requested size: 97.14354pt x 140.02182pt.
-<figures/Game Snapshots/Figure_1.png, id=1197, 1232.9262pt x 615.7404pt>
+<figures/Game Snapshots/Figure_1.png, id=1214, 1232.9262pt x 615.7404pt>
 File: figures/Game Snapshots/Figure_1.png Graphic file (type png)
 <use figures/Game Snapshots/Figure_1.png>
 Package pdftex.def Info: figures/Game Snapshots/Figure_1.png  used on input line 77.
 (pdftex.def)             Requested size: 195.12767pt x 97.44939pt.
-<figures/Game Snapshots/Figure_2.png, id=1198, 254.9525pt x 211.28937pt>
+<figures/Game Snapshots/Figure_2.png, id=1215, 254.9525pt x 211.28937pt>
 File: figures/Game Snapshots/Figure_2.png Graphic file (type png)
 <use figures/Game Snapshots/Figure_2.png>
 Package pdftex.def Info: figures/Game Snapshots/Figure_2.png  used on input line 83.
 (pdftex.def)             Requested size: 195.12767pt x 161.71643pt.
-<figures/Game Snapshots/Figure_3.png, id=1199, 202.25563pt x 172.14313pt>
+<figures/Game Snapshots/Figure_3.png, id=1216, 202.25563pt x 172.14313pt>
 File: figures/Game Snapshots/Figure_3.png Graphic file (type png)
 <use figures/Game Snapshots/Figure_3.png>
 Package pdftex.def Info: figures/Game Snapshots/Figure_3.png  used on input line 89.
 (pdftex.def)             Requested size: 195.12767pt x 166.08028pt.
-<figures/Game Snapshots/Figure_4.png, id=1200, 465.74pt x 182.6825pt>
+<figures/Game Snapshots/Figure_4.png, id=1217, 465.74pt x 182.6825pt>
 File: figures/Game Snapshots/Figure_4.png Graphic file (type png)
 <use figures/Game Snapshots/Figure_4.png>
 Package pdftex.def Info: figures/Game Snapshots/Figure_4.png  used on input line 95.
 (pdftex.def)             Requested size: 195.12767pt x 76.53656pt.
- [69 <./figures/Results/training_progress_episode_20000.png>] [70 <./figures/Game Snapshots/Figure_1.png> <./figures/Game Snapshots/Figure_2.png> <./figures/Game Snapshots/Figure_3.png> <./figures/Game Snapshots/Figure_4.png>] [71]) [72] (sp.bbl [73
+ [70 <./figures/Results/training_progress_episode_20000.png>] [71 <./figures/Game Snapshots/Figure_1.png> <./figures/Game Snapshots/Figure_2.png> <./figures/Game Snapshots/Figure_3.png> <./figures/Game Snapshots/Figure_4.png>] [72]) [73] (sp.bbl [74
 
 
 
-] [74]
+] [75]
 Underfull \hbox (badness 10000) in paragraph at lines 183--189
 []\OT1/cmr/m/sc/10 Hugi, D., and Izy, E.  \OT1/cmr/m/n/10 Multi-agent deep re-in-force-ment learn-ing
  []
@@ -1085,7 +1091,7 @@ Underfull \hbox (badness 10000) in paragraph at lines 183--189
 \OT1/cmtt/m/n/10 multi-[]agent-[]deep-[]reinforcement-[]learning-[]marl-[]in-[]starcraft-[]2/$[]\OT1/cmr/m/n/10 , 2017.  Course
  []
 
-[75] [76] [77]) [78]
+[76] [77] [78]) [79]
 \openout2 = `misc/vita.aux'.
 
  (misc/vita.tex
@@ -1093,7 +1099,7 @@ Underfull \hbox (badness 10000) in paragraph at lines 4--8
 
  []
 
-[79
+[80
 
 
 ]) (sp.aux (misc/dedication.aux) (misc/acknowledgements.aux) (chapters/introduction.aux) (chapters/review.aux) (chapters/techbackground.aux) (chapters/methodology.aux) (chapters/results.aux) (chapters/AppendixA.aux) (chapters/AppendixB.aux) (misc/vita.aux))
@@ -1102,20 +1108,20 @@ LaTeX2e <2025-11-01>
 L3 programming layer <2025-11-06>
  ***********
 Package rerunfilecheck Info: File `sp.out' has not changed.
-(rerunfilecheck)             Checksum: D1980D53E5BCDEEAD994E617CFB5C0F2;19290.
+(rerunfilecheck)             Checksum: 31699A81046F67B836E29A7C991EA1EC;19615.
  ) 
 Here is how much of TeX's memory you used:
- 24914 strings out of 467871
- 469532 string characters out of 5411080
- 1012990 words of memory out of 5000000
- 52888 multiletter control sequences out of 15000+600000
+ 24924 strings out of 467871
+ 469662 string characters out of 5411080
+ 1012989 words of memory out of 5000000
+ 52889 multiletter control sequences out of 15000+600000
  639895 words of font info for 87 fonts, out of 8000000 for 9000
  1141 hyphenation exceptions out of 8191
- 84i,13n,104p,2533b,670s stack positions out of 10000i,1000n,20000p,200000b,200000s
-<C:/Users/Mark Lawrence Quibot/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmbx10.pfb><C:/Users/Mark Lawrence Quibot/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmbx12.pfb><C:/Users/Mark Lawrence Quibot/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmcsc10.pfb><C:/Users/Mark Lawrence Quibot/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmex10.pfb><C:/Users/Mark Lawrence Quibot/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmmi10.pfb><C:/Users/Mark Lawrence Quibot/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmmi5.pfb><C:/Users/Mark Lawrence Quibot/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmmi7.pfb><C:/Users/Mark Lawrence Quibot/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmr10.pfb><C:/Users/Mark Lawrence Quibot/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmr12.pfb><C:/Users/Mark Lawrence Quibot/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmr5.pfb><C:/Users/Mark Lawrence Quibot/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmr7.pfb><C:/Users/Mark Lawrence Quibot/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmr8.pfb><C:/Users/Mark Lawrence Quibot/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmr9.pfb><C:/Users/Mark Lawrence Quibot/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmsl10.pfb><C:/Users/Mark Lawrence Quibot/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmsl9.pfb><C:/Users/Mark Lawrence Quibot/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmsy10.pfb><C:/Users/Mark Lawrence Quibot/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmsy5.pfb><C:/Users/Mark Lawrence Quibot/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmsy6.pfb><C:/Users/Mark Lawrence Quibot/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmsy7.pfb><C:/Users/Mark Lawrence Quibot/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmti10.pfb><C:/Users/Mark Lawrence Quibot/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmtt10.pfb><C:/Users/Mark Lawrence Quibot/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/symbols/msbm10.pfb>
-Output written on sp.pdf (93 pages, 5135272 bytes).
+ 84i,13n,104p,2533b,672s stack positions out of 10000i,1000n,20000p,200000b,200000s
+<C:/Users/Mark Lawrence Quibot/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmbx10.pfb><C:/Users/Mark Lawrence Quibot/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmbx12.pfb><C:/Users/Mark Lawrence Quibot/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmcsc10.pfb><C:/Users/Mark Lawrence Quibot/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmex10.pfb><C:/Users/Mark Lawrence Quibot/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cmextra/cmex7.pfb><C:/Users/Mark Lawrence Quibot/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmmi10.pfb><C:/Users/Mark Lawrence Quibot/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmmi5.pfb><C:/Users/Mark Lawrence Quibot/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmmi7.pfb><C:/Users/Mark Lawrence Quibot/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmr10.pfb><C:/Users/Mark Lawrence Quibot/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmr12.pfb><C:/Users/Mark Lawrence Quibot/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmr5.pfb><C:/Users/Mark Lawrence Quibot/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmr7.pfb><C:/Users/Mark Lawrence Quibot/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmr8.pfb><C:/Users/Mark Lawrence Quibot/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmr9.pfb><C:/Users/Mark Lawrence Quibot/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmsl10.pfb><C:/Users/Mark Lawrence Quibot/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmsl9.pfb><C:/Users/Mark Lawrence Quibot/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmsy10.pfb><C:/Users/Mark Lawrence Quibot/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmsy5.pfb><C:/Users/Mark Lawrence Quibot/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmsy6.pfb><C:/Users/Mark Lawrence Quibot/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmsy7.pfb><C:/Users/Mark Lawrence Quibot/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmti10.pfb><C:/Users/Mark Lawrence Quibot/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmtt10.pfb><C:/Users/Mark Lawrence Quibot/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/symbols/msbm10.pfb>
+Output written on sp.pdf (94 pages, 5151673 bytes).
 PDF statistics:
- 1467 PDF objects out of 1728 (max. 8388607)
- 417 named destinations out of 1000 (max. 500000)
- 884 words of extra memory for PDF output out of 10000 (max. 10000000)
+ 1489 PDF objects out of 1728 (max. 8388607)
+ 426 named destinations out of 1000 (max. 500000)
+ 892 words of extra memory for PDF output out of 10000 (max. 10000000)
 

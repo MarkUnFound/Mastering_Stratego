@@ -15,7 +15,11 @@ from typing import Dict, Tuple, Optional, List, Any
 from dataclasses import dataclass, asdict
 from enum import IntEnum
 
-from training_config import PHASE_MAX_TURNS, DEFAULT_MAX_TURNS
+from training_config import (
+    PHASE_MAX_TURNS, DEFAULT_MAX_TURNS,
+    PHASE_1_WIN_THRESHOLD_RANDOM, PHASE_1_WIN_THRESHOLD_HEURISTIC,
+    PHASE_2_WIN_THRESHOLD
+)
 
 
 class TrainingPhase(IntEnum):
@@ -80,8 +84,8 @@ PHASE_CONFIGS = {
         opponents=["self_500", "smart_heuristic"],
         reward_focus="material",
         success_metrics={
-            # Dynamic criteria: stable win rate (low variance)
-            "win_rate_variance_max": 0.1,
+            # Dynamic criteria: consistently beats past self
+            "recent_win_rate_vs_self": 0.55,
             "recent_games_required": 100
         },
         max_turns=PHASE_MAX_TURNS.get(3, DEFAULT_MAX_TURNS),
@@ -91,7 +95,7 @@ PHASE_CONFIGS = {
         full_observability=False,
         min_episodes=0,  # NOT ENFORCED
         max_episodes=0,  # NOT ENFORCED
-        opponents=["league", "exploiters", "random", "greedy"],
+        opponents=["league", "smart_heuristic", "greedy", "self"],
         reward_focus="balanced",
         success_metrics={
             # Dynamic criteria: ELO-based
@@ -122,39 +126,72 @@ class PhaseMetrics:
     episodes_in_phase: int = 0
     total_wins: int = 0
     total_games: int = 0
+    total_losses: int = 0
     wins_vs_random: int = 0
+    losses_vs_random: int = 0
     games_vs_random: int = 0
     wins_vs_heuristic: int = 0
+    losses_vs_heuristic: int = 0
     games_vs_heuristic: int = 0
-    pbs_accuracy_sum: float = 0.0
-    pbs_accuracy_count: int = 0
     recent_win_rates: List[float] = None
-    
+    # Per-opponent adaptive tracking (PFSP)
+    # Maps opponent_name -> {wins, losses, games}
+    opponent_stats: Dict[str, Dict[str, int]] = None
+
     def __post_init__(self):
         if self.recent_win_rates is None:
             self.recent_win_rates = []
-    
+        if self.opponent_stats is None:
+            self.opponent_stats = {}
+
+    # ------------------------------------------------------------------
+    # Aggregate win-rate helpers
+    # ------------------------------------------------------------------
     @property
     def overall_win_rate(self) -> float:
-        return self.total_wins / max(1, self.total_games)
-    
+        decisive_games = self.total_wins + self.total_losses
+        return self.total_wins / max(1, decisive_games)
+
     @property
     def win_rate_vs_random(self) -> float:
-        return self.wins_vs_random / max(1, self.games_vs_random)
-    
+        decisive_games = self.wins_vs_random + self.losses_vs_random
+        return self.wins_vs_random / max(1, decisive_games)
+
     @property
     def win_rate_vs_heuristic(self) -> float:
-        return self.wins_vs_heuristic / max(1, self.games_vs_heuristic)
-    
-    @property
-    def avg_pbs_accuracy(self) -> float:
-        return self.pbs_accuracy_sum / max(1, self.pbs_accuracy_count)
-    
+        decisive_games = self.wins_vs_heuristic + self.losses_vs_heuristic
+        return self.wins_vs_heuristic / max(1, decisive_games)
+
+    # ------------------------------------------------------------------
+    # Per-opponent helpers (PFSP)
+    # ------------------------------------------------------------------
+    def record_opponent_result(self, opponent_name: str, winner: int):
+        """Record a win (1) or loss (-1) or draw (0) against a named opponent."""
+        if opponent_name not in self.opponent_stats:
+            self.opponent_stats[opponent_name] = {'wins': 0, 'losses': 0, 'games': 0}
+        s = self.opponent_stats[opponent_name]
+        s['games'] += 1
+        if winner == 1:
+            s['wins'] += 1
+        elif winner == -1:
+            s['losses'] += 1
+
+    def win_rate_vs(self, opponent_name: str, min_games: int = 30) -> Optional[float]:
+        """Decisive win rate vs a specific opponent; None if sample too small."""
+        s = self.opponent_stats.get(opponent_name)
+        if s is None or s['games'] < min_games:
+            return None
+        decisive = s['wins'] + s['losses']
+        return s['wins'] / max(1, decisive)
+
     def to_dict(self) -> Dict:
         return asdict(self)
-    
+
     @classmethod
     def from_dict(cls, data: Dict) -> 'PhaseMetrics':
+        # Drop legacy PBS fields that were removed after PBS→AAREN migration.
+        data.pop('pbs_accuracy_sum', None)
+        data.pop('pbs_accuracy_count', None)
         return cls(**data)
 
 
@@ -261,51 +298,84 @@ class CurriculumManager:
                 
         return 1.0
     
+    # ------------------------------------------------------------------
+    # PFSP Scheduler (Prioritized Fictitious Self-Play)
+    # ------------------------------------------------------------------
+    def _pfsp_weights(self, candidates: List[str]) -> Dict[str, float]:
+        """
+        Compute opponent sampling weights using inverse-mastery prioritization.
+
+        For each candidate:
+          - If win rate vs that opponent is >= 0.90 (mastered): weight = FLOOR (0.05)
+          - Otherwise: weight = (1 - win_rate), ensuring harder opponents get more time.
+
+        The result is normalized so weights sum to 1.0.
+        This mirrors the PFSP scheme used in AlphaStar and OpenAI Five.
+        """
+        MASTERY_THRESHOLD = 0.90   # above this → de-prioritize
+        MASTERY_FLOOR     = 0.05   # minimum sampling share even if mastered
+        MIN_GAMES         = 30     # need this many games before PFSP kicks in
+
+        metrics = self.metrics[self.current_phase]
+        raw: Dict[str, float] = {}
+
+        for opp in candidates:
+            wr = metrics.win_rate_vs(opp, min_games=MIN_GAMES)
+            if wr is None:
+                # Not enough data yet → treat as max priority (1.0) to encourage exploration
+                raw[opp] = 1.0
+            elif wr >= MASTERY_THRESHOLD:
+                raw[opp] = MASTERY_FLOOR
+            else:
+                raw[opp] = max(MASTERY_FLOOR, 1.0 - wr)
+
+        total = sum(raw.values())
+        return {opp: w / total for opp, w in raw.items()}
+
     def get_opponent_distribution(self) -> Dict[str, float]:
         """
         Get opponent selection probabilities for current phase.
-        Returns dict mapping opponent type to probability.
-        
-        For Phase 1: Uses ADAPTIVE difficulty based on win rate.
-        Progressive opponent scaling:
-        - Win rate < 60%: 100% random (pure learning mode)
-        - Win rate 60-70%: 60% random, 40% heuristic (gradual introduction)
-        - Win rate 70-80%: 30% random, 50% heuristic, 20% smart_heuristic (moderate challenge)
-        - Win rate 80-90%: 10% random, 40% heuristic, 50% smart_heuristic (hard mode)
-        - Win rate >= 90%: 20% heuristic, 80% smart_heuristic (expert mode - learn optimal play)
+
+        Phase 1 uses PFSP-based adaptive difficulty: opponents the agent has mastered
+        (>= 90% decisive win rate) are de-prioritized; those it struggles against
+        receive proportionally more matchups.
+
+        Other phases retain fixed distributions.
         """
         config = self.get_phase_config()
-        opponents = config.opponents
         metrics = self.metrics[self.current_phase]
-        
+
         if self.current_phase == TrainingPhase.PHYSICS_OF_WAR:
-            # PHASE 1: Use configured opponent split from training_config.py
-            # NO ADAPTIVE SCALING - agent needs heuristic exposure from the start
-            try:
-                from training_config import OPPONENT_RANDOM_PROB, OPPONENT_GREEDY_PROB
-                # Map training_config names to curriculum names
-                # OPPONENT_GREEDY_PROB = heuristic probability in Phase 1
-                return {
-                    "random": OPPONENT_RANDOM_PROB,  # 85% from config
-                    "heuristic": OPPONENT_GREEDY_PROB,  # 15% from config
-                    "smart_heuristic": 0.0,
-                    "true_random": 0.0
-                }
-            except ImportError:
-                # Fallback: 85/15 split
-                return {"random": 0.85, "heuristic": 0.15, "smart_heuristic": 0.0, "true_random": 0.0}
-                
+            # --- PFSP adaptive scheduling ---
+            # Bootstrap: use aggregate win rates before per-opponent data is ready.
+            win_vs_random  = metrics.win_rate_vs_random  if metrics.games_vs_random  >= 50 else 0.0
+            win_vs_heur    = metrics.win_rate_vs_heuristic if metrics.games_vs_heuristic >= 20 else 0.0
+
+            # Decide the active candidate pool based on overall progress
+            if win_vs_random < 0.70:
+                # Early boot: still learning random, don't introduce heuristic yet
+                candidates = ["random"]
+            elif win_vs_heur < 0.30:
+                # Graduated to heuristic territory, but not smart_heuristic yet
+                candidates = ["random", "heuristic"]
+            else:
+                # Agent is competent — full pool, PFSP distributes weight
+                candidates = ["random", "heuristic", "smart_heuristic"]
+
+            return self._pfsp_weights(candidates)
+
         elif self.current_phase == TrainingPhase.MEMORY_GAP:
-            # Mix frozen heuristic with smart heuristic for better learning
-            return {"frozen_heuristic": 0.4, "smart_heuristic": 0.6}
+            return self._pfsp_weights(["frozen_heuristic", "smart_heuristic"])
+
         elif self.current_phase == TrainingPhase.SELF_PLAY:
-            # Mix self-play with smart heuristic to prevent strategy collapse
-            return {"self_500": 0.6, "smart_heuristic": 0.4}
+            return self._pfsp_weights(["self_500", "smart_heuristic"])
+
         elif self.current_phase == TrainingPhase.LEAGUE_TRAINING:
-            return {"league": 0.4, "smart_heuristic": 0.3, "greedy": 0.2, "self": 0.1}
+            return self._pfsp_weights(config.opponents)
+
         elif self.current_phase == TrainingPhase.SCENARIO_DRILLS:
             return {"scenario": 1.0}
-        
+
         # Default fallback
         return {"smart_heuristic": 1.0}
     
@@ -332,18 +402,23 @@ class CurriculumManager:
                 metrics.wins_vs_random += 1
             elif opponent_type in ['heuristic', 'greedy', 'frozen_heuristic', 'smart_heuristic']:
                 metrics.wins_vs_heuristic += 1
+        elif winner == -1:  # Agent1 loses / Agent2 wins
+            metrics.total_losses += 1
+            
+            if opponent_type in ['random', 'true_random']:
+                metrics.losses_vs_random += 1
+            elif opponent_type in ['heuristic', 'greedy', 'frozen_heuristic', 'smart_heuristic']:
+                metrics.losses_vs_heuristic += 1
                 
         # Track games played by opponent type
         if opponent_type in ['random', 'true_random']:
             metrics.games_vs_random += 1
         elif opponent_type in ['heuristic', 'greedy', 'frozen_heuristic', 'smart_heuristic']:
             metrics.games_vs_heuristic += 1
-            
-        # PBS accuracy tracking
-        if 'pbs_accuracy' in episode_result:
-            metrics.pbs_accuracy_sum += episode_result['pbs_accuracy']
-            metrics.pbs_accuracy_count += 1
-        
+
+        # Per-opponent PFSP tracking
+        metrics.record_opponent_result(opponent_type, winner)
+
         # Track recent win rates (sliding window)
         metrics.recent_win_rates.append(1 if winner == 1 else 0)
         if len(metrics.recent_win_rates) > 100:
@@ -370,23 +445,22 @@ class CurriculumManager:
         # Phase-specific success criteria (PURELY PERFORMANCE BASED)
         if self.current_phase == TrainingPhase.PHYSICS_OF_WAR:
             # Need to dominate random AND beat heuristic
-            return (metrics.win_rate_vs_random >= 0.70 and 
-                    metrics.games_vs_random >= 50 and
-                    (metrics.games_vs_heuristic < 10 or  # Haven't faced heuristic yet
-                     (metrics.win_rate_vs_heuristic >= 0.50 and 
-                      metrics.games_vs_heuristic >= 50)))
+            return (metrics.win_rate_vs_random >= PHASE_1_WIN_THRESHOLD_RANDOM and 
+                    metrics.wins_vs_random >= 30 and
+                    metrics.win_rate_vs_heuristic >= PHASE_1_WIN_THRESHOLD_HEURISTIC and 
+                    metrics.wins_vs_heuristic >= 30)
                     
         elif self.current_phase == TrainingPhase.MEMORY_GAP:
-            # Need PBS accuracy AND overall win rate
-            return (metrics.avg_pbs_accuracy >= 0.70 and
-                    metrics.overall_win_rate >= 0.55 and
-                    metrics.pbs_accuracy_count >= 50)
+            # PBS accuracy is removed (PBS → AAREN migration). Transition purely
+            # on decisive win rate now that fog-of-war is active.
+            return (metrics.overall_win_rate >= PHASE_2_WIN_THRESHOLD and
+                    metrics.total_wins >= 60)
                     
         elif self.current_phase == TrainingPhase.SELF_PLAY:
-            # Check for stable win rate (low variance = strategies are converging)
+            # Check for consistent win rate against past self
             if len(metrics.recent_win_rates) >= 100:
-                variance = sum((x - 0.5)**2 for x in metrics.recent_win_rates) / 100
-                return variance < 0.1  # Low variance indicates stable play
+                recent_wr = sum(metrics.recent_win_rates) / len(metrics.recent_win_rates)
+                return recent_wr >= 0.55  # Winning against past self
             return False
             
         elif self.current_phase == TrainingPhase.LEAGUE_TRAINING:
@@ -445,7 +519,7 @@ class CurriculumManager:
         """Get detailed status for logging."""
         config = self.get_phase_config()
         metrics = self.metrics[self.current_phase]
-        
+
         return {
             'phase': self.current_phase.value,
             'phase_name': config.name,
@@ -456,7 +530,6 @@ class CurriculumManager:
             'win_rate': metrics.overall_win_rate,
             'win_rate_vs_random': metrics.win_rate_vs_random,
             'win_rate_vs_heuristic': metrics.win_rate_vs_heuristic,
-            'pbs_accuracy': metrics.avg_pbs_accuracy
         }
 
 

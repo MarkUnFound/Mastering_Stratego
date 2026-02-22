@@ -395,8 +395,8 @@ INPUT .\figures\stratego.png
 INPUT .\figures\stratego.png
 INPUT .\figures\stratego.png
 INPUT .\figures\stratego.png
-INPUT C:\Users\Mark Lawrence Quibot\AppData\Local\Programs\MiKTeX\fonts\tfm\public\cm\cmr8.tfm
 INPUT C:\Users\Mark Lawrence Quibot\AppData\Local\Programs\MiKTeX\fonts\tfm\public\cm\cmti10.tfm
+INPUT C:\Users\Mark Lawrence Quibot\AppData\Local\Programs\MiKTeX\fonts\tfm\public\cm\cmr8.tfm
 INPUT .\chapters\methodology.tex
 INPUT .\chapters\methodology.tex
 OUTPUT chapters\methodology.aux
@@ -667,6 +667,8 @@ INPUT C:\Users\Mark Lawrence Quibot\AppData\Local\Programs\MiKTeX\fonts\type1\pu
 INPUT C:\Users\Mark Lawrence Quibot\AppData\Local\Programs\MiKTeX\fonts\type1\public\amsfonts\cm\cmcsc10.pfb
 INPUT C:\Users\Mark Lawrence Quibot\AppData\Local\Programs\MiKTeX\fonts\type1\public\amsfonts\cm\cmex10.pfb
 INPUT C:\Users\Mark Lawrence Quibot\AppData\Local\Programs\MiKTeX\fonts\type1\public\amsfonts\cm\cmex10.pfb
+INPUT C:\Users\Mark Lawrence Quibot\AppData\Local\Programs\MiKTeX\fonts\type1\public\amsfonts\cmextra\cmex7.pfb
+INPUT C:\Users\Mark Lawrence Quibot\AppData\Local\Programs\MiKTeX\fonts\type1\public\amsfonts\cmextra\cmex7.pfb
 INPUT C:\Users\Mark Lawrence Quibot\AppData\Local\Programs\MiKTeX\fonts\type1\public\amsfonts\cm\cmmi10.pfb
 INPUT C:\Users\Mark Lawrence Quibot\AppData\Local\Programs\MiKTeX\fonts\type1\public\amsfonts\cm\cmmi10.pfb
 INPUT C:\Users\Mark Lawrence Quibot\AppData\Local\Programs\MiKTeX\fonts\type1\public\amsfonts\cm\cmmi5.pfb

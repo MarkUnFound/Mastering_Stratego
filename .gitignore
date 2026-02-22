@@ -12,9 +12,9 @@ Modular Stratego/__pycache__/
 Modular Stratego/aaren/__pycache__/
 Modular Stratego/pbs/__pycache__/
 Modular Stratego/networks/__pycache__/
-Modular Stratego/dqn_models/
+
 Modular Stratego/logs/
-Modular Stratego/training_config.py
+
 # Ignore debug logs
 debug_log.txt
 **/debug_log.txt
