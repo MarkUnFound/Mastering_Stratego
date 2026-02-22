@@ -19,7 +19,7 @@ The system development consists of two components: the game environment and the 
 
 \begin{figure}[htbp]
     \centering
-    \includegraphics[width=0.9\textwidth]{figures/MARQArchi.png}
+    \includegraphics[width=1.1\textwidth]{figures/MARQArchi.png}
     \caption{MARQ Framework Architecture. The input pipeline processes board states and move history through AAREN to produce implicit belief embeddings. These are concatenated with board features and fed into a ResNet-based Rainbow DQN with Spatial Attention and Dueling Heads.}
     \label{fig:marq_architecture}
 \end{figure}
@@ -136,7 +136,7 @@ Unlike separate belief state modules that require explicit supervision, AAREN le
 
 \begin{figure}[htbp]
     \centering
-    \includegraphics[width=1\textwidth]{figures/Training Architecture.drawio.png}
+    \includegraphics[width=1.1\textwidth]{figures/Training Architecture.drawio.png}
     \caption{MARQ Training Architecture. The system employs a dual-buffer replay mechanism (PER and Episodic) alongside a league-based opponent pool to facilitate stable policy development in imperfect information settings.}
     \label{fig:training_architecture}
 \end{figure}
@@ -360,7 +360,7 @@ The deployed system will function as the complete application used during the us
 
 \begin{figure}[H]
     \centering
-    \includegraphics[width=.5\textwidth]{figures/Game diagram.png}
+    \includegraphics[width=.7\textwidth]{figures/Game diagram.png}
     \caption{Game Sequence Diagram}
     \label{fig:Sequence Diagram}
 \end{figure}
@@ -372,7 +372,7 @@ In the figure above, the player starts the game and the loop begins until either
 The game environment used in this project is a digital version of Stratego, a two-player board game of incomplete information. This version was developed using Python and Pygame, featuring a GUI with blue and red color schemes, an image-based piece system, a battle popup that displays the combat of the player and enemy pieces, and a history panel.
 \begin{figure}[H]
     \centering
-    \includegraphics[width=.5\textwidth]{figures/StrategoWithMARQ_GameStart.png}
+    \includegraphics[width=1\textwidth]{figures/StrategoWithMARQ_GameStart.png}
     \caption{Game Start}
     \label{fig:Game Start}
 \end{figure}
@@ -381,7 +381,7 @@ The game environment used in this project is a digital version of Stratego, a tw
 The game assets were designed in pixel art style, with each piece represented by a unique image. The pieces are designed to be easily distinguishable, with clear visual cues indicating their rank and special abilities. The assets for the game pieces were created in pixilart.
 \begin{figure}[H]
     \centering
-    \includegraphics[width=.5\textwidth]{figures/StrategoPieces.png}
+    \includegraphics[width=.7\textwidth]{figures/StrategoPieces.png}
     \caption{Stratego Pieces}
     \label{fig:Stratego Pieces}
 \end{figure}

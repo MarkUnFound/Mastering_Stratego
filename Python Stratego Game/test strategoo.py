@@ -548,7 +548,7 @@ def draw_battle_popup():
 
     font_header = pygame.font.Font(None, get_font_size(18))
     font_header.set_bold(True)
-    header_text = font_header.render("  BATTLE  ", True, (*WHITE, alpha))
+    header_text = font_header.render("⚔  BATTLE  ⚔", True, (*WHITE, alpha))
     header_rect = header_text.get_rect(center=(popup_x + popup_w // 2, popup_y + header_h // 2))
     screen.blit(header_text, header_rect)
 
@@ -796,7 +796,7 @@ while running:
         center_x = menu_area_width // 2
         title_y = get_font_size(150)
         draw_text("STRATEGO", center_x, title_y, get_font_size(72), PLAYER1_PRIMARY, bold=True)
-        draw_text("with MARQ", center_x, title_y + get_font_size(40), get_font_size(36), PLAYER2_PRIMARY, bold=True)
+        draw_text("with MARQ", center_x, title_y + get_font_size(60), get_font_size(24), PLAYER2_PRIMARY, bold=True)
         button_width = max(250, min(int(menu_area_width * 0.4), 400))
         button_height = get_font_size(35) + 20
         button_spacing = button_height + 25
