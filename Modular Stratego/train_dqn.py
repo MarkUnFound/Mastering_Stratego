@@ -29,36 +29,32 @@ import json
 from typing import List, Tuple, Optional
 from tqdm import tqdm
 
-# Add the parent directory to sys.path to enable imports
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Add the project root and subdirectories to sys.path to enable legacy imports
+project_root = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(project_root)
+for d in ['environment', 'network', 'settings', 'test', 'visualizers', 'utils']:
+    sys.path.append(os.path.join(project_root, d))
+# Also add the parent directory for Research-level imports
+sys.path.append(os.path.dirname(project_root))
 
-from environment import StrategoEnvironment
-from parallel_environment import ParallelStrategoEnvironment
-from drqn_agent import RainbowAgent
-from heuristic_setup import HeuristicSetupAgent
-from game_state import GameState
-from training_visualizer import plot_training_progress, create_training_gif, create_episode_gif, plot_additional_metrics
-from piece import PieceType, PIECE_RANKS
-from board import LAKE_SQUARE
-
-
-from league import LeagueManager
-from opponents import RandomAgent, GreedyAgent, OpponentPool, RandomSetupAgent
-from training_config import *
-from training_utils import save_training_history, load_training_history
-from preflight_checks import run_preflight_checks
-# from training_config import PIECE_VALUE_TRACKING
-
-# Curriculum and Reward Shaping
-from curriculum import CurriculumManager, TrainingPhase, HeuristicOpponent, SmartHeuristicOpponent, TrueRandomOpponent
-from exploiter_agents import get_random_exploiter, RusherAgent, TurtleAgent, FlankingAgent
-from scenario_drills import get_scenario_drill, get_random_scenario
-
-# Distributional RL-Compatible Reward Shaping (C51 Normalized Anti-Stall)
-from distributional_reward import create_unified_reward_shaper, StrategoRewardConfig
-
-# Extracted training modules (for future gradual migration)
-from training import LaneManager, MetricsTracker, Checkpointer, get_random_starting_player
+# Consolidated imports from reorganized packages
+from environment import (
+    StrategoEnvironment, ParallelStrategoEnvironment, LAKE_SQUARE,
+    PieceType, PIECE_RANKS, GameState,
+    CurriculumManager, TrainingPhase, HeuristicOpponent, SmartHeuristicOpponent, TrueRandomOpponent,
+    LeagueManager, HeuristicSetupAgent
+)
+from network import (
+    RainbowAgent, create_unified_reward_shaper, StrategoRewardConfig,
+    RandomAgent, GreedyAgent, OpponentPool, RandomSetupAgent,
+    get_random_exploiter, RusherAgent, TurtleAgent, FlankingAgent,
+    LaneManager, MetricsTracker, Checkpointer, get_random_starting_player
+)
+from settings import *
+from utils import save_training_history, load_training_history
+from test.preflight_checks import run_preflight_checks
+from test.scenario_drills import get_scenario_drill, get_random_scenario
+from visualizers import plot_training_progress, create_training_gif, create_episode_gif, plot_additional_metrics
 
 
 
