@@ -26,17 +26,17 @@ FAIL = 0
 def check(name, condition, detail=""):
     global PASS, FAIL
     if condition:
-        print(f"  ✓ {name}")
+        print(f"   {name}")
         PASS += 1
     else:
-        print(f"  ✗ {name}  {detail}")
+        print(f"   {name}  {detail}")
         FAIL += 1
 
 
 def make_transition(step_idx, reward=0.1):
     """Create a dummy transition with a unique state."""
-    state = torch.randn(79, 10, 10)  # 79-channel MARQ state
-    next_state = torch.randn(79, 10, 10)
+    state = torch.randn(15, 10, 10)  # 15-channel board-only (AAREN reconstructed at replay)
+    next_state = torch.randn(15, 10, 10)
     action = ((step_idx % 10, step_idx % 10), ((step_idx + 1) % 10, step_idx % 10))  # move down
     return state, action, reward, next_state, False
 
@@ -64,13 +64,14 @@ check("One episode stored", buf.num_episodes == 1)
 check("Transition count", len(buf) == 20)
 
 result = buf.sample_segments(4)
-check("Sample returns tuple", result is not None and len(result) == 5)
+check("Sample returns tuple", result is not None and len(result) == 7)
 
-states, actions, rewards, next_states, dones = result
-check("States shape", states.shape == (4, 79, 10, 10), f"got {states.shape}")
+states, actions, rewards, next_states, dones, hist_snaps, next_hist_snaps = result
+check("States shape", states.shape == (4, 15, 10, 10), f"got {states.shape}")
 check("Actions shape", actions.shape == (4,), f"got {actions.shape}")
 check("Rewards shape", rewards.shape == (4,), f"got {rewards.shape}")
 check("Dones shape", dones.shape == (4,), f"got {dones.shape}")
+check("History snapshots count", len(hist_snaps) == 4, f"got {len(hist_snaps)}")
 check("Rewards are accumulated", all(r != 0 for r in rewards.tolist()), f"rewards={rewards.tolist()}")
 
 
@@ -87,7 +88,7 @@ check("Short episode stored", buf2.num_episodes == 1)
 result = buf2.sample_segments(2)
 check("Short episode still sampled", result is not None)
 if result:
-    s, a, r, ns, d = result
+    s, a, r, ns, d, hs, nhs = result
     check("Short episode sample shape", s.shape[0] == 2)
 
 # Episode of length 1 — too short, should be discarded
@@ -111,7 +112,7 @@ for _ in range(50):
 for _ in range(5):
     add_episode(buf4, 0, length=10, outcome=1.0)
 
-check("55 episodes stored", buf4.num_episodes == 55)
+check("5 episodes stored (draws filtered)", buf4.num_episodes == 5)
 
 # Sample many times and check that wins appear more than uniform (5/55 ≈ 9%)
 # With |outcome|+epsilon prioritization, wins should be heavily oversampled
@@ -128,7 +129,7 @@ for _ in range(n_trials):
 # Statistical check via get_stats
 stats = buf4.get_stats()
 check("Stats has wins", stats['wins'] == 5)
-check("Stats has draws", stats['draws'] == 50)
+check("Stats has draws", stats['draws'] == 0)  # Draws filtered by decisive game filter
 check("Stats avg_length", abs(stats['avg_length'] - 10.0) < 0.1, f"avg={stats['avg_length']}")
 
 
@@ -212,5 +213,5 @@ print(f"{'='*60}")
 if FAIL > 0:
     sys.exit(1)
 else:
-    print("  All tests passed! ✓")
+    print("  All tests passed! ")
     sys.exit(0)

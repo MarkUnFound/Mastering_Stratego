@@ -194,13 +194,17 @@ The 79-channel state representation is partitioned into two functional sets, as 
 \end{tabular}
 \end{table}
 
-The board feature channels provide deterministic knowledge of the agent's own piece positions and observed enemy locations. The AAREN embedding channels encode learned representations of hidden enemy piece identities based on their observed behavior. Unlike explicit probability distributions, these embeddings are dense learned vectors that the network interprets through end-to-end training. During full observability training (Phase 1), the embedding channels contain sparse one-hot encodings of ground truth enemy types to establish baseline piece-type awareness. During partial observability phases, the channels contain AAREN-generated embeddings that capture temporal patterns in opponent behavior. The AAREN module uses 24-dimensional action feature vectors, 64 hidden units, and 3 layers to process action histories and output embedding vectors.
+The board feature channels provide deterministic knowledge of the agent's own piece positions and observed enemy locations. The AAREN embedding channels encode learned representations of hidden enemy piece identities based on their observed behavior. Unlike explicit probability distributions, these embeddings are dense learned vectors that the network interprets through end-to-end training. The AAREN embedding channels are populated in all training phases; the agent always receives embeddings from the history aggregator rather than ground truth one-hot encodings. However, the board feature channels themselves carry different levels of enemy information depending on the observability setting. During full observability (Phase 1), the board tensor reveals all enemy piece identities, providing a strong signal in the piece-specific board channels. During partial observability phases, unrevealed enemy pieces are represented solely by a "hidden piece" presence marker (affecting only Channel 12, the enemy mask), and the agent must rely on AAREN embeddings to infer their true identities. An earlier version of this transition suffered from a bug where the hidden piece marker was unintentionally filtered out of Channel 12, catastrophically blinding the network to even the presence of enemy pieces; correcting this ensures the network maintains spatial awareness while shifting the burden of identity inference to the AAREN module. The AAREN module uses 24-dimensional action feature vectors, 64 hidden units, and 3 layers to process action histories and output embedding vectors.
 
 \paragraph{Training Hyperparameters.}
 The training configuration uses several key parameters. These include a learning rate $\alpha = 3 \times 10^{-5}$ with AdamW optimizer and weight decay $\lambda = 0.01$, and a discount factor $\gamma = 0.995$ to capture long-term strategic consequences. We utilize a batch size of 512 transitions and a replay buffer capacity of 150,000 transitions with prioritized sampling. Soft target network updates ($\tau = 0.001$) occur every 5,000 steps. Model updates are performed every 2 steps utilizing 8 parallel lanes and 5-step returns for deeper credit assignment in long-horizon games. The AAREN history aggregator retains up to 50 actions per position in its training buffer to preserve early-game movement patterns across 200--500 move games. Turn normalization is aligned with the maximum game length of 1,000 turns. To improve sample efficiency, data augmentation is applied via horizontal flip, exploiting the game's symmetry. Training proceeds for 35,000+ episodes with checkpoints saved every 1,000 episodes.
 
 \paragraph{Computational Optimizations.}
-To accelerate training throughput, the implementation employs mixed-precision inference using PyTorch's automatic mixed-precision (AMP) framework. During action selection, network forward passes operate in FP16 precision via \texttt{torch.amp.autocast}, reducing memory bandwidth requirements and leveraging Tensor Core acceleration on NVIDIA GPUs. The replay buffer stores transitions in FP16 format, reducing GPU memory consumption by approximately 50\% compared to FP32 storage. Additionally, CUDNN benchmark mode is enabled to automatically select the fastest convolution algorithms for the fixed input tensor dimensions.
+To accelerate training throughput, the implementation employs mixed-precision inference using PyTorch's automatic mixed-precision (AMP) framework. During action selection, network forward passes operate in FP16 precision via \texttt{torch.amp.autocast}, reducing memory bandwidth requirements and leveraging Tensor Core acceleration on NVIDIA GPUs. 
+
+A critical optimization handles the integration of the recurrent AAREN module into the replay pipeline. Full sequential reconstruction of action histories during replay introduces a significant bottleneck, increasing iteration time from 15s to 60s. To preserve high throughput, MARQ utilizes pre-computed embedding snapshots stored in the replay buffer. To maintain differentiability despite using detached snapshots, a ``Gradient Bridge'' is implemented by adding a differentiable epsilon-scaled zero-vector ($\epsilon \cdot W_{proj}(\mathbf{0})$) to the stored snapshots during replay. This preserves the 4x speedup while providing a gradient path from the DQN loss back to AAREN's input projection layer. The resulting value-staleness is mitigated by AAREN's Dual Training Regime, which provides a fresh supervised signal during piece reveals.
+
+The replay buffer stores transitions in FP16 format, reducing GPU memory consumption by approximately 50\% compared to FP32 storage. Additionally, CUDNN benchmark mode is enabled to automatically select the fastest convolution algorithms for the fixed input tensor dimensions.
 
 \paragraph{League-Based Training.}
 To prevent policy cycling, the agent trains against a diverse opponent pool. The opponent selection distribution allocates 50\% to historical league agents, 20\% to random agents, 20\% to greedy heuristic agents, and 10\% to self-play. Agent checkpoints are added to the league every 500 episodes, with a maximum pool size of 50 historical agents.
@@ -396,6 +400,22 @@ The game assets were designed in pixel art style, with each piece represented by
     \caption{Stratego Pieces}
     \label{fig:Stratego Pieces}
 \end{figure}
+
+\section{AI-Driven Guidance and Evaluation Interface}
+To evaluate the MARQ framework's utility as a strategic training tool, a specialized guidance interface was developed. This interface exposes the agent's internal state evaluation and probabilistic beliefs to the human player in real-time, facilitating an "AI-guided" gameplay experience.
+
+\subsection{Quantitative State Evaluation}
+The system provides a real-time assessment of the board's strategic value using the expected value of the C51 distributional output. For the current board state $s$, the state evaluation $V(s)$ is derived from the support vector $\mathbf{z}$ and the predicted probabilities $\mathbf{P}(s, a)$ for the optimal action $a^*$:
+\begin{equation}
+    V(s) = \sum_{i=1}^{51} P(s, a^*, z_i) \cdot z_i
+\end{equation}
+This scalar value, ranging from $-10$ to $+10$, is visualized via an evaluation bar, providing the user with immediate feedback on the tactical consequences of their moves.
+
+\subsection{Bayesian-like Belief Visualization}
+The framework leverages the AAREN history aggregator to assist users in managing hidden information. By exposing the latent identity probabilities $P(\text{rank}_j = r | \mathcal{H})$ for enemy pieces, the interface allows players to visualize the agent's "belief" regarding unrevealed units. These probabilities change dynamically as pieces move, reflecting the system's ability to perform behavioral inference.
+
+\subsection{Heuristic-Augmented Move Recommendation}
+Users can request strategic suggests derived from the Expectamax-refined DQN policy. Unlike a simple greedy assistant, this recommendation system accounts for piece-identity uncertainty by favoring moves with the highest expected utility under the current belief state. This feature serves as a pedagogical signal, aligning human tactical selection with the agent's trained strategic policy.
 
 \section{Evaluation}
 

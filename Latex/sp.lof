@@ -10,24 +10,24 @@
 \contentsline {figure}{\numberline {4.3}{\ignorespaces Dueling Network Heads. The architecture separates the value stream $V(s)$ and the advantage stream $A(s, a)$, allowing the agent to stabilize learning by identifying state importance independently of action selection.}}{46}{figure.caption.39}%
 \contentsline {figure}{\numberline {4.4}{\ignorespaces ResNet Backbone. The six-block residual architecture provides a $27 \times 27$ receptive field, ensuring full spatial coverage and effective feature propagation for the $10 \times 10$ board representation.}}{46}{figure.caption.41}%
 \contentsline {figure}{\numberline {4.5}{\ignorespaces 79-Channel Input Representation. The state is encoded as a multi-channel tensor consisting of binary board features and 64-dimensional AAREN-generated embeddings for piece-type inference.}}{47}{figure.caption.42}%
-\contentsline {figure}{\numberline {4.6}{\ignorespaces Game Sequence Diagram}}{57}{figure.caption.60}%
-\contentsline {figure}{\numberline {4.7}{\ignorespaces Game Start}}{58}{figure.caption.61}%
-\contentsline {figure}{\numberline {4.8}{\ignorespaces Stratego Pieces}}{58}{figure.caption.62}%
+\contentsline {figure}{\numberline {4.6}{\ignorespaces Game Sequence Diagram}}{58}{figure.caption.61}%
+\contentsline {figure}{\numberline {4.7}{\ignorespaces Game Start}}{59}{figure.caption.62}%
+\contentsline {figure}{\numberline {4.8}{\ignorespaces Stratego Pieces}}{60}{figure.caption.63}%
 \addvspace {10\p@ }
-\contentsline {figure}{\numberline {5.1}{\ignorespaces Training metrics at episode 34,000. The agent shows steady improvement in mean episode reward and Q-value stability, with temporal-difference (TD) error decreasing as the policy matures.}}{61}{figure.caption.65}%
+\contentsline {figure}{\numberline {5.1}{\ignorespaces Training metrics at episode 34,000. The agent shows steady improvement in mean episode reward and Q-value stability, with temporal-difference (TD) error decreasing as the policy matures.}}{64}{figure.caption.66}%
 \addvspace {10\p@ }
-\contentsline {figure}{\numberline {A.1}{\ignorespaces Timeline: August 1 - September 5}}{64}{figure.caption.66}%
-\contentsline {figure}{\numberline {A.2}{\ignorespaces Timeline: September 11 - November 30}}{65}{figure.caption.67}%
-\contentsline {figure}{\numberline {A.3}{\ignorespaces Timeline: October 27 - January 27}}{65}{figure.caption.68}%
-\contentsline {figure}{\numberline {A.4}{\ignorespaces Timeline: December 1 - February 14}}{65}{figure.caption.69}%
-\contentsline {figure}{\numberline {A.5}{\ignorespaces Timeline: February 15 - May 4}}{65}{figure.caption.70}%
+\contentsline {figure}{\numberline {A.1}{\ignorespaces Timeline: August 1 - September 5}}{67}{figure.caption.67}%
+\contentsline {figure}{\numberline {A.2}{\ignorespaces Timeline: September 11 - November 30}}{68}{figure.caption.68}%
+\contentsline {figure}{\numberline {A.3}{\ignorespaces Timeline: October 27 - January 27}}{68}{figure.caption.69}%
+\contentsline {figure}{\numberline {A.4}{\ignorespaces Timeline: December 1 - February 14}}{68}{figure.caption.70}%
+\contentsline {figure}{\numberline {A.5}{\ignorespaces Timeline: February 15 - May 4}}{68}{figure.caption.71}%
 \addvspace {10\p@ }
-\contentsline {figure}{\numberline {B.1}{\ignorespaces Game Menu}}{67}{figure.caption.71}%
-\contentsline {figure}{\numberline {B.2}{\ignorespaces Setup Phase}}{67}{figure.caption.72}%
-\contentsline {figure}{\numberline {B.3}{\ignorespaces Game Start}}{68}{figure.caption.73}%
-\contentsline {figure}{\numberline {B.4}{\ignorespaces Battle and History}}{68}{figure.caption.74}%
-\contentsline {figure}{\numberline {B.5}{\ignorespaces Victory Screen}}{69}{figure.caption.75}%
-\contentsline {figure}{\numberline {B.6}{\ignorespaces Training Progress: Episode 10,000}}{69}{figure.caption.76}%
-\contentsline {figure}{\numberline {B.7}{\ignorespaces Training Progress: Episode 20,000}}{70}{figure.caption.77}%
-\contentsline {figure}{\numberline {B.8}{\ignorespaces Training Progress: Episode 34,000}}{70}{figure.caption.78}%
-\contentsline {figure}{\numberline {B.9}{\ignorespaces Interpretability Dashboard snapshots showing real-time agent reasoning.}}{71}{figure.caption.79}%
+\contentsline {figure}{\numberline {B.1}{\ignorespaces Game Menu}}{70}{figure.caption.72}%
+\contentsline {figure}{\numberline {B.2}{\ignorespaces Setup Phase}}{70}{figure.caption.73}%
+\contentsline {figure}{\numberline {B.3}{\ignorespaces Game Start}}{71}{figure.caption.74}%
+\contentsline {figure}{\numberline {B.4}{\ignorespaces Battle and History}}{71}{figure.caption.75}%
+\contentsline {figure}{\numberline {B.5}{\ignorespaces Victory Screen}}{72}{figure.caption.76}%
+\contentsline {figure}{\numberline {B.6}{\ignorespaces Training Progress: Episode 10,000}}{73}{figure.caption.77}%
+\contentsline {figure}{\numberline {B.7}{\ignorespaces Training Progress: Episode 20,000}}{74}{figure.caption.78}%
+\contentsline {figure}{\numberline {B.8}{\ignorespaces Training Progress: Episode 34,000}}{75}{figure.caption.79}%
+\contentsline {figure}{\numberline {B.9}{\ignorespaces Interpretability Dashboard snapshots showing real-time agent reasoning.}}{76}{figure.caption.80}%

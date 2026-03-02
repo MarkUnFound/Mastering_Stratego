@@ -25,10 +25,11 @@ Reallocating 'name_of_file' (item size: 1) to 11 items.
 Reallocating 'name_of_file' (item size: 1) to 14 items.
 A level-1 auxiliary file: misc/vita.aux
 Database file #1: references.bib
+Warning--I didn't find a database entry for "ng1999policy"
 Warning--can't use both volume and number fields in li2024opponent
 You've used 67 entries,
             2253 wiz_defined-function locations,
-            959 strings with 18623 characters,
+            960 strings with 18635 characters,
 and the built_in function-call counts, 25863 in all, are:
 = -- 2425
 > -- 1478
@@ -67,4 +68,4 @@ warning$ -- 1
 while$ -- 220
 width$ -- 69
 write$ -- 691
-(There was 1 warning)
+(There were 2 warnings)

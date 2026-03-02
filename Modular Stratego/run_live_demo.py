@@ -12,7 +12,7 @@ from live_dqn_demo import run_live_dqn_game, test_flag_deployment, test_bomb_mov
 
 def main():
     """Main function to run the live Stratego demo."""
-    print("🎮 Stratego Live Game Demonstration")
+    print(" Stratego Live Game Demonstration")
     print("=" * 60)
     print("This demo will:")
     print("1. Test flag deployment and labeling")
@@ -24,10 +24,10 @@ def main():
     
     try:
         
-        print("\n🎯 STARTING LIVE GAME...")
-        print("📺 Watch the visualization windows that will open!")
-        print("🎮 The game will play automatically with 2-second delays between moves")
-        print("⏹️  Press Ctrl+C to stop the demo at any time")
+        print("\n STARTING LIVE GAME...")
+        print(" Watch the visualization windows that will open!")
+        print(" The game will play automatically with 2-second delays between moves")
+        print("  Press Ctrl+C to stop the demo at any time")
         
         # Run live game with visualization
         run_live_dqn_game(
@@ -37,9 +37,9 @@ def main():
         )
         
     except KeyboardInterrupt:
-        print("\n👋 Demo stopped by user")
+        print("\n Demo stopped by user")
     except Exception as e:
-        print(f"\n❌ Error running demo: {e}")
+        print(f"\n Error running demo: {e}")
         import traceback
         traceback.print_exc()
 

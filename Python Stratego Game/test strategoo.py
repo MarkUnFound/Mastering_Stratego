@@ -45,7 +45,8 @@ button_states = {}
 
 # Battle popup state
 battle_popup = None  # dict with attacker, defender, result, timer when active
-BATTLE_POPUP_DURATION = 2.5  # seconds to show popup
+BATTLE_POPUP_DURATION = 0.75  # seconds to show popup
+bot_think_start_time = 0.0
 
 # Setup board
 board = Board()
@@ -55,10 +56,9 @@ auto_setup(board, 2)
 # Determine model paths
 model_dir = os.path.dirname(os.path.abspath(__file__))
 possible_paths = [
+    os.path.join(model_dir, 'dqn_agent_final.pt'),
     os.path.join(model_dir, 'dqn_agent_final.pth'),
-    os.path.join(model_dir, 'user_input_files', 'dqn_agent_final.pth'),
-    'dqn_models/dqn_agent_final.pth',
-    os.path.join(model_dir, '..', 'dqn_models', 'dqn_agent_final.pth'),
+    os.path.join(model_dir, 'agent1_league_episode_1000.pt'),
 ]
 
 agent_model_path = None
@@ -70,7 +70,7 @@ for path in possible_paths:
 
 if agent_model_path is None:
     agent_model_path = os.path.join(model_dir, 'dqn_agent_final.pth')
-    print(f"⚠️  Warning: dqn_agent_final.pth not found in any expected location, using: {agent_model_path}")
+    print(f"  Warning: dqn_agent_final.pth not found in any expected location, using: {agent_model_path}")
 
 # Setup model paths
 possible_setup_paths = [
@@ -89,7 +89,7 @@ for path in possible_setup_paths:
 
 if setup_model_path is None:
     setup_model_path = os.path.join(model_dir, 'setup_agent_final.pth')
-    print(f"⚠️  Warning: setup_agent_final.pth not found in any expected location, using: {setup_model_path}")
+    print(f"  Warning: setup_agent_final.pth not found in any expected location, using: {setup_model_path}")
 
 # Initialize window
 screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.RESIZABLE)
@@ -609,7 +609,7 @@ def draw_battle_popup():
 
 def handle_click(pos):
     """Handle mouse click on board"""
-    global selected, current_player, message, game_state, battle_popup
+    global selected, current_player, message, game_state, battle_popup, bot_think_start_time
     dims = get_board_dimensions()
     tile_size = dims['tile_size']
     border_size = dims['border_size']
@@ -688,13 +688,17 @@ def handle_click(pos):
                 if winner is not None:
                     game_state = "game_over"
                     if vs_bot:
-                        message = "You Win! 🎉" if winner == human_side else "Bot Wins!"
+                        message = "You Win! " if winner == human_side else "Bot Wins!"
                     else:
-                        message = f"Player {winner} Wins! 🎉"
+                        message = f"Player {winner} Wins! "
                 else:
                     current_player = 2 if current_player == 1 else 1
                     if vs_bot:
-                        message = "Your turn!" if current_player == human_side else "Bot is thinking..."
+                        if current_player == human_side:
+                            message = "Your turn!"
+                        else:
+                            message = "Bot is thinking..."
+                            bot_think_start_time = time.time()
                     else:
                         message = f"Player {current_player}'s turn"
                 selected = None
@@ -708,8 +712,9 @@ def handle_click(pos):
 def bot_turn():
     """Execute bot's turn"""
     global current_player, message, game_state, selected, battle_popup
-    time.sleep(0.5)
     if bot_logic is None:
+        message = "Bot failed to load. Passing turn."
+        current_player = human_side
         return
     move = bot_logic.choose_move(board, current_player)
     if move is None:
@@ -820,8 +825,9 @@ while running:
             lost_pieces_player2.clear()
             try:
                 bot_logic = EnhancedBotLogic(agent_model_path, player_id=2)
-            except:
-                bot_logic = EnhancedBotLogic(None, player_id=2)
+            except Exception as e:
+                print(f"Failed to load EnhancedBotLogic: {e}")
+                bot_logic = None
         if draw_button("2-Player Mode", center_x - button_width//2, start_y + button_spacing,
                       button_width, button_height, action="2p") == "2p":
             board = Board()
@@ -885,7 +891,8 @@ while running:
         draw_lost_pieces_tracker()
         draw_move_history()
         if vs_bot and current_player != human_side:
-            bot_turn()
+            if time.time() - bot_think_start_time > BATTLE_POPUP_DURATION:
+                bot_turn()
         msg_bar_y = dims['board_start_y'] + dims['board_height'] + border_size + 40
         msg_bar_height = get_font_size(25) + 15
         msg_bar_width = dims['board_width_with_borders']

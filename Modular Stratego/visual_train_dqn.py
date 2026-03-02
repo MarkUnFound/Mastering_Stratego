@@ -176,15 +176,15 @@ def visual_train():
     
     # --- Backend Debugging ---
     backend = matplotlib.get_backend()
-    print(f"🖥️  Matplotlib Backend: {backend}")
+    print(f"  Matplotlib Backend: {backend}")
     if 'Agg' in backend and 'Tk' not in backend and 'Qt' not in backend:
-        print("⚠️  WARNING: Non-interactive backend detected! Window likely won't show.")
+        print("  WARNING: Non-interactive backend detected! Window likely won't show.")
         print("   Checking if Tkinter is available...")
         try:
             import tkinter
-            print("   ✅ Tkinter is installed.")
+            print("    Tkinter is installed.")
         except ImportError:
-            print("   ❌ Tkinter NOT found. Please install python-tk or check your environment.")
+            print("    Tkinter NOT found. Please install python-tk or check your environment.")
     
     # --- Setup ---
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -241,7 +241,7 @@ def visual_train():
     agent2_placeholder = rainbow_agent2 # Default reference
     
     # --- Visualization Setup ---
-    print("🎨 Initializing Plot Window...")
+    print(" Initializing Plot Window...")
     plt.ion() # Interactive Mode ON
     
     try:
@@ -251,9 +251,9 @@ def visual_train():
         # Force Window Show
         plt.show(block=False)
         plt.pause(0.5) # Give time to render
-        print("✅ Window initialized.")
+        print(" Window initialized.")
     except Exception as e:
-        print(f"❌ Failed to initialize window: {e}")
+        print(f" Failed to initialize window: {e}")
         return
 
     gs = GridSpec(2, 5, figure=fig)
@@ -321,7 +321,7 @@ def visual_train():
             print(f"AAREN Toggled: {state_vars['aaren_active']}")
         elif event.key == 's':
             state_vars['search_active'] = not state_vars['search_active']
-            print(f"🔍 Search Toggled: {state_vars['search_active']}")
+            print(f" Search Toggled: {state_vars['search_active']}")
         elif event.key == 'c':
              # Force verify curriculum
             curriculum.update_metrics({'winner': 1, 'pbs_accuracy': 0.8}) 
@@ -667,9 +667,9 @@ def visualize_top_moves(ax, top_moves, search_info=None):
     # Title with search indicator
     title = "Top 10 Candidate Moves"
     if search_info and search_info.get('search_changed_decision'):
-        title = "🔍 SEARCH REFINED"
+        title = " SEARCH REFINED"
     elif search_info:
-        title = "🔍 Search Active"
+        title = " Search Active"
     ax.set_title(title, fontsize=10, fontweight='bold')
     
     # Header
@@ -702,7 +702,7 @@ def visualize_top_moves(ax, top_moves, search_info=None):
         ax.text(0, y, f"Expanded: {search_info.get('moves_expanded', 'N/A')} moves", transform=ax.transAxes, fontsize=8)
         y -= 0.05
         changed = search_info.get('search_changed_decision', False)
-        ax.text(0, y, f"Decision Changed: {'YES ✓' if changed else 'No'}", 
+        ax.text(0, y, f"Decision Changed: {'YES ' if changed else 'No'}", 
                 transform=ax.transAxes, fontsize=8, color='blue' if changed else 'gray')
 
 

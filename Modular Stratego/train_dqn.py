@@ -684,16 +684,19 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                 # Feed reveal data to AAREN for supervised training
                 # When battles occur, the environment returns revealed piece types
                 if infos[i].get('revealed_in_step'):
+                    from training_config import AAREN_USE_REVEAL_DATA
                     for pos, piece_type in infos[i]['revealed_in_step']:
                         if agent1.history_instances and i < len(agent1.history_instances):
                             game_phase = "early" if lane_step_counts[i] < 50 else ("mid" if lane_step_counts[i] < 200 else "end")
                             agent1.history_instances[i].update_from_reveal(
-                                pos, piece_type, game_phase=game_phase, turn_count=lane_step_counts[i]
+                                pos, piece_type, game_phase=game_phase, turn_count=lane_step_counts[i],
+                                collect_training_data=AAREN_USE_REVEAL_DATA
                             )
                         if agent2.history_instances and i < len(agent2.history_instances) and lane_opponent_uses_history[i]:
                             game_phase = "early" if lane_step_counts[i] < 50 else ("mid" if lane_step_counts[i] < 200 else "end")
                             agent2.history_instances[i].update_from_reveal(
-                                pos, piece_type, game_phase=game_phase, turn_count=lane_step_counts[i]
+                                pos, piece_type, game_phase=game_phase, turn_count=lane_step_counts[i],
+                                collect_training_data=AAREN_USE_REVEAL_DATA
                             )
                 
                 # Check for Game End
@@ -895,14 +898,6 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                 )
             
             if batch_states_p2:
-                if hasattr(agent2, 'history_aggregator') and agent2.history_aggregator:
-                    agent2.history_aggregator.update_history_batch(
-                        batch_history_p2,
-                        batch_active_mask_p2,
-                        batch_actions_p2,
-                        batch_obs_dict_p2,
-                        batch_infos_p2
-                    )
                 agent2.remember_batch(
                     batch_states_p2,
                     batch_actions_p2,
@@ -1010,8 +1005,8 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                 aaren_loss_1 = agent1.train_history(epochs=1)
                 if agent2.use_pbs:
                     aaren_loss_2 = agent2.train_history(epochs=1)
-                if aaren_loss_1 is not None:
-                    tqdm.write(f"[AAREN] Supervised loss: {aaren_loss_1:.4f}")
+                # if aaren_loss_1 is not None:
+                #     tqdm.write(f"[AAREN] Supervised loss: {aaren_loss_1:.4f}")
             
             # --- PERIODIC PLOTTING (every plot_interval episodes) ---
             if metrics_tracker.should_plot(completed_episodes, plot_interval):

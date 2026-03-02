@@ -519,28 +519,51 @@ class StrategoEnvironment:
 
     def _check_game_end(self):
         # Checks for game-ending conditions.
-        # Check if any flag exists on the board
+        
+        # If game is already over (e.g. from flag capture in step()), don't overwrite it
+        if self.game_over:
+            return
+
+        # Fallback flag check
         if hasattr(self, '_flag_positions'):
-            flags_exist = (self._flag_positions[1] is not None) or (self._flag_positions[-1] is not None)
-        else:
-            # Fallback: scan board only if cache doesn't exist
-            flags_exist = any(abs(p.item()) == PieceType.FLAG.value for p in self.board.actual_board.flatten())
-        
-        if not flags_exist:
-             self.game_over = True
-             self.winner = -self.current_player  # Winner is the player who captured the flag
-             # Update flag cache
-             if hasattr(self, '_flag_positions'):
-                 self._flag_positions[self.current_player] = None
-        
-        if not self.game_over:
-            # Check if current player has any valid moves
-            if not self.get_valid_moves():
+            if self._flag_positions[1] is None:
                 self.game_over = True
-                # Player who cannot move loses - opponent wins
-                # This follows standard Stratego rules and rewards material dominance
-                self.winner = -self.current_player
-                self.win_type = 'no_moves'  # Track immobilization win
+                self.winner = -1
+                self.win_type = 'flag_capture'
+                return
+            if self._flag_positions[-1] is None:
+                self.game_over = True
+                self.winner = 1
+                self.win_type = 'flag_capture'
+                return
+        else:
+            # Full scan fallback
+            has_p1_flag = False
+            has_p2_flag = False
+            for p in self.board.actual_board.flatten():
+                if p.item() == PieceType.FLAG.value:
+                    has_p1_flag = True
+                elif p.item() == -PieceType.FLAG.value:
+                    has_p2_flag = True
+            if not has_p1_flag:
+                self.game_over = True
+                self.winner = -1
+                self.win_type = 'flag_capture'
+                return
+            if not has_p2_flag:
+                self.game_over = True
+                self.winner = 1
+                self.win_type = 'flag_capture'
+                return
+        
+        # Check if current player has any valid moves
+        if not self.get_valid_moves():
+            self.game_over = True
+            # Player who cannot move loses - opponent wins
+            # This follows standard Stratego rules and rewards material dominance
+            self.winner = -self.current_player
+            self.win_type = 'no_moves'  # Track immobilization win
+            return
         
         # Early draw detection - ONLY if anti_stall is enabled (agent-vs-agent)
         # Disabled for random opponents since they don't cause intentional stalls

@@ -233,9 +233,9 @@ class CurriculumManager:
                     phase = TrainingPhase(int(phase_val))
                     self.metrics[phase] = PhaseMetrics.from_dict(metrics_data)
                     
-                print(f"📚 Loaded curriculum state: Phase {self.current_phase.value} ({self.get_phase_config().name})")
+                print(f" Loaded curriculum state: Phase {self.current_phase.value} ({self.get_phase_config().name})")
             except Exception as e:
-                print(f"⚠️ Could not load curriculum state: {e}")
+                print(f" Could not load curriculum state: {e}")
     
     def save_state(self):
         """Save curriculum state to disk."""
@@ -330,7 +330,24 @@ class CurriculumManager:
                 raw[opp] = max(MASTERY_FLOOR, 1.0 - wr)
 
         total = sum(raw.values())
-        return {opp: w / total for opp, w in raw.items()}
+        weights = {opp: w / total for opp, w in raw.items()}
+        
+        # --- PFSP MINIMUM FLOORING ---
+        # Ensure the agent never entirely drops the easiest opponent ('random').
+        # This prevents catastrophic forgetting of basic mechanics when faced
+        # with an overwhelming wall like 'heuristic'.
+        if 'random' in weights and weights['random'] < 0.15:
+            deficit = 0.15 - weights['random']
+            weights['random'] = 0.15
+            
+            other_opps = [o for o in weights if o != 'random']
+            if other_opps:
+                other_total = sum(weights[o] for o in other_opps)
+                if other_total > 0:
+                    for o in other_opps:
+                        weights[o] -= deficit * (weights[o] / other_total)
+        
+        return weights
 
     def get_opponent_distribution(self) -> Dict[str, float]:
         """
@@ -490,7 +507,7 @@ class CurriculumManager:
         self.current_phase = TrainingPhase(self.current_phase.value + 1)
         self.phase_start_episode = self.total_episodes
         
-        print(f"🎓 CURRICULUM PHASE TRANSITION: {old_phase.name} → {self.current_phase.name}")
+        print(f" CURRICULUM PHASE TRANSITION: {old_phase.name} → {self.current_phase.name}")
         print(f"   Total episodes: {self.total_episodes}")
         
         self.save_state()

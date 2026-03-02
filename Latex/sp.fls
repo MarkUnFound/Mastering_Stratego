@@ -454,6 +454,8 @@ INPUT .\figures\Input layer.png
 INPUT .\figures\Input layer.png
 INPUT .\figures\Input layer.png
 INPUT C:\Users\Mark Lawrence Quibot\AppData\Local\Programs\MiKTeX\fonts\tfm\public\cm\cmtt10.tfm
+INPUT C:\Users\Mark Lawrence Quibot\AppData\Local\Programs\MiKTeX\fonts\tfm\public\cm\cmbx7.tfm
+INPUT C:\Users\Mark Lawrence Quibot\AppData\Local\Programs\MiKTeX\fonts\tfm\public\cm\cmbx5.tfm
 INPUT .\figures\Game diagram.png
 INPUT .\figures\Game diagram.png
 INPUT .\figures\Game diagram.png
@@ -549,13 +551,13 @@ INPUT .\figures\StrategoWithMARQ_Menu.png
 INPUT .\figures\StrategoWithMARQ_Menu.png
 INPUT .\figures\StrategoWithMARQ_Menu.png
 INPUT .\figures\StrategoWithMARQ_Menu.png
-INPUT .\figures\Arrange.png
-INPUT .\figures\Arrange.png
-INPUT .\figures\Arrange.png
-INPUT .\figures\Arrange.png
-INPUT .\figures\Arrange.png
-INPUT .\figures\Arrange.png
-INPUT .\figures\Arrange.png
+INPUT .\figures\StrategoWithMARQ_SETUP.png
+INPUT .\figures\StrategoWithMARQ_SETUP.png
+INPUT .\figures\StrategoWithMARQ_SETUP.png
+INPUT .\figures\StrategoWithMARQ_SETUP.png
+INPUT .\figures\StrategoWithMARQ_SETUP.png
+INPUT .\figures\StrategoWithMARQ_SETUP.png
+INPUT .\figures\StrategoWithMARQ_SETUP.png
 INPUT .\figures\StrategoWithMARQ_GameStart.png
 INPUT .\figures\StrategoWithMARQ_GameStart.png
 INPUT .\figures\StrategoWithMARQ_GameStart.png
@@ -567,13 +569,13 @@ INPUT .\figures\StrategoWithMARQ_Battlepopup.png
 INPUT .\figures\StrategoWithMARQ_Battlepopup.png
 INPUT .\figures\StrategoWithMARQ_Battlepopup.png
 INPUT .\figures\StrategoWithMARQ_Battlepopup.png
-INPUT .\figures\Victory.png
-INPUT .\figures\Victory.png
-INPUT .\figures\Victory.png
-INPUT .\figures\Victory.png
-INPUT .\figures\Victory.png
-INPUT .\figures\Victory.png
-INPUT .\figures\Victory.png
+INPUT .\figures\StrategoWithMARQ_VictoryScreen.png
+INPUT .\figures\StrategoWithMARQ_VictoryScreen.png
+INPUT .\figures\StrategoWithMARQ_VictoryScreen.png
+INPUT .\figures\StrategoWithMARQ_VictoryScreen.png
+INPUT .\figures\StrategoWithMARQ_VictoryScreen.png
+INPUT .\figures\StrategoWithMARQ_VictoryScreen.png
+INPUT .\figures\StrategoWithMARQ_VictoryScreen.png
 INPUT .\figures\Results\training_progress_episode_10000.png
 INPUT .\figures\Results\training_progress_episode_10000.png
 INPUT .\figures\Results\training_progress_episode_10000.png

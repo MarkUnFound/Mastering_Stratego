@@ -128,7 +128,7 @@ def visualize_input_channels(save_path: str = "dqn_models/input_visualization.pn
     # Save figure
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
     plt.savefig(save_path, dpi=150, bbox_inches='tight')
-    print(f"\n✅ Visualization saved to: {save_path}")
+    print(f"\n Visualization saved to: {save_path}")
     
     # Also print key observations
     print("\n" + "="*60)
@@ -139,30 +139,30 @@ def visualize_input_channels(save_path: str = "dqn_models/input_visualization.pn
     enemy_flag_channel = input_np[15]
     flag_positions = np.argwhere(enemy_flag_channel > 0)
     if len(flag_positions) > 0:
-        print(f"✅ Enemy FLAG visible at: {flag_positions.tolist()}")
+        print(f" Enemy FLAG visible at: {flag_positions.tolist()}")
     else:
-        print("❌ Enemy FLAG NOT visible in channel 15!")
+        print(" Enemy FLAG NOT visible in channel 15!")
     
     # Check own flag
     own_flag_channel = input_np[0]
     own_flag_positions = np.argwhere(own_flag_channel > 0)
     if len(own_flag_positions) > 0:
-        print(f"✅ Own FLAG at: {own_flag_positions.tolist()}")
+        print(f" Own FLAG at: {own_flag_positions.tolist()}")
     
     # Check enemy mask
     enemy_mask = input_np[12]
     enemy_count = np.sum(enemy_mask > 0)
-    print(f"✅ Enemy pieces visible: {int(enemy_count)}")
+    print(f" Enemy pieces visible: {int(enemy_count)}")
     
     # Check lake
     lake_channel = input_np[13]
     lake_count = np.sum(lake_channel > 0)
-    print(f"✅ Lake squares: {int(lake_count)}")
+    print(f" Lake squares: {int(lake_count)}")
     
     # Check empty
     empty_channel = input_np[14]
     empty_count = np.sum(empty_channel > 0)
-    print(f"✅ Empty squares: {int(empty_count)}")
+    print(f" Empty squares: {int(empty_count)}")
     
     print("="*60)
     

@@ -9,7 +9,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from drqn_agent import RainbowAgent
 
 def test_action_mapping():
-    print("🧪 Testing Action Mapping (400 Actions)...")
+    print(" Testing Action Mapping (400 Actions)...")
     agent = RainbowAgent(player_id=1, device=torch.device('cpu'), action_size=400, num_envs=1)
     
     # Scout moves: Distance > 1 should be mapped to Direction Index
@@ -49,21 +49,21 @@ def test_action_mapping():
         is_same_start = ((r1, c1) == (dr1, dc1))
         
         if is_same_dir and is_dist_1 and is_same_start:
-             print(f"✅ PASSED: {move} -> ID:{idx} -> {decoded_move} (Direction Preserved)")
+             print(f" PASSED: {move} -> ID:{idx} -> {decoded_move} (Direction Preserved)")
              passed += 1
         else:
-             print(f"❌ FAILED: {move} -> ID:{idx} -> {decoded_move}")
+             print(f" FAILED: {move} -> ID:{idx} -> {decoded_move}")
 
-    print(f"\n✨ Passed {passed}/{len(test_moves)} tests.")
+    print(f"\n Passed {passed}/{len(test_moves)} tests.")
     
     # Boundary checks
-    print("\n📦 Checking Action Space Boundaries...")
+    print("\n Checking Action Space Boundaries...")
     print(f"Min Index (0): {agent._action_index_to_move(0)}")
     print(f"Max Index (399): {agent._action_index_to_move(399)}")
     print(f"Out of Bounds (400): {agent._action_index_to_move(400)}")
     
     assert passed == len(test_moves), "Action mapping logic failed!"
-    print("\n✅ All mapping tests passed!")
+    print("\n All mapping tests passed!")
 
 import numpy as np
 if __name__ == "__main__":

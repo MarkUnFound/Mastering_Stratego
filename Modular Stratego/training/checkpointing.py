@@ -76,7 +76,15 @@ class Checkpointer:
                 print(f"[WARN] Failed to load Agent 1 archive {path}: {e}")
         
         # Fallback to .pt if no archive found or if archive was older than latest .pt
-        pt_result = self.find_latest_checkpoint("agent1_rainbow_episode_*.pt")
+        pt_rainbow = self.find_latest_checkpoint("agent1_rainbow_episode_*.pt")
+        pt_league = self.find_latest_checkpoint("agent1_league_episode_*.pt")
+        
+        pt_result = None
+        if pt_league and pt_rainbow:
+            pt_result = pt_league if pt_league[1] >= pt_rainbow[1] else pt_rainbow
+        else:
+            pt_result = pt_league or pt_rainbow
+            
         if pt_result:
             pt_path, pt_episode = pt_result
             if pt_episode > start_episode:

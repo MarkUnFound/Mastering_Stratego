@@ -5,7 +5,9 @@ import torch
 from collections import namedtuple, deque
 
 # Define Experience namedtuple
-Experience = namedtuple('Experience', ['state', 'action', 'reward', 'next_state', 'done'])
+# history_snapshot / next_history_snapshot: compact AAREN action history for replay-time reconstruction
+Experience = namedtuple('Experience', ['state', 'action', 'reward', 'next_state', 'done', 'history_snapshot', 'next_history_snapshot'])
+Experience.__new__.__defaults__ = (None, None)  # Make snapshot fields optional for backward compat
 
 class StandardReplayBuffer:
     """
@@ -193,7 +195,8 @@ class PrioritizedReplayBuffer:
         self.use_float16 = use_float16 and self.store_on_gpu
         self.storage_dtype = torch.float16 if self.use_float16 else torch.float32
         
-    def add(self, state, action, reward, next_state, done, priority=None, is_winning_experience=False, is_battle=False):
+    def add(self, state, action, reward, next_state, done, priority=None, is_winning_experience=False, is_battle=False,
+            history_snapshot=None, next_history_snapshot=None):
         """Add experience with Float16 storage and priority boost for important events.
         
         Args:
@@ -201,6 +204,8 @@ class PrioritizedReplayBuffer:
             priority: Optional explicit priority (if None, uses max_priority)
             is_winning_experience: If True, boost priority 10x for self-imitation learning
             is_battle: If True, boost priority 2.5x for capture events (high-value learning)
+            history_snapshot: AAREN history snapshot for this state (stored on CPU)
+            next_history_snapshot: AAREN history snapshot for next_state (stored on CPU)
         """
         if self.store_on_gpu:
             # Convert to Float16 for memory efficiency
@@ -214,7 +219,9 @@ class PrioritizedReplayBuffer:
         reward_t = reward.cpu() if isinstance(reward, torch.Tensor) else reward
         done_t = done.cpu() if isinstance(done, torch.Tensor) else done
         
-        exp = Experience(state_t, action_t, reward_t, next_state_t, done_t)
+        # History snapshots stay on CPU (Python lists) to avoid GPU bloat
+        exp = Experience(state_t, action_t, reward_t, next_state_t, done_t,
+                         history_snapshot, next_history_snapshot)
         
         # Use max priority for new experiences
         if priority is None:
@@ -280,7 +287,11 @@ class PrioritizedReplayBuffer:
         dones = torch.tensor([e.done for e in batch], dtype=torch.float32, device=self.device)
         weights = torch.tensor(weights, dtype=torch.float32, device=self.device)
         
-        return states, actions, rewards, next_states, dones, indices, weights
+        # Extract history snapshots (may be None for legacy data)
+        history_snapshots = [e.history_snapshot for e in batch]
+        next_history_snapshots = [e.next_history_snapshot for e in batch]
+        
+        return states, actions, rewards, next_states, dones, indices, weights, history_snapshots, next_history_snapshots
     
     def update_priorities(self, indices, td_errors):
         """Update priorities based on TD-errors."""
@@ -337,12 +348,15 @@ class NStepBuffer:
         self.buffer = deque(maxlen=n_steps)
         self.gamma_powers = [gamma ** i for i in range(n_steps)]
     
-    def add(self, state, action, reward, next_state, done):
+    def add(self, state, action, reward, next_state, done,
+            history_snapshot=None, next_history_snapshot=None):
         """
         Add transition and return n-step transition if ready.
-        Returns: (n_step_state, action, n_step_reward, n_step_next_state, done) or None
+        Returns: (n_step_state, action, n_step_reward, n_step_next_state, done,
+                  history_snapshot, next_history_snapshot) or None
         """
-        self.buffer.append((state, action, reward, next_state, done))
+        self.buffer.append((state, action, reward, next_state, done,
+                            history_snapshot, next_history_snapshot))
         
         # Check if episode ended
         if done:
@@ -362,18 +376,18 @@ class NStepBuffer:
         if len(self.buffer) == 0:
             return None
         
-        # Get first transition's state and action
-        first_state, first_action, _, _, _ = self.buffer[0]
+        # Get first transition's state, action, and history snapshot
+        first_state, first_action, _, _, _, first_hist, _ = self.buffer[0]
         
         # Compute n-step reward: r_1 + γr_2 + γ²r_3 + ...
         n_step_reward = 0.0
-        for i, (_, _, reward, _, _) in enumerate(self.buffer):
+        for i, (_, _, reward, _, _, _, _) in enumerate(self.buffer):
             n_step_reward += self.gamma_powers[i] * reward
         
-        # Get last transition's next_state and done
-        _, _, _, last_next_state, last_done = self.buffer[-1]
+        # Get last transition's next_state, done, and next_history_snapshot
+        _, _, _, last_next_state, last_done, _, last_next_hist = self.buffer[-1]
         
-        return first_state, first_action, n_step_reward, last_next_state, last_done
+        return first_state, first_action, n_step_reward, last_next_state, last_done, first_hist, last_next_hist
     
     def flush(self):
         """Flush remaining partial trajectories (call at episode end)."""
@@ -426,7 +440,8 @@ class EpisodicReplayBuffer:
         """Begin tracking a new episode for a lane."""
         self.current_episodes[env_id] = []
     
-    def add(self, env_id, state, action, reward, next_state, done):
+    def add(self, env_id, state, action, reward, next_state, done,
+            history_snapshot=None, next_history_snapshot=None):
         """
         Append a transition to the current episode for a lane.
         
@@ -437,6 +452,8 @@ class EpisodicReplayBuffer:
             reward: Scalar reward
             next_state: Next state tensor
             done: Whether episode ended
+            history_snapshot: AAREN history snapshot for state
+            next_history_snapshot: AAREN history snapshot for next_state
         """
         # Store as detached CPU tensors to save GPU memory
         transition = (
@@ -444,7 +461,9 @@ class EpisodicReplayBuffer:
             action,
             float(reward),
             next_state.detach().cpu() if hasattr(next_state, 'detach') else next_state,
-            bool(done)
+            bool(done),
+            history_snapshot,        # CPU Python list — no detach needed
+            next_history_snapshot    # CPU Python list — no detach needed
         )
         self.current_episodes[env_id].append(transition)
     
@@ -460,6 +479,14 @@ class EpisodicReplayBuffer:
         episode_transitions = self.current_episodes.get(env_id, [])
         if len(episode_transitions) < 2:
             # Too short to be useful — discard
+            self.current_episodes[env_id] = []
+            return
+            
+        # --- DECISIVE GAME FILTERING ---
+        # Do not store draws (outcome == 0) in the EpisodicReplayBuffer.
+        # This prevents the buffer from filling up with timeout games and ensures
+        # that the 25% batch mix always contains winning/losing examples.
+        if abs(outcome) < 0.5:
             self.current_episodes[env_id] = []
             return
         
@@ -490,7 +517,7 @@ class EpisodicReplayBuffer:
         start index is chosen such that the full segment fits.
         
         Returns:
-            Tuple of (states, actions, rewards, next_states, dones) tensors,
+            Tuple of (states, actions, rewards, next_states, dones, history_snapshots, next_history_snapshots) tensors,
             each with batch dimension n. Returns None if insufficient data.
         """
         if len(self.episodes) == 0:
@@ -521,6 +548,8 @@ class EpisodicReplayBuffer:
         rewards_list = []
         next_states_list = []
         dones_list = []
+        history_snapshots_list = []
+        next_history_snapshots_list = []
         
         for ep in sampled_episodes:
             ep_len = ep['length']
@@ -534,7 +563,14 @@ class EpisodicReplayBuffer:
             
             # Use the LAST transition in the segment as the training tuple
             # with reward accumulated across the segment for extended credit
-            last_state, last_action, _, last_next_state, last_done = segment[-1]
+            # Unpack with optional history snapshot fields (6 or 7 elements)
+            t = segment[-1]
+            last_state = t[0]
+            last_action = t[1]
+            last_next_state = t[3]
+            last_done = t[4]
+            last_hist = t[5] if len(t) > 5 else None
+            last_next_hist = t[6] if len(t) > 6 else None
             
             # Accumulate reward across the segment (simple sum — 
             # the PER buffer already handles γ-discounted n-step returns,
@@ -546,6 +582,8 @@ class EpisodicReplayBuffer:
             rewards_list.append(segment_reward)
             next_states_list.append(last_next_state)
             dones_list.append(last_done)
+            history_snapshots_list.append(last_hist)
+            next_history_snapshots_list.append(last_next_hist)
         
         # Stack into tensors
         import torch
@@ -570,7 +608,7 @@ class EpisodicReplayBuffer:
         
         actions = torch.tensor(action_indices, dtype=torch.long, device=self.device)
         
-        return states, actions, rewards, next_states, dones
+        return states, actions, rewards, next_states, dones, history_snapshots_list, next_history_snapshots_list
     
     def __len__(self):
         """Total transitions stored across all episodes."""

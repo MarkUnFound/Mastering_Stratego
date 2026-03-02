@@ -5,7 +5,7 @@ Configuration settings for DQN training.
 # =============================================================================
 # HARDWARE & TRAINING SCALE CONFIGURATION (Fixed)
 # =============================================================================
-NUM_LANES = 2             # Reduced to 8 (Safe for 6GB VRAM)
+NUM_LANES = 4             # Reduced to 8 (Safe for 6GB VRAM)
 NUM_ENVS = NUM_LANES      # LEGACY alias - always equals NUM_LANES (kept for compatibility)
 BATCH_SIZE = 256         # Reduced to 256 (Safe for 6GB VRAM)
 GAMMA = 0.995           # Discount factor - HIGH for long-term flag capture planning
@@ -27,6 +27,12 @@ REWARD_SCALE = 1.0        # Scaling factor for reward calculations
 EXPLORATION_EPSILON_START = 0.0   # Disabled - Noisy Networks handle exploration
 EXPLORATION_EPSILON_END = 0.0     # Disabled
 EXPLORATION_EPSILON_DECAY = 1     # Not used
+
+# Entropy Regularization (Soft Q-Learning)
+ENTROPY_REG_ENABLED = True
+ENTROPY_COEFF_START = 0.1
+ENTROPY_COEFF_END = 0.01
+ENTROPY_ANNEAL_EPISODES = 50000
 
 # =============================================================================
 # CURRICULUM TURN LIMITS (Per-phase game length)
@@ -102,6 +108,8 @@ AAREN_USE_FP16 = True           # Use half-precision inference (~30% faster)
 AAREN_USE_TORCHSCRIPT = False   # Disabled - AAREN uses dynamic ops that don't compile
 AAREN_HIDDEN_SIZE = 64          # Keep at 64 for checkpoint compatibility
 AAREN_NUM_LAYERS = 3            # Keep at 3 for checkpoint compatibility
+AAREN_USE_REVEAL_DATA = True    # When False, AAREN supervised training skips reveal data
+                                # (debug flag to test if PieceActionAaren overfits on open info)
 
 # History Aggregator Settings (Simplified PBS replacement)
 # Uses AAREN embeddings instead of explicit belief distributions
@@ -127,7 +135,7 @@ OPPONENT_SELF_PROB = 0.0        # 0% self-play (disabled for now)
 # CURRICULUM LEARNING SETTINGS
 # =============================================================================
 CURRICULUM_ENABLED = True       # Enable 5-phase curriculum learning
-CURRICULUM_START_PHASE = 1      # Start from Phase 1 (or resume from saved state)
+CURRICULUM_START_PHASE = 2      # Start from Phase 2 (debug: skip Phase 1 to avoid distribution shift)
 
 # Phase Transition Thresholds (LOWERED for faster progression)
 PHASE_1_WIN_THRESHOLD_RANDOM = 0.70     # 70% win rate vs random (was 90%)

@@ -15,24 +15,24 @@ def run_live_dqn_game(num_games: int = 1, move_delay: float = 1.0,
     try:
         agent1.load_model("dqn_models/agent1_rainbow_episode_1000.pth")
         agent2.load_model("dqn_models/agent2_final.pth")
-        print("✅ Loaded trained DQN models")
+        print(" Loaded trained DQN models")
     except FileNotFoundError:
-        print("⚠️  No trained models found, using untrained DQN agents")
+        print("  No trained models found, using untrained DQN agents")
     except Exception as e:
-        print(f"⚠️  Error loading models: {e}, using untrained DQN agents")
+        print(f"  Error loading models: {e}, using untrained DQN agents")
     
-    print(f"\n🎮 Starting {num_games} live Stratego game{'s' if num_games > 1 else ''}")
-    print(f"🤖 {agent1.name} vs {agent2.name}")
-    print(f"⏱️  Move delay: {move_delay} seconds")
-    print("🔍 Live viewer shows full board information")
+    print(f"\n Starting {num_games} live Stratego game{'s' if num_games > 1 else ''}")
+    print(f" {agent1.name} vs {agent2.name}")
+    print(f"  Move delay: {move_delay} seconds")
+    print(" Live viewer shows full board information")
     if show_agent_views:
-        print("👁️  Agent views show restricted information")
+        print("  Agent views show restricted information")
     print("\n" + "="*50)
     
     results = {"agent1_wins": 0, "agent2_wins": 0, "draws": 0}
     
     for game_num in range(num_games):
-        print(f"\n🎯 Game {game_num + 1}/{num_games}")
+        print(f"\n Game {game_num + 1}/{num_games}")
         
         # Create environment with live visualization
         env = LiveStrategoEnvironment(
@@ -46,8 +46,8 @@ def run_live_dqn_game(num_games: int = 1, move_delay: float = 1.0,
             move_count = 0
             max_moves = 500  # Prevent infinite games
             
-            print(f"🚀 Game started! Watch the live visualization window.")
-            print(f"🏁 Flag positions are marked with 'F' and colored distinctly")
+            print(f" Game started! Watch the live visualization window.")
+            print(f" Flag positions are marked with 'F' and colored distinctly")
             
             # Game loop
             while not game_state.game_over and move_count < max_moves:
@@ -55,7 +55,7 @@ def run_live_dqn_game(num_games: int = 1, move_delay: float = 1.0,
                 valid_moves = env.get_valid_moves()
                 
                 if not valid_moves:
-                    print(f"❌ No valid moves for {current_agent.name}")
+                    print(f" No valid moves for {current_agent.name}")
                     break
                 
                 # Agent selects action
@@ -63,12 +63,12 @@ def run_live_dqn_game(num_games: int = 1, move_delay: float = 1.0,
                 action = current_agent.act(state_representation, valid_moves)
                 
                 if action is None:
-                    print(f"❌ {current_agent.name} returned invalid action")
+                    print(f" {current_agent.name} returned invalid action")
                     break
                 
                 # Execute move
                 (r_from, c_from), (r_to, c_to) = action
-                print(f"🎯 Turn {move_count + 1}: {current_agent.name} moves from ({r_from},{c_from}) to ({r_to},{c_to})")
+                print(f" Turn {move_count + 1}: {current_agent.name} moves from ({r_from},{c_from}) to ({r_to},{c_to})")
                 
                 game_state, reward, done, info = env.step(action)
                 move_count += 1
@@ -81,41 +81,41 @@ def run_live_dqn_game(num_games: int = 1, move_delay: float = 1.0,
             
             # Game finished
             if game_state.winner == 1:
-                print(f"🏆 {agent1.name} wins!")
+                print(f" {agent1.name} wins!")
                 results["agent1_wins"] += 1
             elif game_state.winner == -1:
-                print(f"🏆 {agent2.name} wins!")
+                print(f" {agent2.name} wins!")
                 results["agent2_wins"] += 1
             else:
-                print(f"🤝 Game ended in a draw!")
+                print(f" Game ended in a draw!")
                 results["draws"] += 1
                 
-            print(f"📊 Game lasted {move_count} moves")
+            print(f" Game lasted {move_count} moves")
             
             if game_num < num_games - 1:
-                print(f"\n⏳ Starting next game in 3 seconds...")
+                print(f"\n Starting next game in 3 seconds...")
                 time.sleep(3)
                 
         except KeyboardInterrupt:
-            print(f"\n⏹️  Game interrupted by user")
+            print(f"\n  Game interrupted by user")
             break
         except Exception as e:
-            print(f"\n❌ Error during game: {e}")
+            print(f"\n Error during game: {e}")
         finally:
             env.close_viewers()
     
     # Final results
     print(f"\n" + "="*50)
-    print(f"📈 FINAL RESULTS ({num_games} games)")
-    print(f"🤖 {agent1.name}: {results['agent1_wins']} wins")
-    print(f"🤖 {agent2.name}: {results['agent2_wins']} wins")
-    print(f"🤝 Draws: {results['draws']}")
+    print(f" FINAL RESULTS ({num_games} games)")
+    print(f" {agent1.name}: {results['agent1_wins']} wins")
+    print(f" {agent2.name}: {results['agent2_wins']} wins")
+    print(f" Draws: {results['draws']}")
     print(f"="*50)
 
 
 def test_flag_deployment():
     """Test that flags are properly deployed and labeled."""
-    print("🧪 Testing flag deployment and labeling...")
+    print(" Testing flag deployment and labeling...")
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     env = LiveStrategoEnvironment(device=device, show_live_view=True, show_agent_views=False)
@@ -145,28 +145,28 @@ def test_flag_deployment():
             # Invalid flag position, clear it
             env.p2_flag_position = None
     
-    print(f"🏁 Found {len(flag_positions)} flags on the board:")
+    print(f" Found {len(flag_positions)} flags on the board:")
     for r, c, value in flag_positions:
         player = "Player 1" if value > 0 else "Player 2"
         print(f"   - {player} flag at position ({r}, {c})")
     
     if len(flag_positions) == 2:
-        print("✅ Flag deployment test PASSED - Both flags are deployed")
+        print(" Flag deployment test PASSED - Both flags are deployed")
     else:
-        print("❌ Flag deployment test FAILED - Expected 2 flags")
+        print(" Flag deployment test FAILED - Expected 2 flags")
     
     # Keep visualization open briefly so user can see
-    print("🔍 Check the live visualization window - flags should be labeled 'F' and colored distinctly")
+    print(" Check the live visualization window - flags should be labeled 'F' and colored distinctly")
     time.sleep(10)  # Keep window open for 10 seconds
-    print("✅ Flag deployment test completed")
+    print(" Flag deployment test completed")
     
     env.close_viewers()
-    print("✅ Flag deployment test completed")
+    print(" Flag deployment test completed")
 
 
 def test_bomb_movement():
     """Test that bombs cannot be moved."""
-    print("🧪 Testing bomb movement prevention...")
+    print(" Testing bomb movement prevention...")
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     env = LiveStrategoEnvironment(device=device, show_live_view=False, show_agent_views=False)
@@ -184,17 +184,17 @@ def test_bomb_movement():
             bomb_moves.append(move)
     
     if len(bomb_moves) == 0:
-        print("✅ Bomb movement test PASSED - No bomb moves found in valid moves")
+        print(" Bomb movement test PASSED - No bomb moves found in valid moves")
     else:
-        print(f"❌ Bomb movement test FAILED - Found {len(bomb_moves)} bomb moves:")
+        print(f" Bomb movement test FAILED - Found {len(bomb_moves)} bomb moves:")
         for move in bomb_moves:
             print(f"   - Bomb move: {move}")
     
-    print("✅ Bomb movement test completed")
+    print(" Bomb movement test completed")
 
 
 if __name__ == "__main__":
-    print("🎮 Stratego Live DQN Demo")
+    print(" Stratego Live DQN Demo")
     print("=" * 50)
     
     # Run tests first
@@ -211,6 +211,6 @@ if __name__ == "__main__":
             show_agent_views=True  # Show both full and restricted views
         )
     except KeyboardInterrupt:
-        print("\n👋 Demo terminated by user")
+        print("\n Demo terminated by user")
     except Exception as e:
-        print(f"\n❌ Demo error: {e}")
+        print(f"\n Demo error: {e}")

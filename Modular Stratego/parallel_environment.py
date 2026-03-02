@@ -134,7 +134,7 @@ class ParallelStrategoEnvironment:
                 result = remote.recv()
                 results.append(result)
             except (EOFError, BrokenPipeError) as e:
-                print(f"\n⚠️  Worker {i} pipe broken in step: {e}")
+                print(f"\n  Worker {i} pipe broken in step: {e}")
                 print(f"   This usually means a worker crashed. Restarting worker...")
                 self._restart_worker(i)
                 # Send reset to new worker and get result
@@ -179,7 +179,7 @@ class ParallelStrategoEnvironment:
                 result = remote.recv()
                 results.append(result)
             except (EOFError, BrokenPipeError) as e:
-                print(f"\n⚠️  Worker {i} pipe broken in reset: {e}")
+                print(f"\n  Worker {i} pipe broken in reset: {e}")
                 print(f"   Restarting worker...")
                 self._restart_worker(i)
                 # Send reset to new worker

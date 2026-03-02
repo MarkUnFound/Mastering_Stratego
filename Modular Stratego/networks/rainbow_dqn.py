@@ -43,10 +43,17 @@ class SpatialAttention(nn.Module):
     
     Input: (B, C, H, W) -> Output: (B, C, H, W)
     """
-    def __init__(self, channels: int, num_heads: int = 4, dropout: float = 0.1):
+    def __init__(self, channels: int, num_heads: int = 4, dropout: float = 0.1,
+                 board_height: int = 10, board_width: int = 10):
         super(SpatialAttention, self).__init__()
         self.channels = channels
         self.num_heads = num_heads
+        
+        # Learnable 2D positional encoding
+        # Allows attention to distinguish board positions (e.g., flag row vs midfield)
+        self.pos_encoding = nn.Parameter(
+            torch.randn(1, board_height * board_width, channels) * 0.02
+        )
         
         # Multi-head self-attention
         self.attn = nn.MultiheadAttention(
@@ -74,6 +81,9 @@ class SpatialAttention(nn.Module):
         
         # Reshape: (B, C, H, W) -> (B, H*W, C)
         x_flat = x.flatten(2).permute(0, 2, 1)  # (B, 100, 64)
+        
+        # Add positional encoding so attention can reason about board positions
+        x_flat = x_flat + self.pos_encoding
         
         # Self-attention with residual connection
         attn_out, _ = self.attn(x_flat, x_flat, x_flat)
@@ -158,12 +168,30 @@ class RainbowDQN(nn.Module):
         # Combine: Q(s, a) = V(s) + (A(s, a) - mean(A(s, a)))
         adv_mean = adv_out.mean(dim=1, keepdim=True)
         q_logits = val_out + (adv_out - adv_mean)
+        return F.log_softmax(q_logits, dim=2)
         
-        # Log Softmax for C51
-        log_probs = F.log_softmax(q_logits, dim=2)
+    def evaluate_state_value(self, x):
+        """
+        Extract the pure state-value V(s) from the dueling head.
+        This provides a global evaluation of the board advantage.
+        """
+        batch_size = x.size(0)
         
-        return log_probs
-    
+        # ResNet Backbone
+        x = F.relu(self.bn_in(self.conv_in(x)))
+        for block in self.res_blocks:
+            x = block(x)
+        x = self.spatial_attention(x)
+            
+        # Value Stream
+        val_x = F.relu(self.value_bn(self.value_conv(x)))
+        val_x = val_x.view(batch_size, -1)
+        val_hidden = F.relu(self.value_fc(val_x))
+        val_out = self.value_out(val_hidden)
+        
+        # Softmax for probability distribution over atoms
+        return F.softmax(val_out, dim=1)
+
     def reset_noise(self):
         """Reset noise in all NoisyLinear layers"""
         self.value_fc.reset_noise()

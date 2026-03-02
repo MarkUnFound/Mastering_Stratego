@@ -100,6 +100,32 @@ class PieceActionAaren(nn.Module):
         # Return logits (softmax applied in loss function)
         return x
     
+    def forward_embedding(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Return hidden state embedding instead of classification logits.
+        
+        Used at replay time to produce differentiable AAREN embeddings from
+        stored action histories, enabling end-to-end gradient flow from
+        the DQN loss through AAREN.
+        
+        Args:
+            x: Input tensor of shape (batch, sequence_length, input_size)
+            
+        Returns:
+            Tensor of shape (batch, hidden_size) — last timestep hidden state
+        """
+        batch_size, seq_len, _ = x.size()
+        
+        # Project input to hidden size
+        h = self.input_proj(x)  # (batch, seq_len, hidden_size)
+        
+        # Process through each Aaren layer
+        for layer_idx, (aaren_cell, layer_norm) in enumerate(zip(self.aaren_cells, self.layer_norms)):
+            h = self._parallel_prefix_scan(h, aaren_cell, layer_norm)
+        
+        # Return last timestep hidden state as embedding (no classification head)
+        return h[:, -1, :]  # (batch, hidden_size)
+    
     def forward(self, x: torch.Tensor):
         """
         Forward pass (defaults to parallel mode for training).

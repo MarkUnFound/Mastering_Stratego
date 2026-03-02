@@ -788,15 +788,20 @@ def plot_pbs_evaluator_progress(
             # End-to-end training: plot embedding std
             valid_eps = []
             valid_stds = []
-            for ep, std in zip(episode_history[:len(aaren_embedding_stds)], aaren_embedding_stds):
+            valid_accs = []
+            for i, (ep, std) in enumerate(zip(episode_history[:len(aaren_embedding_stds)], aaren_embedding_stds)):
                 if std is not None:
                     valid_eps.append(ep)
                     valid_stds.append(std)
+                    if aaren_accuracies and i < len(aaren_accuracies):
+                        valid_accs.append(aaren_accuracies[i])
             
             if valid_stds:
-                ax4.scatter(valid_eps, valid_stds, c='purple', alpha=0.4, s=20, label='Embedding Std')
+                scatter_std = ax4.scatter(valid_eps, valid_stds, c='purple', alpha=0.4, s=20, label='Embedding Std')
                 
                 window = min(50, len(valid_stds) // 2) if len(valid_stds) > 1 else 1
+                legend_elements = [scatter_std]
+                labels = ['Embedding Std']
                 if len(valid_stds) >= window and window > 1:
                     ma_vals = []
                     ma_eps = []
@@ -804,14 +809,37 @@ def plot_pbs_evaluator_progress(
                         ma_vals.append(np.mean(valid_stds[i-window:i]))
                         ma_eps.append(valid_eps[i-1])
                     if ma_eps:
-                        ax4.plot(ma_eps, ma_vals, 'purple', linewidth=2.5, label=f'Moving Avg ({window} ep)')
+                        line_ma, = ax4.plot(ma_eps, ma_vals, 'purple', linewidth=2.5, label=f'Std Moving Avg ({window} ep)')
+                        legend_elements.append(line_ma)
+                        labels.append(f'Std Moving Avg ({window} ep)')
+                        
+                # Plot Accuracy on secondary y-axis if available
+                if valid_accs and sum(valid_accs) > 0:
+                    ax4_twin = ax4.twinx()
+                    scatter_acc = ax4_twin.scatter(valid_eps, valid_accs, c='orange', marker='x', alpha=0.6, s=20, label='Prediction Accuracy')
+                    legend_elements.append(scatter_acc)
+                    labels.append('Prediction Accuracy')
+                    
+                    if len(valid_accs) >= window and window > 1:
+                        ma_accs = []
+                        for i in range(window, len(valid_accs) + 1):
+                            ma_accs.append(np.mean(valid_accs[i-window:i]))
+                        if ma_eps:
+                            line_acc_ma, = ax4_twin.plot(ma_eps, ma_accs, 'darkorange', linestyle='--', linewidth=2.5, label=f'Acc Moving Avg ({window} ep)')
+                            legend_elements.append(line_acc_ma)
+                            labels.append(f'Acc Moving Avg ({window} ep)')
+                    
+                    ax4_twin.set_ylabel('Prediction Accuracy (0-1)', color='darkorange')
+                    ax4_twin.tick_params(axis='y', labelcolor='darkorange')
+                    ax4_twin.set_ylim(0, 1.0)
+                    
+                ax4.legend(legend_elements, labels, loc='upper right')
             else:
                 ax4.text(0.5, 0.5, 'Waiting for embeddings...', ha='center', va='center', transform=ax4.transAxes)
             
             ax4.set_xlabel('Episodes')
             ax4.set_ylabel('Embedding Std Dev')
             ax4.set_title('AAREN Embedding Diversity (Non-zero = Learning)')
-            ax4.legend()
             ax4.grid(True, alpha=0.3)
         
         elif has_legacy_aaren and aaren_accuracies:

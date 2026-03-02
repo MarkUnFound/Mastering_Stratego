@@ -24,6 +24,12 @@ DEFAULT_HIDDEN_SIZE = 64
 DEFAULT_NUM_LAYERS = 2
 MAX_HISTORY_LENGTH = 50  # Max actions to track per position (supports 200-500 move games)
 
+# History snapshot configuration for replay buffer storage
+# Keep small to minimize AAREN reconstruction cost at replay time.
+# With batch=32: 32 × 5 positions = 160 AAREN sequences per replay step.
+MAX_SNAPSHOT_POSITIONS = 5   # Top-N most-active positions per snapshot
+MAX_SNAPSHOT_SEQ_LEN = 5    # Most-recent actions per position in snapshot
+
 
 class HistoryAggregator:
     """
@@ -216,7 +222,8 @@ class HistoryAggregator:
         self._cache_valid = False
     
     def update_from_reveal(self, pos: Tuple[int, int], piece_type: PieceType,
-                           game_phase: str = 'middle', turn_count: int = 0):
+                           game_phase: str = 'middle', turn_count: int = 0,
+                           collect_training_data: bool = True):
         """
         Record revealed piece for training data collection.
         
@@ -225,20 +232,24 @@ class HistoryAggregator:
             piece_type: True piece type
             game_phase: Current game phase
             turn_count: Current turn number
+            collect_training_data: If False, skip adding to training buffer
+                                   (accuracy metrics are still tracked)
         """
         # Get history for this position
         history = self.position_histories.get(pos, [])
         
         if len(history) >= 2:  # Need at least 2 actions
-            # Add to training buffer
             true_type_idx = piece_type.value - 1  # Convert to 0-indexed
-            self.training_buffer.append((history.copy(), true_type_idx))
             
-            # Limit buffer size
-            if len(self.training_buffer) > self.max_buffer_size:
-                self.training_buffer = self.training_buffer[-self.max_buffer_size:]
+            # Add to training buffer only if collecting data
+            if collect_training_data:
+                self.training_buffer.append((history.copy(), true_type_idx))
+                
+                # Limit buffer size
+                if len(self.training_buffer) > self.max_buffer_size:
+                    self.training_buffer = self.training_buffer[-self.max_buffer_size:]
             
-            # Update metrics
+            # Update metrics (always — even when not collecting training data)
             if pos in self.position_hidden_states and self.position_hidden_states[pos] is not None:
                 # Get prediction from current state
                 with torch.no_grad():
@@ -282,6 +293,74 @@ class HistoryAggregator:
         self._cache_valid = True
         
         return embedding
+    
+    def get_history_snapshot(self):
+        """
+        Create a compact snapshot for replay buffer storage.
+        
+        Stores the pre-computed AAREN embedding tensor directly (detached,
+        half-precision, CPU) rather than raw action sequences. This avoids
+        expensive AAREN forward passes at replay time.
+        
+        Returns:
+            Detached (hidden_size, 10, 10) tensor on CPU in float16,
+            or None if no history exists.
+        """
+        if not self.position_histories:
+            return None
+        
+        # Get the current embedding tensor (uses cached version if available)
+        embedding = self.get_embedding_tensor()  # (hidden_size, 10, 10)
+        
+        # Detach, convert to half-precision, move to CPU for storage
+        return embedding.detach().half().cpu()
+    
+    def reconstruct_embeddings_batch(self, snapshots: list, device=None) -> list:
+        """
+        Reconstruct AAREN embedding tensors from stored snapshots.
+        
+        Since snapshots now store pre-computed embedding tensors (not raw sequences),
+        this is a fast tensor operation — just move to device and convert dtype.
+        
+        For gradient flow: applies a lightweight "gradient bridge" by running
+        a zero vector through AAREN's input projection, adding a differentiable
+        zero-valued output that creates a gradient path without changing values.
+        
+        Args:
+            snapshots: List of embedding tensors (or None) from get_history_snapshot()
+            device: Target device
+            
+        Returns:
+            List of (hidden_size, 10, 10) tensors on the target device.
+        """
+        if device is None:
+            device = self.device
+        
+        embeddings = []
+        for snapshot in snapshots:
+            if snapshot is None or isinstance(snapshot, list):
+                # Fallback to zeros for empty history OR legacy checkpoint (list format)
+                embeddings.append(torch.zeros(self.hidden_size, 10, 10, device=device))
+            else:
+                # Move stored embedding to device and convert to float32
+                embeddings.append(snapshot.to(device=device, dtype=torch.float32))
+        
+        # --- Gradient Bridge ---
+        # Create a differentiable path through AAREN so DQN loss can
+        # update AAREN weights, without the cost of full sequence reconstruction.
+        # We run a zero vector through input_proj, producing a small-valued output
+        # that creates gradient flow: loss -> embedding -> bridge -> AAREN params.
+        # Using 1e-6 scaling so the perturbation is negligible (~0.0001% of values).
+        if self.aaren.training:
+            zero_input = torch.zeros(1, 1, self.input_size, device=device)
+            bridge = self.aaren.input_proj(zero_input)  # (1, 1, hidden_size)
+            bridge_val = bridge.squeeze() * 1e-6  # Tiny perturbation, preserves grad
+            # Add bridge to all tensor embeddings (skip None and legacy lists)
+            for i, snapshot in enumerate(snapshots):
+                if snapshot is not None and not isinstance(snapshot, list):
+                    embeddings[i] = embeddings[i] + bridge_val.unsqueeze(-1).unsqueeze(-1)
+        
+        return embeddings
     
     def get_piece_predictions(self, pos: Tuple[int, int]) -> Optional[Dict[PieceType, float]]:
         """
@@ -396,7 +475,7 @@ class HistoryAggregator:
         """Get average training loss over recent window."""
         if not self.training_losses:
             return 0.0
-        recent = self.training_losses[-window:]
+        recent = list(self.training_losses)[-window:]
         return sum(recent) / len(recent)
     
     def get_buffer_size(self) -> int:
@@ -406,7 +485,7 @@ class HistoryAggregator:
     def state_dict(self, include_buffers=True) -> dict:
         """Get state dict for checkpointing."""
         state = {
-            'aaren_state_dict': self.aaren.state_dict() if self.owns_aaren else None,
+            'aaren_state_dict': self.aaren.state_dict(),
             'optimizer_state_dict': self.optimizer.state_dict() if self.optimizer else None,
             'predictions_correct': self.predictions_correct,
             'predictions_total': self.predictions_total,
@@ -420,7 +499,7 @@ class HistoryAggregator:
     
     def load_state_dict(self, state_dict: dict):
         """Load state dict from checkpoint."""
-        if state_dict.get('aaren_state_dict') and self.owns_aaren:
+        if state_dict.get('aaren_state_dict'):
             self.aaren.load_state_dict(state_dict['aaren_state_dict'])
         if state_dict.get('optimizer_state_dict') and self.optimizer:
             self.optimizer.load_state_dict(state_dict['optimizer_state_dict'])

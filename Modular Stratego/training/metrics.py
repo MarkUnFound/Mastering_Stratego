@@ -148,7 +148,7 @@ class MetricsTracker:
             self.metrics['pbs_eval1_buffer_sizes'].append(0)
             self.metrics['pbs_eval1_accuracy'].append(0.0)
         
-        # AAREN metrics (legacy separate training)
+        # AAREN metrics (legacy separate training or end-to-end)
         if aaren_metrics:
             self.metrics['aaren_loss'].append(aaren_metrics.get('loss', 0.0))
             self.metrics['aaren_accuracy'].append(aaren_metrics.get('accuracy', 0.0))

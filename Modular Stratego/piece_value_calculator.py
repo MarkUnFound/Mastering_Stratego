@@ -103,7 +103,7 @@ class PieceValueCalculator:
     def load_results(self, filepath: str = "piece_values.json") -> bool:
         """Load existing results from JSON file to continue from."""
         if not os.path.exists(filepath):
-            print(f"⚠️ No existing file found at {filepath}")
+            print(f" No existing file found at {filepath}")
             return False
         
         try:
@@ -131,10 +131,10 @@ class PieceValueCalculator:
                 except KeyError:
                     pass
             
-            print(f"✅ Loaded {self.games_played} games from {filepath}")
+            print(f" Loaded {self.games_played} games from {filepath}")
             return True
         except Exception as e:
-            print(f"❌ Error loading {filepath}: {e}")
+            print(f" Error loading {filepath}: {e}")
             return False
         
     def run_simulation(self, num_games: int = 1000, 
@@ -179,7 +179,7 @@ class PieceValueCalculator:
             self._simulate_game(env, agent1, agent2)
             self.games_played += 1
             
-        print(f"\n✅ Completed {num_games} simulation games")
+        print(f"\n Completed {num_games} simulation games")
         
     def _simulate_game(self, env: StrategoEnvironment, agent1, agent2) -> None:
         """Simulate a single game and collect statistics."""
@@ -494,7 +494,7 @@ class PieceValueCalculator:
         with open(filepath, 'w') as f:
             json.dump(results, f, indent=2)
         
-        print(f"\n💾 Results saved to {filepath}")
+        print(f"\n Results saved to {filepath}")
 
 
 def main():
