@@ -1,3 +1,4 @@
+
 # stratego_modular/board.py
 
 import torch
@@ -7,7 +8,7 @@ from piece import PieceType
 BOARD_SIZE = 10
 EMPTY_SQUARE = 0
 LAKE_SQUARE = -13
-HIDDEN_PIECE = -3
+HIDDEN_PIECE = -20  # Changed from -3 to avoid ambiguity with Scout (value 3, or -3 for Agent 2)
 
 class Board:
     """Represents the game board with hidden information management."""
@@ -150,3 +151,17 @@ class Board:
         # If square has an enemy piece (opposite sign), it's a valid target
         # Player 1 pieces are positive, Player -1 pieces are negative
         return (target_val * player) < 0
+
+    def place_piece(self, r: int, c: int, value: int):
+        """Place a piece on the board and update visibility."""
+        self.actual_board[r, c] = value
+        
+        # Update visibility
+        # If value > 0 (Player 1), visible to P1, hidden to P2
+        # If value < 0 (Player 2), visible to P2, hidden to P1
+        if value > 0:
+            self.visible_board_p1[r, c] = value
+            self.visible_board_p2[r, c] = HIDDEN_PIECE
+        elif value < 0:
+            self.visible_board_p2[r, c] = value
+            self.visible_board_p1[r, c] = HIDDEN_PIECE

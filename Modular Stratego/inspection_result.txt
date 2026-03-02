@@ -1,0 +1,18 @@
+Inspecting: c:\Users\Mark Lawrence Quibot\repo\Research\Modular Stratego\dqn_models\agent1_rainbow_episode_1000.pth
+Keys: ['q_network_state_dict', 'target_network_state_dict', 'optimizer_state_dict', 'step_count', 'history_state_dict']
+
+Q-Network Shapes:
+  conv_in.weight: torch.Size([64, 79, 3, 3])
+  value_conv.weight: torch.Size([1, 64, 1, 1])
+  advantage_conv.weight: torch.Size([2, 64, 1, 1])
+  advantage_out.weight_mu: torch.Size([20400, 512])
+
+History Aggregator Keys:
+  ['aaren_state_dict', 'optimizer_state_dict', 'training_losses', 'predictions_correct', 'predictions_total']
+  aaren_state_dict: <class 'NoneType'>
+  optimizer_state_dict: <class 'NoneType'>
+  training_losses: <class 'collections.deque'>
+  predictions_correct: <class 'int'>
+  predictions_total: <class 'int'>
+
+Step Count: 287466

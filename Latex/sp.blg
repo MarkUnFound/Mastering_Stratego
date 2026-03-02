@@ -1,0 +1,71 @@
+This is BibTeX, Version 0.99d
+Capacity: max_strings=200000, hash_size=200000, hash_prime=170003
+The top-level auxiliary file: sp.aux
+Reallocating 'name_of_file' (item size: 1) to 20 items.
+A level-1 auxiliary file: misc/dedication.aux
+Reallocating 'name_of_file' (item size: 1) to 26 items.
+A level-1 auxiliary file: misc/acknowledgements.aux
+Reallocating 'name_of_file' (item size: 1) to 26 items.
+A level-1 auxiliary file: chapters/introduction.aux
+Reallocating 'name_of_file' (item size: 1) to 20 items.
+A level-1 auxiliary file: chapters/review.aux
+Reallocating 'name_of_file' (item size: 1) to 28 items.
+A level-1 auxiliary file: chapters/techbackground.aux
+Reallocating 'name_of_file' (item size: 1) to 25 items.
+A level-1 auxiliary file: chapters/methodology.aux
+Reallocating 'name_of_file' (item size: 1) to 21 items.
+A level-1 auxiliary file: chapters/results.aux
+Reallocating 'name_of_file' (item size: 1) to 23 items.
+A level-1 auxiliary file: chapters/AppendixA.aux
+Reallocating 'name_of_file' (item size: 1) to 23 items.
+A level-1 auxiliary file: chapters/AppendixB.aux
+Reallocating 'name_of_file' (item size: 1) to 4 items.
+The style file: acm.bst
+Reallocating 'name_of_file' (item size: 1) to 11 items.
+Reallocating 'name_of_file' (item size: 1) to 14 items.
+A level-1 auxiliary file: misc/vita.aux
+Database file #1: references.bib
+Warning--I didn't find a database entry for "ng1999policy"
+Warning--can't use both volume and number fields in li2024opponent
+You've used 67 entries,
+            2253 wiz_defined-function locations,
+            960 strings with 18635 characters,
+and the built_in function-call counts, 25863 in all, are:
+= -- 2425
+> -- 1478
+< -- 0
++ -- 608
+- -- 535
+* -- 2111
+:= -- 4186
+add.period$ -- 207
+call.type$ -- 67
+change.case$ -- 464
+chr.to.int$ -- 0
+cite$ -- 68
+duplicate$ -- 889
+empty$ -- 1911
+format.name$ -- 535
+if$ -- 5341
+int.to.chr$ -- 0
+int.to.str$ -- 67
+missing$ -- 60
+newline$ -- 341
+num.names$ -- 140
+pop$ -- 491
+preamble$ -- 1
+purify$ -- 396
+quote$ -- 0
+skip$ -- 613
+stack$ -- 0
+substring$ -- 1400
+swap$ -- 282
+text.length$ -- 0
+text.prefix$ -- 0
+top$ -- 0
+type$ -- 266
+warning$ -- 1
+while$ -- 220
+width$ -- 69
+write$ -- 691
+(There were 2 warnings)

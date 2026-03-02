@@ -8,7 +8,7 @@ from typing import List, Tuple, Dict, Optional
 # Add parent directory to path if needed
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from dqn_agent import DQNAgent
+from drqn_agent import RainbowAgent
 from environment import StrategoEnvironment
 from piece import PieceType
 from board import HIDDEN_PIECE, LAKE_SQUARE
@@ -65,10 +65,10 @@ def print_board(board_tensor, player_id):
         print(row_str)
     print("  +" + "-"*20 + "+")
 
-def analyze_moves(agent: DQNAgent, game_state, valid_moves: List[Tuple[Tuple[int, int], Tuple[int, int]]]) -> List[Dict]:
+def analyze_moves(agent: RainbowAgent, game_state, valid_moves: List[Tuple[Tuple[int, int], Tuple[int, int]]]) -> List[Dict]:
     """
     Analyze valid moves and return detailed Q-value components.
-    Replicates logic from DQNAgent.act()
+    Replicates logic from RainbowAgent.act()
     """
     if not valid_moves:
         return []
@@ -76,50 +76,43 @@ def analyze_moves(agent: DQNAgent, game_state, valid_moves: List[Tuple[Tuple[int
     # 1. Get State
     state = agent.get_state_representation(game_state)
     
-    # 2. Get Uncertainty Map
+    # 2. Get Uncertainty Map (now implicitly handled via AAREN)
     uncertainty_map = {}
-    if agent.pbs and game_state is not None:
-        uncertainty_map = agent.pbs.get_uncertainty_map(game_state)
 
-    # 3. Base Q-values
+    # 3. Base Q-values (Expected Value for Rainbow)
     # Ensure state is correct shape/device
     if state.dim() == 1:
+        state = state.unsqueeze(0)
+    elif state.dim() == 3:
         state = state.unsqueeze(0)
         
     agent.q_network.eval()
     with torch.no_grad():
-        base_q_values = agent.q_network(state)
+        log_probs = agent.q_network(state)
+        probs = log_probs.exp()
+        expected_q_values = (probs * agent.support).sum(dim=2) # (1, actions)
+        base_q_values = expected_q_values.squeeze(0) # (actions)
     agent.q_network.train()
 
-    # 4. Uncertainty-aware Q-values
-    q_values = agent.calculate_uncertainty_aware_q_values(
-        base_q_values, valid_moves, uncertainty_map
-    )
-
-    # 5. Calculate Exploration Bonuses
+    # 4. Calculate Scores
     analysis_results = []
     
     for move in valid_moves:
         action_idx = agent._move_to_action_index(move)
         
         # Base Q (from network)
-        base_q = base_q_values[0, action_idx].item()
+        base_q = base_q_values[action_idx].item()
         
-        # Adjusted Q (after uncertainty penalty)
-        adjusted_q = q_values[0, action_idx].item()
-        uncertainty_penalty = base_q - adjusted_q
-        
-        # Exploration Bonus
+        # Exploration Bonus (Uncertainty)
         uncertainty = agent.get_move_uncertainty(move, uncertainty_map)
         exploration_bonus = uncertainty * agent.uncertainty_exploration_multiplier
         
         # Final Score used for selection
-        final_score = adjusted_q + exploration_bonus
+        final_score = base_q + exploration_bonus
         
         analysis_results.append({
             'move': move,
             'base_q': base_q,
-            'uncertainty_penalty': uncertainty_penalty,
             'uncertainty': uncertainty,
             'exploration_bonus': exploration_bonus,
             'final_score': final_score
@@ -137,25 +130,33 @@ def run_visualization():
     env = StrategoEnvironment(device=device)
     
     # Initialize Agents
-    agent1 = DQNAgent(player_id=1, device=device)
-    agent2 = DQNAgent(player_id=-1, device=device)
+    agent1 = RainbowAgent(player_id=1, device=device)
+    agent2 = RainbowAgent(player_id=-1, device=device)
 
     # Load Models (Try to load if available)
     model_path = "dqn_models" # Assuming default path
     
     # Try loading Agent 1
     try:
-        agent1.load_model(os.path.join(model_path, "agent1_final.pth"))
-        print("Loaded Agent 1 Model")
-    except:
-        print("Could not load Agent 1 Model, using random initialization")
+        # Find latest rainbow model
+        import glob
+        files = glob.glob(os.path.join(model_path, "agent1_rainbow_episode_*.pth"))
+        if files:
+            latest = max(files, key=os.path.getctime)
+            agent1.load_model(latest)
+            print(f"Loaded Agent 1 Model: {latest}")
+    except Exception as e:
+        print(f"Could not load Agent 1 Model: {e}, using random initialization")
 
     # Try loading Agent 2
     try:
-        agent2.load_model(os.path.join(model_path, "agent2_final.pth"))
-        print("Loaded Agent 2 Model")
-    except:
-        print("Could not load Agent 2 Model, using random initialization")
+        files = glob.glob(os.path.join(model_path, "agent2_rainbow_episode_*.pth"))
+        if files:
+            latest = max(files, key=os.path.getctime)
+            agent2.load_model(latest)
+            print(f"Loaded Agent 2 Model: {latest}")
+    except Exception as e:
+        print(f"Could not load Agent 2 Model: {e}, using random initialization")
 
     # Reset Game
     game_state = env.reset()
@@ -188,7 +189,7 @@ def run_visualization():
         analysis = analyze_moves(current_agent, game_state, valid_moves)
         
         # Display Top 5 Moves
-        print(f"{'From':<10} {'To':<10} {'Base Q':<10} {'Uncert. Pen':<12} {'Expl. Bonus':<12} {'Final Score':<12}")
+        print(f"{'From':<10} {'To':<10} {'Base Q':<10} {'Uncert.':<12} {'Expl. Bonus':<12} {'Final Score':<12}")
         print("-" * 70)
         
         for i, item in enumerate(analysis[:5]):
@@ -200,15 +201,13 @@ def run_visualization():
             # Highlight best move
             prefix = ">> " if i == 0 else "   "
             
-            print(f"{prefix}{move_str_from:<8} {move_str_to:<8} {item['base_q']:<10.4f} {item['uncertainty_penalty']:<12.4f} {item['exploration_bonus']:<12.4f} {item['final_score']:<12.4f}")
+            print(f"{prefix}{move_str_from:<8} {move_str_to:<8} {item['base_q']:<10.4f} {item['uncertainty']:<12.4f} {item['exploration_bonus']:<12.4f} {item['final_score']:<12.4f}")
 
         # Agent Action
-        # We use the agent's act method to ensure we follow its policy (including epsilon-greedy)
-        # However, to visualize "why" it chose, we compare with our analysis.
+        # We use the agent's act method to ensure we follow its policy
         
         # Get state for act()
-        state_rep = current_agent.get_state_representation(game_state)
-        action = current_agent.act(state_rep, valid_moves, game_state)
+        action = current_agent.act(game_state.board, valid_moves, game_state)
         
         if action is None:
             print("Agent returned None action.")
@@ -223,24 +222,15 @@ def run_visualization():
         if is_best:
             print("Reason: Highest Value (Exploitation)")
         else:
-            print("Reason: Exploration (Epsilon-Greedy)")
+            print("Reason: Exploration (Noisy Nets / Uncertainty)")
 
         # Execute Step
         game_state, reward, done, info = env.step(action)
         
-        # Update PBS for BOTH agents (crucial for tracking)
-        # The acting agent updates based on its own action (if needed, usually implicit in act/learn)
-        # The OPPONENT updates based on the action they just saw
-        opponent_agent.update_pbs_from_action(action, game_state, acting_player=current_player)
+        # Update AAREN history for BOTH agents (tracking opponent actions)
+        if hasattr(opponent_agent, 'update_history_batch'):
+            opponent_agent.update_history_batch([action], [game_state], acting_player=current_player)
         
-        # Also update for revealed pieces if any
-        if 'revealed_piece' in info:
-            # If a piece was revealed, update beliefs
-            # info might contain details, or we check env.revealed_pieces
-            pass 
-            # (The training loop handles this more robustly, simpler here to rely on update_pbs_from_action 
-            # and the fact that get_state_representation pulls fresh board data)
-
         move_count += 1
         
         # Wait

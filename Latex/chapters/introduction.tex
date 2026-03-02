@@ -1,0 +1,90 @@
+\chapter{Introduction}
+\section{Project Context}
+Games have a history of being a metric for how Artificial Intelligence (AI) progresses and performs in the current time \cite{StudeGame}. Many real-world problems, from military tactics to multiplayer games, require intelligent decision-making in environments where all information is not available. A common example is a feature found in many multiplayer games known as the "fog of war"  \cite{FogofWar}, where the game environment is not fully revealed, which makes it an example of an imperfect information game \cite{National}. Imperfect information games create a scenario where players develop unconventional strategies without having full knowledge of the game's environmental state \cite{FogofWar}. Solving these kinds of problems and determining the optimal strategy remains a significant challenge for Artificial Intelligence \cite{GeneralGame}.
+
+This study focuses on mastering imperfect information games through Multi-Agent Reinforcement Learning (MARL) with Deep Q-Networks (DQN). In MARL, multiple agents learn and adapt in the same environment, making each decision based on its own observations and rewards \cite{MARLCOMP, MARLCHALL}. With DQN, the agents can utilize deep neural networks to approximate the Q-function that maps state-action pairs for the expected reward. This study introduces the MARQ (Multi-Agent Rainbow Deep Q-Networks) framework, which extends the basic DQN architecture with Rainbow enhancements including distributional value estimation and noisy exploration networks \cite{RainbowJMLR2021}. The framework integrates an AAREN (Attention as Recurrent Neural Network) module \cite{Aaren} for processing extended observation sequences and producing learned embeddings that enable implicit inference of hidden opponent pieces through end-to-end training. League-based self-play training \cite{AlphaStar} ensures that agents develop robust strategies by competing against diverse historical opponents. This approach is suited well for Stratego, where agents are trained to compete against each other, developing strategies through repeated experience while reasoning under uncertainty about the opponent's setup and the environment's hidden state.
+
+
+
+\section{Purpose and Description}
+This research aims to evaluate whether Multi-Agent Reinforcement Learning (MARL) with Deep Q-Networks (DQN) can be used to develop intelligent agents capable of mastering imperfect information games. By focusing on the limited information available to players in environments such as the board game Stratego, this study seeks to address the challenge of making decisions under uncertainty while incorporating strategic planning. Although existing tools for Stratego provide some analytical support, they are often limited in fostering deeper reasoning about the game’s tactical complexities.
+
+
+To advance beyond these limitations, this research seeks to provide an algorithmic foundation for future analytical systems while also emphasizing the development of critical thinking in solving imperfect information games. By modeling adaptive strategies and reasoning under uncertainty, the study highlights how artificial intelligence can mirror and enhance human-like logical reasoning, offering valuable insights for both game analysis and broader decision-making domains.
+\subsection{Research Questions}
+This study is guided by three main research questions:
+
+\begin{enumerate}
+   
+    \item How does the MARQ framework perform in terms of convergence speed and win-rate against heuristic baselines in a partially observable environment?
+    \item Does the MARQ framework demonstrate statistically significant superiority over standard DQN and rule-based agents across varying opponent difficulty tiers?
+    \item What is the impact of integrating the AAREN module on the agent's ability to infer hidden opponent piece configurations compared to approaches without explicit belief state modeling?
+\end{enumerate}
+
+\section{Objectives}
+The main objective of this study is to develop and evaluate Multi-Agent Reinforcement Learning with Deep Q-Networks for learning appropriate strategies in an imperfect information game, where the agents operate under hidden state variables to improve decision-making, adaptability, and strategic reasoning against both human and AI opponents. This can be achieved through the following:
+\begin{itemize}
+    \item Introduction of Stratego to the community
+    \item Design and implement a game environment for Stratego
+    \item Build and implement a training model using Multi-Agent Reinforcement Learning with Deep Q-Networks and AAREN.
+    \item Train and optimize the AI agent to respond to varying game states, hidden information, and opposing strategies.
+\end{itemize}
+
+\section{Scope and Limitation}
+
+The study is limited to the development of an AI agent for imperfect information games, Stratego being the test environment. The scope includes the design and implementation of Stratego as a game environment, the development of a training framework using Multi-Agent Reinforcement Learning (MARL) with Deep Q-Networks (DQN) using AAREN, and the training and optimization of the AI agent to adapt to differences in game states. The evaluation of the agent's performance would primarily be on Stratego's environment. The trainings are limited to the personal devices of the researchers and would not rely on cloud-based computing resources. Since the AI is going to learn alongside the community the player and AI head-to-head will be analyzed mostly qualitative. The goal will be achieving the same human critical thinking in the model.
+
+\section{Significance of the Study}
+The development of the MARQ framework addresses limitations in current imperfect information game AI, where existing systems either require large computational resources or employ model-free approaches that limit strategic depth.
+The MARQ framework's significance lies in its implicit opponent modeling through AAREN-generated embeddings, and hybrid DQN architecture that balances strategic depth with computational tractability. The synchronized learning evaluation framework provides insights into AI adaptability against improving human opponents, with implications extending beyond gaming to domains characterized by incomplete information and strategic interaction, including cybersecurity, financial trading, and strategic planning.
+
+\section{Definition of Terms}
+
+\noindent\textbf{AAREN (Attention as Recurrent Neural Network)} \\
+A neural architecture that combines the parallel training efficiency of Transformers with the sequential processing of RNNs. In the MARQ framework, AAREN processes observation sequences to produce learned embeddings that encode implicit piece identity inference. \\[6pt]
+
+\noindent\textbf{Counterfactual Regret Minimization (CFR)} \\
+An iterative algorithm that approximates Nash equilibrium by minimizing regret, widely applied in imperfect information games such as Poker and Stratego. \\[6pt]
+
+\noindent\textbf{Deep Q-Networks (DQN)} \\
+A reinforcement learning algorithm that combines Q-learning with deep neural networks, enabling agents to approximate optimal decision-making in complex environments. \\[6pt]
+
+\noindent\textbf{Distributional Reinforcement Learning} \\
+An approach that models the full distribution of returns rather than just the expected value. The MARQ framework uses C51 (Categorical DQN) with 51 atoms to capture uncertainty in value estimates. \\[6pt]
+
+\noindent\textbf{Fog of War} \\
+A game mechanic used in strategy games that conceals parts of the map or opponent actions, requiring players to utilize prediction and information-gathering strategies to reduce uncertainty. \\[6pt]
+
+\noindent\textbf{Imperfect Information Games} \\
+Games where players have incomplete knowledge of the current game state, requiring them to make strategic decisions under uncertainty (e.g., Stratego, Poker, Multiplayer Online Battle Arenas). \\[6pt]
+
+\noindent\textbf{Information Set Monte Carlo Tree Search (IS-MCTS)} \\
+A search algorithm for imperfect information games that samples consistent game states from belief distributions and performs tree search on information sets rather than individual states. \\[6pt]
+
+\noindent\textbf{League Training} \\
+A self-play training paradigm where agents compete against a diverse pool of historical opponents, preventing strategy cycling and ensuring robust generalization across different playing styles. \\[6pt]
+
+\noindent\textbf{Multi-Agent Reinforcement Learning (MARL)} \\
+An extension of reinforcement learning in which multiple agents interact within the same environment, learning coordinated or competitive strategies through simultaneous training. \\[6pt]
+
+\noindent\textbf{Nash Equilibrium} \\
+A game-theoretic concept where no player can gain an advantage by unilaterally changing their strategy, often used as a benchmark for decision-making in imperfect information games. \\[6pt]
+
+\noindent\textbf{Perfect Information Games} \\
+Games in which all players have complete knowledge of the current game state and available moves, such as Chess and Go. \\[6pt]
+
+\noindent\textbf{AAREN Embeddings} \\
+Embedding vectors produced by the AAREN module from observed opponent action sequences. \\[6pt]
+
+\noindent\textbf{Rainbow DQN} \\
+An enhanced DQN architecture that combines multiple improvements including distributional RL, noisy networks for exploration, and dueling network architecture for improved stability and sample efficiency. \\[6pt]
+
+\noindent\textbf{Recurrent Neural Network (RNN)} \\
+A type of neural network designed to process sequential data by maintaining memory of previous inputs, useful in imperfect information games for recalling past moves or revealed information. \\[6pt]
+
+\noindent\textbf{Reinforcement Learning (RL)} \\
+A machine learning paradigm where agents learn optimal strategies through trial-and-error interactions with the environment, guided by rewards and penalties. \\[6pt]
+
+\noindent\textbf{Stratego} \\
+A two-player strategy board game characterized by hidden information and asymmetric piece abilities, where the objective is to capture the opponent's flag or render them immobile. \\[6pt]
+

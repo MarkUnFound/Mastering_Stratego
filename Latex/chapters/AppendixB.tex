@@ -1,0 +1,127 @@
+\appendix
+\setcounter{chapter}{1}
+\chapter{System UI and Training}
+\renewcommand{\thefigure}{B.\arabic{figure}}
+\bigskip
+\bigskip
+\medskip
+{\large This section includes the images of the system UI and Training.}
+
+\newpage
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.9\textwidth,height=0.4\textheight,keepaspectratio]{figures/StrategoWithMARQ_Menu.png}
+    \caption{ Game Menu}
+    \label{fig:System_UI_1}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.9\textwidth,height=0.4\textheight,keepaspectratio]{figures/StrategoWithMARQ_SETUP.png}
+    \caption{Setup Phase}
+    \label{fig:System_UI_2}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.9\textwidth,height=0.4\textheight,keepaspectratio]{figures/StrategoWithMARQ_GameStart.png}
+    \caption{Game Start}
+    \label{fig:System_UI_3}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.9\textwidth,height=0.4\textheight,keepaspectratio]{figures/StrategoWithMARQ_Battlepopup.png}
+    \caption{Battle and History}
+    \label{fig:System_UI_4}
+\end{figure}
+
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.9\textwidth,height=0.4\textheight,keepaspectratio]{figures/StrategoWithMARQ_VictoryScreen.png}
+    \caption{Victory Screen}
+    \label{fig:System_UI_5}
+\end{figure}
+
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.9\textwidth,height=0.7\textheight,keepaspectratio]{figures/Results/training_progress_episode_10000.png}
+    \caption{Training Progress: Episode 10,000}
+    \label{fig:train_10k}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.9\textwidth,height=0.7\textheight,keepaspectratio]{figures/Results/training_progress_episode_20000.png}
+    \caption{Training Progress: Episode 20,000}
+    \label{fig:train_20k}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.9\textwidth,height=0.7\textheight,keepaspectratio]{figures/Results/training_progress_episode_34000.png}
+    \caption{Training Progress: Episode 34,000}
+    \label{fig:train_34k}
+\end{figure}
+
+\section{Interpretability Dashboard and Decision Metrics}
+
+The MARQ framework includes a real-time interpretability dashboard designed to visualize the internal state and decision-making process of the Rainbow DQN agent. This tool provides "Discrete Thinking" insights by projecting the high-dimensional neural representations into human-readable formats.
+
+\begin{figure}[H]
+     \centering
+     \begin{subfigure}[b]{0.45\textwidth}
+         \centering
+         \includegraphics[width=\textwidth]{"figures/Game Snapshots/Figure_1"}
+         \caption{Dashboard Overview}
+     \end{subfigure}
+     \hfill
+     \begin{subfigure}[b]{0.45\textwidth}
+         \centering
+         \includegraphics[width=\textwidth]{"figures/Game Snapshots/Figure_2"}
+         \caption{Q-Value Heatmap}
+     \end{subfigure}
+     \par\bigskip
+     \begin{subfigure}[b]{0.45\textwidth}
+         \centering
+         \includegraphics[width=\textwidth]{"figures/Game Snapshots/Figure_3"}
+         \caption{Spatial Attention }
+     \end{subfigure}
+     \hfill
+     \begin{subfigure}[b]{0.45\textwidth}
+         \centering
+         \includegraphics[width=\textwidth]{"figures/Game Snapshots/Figure_4"}
+         \caption{Latent Trajectories}
+     \end{subfigure}
+     \caption{Interpretability Dashboard snapshots showing real-time agent reasoning.}
+     \label{fig:dashboard_snapshots}
+\end{figure}
+
+The dashboard visualizes four critical components of the agent's cognition:
+
+\begin{enumerate}
+    \item \textbf{C51 Value Distribution (PDF):} Visualizes the probability distribution of expected returns across 51 atoms. This allows researchers to see the agent's uncertainty and risk assessment for a specific move, distinguishing between unimodal confidence and multi-modal strategic conflict.
+    \item \textbf{Q-Value Heatmap:} Projects the expected return for moving any piece across the board. This provides a global view of the agent's territorial control and tactical priority zones.
+    \item \textbf{Spatial Attention Maps:} Visualizes the self-attention weights from the 79-channel input. This shows which areas of the board the agent is "attending" to when evaluating a square, such as identifying if a move is conditioned on the position of its own flag or a known enemy Marshal.
+    \item \textbf{AAREN Latent Space (PCA):} Performs a Principal Component Analysis on the 64-dimensional piece-inference embeddings. This allows for the observation of piece identity clustering, verifying that the AAREN module has successfully distinguished between different piece ranks based purely on behavioral history.
+\end{enumerate}
+
+\section{Discussion on Training Progress and Model Behavior}
+
+The transition from early-stage exploration to the current 34,000-episode milestone reveals significant shifts in how the MARQ agent handles complex strategic interactions.
+
+\subsection{Behavioral Evolution}
+In early training (Episodes 0--5,000), the agent exhibited stochastic exploration with a high frequency of illegal move attempts and "indiscriminate charging," where high-value pieces like the Marshal were lost in routine skirmishes. By Episode 15,000, a clear shift towards tactical targeting emerged. The agent began to prioritize the capture of suspected lower-rank pieces while exhibiting defensive withdrawals when facing potential high-rank threats.
+
+At the 34,000-episode mark, the model demonstrates "decisive targeting," specifically identifying and pursuing the opponent's flag once its location is inferred. However, this decisiveness is balanced by a "passive shuffling" tendency in common-value midgame states, where the agent avoids high-risk attacks to preserve material. This results in the observed draw-rate stabilization.
+
+\subsection{Implicit Belief and AAREN Performance}
+The Attention-as-a-Recurrent-Neural-Network (AAREN) has effectively learned to map action sequences to latent piece identities. As training progressed, the KL divergence between the predicted representation and ground truth revealed that the agent consistently identifies specialized units like Scouts (via multi-square movement) and Miners (via bomb engagement patterns) within 5--10 moves of their initial activity. This implicit deduced knowledge is what allows the Rainbow DQN to make calibrated risk assessments without explicit board information.
+
+\subsection{Impact of Reward Overhaul}
+The rescaling of rewards to $\pm 1.0$ for terminal states and the tightening of the C51 support to $[-10, +10]$ significantly improved the resolution of the distributional Q-values. Early training runs used a larger range which led to "clumping" of values, making it difficult for the agent to distinguish between marginally better moves. The current architecture allows for 0.4-unit resolution per atom, enabling the agent to better evaluate subtle positional advantages and territorial control rewards.
+\section{AI Transparency, Inclusion, and Originality of Intent}
+
+The development of the MARQ framework for Stratego was governed by intentionality and human-led architectural design. While large language models and generative AI have become ubiquitous in modern software development, their role in this research was strictly limited to tasks such as grammatical refinement, high-level brainstorming, and code debugging for modules and networking. Every core component of the MARQ system, including the AAREN history aggregator and the ResNet-based policy heads, was researched, evaluated, and implemented with the intent of mastering imperfect information games in the Stratego domain.

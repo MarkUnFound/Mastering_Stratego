@@ -1,0 +1,165 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% filename    : sp.tex
+% author      : 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% BUGFIX: Save LaTeX kernel version of \@xfloat
+\makeatletter
+\let\my@xfloat\@xfloat
+\makeatother
+
+% use ateneo de naga etd class (actually modified virginia tech's etd class)
+\documentclass[oneside]{etd}
+
+% BUGFIX: Create a modified copy of \@xfloat using the kernel definition
+\makeatletter
+\def\@xfloat#1[#2]{
+	\my@xfloat#1[#2]%
+	\def\baselinestretch{1}%
+	\@normalsize \normalsize
+}
+\makeatother
+
+% use these packages
+\usepackage{tabularx}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{amssymb}
+\usepackage{textcomp}
+\usepackage{gensymb}
+\usepackage{url}
+\usepackage{hyperref}
+\usepackage{doi}
+\usepackage{latexsym}
+\usepackage{amsmath}
+%\usepackage[lineno5,noindent]{lgrind}
+%\usepackage{rotating} 
+%\usepackage{makeidx}
+%\usepackage{stmaryrd}
+\usepackage{float}
+\usepackage{subcaption}
+%\usepackage{cite}
+%\usepackage{moreverb}
+%\usepackage{pictexwd,dcpic}
+\usepackage{algorithm,algorithmic}
+\renewcommand{\algorithmicrequire}{\textbf{Input:}}
+\renewcommand{\algorithmicensure}{\textbf{Output:}}
+\usepackage{tikz}
+\usetikzlibrary{positioning,calc}
+
+\usepackage{listings}
+\definecolor{cppred}{rgb}{0.6,0,0} % for strings
+\definecolor{cppgreen}{rgb}{0.25,0.5,0.35} % comments
+\definecolor{cpppurple}{rgb}{0.5,0,0.35} % keywords
+\definecolor{cppdocblue}{rgb}{0.25,0.35,0.75} % doc
+ 
+\lstset{language=C++,
+basicstyle=\linespread{0.8}\ttfamily\small,
+keywordstyle=\color{cpppurple}\bfseries,
+stringstyle=\color{cppred},
+commentstyle=\color{cppgreen},
+morecomment=[s][\color{cppdocblue}]{/**}{*/},
+numbers=left,
+numberstyle=\tiny\color{black},
+% stepnumber=2,
+numbersep=10pt,
+tabsize=4,
+showspaces=false,
+showstringspaces=false}
+
+\graphicspath{{figures/}{./}}
+
+%\renewcommand{\floatpagefraction}{0.8}
+
+\makeindex
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\title{MARQ: A Multi-Agent Rainbow Deep Q-Networks Framework using AAREN for Mastering Imperfect Information Games}
+\department{Computer Science}
+\BSthesis % options: \BSthesis \BSproject \BShonors \Mdegree \MSdegree \PhDdegree
+\degreemonth{September 5}  % date of final defense
+\degreeyear{2025}
+
+\twostudents % options: \onestudent \twostudents \threestudents \fourstudents
+{James Gabriel P. Mabagos}
+{Mark Lawrence M. Quibot}
+
+
+\studentsheader
+{Mabagos and Quibot}
+
+\twodegrees % options: \onedegree \twodegrees \threesdegrees \fourdegrees
+{Computer Science}
+{Computer Science}
+
+\advisor
+{Marianne A. Tolentino}
+\threemembers
+{Estrella H. Montealegre}
+{
+Michelle Elija B. Santos}
+{Ian Peter L. Lastimosa}
+\deanandchair
+{Joshua C. Martinez MIT }
+{Lowie Vincent S. Bisana MIT}
+
+\keywords{Imperfect Information, DQN, Multi-Agent}
+
+\begin{document}
+
+%edit etd.cls to accommodate lesser number of proponents
+\maketitle
+\makerecomm
+\makeacceptance
+\makedeclaration
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%                    ABSTRACT/EXECUTIVE SUMMARY                           %
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% can use execsummary or abstract
+\begin{abstract}
+This research presents MARQ, a Multi-Agent Rainbow Deep Q-Networks, designed to master imperfect information games through the board game Stratego. MARQ leverages a Deep Recurrent Q-Network (DRQN) architecture and league-based self-play training to address the large state space of Stratego and hidden information challenges. The architecture integrates an Attention as Recurrent Neural Network (AAREN) module that produces learned embeddings from observed opponent behavior, enabling implicit piece identity inference through end-to-end training. The system employs Distributional Reinforcement Learning with Noisy Networks to balance strategic unpredictability and stability. The methodology involves developing a game environment and training the AI agent through multi-channel state representations, incorporating AAREN-generated embeddings for hidden information modeling and weighted piece values computed through systematic power analysis to optimize decision making under uncertainty. A structured participant study introduces enthusiasts without prior Stratego experience to create a synchronized learning environment, combining quantitative metrics including win rate percentage, average game length, and decision-making speed, with qualitative usability assessments across performance, reliability, and applicability dimensions. Through this study MARQ aims to deliver strategic decisions comparable to human opponents.
+\end{abstract}
+
+\include{misc/dedication}
+\include{misc/acknowledgements}
+
+\begingroup
+\renewcommand*{\addvspace}[1]{}
+\tableofcontents
+\listoffigures
+\listoftables
+\endgroup
+
+\beginbody
+\pagenumbering{arabic}
+
+\include{chapters/introduction}
+\include{chapters/review}
+\include{chapters/techbackground}
+\include{chapters/methodology}
+\include{chapters/results}
+\include{chapters/AppendixA}
+\include{chapters/AppendixB}
+%\include{chapters/recommendations}
+% \include{chapters/conclusion} may also be used
+
+%\appendix
+%   \include{appendices/evaltool}
+%   \include{appendices/reports}
+%   \include{appendices/io}
+%   \include{appendices/code}
+%   \include{appendices/usersguide}
+
+\nocite{*}
+\bibliographystyle{acm}
+{
+\singlespace
+\bibliography{references}
+}
+
+\include{misc/vita}
+
+\end{document}

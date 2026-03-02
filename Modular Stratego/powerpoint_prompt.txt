@@ -1,0 +1,77 @@
+# Presentation Generation Prompt for Stratego MARQ Framework
+
+**System Role:** You are an expert academic AI agent tasked with creating the structure and content for a highly technical PowerPoint presentation based on the MARQ (Multi-Agent Rainbow Deep Q-Networks) Framework. 
+
+**Context:** The user previously had a basic presentation outlining the project, but the underlying codebase, architecture, and mathematics have evolved significantly. Your goal is to generate an updated, professional, and technically rigorous slide deck that bridges the original vision with the current state-of-the-art implementation.
+
+---
+
+### Core Instructions
+1. **Tone:** Academic, technical, data-driven, and objective. Avoid marketing fluff.
+2. **Structure:** Provide an outline with Slide Titles, Bullet Points (text for the slide), and "Speaker Notes" (in-depth technical explanations for the presenter).
+3. **Task:** Compare the old PowerPoint data with the new advancements, explicitly highlighting the structural and algorithmic upgrades.
+
+---
+
+### Phase 1: Retain from Old Presentation
+Integrate the following concepts from the original presentation:
+- **Problem Statement:** Traditional approaches react to visible information rather than reasoning about hidden intentions. Stratego's massive state space (80 pieces, 10x10 board) makes perfect-information search (like minimax) computationally intractable.
+- **Why Stratego:** Serves as the ultimate testbed for imperfect information algorithms.
+- **Objectives:** Introduce Stratego to the community; design the environment; build the MARQ framework; optimize the AI.
+- **Broader Significance:** Applications in Robotics, Traffic Control, Economic Policy Modeling, and other Strategy Games (e.g., Clash Royale, Esports Managers).
+
+---
+
+### Phase 1.5: Core Academic Elements
+Ensure the presentation explicitly includes these academic sections derived from the LaTeX documentation:
+- **Thesis Statement:** The research aims to evaluate whether Multi-Agent Reinforcement Learning (MARL) with Deep Q-Networks (DQN) can develop intelligent agents capable of mastering imperfect information games. It seeks to provide an algorithmic foundation that mirrors human-like logical reasoning under uncertainty.
+- **Research Questions:**
+  1. How does the MARQ framework perform in terms of convergence speed and win-rate against heuristic baselines?
+  2. Does MARQ demonstrate statistically significant superiority over standard DQN and rule-based agents?
+  3. What is the impact of the AAREN module on inferring hidden opponent piece configurations compared to baseline approaches?
+- **Methodology:** 
+  - *System Development:* Rapid prototyping of the game environment (Python/Pygame) and the MARQ framework.
+  - *Experimental Procedures:* Community introduction to Stratego to equalize human baselines. One-on-one matches (1-hour sessions) between human participants and the trained MARQ agent deployed in an exploitation-only mode.
+  - *Evaluation:* Mixed-methods approach. Quantitative metrics (win-rates, decision-making speed, loss curves, paired t-tests) and Qualitative usability surveys (performance assessment, interface relevance).
+- **Recommendations & Future Work:**
+  - Transition from episodic reward measurement to a formal Elo Rating System for precise skill benchmarking.
+  - Strategic Intent: Directing the AI to move pieces with purposeful long-term objectives.
+  - Belief Interpretation: Expanding AAREN embeddings to facilitate explicit bluffing dynamics against humans.
+
+### Phase 2: NEW Technical Advancements to Highlight
+The core of your presentation must focus on these recent architectural shifts found in the codebase and LaTeX documents:
+
+**1. Architectural Evolution (From Vanilla DQN to MARQ)**
+- **Old:** Generic "DQN".
+- **New:** A 21.7M parameter **Rainbow DQN** incorporating C51 Distributional RL (51 atoms), Dueling Heads, Multi-step returns (N=5), and Noisy Networks for exploration. 
+- **Vision Backbone:** A 6-block ResNet (64-channel) combined with a 4-head Spatial Self-Attention layer, achieving a 27x27 receptive field without the computational overhead of deeper CNNs.
+
+**2. Memory & Information Inference (AAREN Integration)**
+- **Old:** Explicit Probabilistic Belief States (PBS) estimating $O(N^2)$ piece probabilities.
+- **New:** Total replacement of PBS with **AAREN (Attention as a Recurrent Neural Network)**. 
+- **Detail:** A 3-layer, 64-dimensional AAREN encodes opponent action sequences into *implicit* embeddings. It provides parallel training efficiency (like Transformers) with sequential real-time inference (like RNNs). The 64-dim AAREN tensor is concatenated with the 15-channel board state, passing a 79-channel tensor to the DQN.
+
+**3. Reward System Overhaul (Solving the "Happy Wanderer")**
+- **Problem:** The agent previously stagnated by shuffling pieces endlessly to farm dense shaping rewards (material, positional) rather than capturing the flag.
+- **Solution:** Implementation of **Potential-Based Reward Shaping (PBRS)**. Additive shaping was replaced by a potential function $\Phi(s)$ evaluating material advantage (40%), flag proximity (35%), penetration (15%), and info gain (10%). This guarantees policy invariance while enforcing progress. Additive strict anti-stall penalties target A->B->A piece oscillation.
+
+**4. Curriculum & League Training (PFSP)**
+- **Detail:** A 5-Phase curriculum gates training. Transitions strictly require decisive win-rate thresholds (>55% actual wins). 
+- **Opponent Scheduling:** Implements a **Prioritized Fictitious Self-Play (PFSP)** adaptive scheduler. Opponents the agent masters are weighted at a minimum 5% floor, while difficult opponents receive proportionally more matchmaking time.
+- **MARL Pipeline:** Agent 2 (the opponent) is an active learning agent, but its weight updates and target updates are strictly gated behind Phase 4 (League Training).
+
+**5. Test-Time Evaluation**
+- **Detail:** The GUI utilizes a formal **Expectamax Search**, replacing standard minimax to account for chance nodes (hidden piece identities). This mitigates "hallucination" by weighting the DQN's Q-values against AAREN's rank probability expectations.
+
+---
+
+### Expected Output Format
+Please generate the slide deck text in the following format:
+
+**Slide [Number]: [Title]**
+*   **Bullet 1:** [Short, punchy point for the screen]
+*   **Bullet 2:** [Short, punchy point for the screen]
+*   [Add sub-bullets as needed, keeping them concise]
+
+**Speaker Notes:**
+[1-2 paragraphs of highly technical explanation combining the old concepts with the new PBRS, Rainbow DQN, PFSP, and AAREN updates. Explain *why* the architectural choices were made (e.g., "We migrated from explicit PBS to AAREN to reduce computational bottleneck while maintaining spatial awareness...")]

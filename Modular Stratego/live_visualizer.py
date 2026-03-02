@@ -4,517 +4,462 @@ import numpy as np
 import sys
 import os
 import time
-from typing import List, Tuple, Dict, Optional
+from typing import Dict, Tuple, Optional, List
 
-# Import existing modules
-try:
-    from dqn_agent import DQNAgent
-    from environment import StrategoEnvironment
-    from piece import PieceType
-    from board import HIDDEN_PIECE, LAKE_SQUARE, BOARD_SIZE, EMPTY_SQUARE
-except ImportError as e:
-    print(f"Error importing game modules: {e}")
-    print("Please ensure live_visualizer.py is in the same directory as your game files.")
-    sys.exit(1)
+# Add repository root to path
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-# --- Constants & Config ---
-WINDOW_WIDTH = 1400
-WINDOW_HEIGHT = 900
+from environment import StrategoEnvironment
+from drqn_agent import RainbowAgent
+from piece import PieceType, PIECE_NAMES, PIECE_RANKS
+from board import BOARD_SIZE, LAKE_SQUARE
+
+# --- Constants ---
+SCREEN_WIDTH = 1200
+SCREEN_HEIGHT = 800
 BOARD_OFFSET_X = 50
 BOARD_OFFSET_Y = 50
-TILE_SIZE = 80
-SIDEBAR_X = BOARD_OFFSET_X + (BOARD_SIZE * TILE_SIZE) + 50
-SIDEBAR_WIDTH = 450
+CELL_SIZE = 70
+BOARD_PIXEL_SIZE = CELL_SIZE * BOARD_SIZE
 
 # Colors
-COLOR_BG = (30, 30, 30)
-COLOR_BOARD_LIGHT = (240, 217, 181)
-COLOR_BOARD_DARK = (181, 136, 99)
-COLOR_LAKE = (64, 164, 223)
-COLOR_HIGHLIGHT = (255, 255, 0, 100)  # Yellow, transparent
-COLOR_TEXT = (255, 255, 255)
-COLOR_P1 = (70, 130, 180)   # Steel Blue
-COLOR_P2 = (205, 92, 92)    # Indian Red
-COLOR_BUTTON = (100, 100, 100)
-COLOR_BUTTON_HOVER = (150, 150, 150)
+WHITE = (255, 255, 255)
+BLACK = (0, 0, 0)
+GRAY = (128, 128, 128)
+RED = (200, 50, 50)
+BLUE = (50, 50, 200)
+GREEN = (50, 200, 50)
+YELLOW = (200, 200, 50)
+CYAN = (50, 200, 200)
+DARK_GREEN = (0, 100, 0)
+LAKE_COLOR = (0, 100, 200)
+HIGHLIGHT_COLOR = (100, 255, 100, 128)
+INVALID_COLOR = (255, 100, 100, 128)
+TEXT_COLOR = (20, 20, 20)
+BG_COLOR = (240, 240, 245)
+PANEL_BG = (220, 220, 230)
 
-# Heatmap Gradient (Low -> High)
-HEATMAP_COLORS = [
-    (255, 0, 0, 128),    # Red (Bad)
-    (255, 165, 0, 128),  # Orange
-    (255, 255, 0, 128),  # Yellow
-    (0, 255, 0, 128)     # Green (Good)
-]
-
-class Button:
-    def __init__(self, x, y, w, h, text, callback):
-        self.rect = pygame.Rect(x, y, w, h)
-        self.text = text
-        self.callback = callback
-        self.hovered = False
-
-    def draw(self, surface, font):
-        color = COLOR_BUTTON_HOVER if self.hovered else COLOR_BUTTON
-        pygame.draw.rect(surface, color, self.rect, border_radius=5)
-        pygame.draw.rect(surface, (200, 200, 200), self.rect, 2, border_radius=5)
-        
-        text_surf = font.render(self.text, True, COLOR_TEXT)
-        text_rect = text_surf.get_rect(center=self.rect.center)
-        surface.blit(text_surf, text_rect)
-
-    def handle_event(self, event):
-        if event.type == pygame.MOUSEMOTION:
-            self.hovered = self.rect.collidepoint(event.pos)
-        elif event.type == pygame.MOUSEBUTTONDOWN:
-            if self.hovered and event.button == 1:
-                self.callback()
-
-class LiveVisualizer:
-    def __init__(self):
+class StrategoVisualizer:
+    def __init__(self, model_path_p1=None, model_path_p2=None):
         pygame.init()
-        pygame.display.set_caption("Stratego DQN Live Visualizer")
-        self.screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
+        self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+        pygame.display.set_caption("Stratego Rainbow DQN Visualizer")
         self.clock = pygame.time.Clock()
-        self.font_large = pygame.font.SysFont("Arial", 32, bold=True)
-        self.font_med = pygame.font.SysFont("Arial", 24)
-        self.font_small = pygame.font.SysFont("Arial", 16)
-        
-        # Init Environment and Agents
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.font = pygame.font.SysFont('Arial', 18, bold=True)
+        self.small_font = pygame.font.SysFont('Arial', 14)
+        self.title_font = pygame.font.SysFont('Arial', 24, bold=True)
+
+        # Device
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         print(f"Using device: {self.device}")
+
+        # Environment
+        self.env = StrategoEnvironment(self.device)
         
-        self.env = StrategoEnvironment(device=self.device)
-        self.agent1 = DQNAgent(player_id=1, device=self.device, use_pbs=True)
-        self.agent2 = DQNAgent(player_id=-1, device=self.device, use_pbs=True)
+        # Agents
+        print("Initializing Agents...")
+        self.agent1 = RainbowAgent(player_id=1, device=self.device)
+        self.agent2 = RainbowAgent(player_id=-1, device=self.device)
         
-        # Load models if possible
-        self._load_models()
-        
-        # State
-        self.game_state = self.env.reset()
+        # Load Models (use load_model method)
+        if model_path_p1 and os.path.exists(model_path_p1):
+            print(f"Loading P1 Model: {model_path_p1}")
+            self.agent1.load_model(model_path_p1)
+        else:
+            print("Warning: P1 Model not found, using random initialization.")
+
+        if model_path_p2 and os.path.exists(model_path_p2):
+            print(f"Loading P2 Model: {model_path_p2}")
+            self.agent2.load_model(model_path_p2)
+        else:
+            print("Warning: P2 Model not found, using random initialization.")
+
+        # Game State
+        self.game_state = None
         self.running = True
         self.paused = True
-        self.auto_play_speed = 1.0  # Seconds per move
-        self.last_move_time = time.time()
-        self.selected_tile = None
-        self.hovered_tile = None
-        self.current_analysis = None
+        self.auto_step_interval = 500
+        self.last_step_time = 0
+        self.selected_pos = None
+        self.hover_pos = None
+        self.valid_moves_cache = []
+        self.last_action_log = "Game Start"
+        self.episode_reward = {1: 0.0, -1: 0.0}
         
-        # UI Elements
-        self.buttons = [
-            Button(SIDEBAR_X, WINDOW_HEIGHT - 100, 100, 40, "Step (>)", self.step_game),
-            Button(SIDEBAR_X + 120, WINDOW_HEIGHT - 100, 100, 40, "Play/Pause", self.toggle_pause),
-            Button(SIDEBAR_X + 240, WINDOW_HEIGHT - 100, 100, 40, "Reset", self.reset_game)
-        ]
+        # Q-value visualization
+        self.qvalue_cache = {}
+        self.show_qvalues = True
         
-        # Cache lake positions for drawing
-        self.lakes = set((int(r.item()), int(c.item())) for r, c in self.env.board.lakes)
-
-    def _load_models(self):
-        try:
-            # Load models from parent directory dqn_models, relative to this script
-            script_dir = os.path.dirname(os.path.abspath(__file__))
-            model_dir = os.path.join(script_dir, "..", "dqn_models")
-            episode = 3100
-            
-            # Load Agent 1
-            self.agent1.load_model(os.path.join(model_dir, f"agent1_dqn_episode_{episode}.pth"))
-            if self.agent1.pbs:
-                self.agent1.load_aaren_model(os.path.join(model_dir, f"agent1_aaren_episode_{episode}.pth"))
-                self.agent1.load_pbs_evaluator(os.path.join(model_dir, f"agent1_pbs_evaluator_episode_{episode}.pth"))
-                
-            # Load Agent 2
-            self.agent2.load_model(os.path.join(model_dir, f"agent2_dqn_episode_{episode}.pth"))
-            if self.agent2.pbs:
-                self.agent2.load_aaren_model(os.path.join(model_dir, f"agent2_aaren_episode_{episode}.pth"))
-                self.agent2.load_pbs_evaluator(os.path.join(model_dir, f"agent2_pbs_evaluator_episode_{episode}.pth"))
-                
-            # Force exploitation for visualization
-            self.agent1.epsilon = 0.0
-            self.agent2.epsilon = 0.0
-            
-            print(f"Loaded agent models for episode {episode}.")
-        except Exception as e:
-            print(f"Could not load models: {e}")
-            print("Using random agents.")
-
-    def toggle_pause(self):
-        self.paused = not self.paused
+        self.reset_game()
 
     def reset_game(self):
+        print("Resetting Game...")
         self.game_state = self.env.reset()
-        self.current_analysis = None
-        print("Game Reset")
+        self.agent1.reset_pbs()
+        self.agent2.reset_pbs()
+        self.episode_reward = {1: 0.0, -1: 0.0}
+        self.last_action_log = "Game Reset"
+        self.selected_pos = None
+        self.valid_moves_cache = []
+        self.qvalue_cache = {}
+        self.paused = True
+        self._update_qvalue_cache()
 
-    def get_color_from_gradient(self, value):
-        # Value 0.0 -> Red, 1.0 -> Green
-        idx = int(value * (len(HEATMAP_COLORS) - 1))
-        idx = max(0, min(idx, len(HEATMAP_COLORS) - 1))
-        return HEATMAP_COLORS[idx]
+    def get_board_pos(self, mouse_pos):
+        x, y = mouse_pos
+        if BOARD_OFFSET_X <= x < BOARD_OFFSET_X + BOARD_PIXEL_SIZE and \
+           BOARD_OFFSET_Y <= y < BOARD_OFFSET_Y + BOARD_PIXEL_SIZE:
+            c = (x - BOARD_OFFSET_X) // CELL_SIZE
+            r = (y - BOARD_OFFSET_Y) // CELL_SIZE
+            return int(r), int(c)
+        return None
 
-    def analyze_current_state(self):
-        # Get Q-values for all valid moves of current player
+    def handle_input(self):
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                self.running = False
+            
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_SPACE:
+                    self.paused = not self.paused
+                elif event.key == pygame.K_RIGHT:
+                    self.step_game()
+                elif event.key == pygame.K_r:
+                    self.reset_game()
+                elif event.key == pygame.K_q:
+                    self.show_qvalues = not self.show_qvalues
+                    print(f"Q-value display: {'ON' if self.show_qvalues else 'OFF'}")
+            
+            elif event.type == pygame.MOUSEMOTION:
+                self.hover_pos = self.get_board_pos(event.pos)
+            
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                if event.button == 1:
+                    clicked_pos = self.get_board_pos(event.pos)
+                    if clicked_pos:
+                        self.selected_pos = clicked_pos
+                        self.update_valid_moves_visualization()
+
+    def update_valid_moves_visualization(self):
+        self.valid_moves_cache = []
+        if not self.selected_pos:
+            return
+
+        all_moves = self.env.get_valid_moves()
+        r_sel, c_sel = self.selected_pos
+        for move in all_moves:
+            (r1, c1), (r2, c2) = move
+            if r1 == r_sel and c1 == c_sel:
+                self.valid_moves_cache.append((r2, c2))
+
+    def _update_qvalue_cache(self):
+        """Compute Q-values for all valid moves of current player."""
+        self.qvalue_cache = {}
+        if self.env.game_over:
+            return
+
         current_player = self.env.current_player
         agent = self.agent1 if current_player == 1 else self.agent2
         
-        state_rep = agent.get_state_representation(self.game_state)
         valid_moves = self.env.get_valid_moves()
-        
         if not valid_moves:
-            return []
-            
-        # Set to eval mode to avoid BatchNorm errors with batch size 1
+            return
+
+        state_tensor = agent.get_state_representation(self.game_state.board, pbs_instance=agent.pbs)
+        if state_tensor.dim() == 3:
+            state_tensor = state_tensor.unsqueeze(0)
+        
         agent.q_network.eval()
-        
-        # Get Q-values
         with torch.no_grad():
-            q_values = agent.q_network(state_rep.unsqueeze(0))
-        
-        # Get uncertainty if available
-        uncertainty_map = None
-        if agent.pbs:
-            uncertainty_map = agent.pbs.get_uncertainty_map(self.env.board.actual_board)
-            
-        results = []
-        
-        # We want to show: Move, Q-value, Uncertainty Bonus
-        # Re-calculate exploration bonus to show breakdown
-        
-        # Get base Q-values (without bonus) for comparison
-        with torch.no_grad():
-            base_q_values = agent.q_network(state_rep.unsqueeze(0))
-            
-        all_scores = []
+            log_probs = agent.q_network(state_tensor)
+            probs = log_probs.exp()
+            expected_q_values = (probs * agent.support).sum(dim=2).squeeze(0)
+        agent.q_network.train()
         
         for move in valid_moves:
+            (r_from, c_from), (r_to, c_to) = move
             action_idx = agent._move_to_action_index(move)
-            base_q = base_q_values[0, action_idx].item()
-            adjusted_q = q_values[0, action_idx].item()
-            uncertainty = agent.get_move_uncertainty(move, uncertainty_map)
-            exploration_bonus = uncertainty * agent.uncertainty_exploration_multiplier
-            final_score = adjusted_q + exploration_bonus
+            q_val = expected_q_values[action_idx].item()
             
-            all_scores.append(final_score)
-            
-            results.append({
-                'move': move,
-                'base_q': base_q,
-                'adjusted_q': adjusted_q,
-                'uncertainty': uncertainty,
-                'bonus': exploration_bonus,
-                'final_score': final_score
-            })
-            
-        # Normalize scores for heatmap colors
-        if all_scores:
-            min_s = min(all_scores)
-            max_s = max(all_scores)
-            rng = max_s - min_s if max_s != min_s else 1.0
-            
-            for res in results:
-                res['normalized'] = (res['final_score'] - min_s) / rng
-        
-        # Sort by score
-        results.sort(key=lambda x: x['final_score'], reverse=True)
-        return results
+            if (r_to, c_to) not in self.qvalue_cache or q_val > self.qvalue_cache[(r_to, c_to)]:
+                self.qvalue_cache[(r_to, c_to)] = q_val
 
     def step_game(self):
         if self.env.game_over:
             return
 
-        # 1. Analyze before moving
-        self.current_analysis = self.analyze_current_state()
-        
         current_player = self.env.current_player
         agent = self.agent1 if current_player == 1 else self.agent2
+        opponent = self.agent2 if current_player == 1 else self.agent1
         
-        # 2. Act
-        state_rep = agent.get_state_representation(self.game_state)
         valid_moves = self.env.get_valid_moves()
-        
         if not valid_moves:
+            print("No valid moves!")
+            self.env.game_over = True
             return
 
-        action = agent.act(state_rep, valid_moves, self.game_state)
+        action = agent.act_batch([self.game_state.board], [valid_moves], [self.game_state])[0]
         
-        # 3. Step Environment
-        self.game_state, reward, done, info = self.env.step(action)
-        
-        # Clear analysis cache for next state
-        self.current_analysis = None
+        if action is None:
+            print("Agent returned None action")
+            return
 
-    def draw_board(self):
-        # Draw Grid
+        next_state, reward, done, info = self.env.step(action)
+        
+        # Handle revealed pieces
+        revealed = info.get('revealed_in_step', [])
+        for pos, piece_type in revealed:
+            game_phase = info.get('game_phase', 'middle')
+            turn_count = info.get('turn_count', 0)
+            
+            self.agent1.pbs.update_from_reveal(pos, piece_type, 
+                                               game_phase=game_phase,
+                                               turn_count=turn_count)
+            self.agent2.pbs.update_from_reveal(pos, piece_type,
+                                               game_phase=game_phase,
+                                               turn_count=turn_count)
+        
+        opponent.update_pbs_batch([action], [self.game_state], acting_player=current_player)
+        
+        self.game_state = next_state
+        self.episode_reward[current_player] += reward
+        
+        self._update_qvalue_cache()
+        
+        (r1, c1), (r2, c2) = action
+        piece_val = self.env.board.actual_board[r2, c2].item()
+        piece_type = PieceType(abs(int(piece_val))) if abs(int(piece_val)) > 0 else "Unknown"
+        p_name = "Blue (P1)" if current_player == 1 else "Red (P2)"
+        self.last_action_log = f"{p_name} moved {PIECE_NAMES.get(piece_type, '?')} from ({r1},{c1}) to ({r2},{c2}). R={reward:.2f}"
+        print(self.last_action_log)
+        
+        if done:
+            winner = info.get('winner', 0)
+            w_text = "Draw" if winner == 0 else ("Blue Wins!" if winner == 1 else "Red Wins!")
+            self.last_action_log = f"GAME OVER: {w_text}"
+            print(self.last_action_log)
+            self.paused = True
+
+    def update(self):
+        if not self.paused and not self.env.game_over:
+            current_time = pygame.time.get_ticks()
+            if current_time - self.last_step_time > self.auto_step_interval:
+                self.step_game()
+                self.last_step_time = current_time
+
+    def draw_piece(self, r, c, piece_value, x, y):
+        piece_type = PieceType(abs(piece_value))
+        is_p1 = piece_value > 0
+        
+        color = BLUE if is_p1 else RED
+        
+        pygame.draw.rect(self.screen, color, (x + 5, y + 5, CELL_SIZE - 10, CELL_SIZE - 10), border_radius=8)
+        
+        text = PIECE_NAMES.get(piece_type, "?")
+        text_surf = self.font.render(text, True, WHITE)
+        text_rect = text_surf.get_rect(center=(x + CELL_SIZE//2, y + CELL_SIZE//2))
+        self.screen.blit(text_surf, text_rect)
+        
+        rank = PIECE_RANKS.get(piece_type, 0)
+        rank_surf = self.small_font.render(str(rank), True, (200, 200, 200))
+        self.screen.blit(rank_surf, (x + 8, y + 5))
+
+    def draw_pbs_overlay(self, r, c, x, y):
+        piece_val = self.env.board.actual_board[r, c].item()
+        if piece_val >= 0:
+            return
+            
+        beliefs = self.agent1.pbs.get_belief_distribution((r, c))
+        if not beliefs:
+            return
+            
+        most_likely = max(beliefs.items(), key=lambda x: x[1])
+        prob = most_likely[1]
+        
+        if prob < 0.4:
+            txt = "?"
+            col = YELLOW
+        else:
+            txt = PIECE_NAMES.get(most_likely[0], "?")
+            col = CYAN
+            
+        pygame.draw.rect(self.screen, BLACK, (x + CELL_SIZE - 25, y + 5, 20, 20))
+        pygame.draw.rect(self.screen, col, (x + CELL_SIZE - 24, y + 6, 18, 18))
+        
+        t_surf = self.small_font.render(txt, True, BLACK)
+        t_rect = t_surf.get_rect(center=(x + CELL_SIZE - 15, y + 15))
+        self.screen.blit(t_surf, t_rect)
+
+    def draw_qvalue_heatmap(self, r, c, x, y):
+        """Draw Q-value heatmap on valid move destinations."""
+        if (r, c) not in self.qvalue_cache:
+            return
+            
+        q_value = self.qvalue_cache[(r, c)]
+        all_q = list(self.qvalue_cache.values())
+        
+        if not all_q:
+            return
+            
+        min_q, max_q = min(all_q), max(all_q)
+        
+        if max_q == min_q:
+            normalized = 0.5
+        else:
+            normalized = (q_value - min_q) / (max_q - min_q)
+        
+        # Red (bad) -> Yellow (neutral) -> Green (good)
+        if normalized < 0.5:
+            r_col = 255
+            g_col = int(255 * normalized * 2)
+        else:
+            r_col = int(255 * (1 - normalized) * 2)
+            g_col = 255
+        
+        heatmap_color = (r_col, g_col, 0, 100)
+        
+        s = pygame.Surface((CELL_SIZE, CELL_SIZE), pygame.SRCALPHA)
+        s.fill(heatmap_color)
+        self.screen.blit(s, (x, y))
+        
+        q_text = self.small_font.render(f"{q_value:.2f}", True, BLACK)
+        self.screen.blit(q_text, (x + 5, y + CELL_SIZE - 18))
+
+    def draw(self):
+        self.screen.fill(BG_COLOR)
+        
         for r in range(BOARD_SIZE):
             for c in range(BOARD_SIZE):
-                rect = pygame.Rect(
-                    BOARD_OFFSET_X + c * TILE_SIZE, 
-                    BOARD_OFFSET_Y + r * TILE_SIZE, 
-                    TILE_SIZE, TILE_SIZE
-                )
+                x = BOARD_OFFSET_X + c * CELL_SIZE
+                y = BOARD_OFFSET_Y + r * CELL_SIZE
                 
-                # Check background color (Lake vs Land)
-                color = COLOR_LAKE if (r, c) in self.lakes else (COLOR_BOARD_LIGHT if (r+c)%2==0 else COLOR_BOARD_DARK)
-                pygame.draw.rect(self.screen, color, rect)
+                pygame.draw.rect(self.screen, BLACK, (x, y, CELL_SIZE, CELL_SIZE), 1)
                 
-                # Highlight selection
-                if self.selected_tile == (r, c):
-                    pygame.draw.rect(self.screen, (255, 255, 255), rect, 3)
-                elif self.hovered_tile == (r, c):
-                    pygame.draw.rect(self.screen, (200, 200, 200), rect, 2)
-
-        # Draw Coordinates
-        for i in range(BOARD_SIZE):
-            # Rows
-            text = self.font_small.render(str(i), True, COLOR_TEXT)
-            self.screen.blit(text, (BOARD_OFFSET_X - 25, BOARD_OFFSET_Y + i * TILE_SIZE + TILE_SIZE//2 - 10))
-            # Cols
-            text = self.font_small.render(str(i), True, COLOR_TEXT)
-            self.screen.blit(text, (BOARD_OFFSET_X + i * TILE_SIZE + TILE_SIZE//2 - 5, BOARD_OFFSET_Y - 25))
-
-    def get_piece_text(self, piece_val):
-        # CORRECT MAPPING based on piece.py
-        piece_map = {
-            1: "F",   # FLAG
-            2: "1",   # SPY
-            3: "2",   # SCOUT  
-            4: "3",   # MINER
-            5: "4",   # SERGEANT
-            6: "5",   # LIEUTENANT
-            7: "6",   # CAPTAIN
-            8: "7",   # MAJOR
-            9: "8",   # COLONEL
-            10: "9",  # GENERAL
-            11: "M",  # MARSHAL
-            12: "B"   # BOMB
-        }
-        return piece_map.get(abs(piece_val), "?")
-
-    def draw_pieces(self):
-        board = self.env.board.actual_board
-        
-        for r in range(BOARD_SIZE):
-            for c in range(BOARD_SIZE):
-                val = int(board[r, c].item())
-                if val == 0 or val == LAKE_SQUARE:
+                if self.env.board.actual_board[r, c].item() == LAKE_SQUARE:
+                    pygame.draw.rect(self.screen, LAKE_COLOR, (x+1, y+1, CELL_SIZE-2, CELL_SIZE-2))
                     continue
                 
-                x = BOARD_OFFSET_X + c * TILE_SIZE + TILE_SIZE // 2
-                y = BOARD_OFFSET_Y + r * TILE_SIZE + TILE_SIZE // 2
+                if self.selected_pos == (r, c):
+                    s = pygame.Surface((CELL_SIZE, CELL_SIZE), pygame.SRCALPHA)
+                    s.fill((255, 255, 0, 100))
+                    self.screen.blit(s, (x, y))
                 
-                # Color
-                color = COLOR_P1 if val > 0 else COLOR_P2
+                if (r, c) in self.valid_moves_cache:
+                    s = pygame.Surface((CELL_SIZE, CELL_SIZE), pygame.SRCALPHA)
+                    s.fill(HIGHLIGHT_COLOR)
+                    self.screen.blit(s, (x, y))
                 
-                # Draw Piece Circle
-                pygame.draw.circle(self.screen, color, (x, y), TILE_SIZE // 2 - 5)
-                pygame.draw.circle(self.screen, (0, 0, 0), (x, y), TILE_SIZE // 2 - 5, 2)
-                
-                # Draw Text
-                txt = self.get_piece_text(val)
-                text_surf = self.font_med.render(txt, True, (255, 255, 255))
-                text_rect = text_surf.get_rect(center=(x, y))
-                self.screen.blit(text_surf, text_rect)
-
-    def draw_heatmap(self):
-        if not self.current_analysis:
-            # If not cached, analyze
-            self.current_analysis = self.analyze_current_state()
+                if self.show_qvalues:
+                    self.draw_qvalue_heatmap(r, c, x, y)
+                    
+                piece_val = self.env.board.actual_board[r, c].item()
+                if piece_val != 0:
+                    self.draw_piece(r, c, int(piece_val), x, y)
+                    self.draw_pbs_overlay(r, c, x, y)
+                    
+        # --- HUD ---
+        hud_x = BOARD_OFFSET_X + BOARD_PIXEL_SIZE + 20
+        pygame.draw.rect(self.screen, PANEL_BG, (hud_x, BOARD_OFFSET_Y, 350, SCREEN_HEIGHT - 100))
+        
+        y_off = BOARD_OFFSET_Y + 20
+        
+        title = self.title_font.render("Stratego Visualizer", True, BLACK)
+        self.screen.blit(title, (hud_x + 20, y_off))
+        y_off += 40
+        
+        stats = [
+            f"Turn: {self.env.turn_count}",
+            f"Player: {'Blue (1)' if self.env.current_player == 1 else 'Red (-1)'}",
+            f"State: {'Paused' if self.paused else 'Running'}",
+            f"Q-Values: {'ON' if self.show_qvalues else 'OFF'} (Press Q)",
+            f"P1 Reward: {self.episode_reward[1]:.2f}",
+            f"P2 Reward: {self.episode_reward[-1]:.2f}"
+        ]
+        
+        for s in stats:
+            surf = self.font.render(s, True, TEXT_COLOR)
+            self.screen.blit(surf, (hud_x + 20, y_off))
+            y_off += 30
             
-        if not self.current_analysis:
-            return
-
-        surface = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.SRCALPHA)
-
-        # Draw heatmap on destination squares
-        for item in self.current_analysis:
-            move = item['move']
-            score = item['normalized']
-            (r_from, c_from), (r_to, c_to) = move
+        y_off += 20
+        pygame.draw.line(self.screen, GRAY, (hud_x + 10, y_off), (hud_x + 340, y_off), 2)
+        y_off += 20
+        
+        if self.hover_pos:
+            r, c = self.hover_pos
+            piece_val = self.env.board.actual_board[r, c].item()
             
-            should_draw = False
-            if self.hovered_tile == (r_from, c_from):
-                should_draw = True
-            elif self.hovered_tile is None and item['normalized'] > 0.8: # Show top moves lightly
-                 should_draw = True
-                 
-            if should_draw:
-                rect_x = BOARD_OFFSET_X + c_to * TILE_SIZE
-                rect_y = BOARD_OFFSET_Y + r_to * TILE_SIZE
-                
-                color = self.get_color_from_gradient(score)
-                pygame.draw.rect(surface, color, (rect_x, rect_y, TILE_SIZE, TILE_SIZE))
-                
-                # Draw Q-value text small
-                q_txt = f"{item['final_score']:.2f}"
-                txt_surf = self.font_small.render(q_txt, True, (0,0,0))
-                surface.blit(txt_surf, (rect_x + 5, rect_y + 5))
-                
-                # Draw Arrow
-                start_pos = (BOARD_OFFSET_X + c_from * TILE_SIZE + TILE_SIZE//2, 
-                             BOARD_OFFSET_Y + r_from * TILE_SIZE + TILE_SIZE//2)
-                end_pos = (BOARD_OFFSET_X + c_to * TILE_SIZE + TILE_SIZE//2, 
-                           BOARD_OFFSET_Y + r_to * TILE_SIZE + TILE_SIZE//2)
-                pygame.draw.line(surface, (255, 255, 255, 200), start_pos, end_pos, 3)
-                pygame.draw.circle(surface, color, end_pos, 5)
-
-        self.screen.blit(surface, (0, 0))
-
-    def draw_sidebar(self):
-        # Background
-        pygame.draw.rect(self.screen, (40, 40, 40), (SIDEBAR_X, 0, SIDEBAR_WIDTH, WINDOW_HEIGHT))
-        
-        # Title
-        title = self.font_large.render("Game Info", True, COLOR_HIGHLIGHT)
-        self.screen.blit(title, (SIDEBAR_X + 20, 20))
-        
-        # Game State Stats
-        y = 80
-        turn_txt = self.font_med.render(f"Turn: {self.env.turn_count}", True, COLOR_TEXT)
-        self.screen.blit(turn_txt, (SIDEBAR_X + 20, y))
-        
-        y += 40
-        p_color = COLOR_P1 if self.env.current_player == 1 else COLOR_P2
-        p_name = f"Player {self.env.current_player} (Agent {'1' if self.env.current_player==1 else '2'})"
-        player_txt = self.font_med.render(p_name, True, p_color)
-        self.screen.blit(player_txt, (SIDEBAR_X + 20, y))
-        
-        y += 50
-        pygame.draw.line(self.screen, (100,100,100), (SIDEBAR_X, y), (WINDOW_WIDTH, y), 1)
-        y += 20
-        
-        # Selected/Hovered Tile Info
-        target = self.hovered_tile if self.hovered_tile else self.selected_tile
-        if target:
-            r, c = target
-            val = int(self.env.board.actual_board[r, c].item())
-            agent = self.agent1 if self.env.current_player == 1 else self.agent2
-
-            # Note: Agent 1 tracks beliefs about Player -1 (values < 0)
-            # So if we hover a P2 piece while it's P1's turn, show P1's beliefs
-            is_enemy_piece = (self.env.current_player == 1 and val < 0) or \
-                             (self.env.current_player == -1 and val > 0)
+            info_title = self.font.render(f"Square ({r}, {c})", True, BLACK)
+            self.screen.blit(info_title, (hud_x + 20, y_off))
+            y_off += 25
             
-            if is_enemy_piece and agent.pbs:
-                y += 10
-                pbs_title = self.font_med.render("Agent Beliefs (PBS):", True, COLOR_HIGHLIGHT)
-                self.screen.blit(pbs_title, (SIDEBAR_X + 20, y))
-                y += 30
-                
-                beliefs = agent.pbs.get_belief_distribution((r, c))
-                # Sort by confidence
-                sorted_beliefs = sorted(beliefs.items(), key=lambda x: x[1], reverse=True)[:5]
-                
-                for pt, conf in sorted_beliefs:
-                    if conf > 0.01:
-                        pt_name = str(pt).split('.')[1]
-                        bar_w = int(conf * 200)
-                        # Draw Bar
-                        pygame.draw.rect(self.screen, (100, 100, 200), (SIDEBAR_X + 150, y+5, bar_w, 10))
-                        # Draw Text
-                        conf_txt = self.font_small.render(f"{pt_name}: {conf:.2%}", True, COLOR_TEXT)
-                        self.screen.blit(conf_txt, (SIDEBAR_X + 20, y))
-                        y += 20
-
-        # Move Analysis (if hovering a piece that can move)
-        y += 20
-        pygame.draw.line(self.screen, (100,100,100), (SIDEBAR_X, y), (WINDOW_WIDTH, y), 1)
-        y += 20
-        
-        ana_title = self.font_med.render("Move Analysis (Top 3)", True, COLOR_HIGHLIGHT)
-        self.screen.blit(ana_title, (SIDEBAR_X + 20, y))
-        y += 30
-        
-        # Filter analysis for hovered piece if valid, else global top 3
-        display_analysis = []
-        if target:
-            if self.current_analysis:
-                display_analysis = [item for item in self.current_analysis if item['move'][0] == target]
-        
-        if not display_analysis and self.current_analysis:
-            display_analysis = self.current_analysis
+            if (r, c) in self.qvalue_cache:
+                q_text = self.font.render(f"Q-Value: {self.qvalue_cache[(r, c)]:.3f}", True, DARK_GREEN)
+                self.screen.blit(q_text, (hud_x + 20, y_off))
+                y_off += 25
             
-        # Sort and take top 3
-        if display_analysis:
-            display_analysis.sort(key=lambda x: x['final_score'], reverse=True)
-            
-            for i, item in enumerate(display_analysis[:3]):
-                m = item['move']
-                score = item['final_score']
-                base = item['base_q']
-                unc = item['uncertainty']
+            if piece_val == 0:
+                self.screen.blit(self.small_font.render("Empty", True, GRAY), (hud_x + 20, y_off))
+                y_off += 20
+            elif piece_val == LAKE_SQUARE:
+                self.screen.blit(self.small_font.render("Lake", True, BLUE), (hud_x + 20, y_off))
+                y_off += 20
+            else:
+                true_type = PieceType(abs(int(piece_val)))
+                owner = "P1" if piece_val > 0 else "P2"
+                self.screen.blit(self.font.render(f"{owner}: {true_type.name}", True, BLACK), (hud_x + 20, y_off))
+                y_off += 30
                 
-                txt_str = f"{m[0]}->{m[1]}: Q={score:.2f} (B={base:.2f}, U={unc:.2f})"
-                txt = self.font_small.render(txt_str, True, COLOR_TEXT)
-                self.screen.blit(txt, (SIDEBAR_X + 20, y))
-                y += 20
-                
-                # Mini bar for score
-                norm = max(0, min(1, item.get('normalized', 0.5)))
-                color = self.get_color_from_gradient(norm)
-                pygame.draw.rect(self.screen, color, (SIDEBAR_X + 20, y, int(norm*300), 5))
-                y += 15
-
-    def update_input(self):
-        mouse_pos = pygame.mouse.get_pos()
+                if piece_val < 0:
+                    self.screen.blit(self.font.render("P1 Beliefs:", True, DARK_GREEN), (hud_x + 20, y_off))
+                    y_off += 25
+                    
+                    beliefs = self.agent1.pbs.get_belief_distribution((r, c))
+                    sorted_beliefs = sorted(beliefs.items(), key=lambda x: x[1], reverse=True)
+                    
+                    for pt, prob in sorted_beliefs[:5]:
+                        if prob < 0.01: continue
+                        bar_w = int(prob * 100)
+                        pygame.draw.rect(self.screen, BLUE, (hud_x + 120, y_off + 2, bar_w, 12))
+                        txt = f"{pt.name[:8]}: {prob:.2f}"
+                        self.screen.blit(self.small_font.render(txt, True, BLACK), (hud_x + 20, y_off))
+                        y_off += 20
         
-        # Calculate hovered tile
-        if (BOARD_OFFSET_X <= mouse_pos[0] < BOARD_OFFSET_X + BOARD_SIZE * TILE_SIZE and
-            BOARD_OFFSET_Y <= mouse_pos[1] < BOARD_OFFSET_Y + BOARD_SIZE * TILE_SIZE):
-            c = (mouse_pos[0] - BOARD_OFFSET_X) // TILE_SIZE
-            r = (mouse_pos[1] - BOARD_OFFSET_Y) // TILE_SIZE
-            self.hovered_tile = (r, c)
-        else:
-            self.hovered_tile = None
+        # Log Console
+        log_y = SCREEN_HEIGHT - 60
+        pygame.draw.rect(self.screen, BLACK, (0, log_y, SCREEN_WIDTH, 60))
+        log_surf = self.font.render(self.last_action_log, True, GREEN)
+        self.screen.blit(log_surf, (20, log_y + 15))
 
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                self.running = False
-                
-            for btn in self.buttons:
-                btn.handle_event(event)
-                
-            if event.type == pygame.MOUSEBUTTONDOWN:
-                if event.button == 1: # Left click
-                    self.selected_tile = self.hovered_tile
-                elif event.button == 3: # Right click
-                    self.selected_tile = None
-            
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_SPACE:
-                    self.toggle_pause()
-                elif event.key == pygame.K_RIGHT:
-                    self.step_game()
-                elif event.key == pygame.K_r:
-                    self.reset_game()
+        pygame.display.flip()
 
     def run(self):
         while self.running:
-            self.clock.tick(60) # 60 FPS UI
-            self.update_input()
-            
-            # Auto-play logic
-            if not self.paused:
-                current_time = time.time()
-                if current_time - self.last_move_time > self.auto_play_speed:
-                    self.step_game()
-                    self.last_move_time = current_time
-
-            # Drawing
-            self.screen.fill(COLOR_BG)
-            
-            self.draw_board()
-            self.draw_pieces()
-            self.draw_heatmap() # Overlay
-            self.draw_sidebar()
-            
-            # Draw Buttons
-            for btn in self.buttons:
-                btn.draw(self.screen, self.font_med)
-            
-            pygame.display.flip()
+            self.handle_input()
+            self.update()
+            self.draw()
+            self.clock.tick(60)
 
         pygame.quit()
 
 if __name__ == "__main__":
-    vis = LiveVisualizer()
-    vis.run()
+    # Find model files in dqn_models directory
+    model_dir = "dqn_models"
+    p1_model = None
+    p2_model = None
+    
+    if os.path.exists(model_dir):
+        files = os.listdir(model_dir)
+        p1_candidates = [f for f in files if ('agent1' in f or 'best_model_p1' in f) and f.endswith(('.pt', '.pth'))]
+        if p1_candidates:
+            p1_model = os.path.join(model_dir, sorted(p1_candidates)[-1])
+        
+        p2_candidates = [f for f in files if ('agent2' in f or 'best_model_p2' in f) and f.endswith(('.pt', '.pth'))]
+        if p2_candidates:
+            p2_model = os.path.join(model_dir, sorted(p2_candidates)[-1])
+    
+    print(f"P1 Model: {p1_model}")
+    print(f"P2 Model: {p2_model}")
+    
+    viz = StrategoVisualizer(p1_model, p2_model)
+    viz.run()

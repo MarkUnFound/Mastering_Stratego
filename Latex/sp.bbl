@@ -1,0 +1,433 @@
+\begin{thebibliography}{10}
+
+\bibitem{adams2023resolving}
+{\sc Adams, G., Padmanabhan, S., and Shekhar, S.}
+\newblock Resolving implicit coordination in multi-agent deep rl with deep
+  q-networks \& game theory.
+\newblock {\em arXiv preprint arXiv:2012.09136\/} (2023).
+
+\bibitem{ALSELWI2024102068}
+{\sc Al-Selwi, S.~M., Hassan, M.~F., Abdulkadir, S.~J., Muneer, A., Sumiea,
+  E.~H., Alqushaibi, A., and Ragab, M.~G.}
+\newblock Rnn-lstm: From applications to modeling techniques and
+  beyond—systematic review.
+\newblock {\em Journal of King Saud University - Computer and Information
+  Sciences 36}, 5 (2024), 102068.
+
+\bibitem{Boardgames}
+{\sc Amaliani, R.~N., Soewardikoen, D.~W., Azhar, H., and Rahman, Y.}
+\newblock Designing board games as an enhancer of a sense of community and
+  cognition for the elderly of tresna werdha budi pertiwi social care.
+\newblock {\em Advances in Social Humanities Research 3}, 4 (2025).
+
+\bibitem{StrategoOrigin}
+{\sc Arts, A. F.~C.}
+\newblock Competitive play in stratego.
+\newblock Master's thesis, Maastricht University, Department of Knowledge
+  Engineering, Maastricht, The Netherlands, March 2010.
+\newblock Thesis DKE 10-05.
+
+\bibitem{restnet2025board}
+{\sc Author, F., and Author, S.}
+\newblock Bridging local and global knowledge via transformer in board games.
+\newblock In {\em Proceedings of the International Joint Conference on
+  Artificial Intelligence\/} (2025).
+
+\bibitem{Ballard1983}
+{\sc Ballard, B.~W.}
+\newblock The *-minimax search procedure.
+\newblock {\em Artificial Intelligence 21}, 3 (1983), 327--355.
+
+\bibitem{barreto2017successor}
+{\sc Barreto, A., Dabney, W., Munos, R., Hunt, J.~J., Schaul, T., van Hasselt,
+  H., and Silver, D.}
+\newblock Successor features for transfer in reinforcement learning.
+\newblock In {\em Advances in Neural Information Processing Systems\/} (2017),
+  vol.~30.
+
+\bibitem{Optimization}
+{\sc Barzilai, G., Shamir, O., and Zamani, M.}
+\newblock Are convex optimization curves convex?
+\newblock {\em arXiv preprint arXiv:2503.10138\/} (2025).
+
+\bibitem{becker2022imperfect}
+{\sc Becker, T., and Sunberg, Z.}
+\newblock Imperfect information games and counterfactual regret minimization in
+  space domain awareness.
+\newblock In {\em Advanced Maui Optical and Space Surveillance Technologies
+  Conference (AMOS)\/} (2022), AMOS Technologies.
+
+\bibitem{DistributionalRL2023}
+{\sc Bellemare, M.~G., Dabney, W., and Rowland, M.}
+\newblock {\em Distributional Reinforcement Learning}.
+\newblock MIT Press, 2023.
+
+\bibitem{AlphaStratego}
+{\sc Blüml, J., Czech, J., and Kersting, K.}
+\newblock Alphaze$^{**}$: Alphazero-like baselines for imperfect information
+  games are surprisingly strong.
+\newblock {\em Frontiers in Artificial Intelligence Volume 6 - 2023\/} (2023).
+
+\bibitem{brim2020deep}
+{\sc Brim, A.}
+\newblock Deep reinforcement learning pairs trading with a double deep
+  q-network.
+\newblock In {\em Proceedings of the 10th Annual Computing and Communication
+  Workshop and Conference (CCWC)\/} (Las Vegas, Nevada, USA, Jan.--2020 2020),
+  pp.~222--227.
+
+\bibitem{DCFR}
+{\sc Brown, N., Lerer, A., Gross, S., and Sandholm, T.}
+\newblock Deep counterfactual regret minimization.
+\newblock In {\em International conference on machine learning\/} (2019), PMLR,
+  pp.~793--802.
+
+\bibitem{SubgameSolving2021}
+{\sc Brown, N., and Sandholm, T.}
+\newblock Solving imperfect-information games via subgame solving and
+  depth-limited search.
+\newblock {\em Artificial Intelligence 297\/} (2021), 103503.
+
+\bibitem{MARLCHALL}
+{\sc Canese, L., Cardarilli, G.~C., Di~Nunzio, L., Fazzolari, R., Giardino, D.,
+  Re, M., and Spanò, S.}
+\newblock Multi-agent reinforcement learning: A review of challenges and
+  applications.
+\newblock {\em Applied Sciences 11}, 11 (2021), 4948.
+\newblock Article number; MDPI journal uses article numbers instead of page
+  ranges.
+
+\bibitem{UpdatedISMCTS}
+{\sc Chen, S., Fried, D., and Topcu, U.}
+\newblock Human-agent cooperation in games under incomplete information through
+  natural language communication, 2024.
+
+\bibitem{WARDS}
+{\sc Chitayat, P.~P., Colman, A.~M., Hyde, R.~J., Drachen, A., and Cowling, P.}
+\newblock Wards: Modelling the worth of vision in {MOBA}'s.
+\newblock In {\em Intelligent Systems and Applications - Proceedings of the
+  2020 Intelligent Systems Conference (IntelliSys)\/} (2020), vol.~1251 of {\em
+  Advances in Intelligent Systems and Computing}, Springer, pp.~55--76.
+
+\bibitem{PlacementSetup}
+{\sc Dbouk, H.~M., Ghorayeb, K., Kassem, H., Hayek, H., Torrens, R., and Wells,
+  O.}
+\newblock Facility placement layout optimization.
+\newblock {\em Journal of Petroleum Science and Engineering 207\/} (2021),
+  109079.
+
+\bibitem{MARLCOMP}
+{\sc De~Schutter, B., Babuska, R., and Busoniu, L.}
+\newblock A comprehensive survey of multi-agent reinforcement learning.
+\newblock {\em IEEE Transactions on Systems, Man, and Cybernetics, Part C:
+  Applications and Reviews 38}, 2 (2008), 156--172.
+
+\bibitem{PBRSModern2022}
+{\sc Devlin, S., and Kudenko, D.}
+\newblock Potential-based reward shaping in large-scale mdps.
+\newblock {\em Reinforcement Learning Journal 3}, 2 (2022), 145--167.
+
+\bibitem{echchahed2025srl}
+{\sc Echchahed, A., and Castro, P.~S.}
+\newblock A survey of state representation learning for deep reinforcement
+  learning.
+\newblock {\em Transactions on Machine Learning Research\/} (2025).
+
+\bibitem{WCDQN}
+{\sc El~Shar, I., and Jiang, D.}
+\newblock Weakly coupled deep q-networks.
+\newblock In {\em Advances in Neural Information Processing Systems 36\/}
+  (2023), Curran Associates, Inc.
+\newblock NeurIPS 2023 Conference Track.
+
+\bibitem{Aaren}
+{\sc Feng, L., Tung, F., Hajimirsadeghi, H., Ahmed, M.~O., Bengio, Y., and
+  Mori, G.}
+\newblock Attention as an rnn.
+\newblock {\em arXiv preprint arXiv:2405.13956\/} (2024).
+
+\bibitem{boardgamehk}
+{\sc Harrington, J.}
+\newblock Let's meetup? board game communities in hong kong.
+\newblock {\em Games and Culture 20}, 3 (2025), 279--297.
+
+\bibitem{he2016opponent}
+{\sc He, H., Boyd-Graber, J., Kwok, K., and Daumé, III, H.}
+\newblock Opponent modeling in deep reinforcement learning.
+\newblock In {\em Proceedings of the 33rd International Conference on Machine
+  Learning\/} (2016), vol.~48 of {\em Proceedings of Machine Learning
+  Research}, PMLR, pp.~1804--1813.
+
+\bibitem{RainbowJMLR2021}
+{\sc Hessel, M., Modayil, J., van Hasselt, H., Schaul, T., Ostrovski, G.,
+  Dabney, W., Horgan, D., Piot, B., Azar, M., and Silver, D.}
+\newblock Rainbow: Combining improvements in deep reinforcement learning.
+\newblock {\em Journal of Machine Learning Research 22}, 85 (2021), 1--52.
+
+\bibitem{GamePer}
+{\sc Hu, C., Zhao, Y., Wang, Z., Du, H., and Liu, J.}
+\newblock Games for artificial intelligence research: A review and
+  perspectives.
+\newblock {\em IEEE Transactions on Artificial Intelligence 5}, 12 (2024),
+  5949--5968.
+
+\bibitem{deepRL-chapter4-2020}
+{\sc Huang, Y.}
+\newblock Deep q-networks.
+\newblock In {\em Deep Reinforcement Learning: Fundamentals, Research, and
+  Applications}, S.~Z. Hao~Dong, Zihan~Ding, Ed. Springer Nature, 2020, ch.~4,
+  pp.~135--160.
+\newblock \url{http://www.deepreinforcementlearningbook.org}.
+
+\bibitem{starcraft}
+{\sc Hugi, D., and Izy, E.}
+\newblock Multi-agent deep reinforcement learning (marl) in starcraft 2.
+\newblock
+  \url{https://crml.eelabs.technion.ac.il/projects/multi-agent-deep-reinforcement-learning-marl-in-starcraft-2/},
+  2017.
+\newblock Course project, Winter semester.
+
+\bibitem{kapturowski2018recurrent}
+{\sc Kapturowski, S., Ostrovski, G., Quan, J., Munos, R., and Dabney, W.}
+\newblock Recurrent experience replay in distributed reinforcement learning.
+\newblock {\em International Conference on Learning Representations (ICLR)\/}
+  (2019).
+\newblock Originally presented 2018; published ICLR 2019.
+
+\bibitem{DQNPBS}
+{\sc Kaur, A., Kumar, K., Prakash, A., and Tripathi, R.}
+\newblock Imperfect csi-based resource management in cognitive iot networks: A
+  deep recurrent reinforcement learning framework.
+\newblock {\em IEEE Transactions on Cognitive Communications and Networking 9},
+  5 (2023), 1271--1281.
+
+\bibitem{PurificationDQN}
+{\sc Kensert, A., Libin, P., Desmet, G., and Cabooter, D.}
+\newblock Deep reinforcement learning for the direct optimization of gradient
+  separations in liquid chromatography.
+\newblock {\em Journal of Chromatography A 1720\/} (2024), 464768.
+
+\bibitem{National}
+{\sc Koudela, P.}
+\newblock Game of incomplete information and national security.
+\newblock {\em Central European Political Science Review (CEPSR) 20}, 78
+  (2019), 73--96.
+
+\bibitem{MetastudyDRL}
+{\sc Le, N., Rathour, V.~S., Yamazaki, K., Luu, K., and Savvides, M.}
+\newblock Deep reinforcement learning in computer vision: A comprehensive
+  survey, 2021.
+
+\bibitem{B}
+{\sc Li, B., Fang, Z., and Huang, L.}
+\newblock Rl-cfr: Improving action abstraction for imperfect information
+  extensive-form games with reinforcement learning.
+\newblock {\em arXiv preprint arXiv:2403.04344\/} (2024).
+
+\bibitem{li2024opponent}
+{\sc Li, J., Zanuttini, B., and Ventos, V.}
+\newblock Opponent-model search in games with incomplete information.
+\newblock In {\em Proceedings of the AAAI Conference on Artificial
+  Intelligence\/} (2024), vol.~38, pp.~9840--9847.
+
+\bibitem{CFRMIX}
+{\sc Li, S., Zhang, Y., Wang, X., Xue, W., and An, B.}
+\newblock Cfr-mix: Solving imperfect information extensive-form games with
+  combinatorial action space.
+\newblock In {\em Proceedings of the Thirtieth International Joint Conference
+  on Artificial Intelligence (IJCAI-21)\/} (2021), IJCAI, pp.~3663--3669.
+
+\bibitem{AdamW}
+{\sc Loshchilov, I., and Hutter, F.}
+\newblock Decoupled weight decay regularization.
+\newblock {\em arXiv preprint arXiv:1711.05101\/} (2017).
+
+\bibitem{robotmarl}
+{\sc Luo, Z., Chen, Z., and Welsh, J.}
+\newblock Multi-agent reinforcement learning with deep networks for diverse
+  q-vectors.
+\newblock {\em arXiv preprint arXiv:2406.07848v1\/} (2024).
+\newblock Version v1, June 2024.
+
+\bibitem{Michie1966}
+{\sc Michie, D.}
+\newblock Game-playing and game-learning automata.
+\newblock In {\em Advances in Programming and Non-numerical Computation},
+  L.~Fox, Ed. Pergamon, Oxford, UK, 1966, pp.~183--200.
+
+\bibitem{alphabeta}
+{\sc Nair, R.~R., Babu, T., Kishore, S., Pavithra, K., and Sumana, S.~G.}
+\newblock Improving alpha-beta pruning efficiency in chess engines.
+\newblock In {\em 2024 International Conference on IT Innovation and Knowledge
+  Discovery (ITIKD)\/} (Manama, Bahrain, 2025), IEEE, pp.~1--6.
+
+\bibitem{novikov2024analysis}
+{\sc Novikov, A., and Yanovskyi, V.}
+\newblock Analysis of the decision-making algorithm efficiency in complex game
+  environments on the example of pac-man.
+\newblock {\em Information Technologies and Computer Engineering 3}, 21 (2024),
+  108--118.
+
+\bibitem{AIAgent}
+{\sc Ouyang, X., and Zhou, T.}
+\newblock Imperfect-information game ai agent based on reinforcement learning
+  using tree search and a deep neural network.
+\newblock {\em Electronics 12}, 11 (2023), 2453.
+
+\bibitem{boardgamecom}
+{\sc Petersen, C.}
+\newblock The reality of the board game community: And the connection, identity
+  and experience that creates it.
+\newblock Master's thesis, Eastern University, Aug. 2024.
+
+\bibitem{perolat2022stratego}
+{\sc Pérolat, J., et~al.}
+\newblock Mastering the game of stratego with model-free multiagent
+  reinforcement learning.
+\newblock {\em Science 378}, 6623 (2022), 990--996.
+
+\bibitem{Qu2023}
+{\sc Qu, T., Zhou, Q., Zhu, J., and Duan, F.}
+\newblock Strategy optimization of imperfect information games based on nfsp
+  with ddqn.
+\newblock In {\em Advances in Guidance, Navigation and Control}, L.~Yan,
+  H.~Duan, and Y.~Deng, Eds., vol.~845 of {\em Lecture Notes in Electrical
+  Engineering}. Springer, Singapore, 2023, pp.~4376--4383.
+
+\bibitem{alphabe}
+{\sc Saffidine, A., Finnsson, H., and Buro, M.}
+\newblock Alpha-beta pruning for games with simultaneous moves.
+\newblock In {\em Proceedings of the AAAI Conference on Artificial
+  Intelligence\/} (2021), vol.~26, pp.~556--562.
+
+\bibitem{schaul2015uvfa}
+{\sc Schaul, T., Horgan, D., Gregor, K., and Silver, D.}
+\newblock Universal value function approximators.
+\newblock In {\em Proceedings of the 32nd International Conference on Machine
+  Learning\/} (2015), vol.~37 of {\em Proceedings of Machine Learning
+  Research}, PMLR, pp.~1312--1320.
+
+\bibitem{StudeGame}
+{\sc Schmid, M., Morav{\v{c}}{\'\i}k, M., Burch, N., Kadlec, R., Davidson, J.,
+  Waugh, K., Bard, N., Timbers, F., Lanctot, M., Holland, G.~Z., et~al.}
+\newblock Student of games: A unified learning algorithm for both perfect and
+  imperfect information games.
+\newblock {\em Science Advances 9}, 46 (2023), eadg3256.
+
+\bibitem{GeneralGame}
+{\sc Schofield, M., and Thielscher, M.}
+\newblock General game playing with imperfect information.
+\newblock {\em Journal of Artificial Intelligence Research 66\/} (2019),
+  901--935.
+
+\bibitem{silver2017alphagozero}
+{\sc Silver, D., Schrittwieser, J., Simonyan, K., Antonoglou, I., Huang, A.,
+  Guez, A., Hubert, T., Baker, L., Lai, M., Bolton, A., Chen, Y., Lillicrap,
+  T., Hui, F., Sifre, L., van~den Driessche, G., Graepel, T., and Hassabis, D.}
+\newblock Mastering the game of go without human knowledge.
+\newblock {\em Nature 550}, 7676 (2017), 354--359.
+
+\bibitem{Ataraxos2025}
+{\sc Sokota, S., Vinitsky, E., Hu, H., Kolter, J.~Z., and Farina, G.}
+\newblock Superhuman ai for stratego using self-play reinforcement learning and
+  test-time search, 2025.
+
+\bibitem{AlphaStar}
+{\sc Vinyals, O., Babuschkin, I., Czarnecki, W.~M., Mathieu, M., Dudzik, A.,
+  Chung, J., Choi, D.~H., Powell, R., Ewalds, T., Georgiev, P., et~al.}
+\newblock Grandmaster level in starcraft ii using multi-agent reinforcement
+  learning.
+\newblock {\em Nature 575}, 7782 (2019), 350--354.
+\newblock Technical supplement updated 2021.
+
+\bibitem{DRLImperfectInfo2023}
+{\sc Wang, X., Li, Y., and Zhang, W.}
+\newblock Deep reinforcement learning in imperfect-information games: A survey.
+\newblock {\em IEEE Transactions on Games 15}, 3 (2023), 421--438.
+
+\bibitem{MARLGametheoretic}
+{\sc Wang, Y.}
+\newblock Game-theoretic understandings of multi-agent systems with multiple
+  objectives, 2025.
+
+\bibitem{wang2026history}
+{\sc Wang, Y., Li, L., and Li, W.}
+\newblock Constructing non-markovian decision process via history aggregator.
+\newblock {\em Applied Sciences 16}, 2 (2026), 955.
+
+\bibitem{RegularizationStrategyExploration}
+{\sc Wang, Y., and Wellman, M.~P.}
+\newblock Regularization for strategy exploration in empirical game-theoretic
+  analysis, 2023.
+
+\bibitem{wang2016dueling}
+{\sc Wang, Z., Schaul, T., Hessel, M., van Hasselt, H., Lanctot, M., and
+  de~Freitas, N.}
+\newblock Dueling network architectures for deep reinforcement learning.
+\newblock In {\em Proceedings of the 33rd International Conference on Machine
+  Learning\/} (2016), vol.~48 of {\em Proceedings of Machine Learning
+  Research}, PMLR, pp.~1995--2003.
+
+\bibitem{Cicero}
+{\sc Wongkamjan, W., Gu, F., Wang, Y., Hermjakob, U., May, J., Stewart, B.,
+  Kummerfeld, J., Peskoff, D., and Boyd-Graber, J.}
+\newblock More victories, less cooperation: Assessing cicero’s diplomacy
+  play.
+\newblock In {\em Proceedings of the 62nd Annual Meeting of the Association for
+  Computational Linguistics (Volume 1: Long Papers)\/} (2024), Association for
+  Computational Linguistics, p.~12423–12441.
+
+\bibitem{xu2022autocfr}
+{\sc Xu, H., Li, K., Fu, H., Fu, Q., and Xing, J.}
+\newblock Autocfr: Learning to design counterfactual regret minimization
+  algorithms.
+\newblock In {\em Proceedings of the Thirty-Sixth AAAI Conference on Artificial
+  Intelligence (AAAI-22)\/} (2022), Association for the Advancement of
+  Artificial Intelligence.
+
+\bibitem{xu2024dynamic}
+{\sc Xu, H., Li, K., Fu, H., FU, Q., Xing, J., and Cheng, J.}
+\newblock Dynamic discounted counterfactual regret minimization.
+\newblock In {\em The Twelfth International Conference on Learning
+  Representations\/} (2024).
+
+\bibitem{zakharenkov2021deep}
+{\sc Zakharenkov, A., and Makarov, I.}
+\newblock Deep reinforcement learning with dqn vs. ppo in vizdoom.
+\newblock In {\em 2021 IEEE 21st International Symposium on Computational
+  Intelligence and Informatics (CINTI)\/} (Budapest, Hungary, 2021), IEEE,
+  pp.~131--136.
+
+\bibitem{Subgame}
+{\sc Zhang, B., and Sandholm, T.}
+\newblock Subgame solving without common knowledge.
+\newblock {\em Advances in Neural Information Processing Systems 34\/} (2021),
+  23993--24004.
+
+\bibitem{FogofWar}
+{\sc Zhang, B.~H., and Sandholm, T.}
+\newblock General search techniques without common knowledge for
+  imperfect-information games, and application to superhuman fog of war chess.
+\newblock {\em arXiv preprint arXiv:2506.01242\/} (2025).
+
+\bibitem{MultiAgent}
+{\sc Zhang, K., Yang, Z., and Ba{\c{s}}ar, T.}
+\newblock Multi-agent reinforcement learning: A selective overview of theories
+  and algorithms.
+\newblock {\em Handbook of reinforcement learning and control\/} (2021),
+  321--384.
+
+\bibitem{MARLEcon}
+{\sc Zheng, S., Trott, A., Srinivasa, S., Naik, N., Gruesbeck, M., Parkes,
+  D.~C., and Socher, R.}
+\newblock The ai economist: Improving equality and productivity with ai-driven
+  tax policies.
+\newblock {\em arXiv preprint arXiv:2004.13332\/} (2020).
+
+\bibitem{comprel}
+{\sc Zhu, K., Liu, Q., Yan, X., Wu, F., Zhao, X., Zhou, P., and Yang, X.}
+\newblock A comprehensive survey of multi-agent reinforcement learning.
+\newblock {\em IEEE Transactions on Neural Networks and Learning Systems 34}, 7
+  (2022), 3074--3093.
+
+\end{thebibliography}

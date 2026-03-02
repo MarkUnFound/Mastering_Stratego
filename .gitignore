@@ -2,4 +2,20 @@
 History/
 dqn_models/
 setup_agent_models/
-Modular Stratego\__pycache__/
+*.pth
+
+# Ignore Python cache directories
+__pycache__/
+*.pyc
+*.pyo
+Modular Stratego/__pycache__/
+Modular Stratego/aaren/__pycache__/
+Modular Stratego/pbs/__pycache__/
+Modular Stratego/networks/__pycache__/
+Modular Stratego/logs/
+Modular Stratego/animations/
+# Ignore debug logs
+debug_log.txt
+**/debug_log.txt
+# Ignore PyTorch model files
+*.pt

@@ -1,0 +1,291 @@
+<mxfile host="app.diagrams.net" modified="2025-12-19T00:00:00.000Z" agent="Antigravity Agent" version="21.0.0" type="device">
+  <diagram id="aaren-arch" name="AAREN Architecture">
+    <mxGraphModel dx="2200" dy="1400" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2200" pageHeight="1400" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- MAIN TITLE -->
+        <mxCell id="title1" value="&lt;b&gt;AAREN Architecture: Action-Augmented Recurrent Encoder&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=18;fontColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="600" y="50" width="600" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="title2" value="History Aggregator &amp; Piece Inference Integration within MARQ Framework" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=12;fontColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="600" y="80" width="600" height="20" as="geometry" />
+        </mxCell>
+
+        <!-- ================= SECTION 1: EVENT COLLECTION ================= -->
+        <mxCell id="sec1_box" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#B0BEC5;dashed=1;dashPattern=8 4;" vertex="1" parent="1">
+          <mxGeometry x="40" y="150" width="340" height="420" as="geometry" />
+        </mxCell>
+        <mxCell id="sec1_title" value="&lt;b&gt;(1) ACTION OBSERVATION &amp; FEATURE EXTRACTION&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=12;fontColor=#455A64;" vertex="1" parent="1">
+          <mxGeometry x="50" y="160" width="320" height="20" as="geometry" />
+        </mxCell>
+
+        <mxCell id="env_trigger" value="&lt;b&gt;Enemy Move Observed&lt;/b&gt;&lt;br&gt;(from_pos -&gt; to_pos)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFCC80;strokeColor=#E65100;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="120" y="200" width="160" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="feature_extractor" value="&lt;b&gt;Feature Extractor&lt;/b&gt;&lt;br&gt;&lt;i&gt;(history_aggregator.py)&lt;/i&gt;" style="shape=process;whiteSpace=wrap;html=1;backgroundOutline=1;fillColor=#FFF9C4;strokeColor=#FBC02D;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="120" y="290" width="160" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="line_extract" edge="1" parent="1" source="env_trigger" target="feature_extractor">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="feature_vector" value="&lt;b&gt;24-Dim Action Vector (x_t)&lt;/b&gt;&lt;br&gt;- Direction (dr, dc)&lt;br&gt;- Distance (normalized)&lt;br&gt;- Attack Flag&lt;br&gt;- Position (normalized)&lt;br&gt;- Turn Number&lt;br&gt;- Scout Indicator&lt;br&gt;- Advance / Lateral Flag&lt;br&gt;- Piece Activity Level&lt;br&gt;- Top/Left Half Flag&lt;br&gt;- Padded Zeroes" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E1BEE7;strokeColor=#8E24AA;fontSize=10;align=left;verticalAlign=top;spacingLeft=10;spacingTop=5;" vertex="1" parent="1">
+          <mxGeometry x="100" y="380" width="200" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="line_vector" edge="1" parent="1" source="feature_extractor" target="feature_vector">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ================= SECTION 2: HISTORY MANAGEMENT ================= -->
+        <mxCell id="sec2_box" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#B0BEC5;dashed=1;dashPattern=8 4;" vertex="1" parent="1">
+          <mxGeometry x="40" y="600" width="340" height="300" as="geometry" />
+        </mxCell>
+        <mxCell id="sec2_title" value="&lt;b&gt;(2) STATE &amp; HISTORY MANAGEMENT&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=12;fontColor=#455A64;" vertex="1" parent="1">
+          <mxGeometry x="50" y="610" width="260" height="20" as="geometry" />
+        </mxCell>
+
+        <mxCell id="history_bank" value="&lt;b&gt;Position Histories Bank&lt;/b&gt;&lt;br&gt;Dict[(r,c) -&gt; List[Features]]&lt;br&gt;max_len = 50" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#BBDEFB;strokeColor=#1976D2;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="60" y="660" width="130" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="hidden_state_cache" value="&lt;b&gt;Hidden State Cache&lt;/b&gt;&lt;br&gt;Dict[(r,c) -&gt; List[States]]&lt;br&gt;For O(1) Inference" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#C8E6C9;strokeColor=#388E3C;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="220" y="660" width="130" height="80" as="geometry" />
+        </mxCell>
+
+        <mxCell id="track_move" value="&lt;b&gt;Position Tracker&lt;/b&gt;&lt;br&gt;Moves history &amp; states&lt;br&gt;from old_pos to new_pos" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F5F5F5;strokeColor=#9E9E9E;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="120" y="780" width="170" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_tracker1" edge="1" parent="1" source="history_bank" target="track_move">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_tracker2" edge="1" parent="1" source="hidden_state_cache" target="track_move">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ================= SECTION 3: AAREN CORE (NETWORK) ================= -->
+        <mxCell id="sec3_box" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#B0BEC5;dashed=1;dashPattern=8 4;" vertex="1" parent="1">
+          <mxGeometry x="420" y="150" width="700" height="750" as="geometry" />
+        </mxCell>
+        <mxCell id="sec3_title" value="&lt;b&gt;(3) AAREN CORE (PieceActionAaren)&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=12;fontColor=#455A64;" vertex="1" parent="1">
+          <mxGeometry x="430" y="160" width="280" height="20" as="geometry" />
+        </mxCell>
+
+        <mxCell id="input_proj" value="&lt;b&gt;Input Projection (Linear)&lt;/b&gt;&lt;br&gt;24 -&gt; 64 dim" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1D5E7;strokeColor=#9673A6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="630" y="210" width="280" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="line_to_proj" edge="1" parent="1" source="feature_vector" target="input_proj">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="layer1_box" value="&lt;b&gt;AAREN Layer 1&lt;/b&gt;" style="swimlane;whiteSpace=wrap;html=1;fillColor=#F3E5F5;strokeColor=#BA68C8;startSize=23;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="450" y="290" width="640" height="210" as="geometry" />
+        </mxCell>
+        
+        <!-- Aaren Cell Math inside Layer 1 -->
+        <mxCell id="l1_proj" value="&lt;b&gt;Key, Value, Query Gates&lt;/b&gt;&lt;br&gt;K = W_k(h) | V = W_v(h) | Q (gate)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#9C27B0;fontSize=10;" vertex="1" parent="layer1_box">
+          <mxGeometry x="30" y="40" width="200" height="45" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="l1_scan_train" value="&lt;b&gt;Parallel Scan (Training)&lt;/b&gt;&lt;br&gt;O(log N) prefix scan via JIT&lt;br&gt;u_t, w_t computed simultaneously" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF3E0;strokeColor=#FF9800;fontSize=10;" vertex="1" parent="layer1_box">
+          <mxGeometry x="270" y="30" width="220" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="l1_scan_infer" value="&lt;b&gt;Recurrent Step (Inference)&lt;/b&gt;&lt;br&gt;O(1) update using cached hidden state&lt;br&gt;u_t = q_t * u_{t-1} + K_t * V_t" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#4CAF50;fontSize=10;" vertex="1" parent="layer1_box">
+          <mxGeometry x="270" y="90" width="220" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="l1_out" value="&lt;b&gt;State Update &amp; LayerNorm&lt;/b&gt;&lt;br&gt;h = LayerNorm( u / (w + eps) )" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#9C27B0;fontSize=10;" vertex="1" parent="layer1_box">
+          <mxGeometry x="150" y="160" width="340" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_l1_1" edge="1" parent="layer1_box" source="l1_proj" target="l1_scan_train">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_l1_2" edge="1" parent="layer1_box" source="l1_proj" target="l1_scan_infer">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_l1_3" edge="1" parent="layer1_box" source="l1_scan_train" target="l1_out">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_l1_4" edge="1" parent="layer1_box" source="l1_scan_infer" target="l1_out">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="edge_proj_l1" edge="1" parent="1" source="input_proj" target="layer1_box">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="layer2_box" value="&lt;b&gt;AAREN Layer 2&lt;/b&gt;" style="swimlane;whiteSpace=wrap;html=1;fillColor=#F3E5F5;strokeColor=#BA68C8;startSize=23;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="450" y="530" width="640" height="210" as="geometry" />
+        </mxCell>
+        <!-- Same inner structure for layer 2 -->
+        <mxCell id="l2_proj" value="&lt;b&gt;Key, Value, Query Gates&lt;/b&gt;&lt;br&gt;K = W_k(h) | V = W_v(h) | Q (gate)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#9C27B0;fontSize=10;" vertex="1" parent="layer2_box">
+          <mxGeometry x="30" y="40" width="200" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="l2_scan_train" value="&lt;b&gt;Parallel Scan (Training)&lt;/b&gt;&lt;br&gt;O(log N) prefix scan via JIT" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF3E0;strokeColor=#FF9800;fontSize=10;" vertex="1" parent="layer2_box">
+          <mxGeometry x="270" y="30" width="220" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="l2_scan_infer" value="&lt;b&gt;Recurrent Step (Inference)&lt;/b&gt;&lt;br&gt;O(1) update using cached hidden state" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#4CAF50;fontSize=10;" vertex="1" parent="layer2_box">
+          <mxGeometry x="270" y="90" width="220" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="l2_out" value="&lt;b&gt;State Update &amp; LayerNorm&lt;/b&gt;&lt;br&gt;h_out = LayerNorm( u / (w + eps) )" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#9C27B0;fontSize=10;" vertex="1" parent="layer2_box">
+          <mxGeometry x="150" y="160" width="340" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_l2_1" edge="1" parent="layer2_box" source="l2_proj" target="l2_scan_train">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_l2_2" edge="1" parent="layer2_box" source="l2_proj" target="l2_scan_infer">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_l2_3" edge="1" parent="layer2_box" source="l2_scan_train" target="l2_out">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_l2_4" edge="1" parent="layer2_box" source="l2_scan_infer" target="l2_out">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="edge_l1_l2" edge="1" parent="1" source="layer1_box" target="layer2_box">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="cache_edge" edge="1" parent="1" source="layer2_box" target="hidden_state_cache">
+          <mxGeometry relative="1" as="geometry">
+             <mxPoint x="450" y="690" as="sourcePoint" />
+             <mxPoint x="350" y="700" as="targetPoint" />
+             <Array as="points">
+                <mxPoint x="400" y="700" />
+             </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="cache_label" value="Update Recurrent State" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=9;fontColor=#4CAF50;" vertex="1" connectable="0" parent="cache_edge">
+          <mxGeometry x="0.1" y="-2" relative="1" as="geometry">
+            <mxPoint x="5" y="-12" as="offset" />
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="hidden_cache_feed" edge="1" parent="1" source="hidden_state_cache" target="layer1_box">
+           <mxGeometry relative="1" as="geometry">
+               <Array as="points">
+                   <mxPoint x="400" y="395" />
+               </Array>
+           </mxGeometry>
+        </mxCell>
+        <mxCell id="cache_feed_label" value="Inject Prev State" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=9;fontColor=#4CAF50;" vertex="1" connectable="0" parent="hidden_cache_feed">
+          <mxGeometry x="-0.3" relative="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+
+
+        <mxCell id="extract_hidden" value="&lt;b&gt;Last Hidden State Extraction&lt;/b&gt;&lt;br&gt;Shape: (Batch, 64)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFEB3B;strokeColor=#FBC02D;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="630" y="770" width="280" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_l2_extraction" edge="1" parent="1" source="layer2_box" target="extract_hidden">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="fork_point" value="" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fillColor=#B0BEC5;strokeColor=#78909C;" vertex="1" parent="1">
+          <mxGeometry x="765" y="850" width="10" height="10" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_fork" edge="1" parent="1" source="extract_hidden" target="fork_point">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+
+        <!-- ================= SECTION 4: DOWNSTREAM INTEGRATION ================= -->
+
+        <!-- Integration 1: Rainbow DQN Output -->
+        <mxCell id="sec4_a_box" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#B0BEC5;dashed=1;dashPattern=8 4;" vertex="1" parent="1">
+          <mxGeometry x="40" y="930" width="560" height="380" as="geometry" />
+        </mxCell>
+        <mxCell id="sec4_a_title" value="&lt;b&gt;(4A) INFERENCE: RAINBOW DQN INTEGRATION (drqn_agent.py)&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=12;fontColor=#455A64;" vertex="1" parent="1">
+          <mxGeometry x="50" y="940" width="400" height="20" as="geometry" />
+        </mxCell>
+
+        <mxCell id="tensor_scatter" value="&lt;b&gt;Spatial Scatter (HistoryAggregator)&lt;/b&gt;&lt;br&gt;Place 64-dim vector at position (r,c)&lt;br&gt;Output: 64 x 10 x 10" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1BEE7;strokeColor=#8E24AA;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="60" y="1000" width="280" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_fork_dqn" edge="1" parent="1" source="fork_point" target="tensor_scatter">
+          <mxGeometry relative="1" as="geometry">
+             <Array as="points">
+                 <mxPoint x="200" y="855" />
+             </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="aaren_embedding_spatial" value="&lt;b&gt;AAREN Embeddings&lt;/b&gt;&lt;br&gt;64 x 10 x 10 Tensor" style="shape=cube;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;darkOpacity=0.1;fillColor=#E1D5E7;strokeColor=#9673A6;opacity=90;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="155" y="1080" width="90" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_scatter" edge="1" parent="1" source="tensor_scatter" target="aaren_embedding_spatial">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="base_board" value="&lt;b&gt;Raw Board Features&lt;/b&gt;&lt;br&gt;15 x 10 x 10 Tensor" style="shape=cube;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;darkOpacity=0.1;fillColor=#DAE8FC;strokeColor=#6C8EBF;opacity=90;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="370" y="1080" width="90" height="120" as="geometry" />
+        </mxCell>
+
+        <mxCell id="concat_op" value="&lt;b&gt;Channel Concatenation&lt;/b&gt;" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fillColor=#F5F5F5;strokeColor=#666666;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="270" y="1220" width="80" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_emb_concat" edge="1" parent="1" source="aaren_embedding_spatial" target="concat_op">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_board_concat" edge="1" parent="1" source="base_board" target="concat_op">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="resnet_in" value="&lt;b&gt;79 x 10 x 10 Input Tensor&lt;/b&gt;&lt;br&gt;to ResNet Backbone" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="400" y="1235" width="160" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_concat_resnet" edge="1" parent="1" source="concat_op" target="resnet_in">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+
+        <!-- Integration 2: Piece Prediction (Training) -->
+        <mxCell id="sec4_b_box" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#B0BEC5;dashed=1;dashPattern=8 4;" vertex="1" parent="1">
+          <mxGeometry x="640" y="930" width="560" height="380" as="geometry" />
+        </mxCell>
+        <mxCell id="sec4_b_title" value="&lt;b&gt;(4B) TRAINING: REVEAL-BASED PIECE PREDICTION&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=12;fontColor=#455A64;" vertex="1" parent="1">
+          <mxGeometry x="650" y="940" width="350" height="20" as="geometry" />
+        </mxCell>
+
+        <mxCell id="mlp_head" value="&lt;b&gt;Prediction MLP Head&lt;/b&gt;&lt;br&gt;FC1 (64-&gt;64) + ReLU + Dropout(0.2)&lt;br&gt;FC2 (64-&gt;12 logits)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE0B2;strokeColor=#F57C00;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="840" y="1000" width="220" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_fork_mlp" edge="1" parent="1" source="fork_point" target="mlp_head">
+          <mxGeometry relative="1" as="geometry">
+             <Array as="points">
+                 <mxPoint x="950" y="855" />
+             </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="softmax_out" value="&lt;b&gt;Output Probabilities&lt;/b&gt;&lt;br&gt;(12 Piece Types)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFCC80;strokeColor=#E65100;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="870" y="1090" width="160" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_mlp_out" edge="1" parent="1" source="mlp_head" target="softmax_out">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="battle_reveal" value="&lt;b&gt;Piece Revealed in Battle&lt;/b&gt;&lt;br&gt;Trigger training buffer addition" style="shape=callout;whiteSpace=wrap;html=1;fillColor=#F8CECC;strokeColor=#B85450;fontSize=11;position=top;position2=0.5;" vertex="1" parent="1">
+          <mxGeometry x="660" y="1120" width="180" height="70" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="loss_fn" value="&lt;b&gt;Cross-Entropy Loss&lt;/b&gt;&lt;br&gt;Target = True Piece Type" style="shape=process;whiteSpace=wrap;html=1;backgroundOutline=1;fillColor=#FFEB3B;strokeColor=#FBC02D;fontSize=11;fontColor=#B22222;" vertex="1" parent="1">
+          <mxGeometry x="870" y="1220" width="160" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_loss1" edge="1" parent="1" source="softmax_out" target="loss_fn">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_loss2" edge="1" parent="1" source="battle_reveal" target="loss_fn">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="end_to_end" value="&lt;i&gt;Note: AAREN parameters are updated&lt;br&gt;jointly via standard DQN backprop as well.&lt;/i&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;fontColor=#1565C0;" vertex="1" parent="1">
+          <mxGeometry x="830" y="1280" width="240" height="30" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
