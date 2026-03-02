@@ -62,6 +62,7 @@ Replaced additive dense rewards with Potential-Based Reward Shaping (PBRS) to fi
 | **Missing Positional Encoding in SpatialAttention** | Fixed | `SpatialAttention` processed board positions without positional encoding, making it unable to distinguish locations (e.g., flag row vs midfield). Added learnable 2D positional encoding `(1, 100, 64)` applied before self-attention. |
 | **Duplicated Code in board.py** | Fixed | `board.py` contained the entire `Board` class defined twice (128 duplicate lines). Python used only the second copy. Removed the first duplicate. |
 | **PBS Heuristic Move Blending** | Fixed | `bot_logic.py` previously combined a rule-based simplified PBS heuristic (70%) with a dummy StrategoNet (30%) for move selection. Replaced this entire module with a proxy to `DQNBotLogic` (which houses `ExpectamaxSearch`), fully transitioning test-time GUI inference to the genuine trained 21.7M parameter `RainbowAgent` and its AAREN uncertainty logic. |
+| **GitHub Large File Push Rejection** | Fixed | `agent1_league_episode_1000.pt` (247.25 MB) exceeded GitHub's 100 MB limit, blocking the push. Fixed by removing the file from git tracking (`git rm --cached`), adding `*.pt` to `.gitignore` (alongside existing `*.pth` rule), and amending the commit to purge the blob. `.pt` model checkpoints are now excluded from version control. |
 
 ## Research Methodology & Alignment
 - **RQ1 (Convergence & Win-Rates):** Evaluated strictly via TensorBoard reward stability and benchmark win ratios over decisive games.
