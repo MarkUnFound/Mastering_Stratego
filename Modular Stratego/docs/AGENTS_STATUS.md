@@ -10,11 +10,12 @@
 - **Serialization:** Hybrid strategy. Full-state `.tar.gz` for training pause/resume (preserves buffers & optimizers). Inference-only `.pt` for GUI and league checkout. The checkpoint loader automatically falls back to the latest `.pt` weights (prioritizing `league` files to avoid optimizer state dict mismatches) if the `.tar.gz` archive is older than the latest `.pt` checkpoints.
 - **Animations:** Manim visualization scenes (ResNet & Attention, Dueling C51, Softmax Exploration) successfully completed. Reside in `animations/` or root with their own `media/` output. 
 ## Training Pipeline & Curriculum
-- **5-Phase Curriculum:** Prevents strategy cycling and orchestrates opponent transitions.
-  - Transitions depend strictly on *decisive games* win-rate (ignoring draws), progressing against scheduled opponent distributions.
-- **PFSP Adaptive Opponent Scheduler:** Candidate pools expand progressively. Opponents the agent masters receive minimum 5% priority weight; strongly resistant opponents get proportionally more matchmaking time.
-- **Boltzmann Exploration (Temperature Scaling):** `argmax` action selection replaced with soft stochastic exploration (Phase 3: 0.1, Phase 4+: 0.2) to prevent deterministic opponent loops during evaluation.
-- **Agent 2 MARL:** Agent 2 serves as an independent learning agent. MARL weight and target updates gate behind Phase 4 (League Training). Prior to this, AAREN history is disabled to optimize early inference speed.
+- **5-Phase Curriculum:** Prevents strategy cycling and orchestrates opponent transitions. Start phase can be configured. Currently set to **Phase 4 (League Training)** directly to accelerate MARL.
+- **Pure MARL (League Training):** Heuristic "cheating" opponents (`smart_heuristic` and `greedy`) removed from Phase 4 to ensure pure RL self-play against historical snapshots (`league`) and current versions (`self`). 
+- **PFSP Adaptive Opponent Scheduler:** Candidate pools expand progressively. Opponents the agent masters receive minimum 5% priority weight.
+- **Boltzmann Exploration (Temperature Scaling):** `argmax` action selection replaced with soft stochastic exploration.
+- **Agent 2 MARL:** Agent 2 serves as an independent learning agent. AAREN history is enabled immediately in Phase 4+. 
+- **Performance Optimizations:** PyTorch 2.0+ Compilation (`torch.compile`) is currently disabled on Windows due to missing native Triton support, but code infrastructure is ready for Linux/WSL.
 
 ## Reward System (PBRS)
 Replaced additive dense rewards with Potential-Based Reward Shaping (PBRS) to fix the "Happy Wanderer" stagnation (high Q-value shuffling, zero flag captures).
@@ -63,6 +64,8 @@ Replaced additive dense rewards with Potential-Based Reward Shaping (PBRS) to fi
 | **Duplicated Code in board.py** | Fixed | `board.py` contained the entire `Board` class defined twice (128 duplicate lines). Python used only the second copy. Removed the first duplicate. |
 | **PBS Heuristic Move Blending** | Fixed | `bot_logic.py` previously combined a rule-based simplified PBS heuristic (70%) with a dummy StrategoNet (30%) for move selection. Replaced this entire module with a proxy to `DQNBotLogic` (which houses `ExpectamaxSearch`), fully transitioning test-time GUI inference to the genuine trained 21.7M parameter `RainbowAgent` and its AAREN uncertainty logic. |
 | **GitHub Large File Push Rejection** | Fixed | `agent1_league_episode_1000.pt` (247.25 MB) exceeded GitHub's 100 MB limit, blocking the push. Fixed by removing the file from git tracking (`git rm --cached`), adding `*.pt` to `.gitignore` (alongside existing `*.pth` rule), and amending the commit to purge the blob. `.pt` model checkpoints are now excluded from version control. |
+| **MARL Anti-Stationarity & Target Smoothing** | Fixed | In pure self-play, agents adapting simultaneously caused gradients to explode and evaluation to oscillate. Addressed via (1) `MARL_REWARD_SCALE` dampening global scalar rewards, and (2) `MARL_TARGET_UPDATE_INTERVAL` slowing down target network polyak averaging to provide a stationary anchor. |
+| **Multiprocessing Connection Crash on Exit** | Fixed | `train_dqn.py` often crashed with `EOFError` during arbitrary exit or interruptions due to zombie parallel environments. Added a robust `finally: parallel_env.close()` block. |
 
 ## Research Methodology & Alignment
 - **RQ1 (Convergence & Win-Rates):** Evaluated strictly via TensorBoard reward stability and benchmark win ratios over decisive games.

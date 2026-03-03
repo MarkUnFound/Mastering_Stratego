@@ -17,7 +17,9 @@ PLOT_INTERVAL = 500       # Save metrics plots every N episodes
 EVAL_INTERVAL = 500       # Evaluate agent every N episodes
 REPLAY_UPDATE_INTERVAL = 2    # Train every 2 steps (balances data diversity vs update frequency)
 TARGET_UPDATE_INTERVAL = 2000   # Faster target updates for Phase 1 learning (was 5000)
+MARL_TARGET_UPDATE_INTERVAL = 5000   # Smoothing for Phase 4 MARL
 REWARD_SCALE = 1.0        # Scaling factor for reward calculations
+MARL_REWARD_SCALE = 0.5   # Dampening factor for pure MARL (Phase 4)
 
 # =============================================================================
 # EXPLORATION SETTINGS (Noisy Networks Only - True Rainbow DQN)
@@ -68,7 +70,7 @@ N_STEPS = 5               # 5-step returns for deeper credit assignment in long-
 GAMMA_N = GAMMA ** N_STEPS  # Pre-computed gamma^n
 
 # Episode-Level Replay Settings (Option B: Trajectory Segment Sampling)
-EPISODE_REPLAY_ENABLED = True         # Toggle dual-buffer episode replay
+EPISODE_REPLAY_ENABLED = False        # Disable dual-buffer episode replay for speed
 EPISODE_REPLAY_MAX_EPISODES = 500     # Max stored complete episodes (FIFO eviction)
 EPISODE_REPLAY_SEGMENT_LENGTH = 16    # Contiguous steps per segment sample
 EPISODE_REPLAY_MIX_RATIO = 0.25      # 25% of batch from episode segments, 75% from PER
@@ -99,7 +101,7 @@ GENERATE_GIFS = False # Whether to generate GIFs of games
 GIF_INTERVAL = 100   # Generate GIF every N episodes (reduced frequency)
 
 # PBS Optimization Settings
-PBS_UPDATE_INTERVAL = 2  # Update PBS every 2 steps (faster inference)
+PBS_UPDATE_INTERVAL = 4  # Update PBS every 4 steps (faster inference for MARL)
 PBS_SKIP_SIMPLE_MOVES = True  # Skip AAREN for obvious 1-square non-attack moves
 PBS_CACHE_UNCERTAINTY = True  # Cache uncertainty maps until beliefs change
 
@@ -116,7 +118,7 @@ AAREN_USE_REVEAL_DATA = True    # When False, AAREN supervised training skips re
 HISTORY_EMBEDDING_SIZE = 64     # Size of AAREN embedding per position (matches hidden_size)
 
 # Rainbow DQN Performance Optimizations  
-USE_TORCH_COMPILE = False      # PyTorch 2.0+ compilation (~10-20% speedup, longer first run)
+USE_TORCH_COMPILE = False     # Disabled on Windows due to missing Triton dependency
 TORCH_COMPILE_MODE = "reduce-overhead"  # Options: "default", "reduce-overhead", "max-autotune"
 
 # League Training Settings (Opponent Diversity)
@@ -135,7 +137,7 @@ OPPONENT_SELF_PROB = 0.0        # 0% self-play (disabled for now)
 # CURRICULUM LEARNING SETTINGS
 # =============================================================================
 CURRICULUM_ENABLED = True       # Enable 5-phase curriculum learning
-CURRICULUM_START_PHASE = 2      # Start from Phase 2 (debug: skip Phase 1 to avoid distribution shift)
+CURRICULUM_START_PHASE = 4      # Start directly at League Training for MARL
 
 # Phase Transition Thresholds (LOWERED for faster progression)
 PHASE_1_WIN_THRESHOLD_RANDOM = 0.70     # 70% win rate vs random (was 90%)

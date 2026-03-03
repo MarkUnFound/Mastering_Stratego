@@ -266,6 +266,20 @@ class UnifiedRewardShaper:
             return 0.2
         else:
             return 0.0
+            
+    def get_terminal_multiplier(self) -> float:
+        """
+        Calculates the multiplier for terminal rewards based on current phase.
+        This provides Reward Scale Dampening for MARL in Phase 4+.
+        """
+        try:
+            from training_config import MARL_REWARD_SCALE
+        except ImportError:
+            MARL_REWARD_SCALE = 0.5
+            
+        if self.current_phase >= 4:
+            return MARL_REWARD_SCALE
+        return 1.0
 
     def _count_oscillations(self, dest: Tuple[int, int], source: Tuple[int, int]) -> int:
         """
@@ -305,6 +319,8 @@ class UnifiedRewardShaper:
             turn_count = info.get('turn_count', current_state.turn_count)
             max_turns = info.get('max_turns', 200)
             game_fraction = min(turn_count / max(max_turns, 1), 1.0)
+            
+            terminal_mult = self.get_terminal_multiplier()
 
             if winner == self.player_id:
                 win_type = info.get('win_type', 'unknown')
@@ -317,10 +333,10 @@ class UnifiedRewardShaper:
 
                 # Quick wins are worth more — speed bonus decays linearly
                 speed_bonus = self.config.speed_bonus_max * (1.0 - game_fraction)
-                return self.config.outcome_weight * (base + speed_bonus)
+                return self.config.outcome_weight * (base + speed_bonus) * terminal_mult
 
             elif winner == -self.player_id:
-                return self.config.outcome_weight * self.config.loss_penalty
+                return self.config.outcome_weight * self.config.loss_penalty * terminal_mult
 
             elif winner == 0:
                 # Material-advantage draws
@@ -334,7 +350,7 @@ class UnifiedRewardShaper:
                 # Long draws are punished more severely
                 length_penalty = self.config.slow_draw_penalty_max * game_fraction
 
-                return self.config.outcome_weight * (self.config.draw_penalty + material_bonus + length_penalty)
+                return self.config.outcome_weight * (self.config.draw_penalty + material_bonus + length_penalty) * terminal_mult
             return 0.0
 
         if action is None:

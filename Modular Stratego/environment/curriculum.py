@@ -95,7 +95,7 @@ PHASE_CONFIGS = {
         full_observability=False,
         min_episodes=0,  # NOT ENFORCED
         max_episodes=0,  # NOT ENFORCED
-        opponents=["league", "smart_heuristic", "greedy", "self"],
+        opponents=["league", "self"], # Pure MARL, no cheating heuristics
         reward_focus="balanced",
         success_metrics={
             # Dynamic criteria: ELO-based
@@ -393,8 +393,8 @@ class CurriculumManager:
         elif self.current_phase == TrainingPhase.SCENARIO_DRILLS:
             return {"scenario": 1.0}
 
-        # Default fallback
-        return {"smart_heuristic": 1.0}
+        # Default fallback (Pure MARL)
+        return {"self": 1.0}
     
     def update_metrics(self, episode_result: Dict):
         """

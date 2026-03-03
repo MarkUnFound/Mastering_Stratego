@@ -1,0 +1,42 @@
+DQN Agent Training for Stratego
+==================================================
+
+
+   Running Pre-Flight Checks...
+   Testing plotting functions...
+[INFO] PBS/AAREN progress plot saved to c:\Users\Mark Lawrence Quibot\repo\Research\Modular Stratego\dqn_models/test_pbs_progress.png
+   [OK] Plotting functions verified.
+   Testing game logic (simulation)...
+      Using device: cuda
+      Instantiating RainbowAgent to verify class...
+[OK] AAREN params added to optimizer (end-to-end training)
+[OK] [P1] Prioritized Experience Replay enabled (alpha=0.6)
+[OK] [P1] N-Step returns enabled (n=5)
+      RainbowAgent instantiated successfully.
+      Resetting environment...
+      Running simulation steps...
+      Simulation completed.
+   [OK] Game logic verified (no illegal moves in demo).
+[OK] All Pre-Flight Checks Passed!
+Using device: cuda
+Model save path: c:\Users\Mark Lawrence Quibot\repo\Research\Modular Stratego\dqn_models
+Initializing 4 parallel lanes...
+Initializing Rainbow Agents...
+[OK] AAREN params added to optimizer (end-to-end training)
+[OK] [P1] Prioritized Experience Replay enabled (alpha=0.6)
+[OK] [P1] N-Step returns enabled (n=5)
+[OK] [P-1] Prioritized Experience Replay enabled (alpha=0.6)
+[OK] [P-1] N-Step returns enabled (n=5)
+[INFO] Agent 2 set to active learning (MARL). AAREN history disabled for early phases (will enable at Phase 4)
+[INFO] League Manager initialized with 0 historical agents.
+ Loaded curriculum state: Phase 4 (League Training)
+[INFO] Curriculum enabled: Phase 4 (League Training)
+   Max turns per game: 1500 (Phase 4)
+[OK] AAREN history enabled for Rainbow Agent -1 (4 environments)
+[INFO] Agent 2 AAREN history ENABLED immediately (starting in Phase 4+)
+[OK] Loaded Agent 1 (Full State) from c:\Users\Mark Lawrence Quibot\repo\Research\Modular Stratego\dqn_models\agent1_rainbow_episode_3.tar.gz
+[OK] Loaded Agent 2 (Full State) from c:\Users\Mark Lawrence Quibot\repo\Research\Modular Stratego\dqn_models\agent2_rainbow_episode_3.tar.gz
+Loaded training history.
+[INFO] Resuming from global step 5,028, episode 3
+[INFO] AAREN History Aggregator: ENABLED (64-dim embeddings per position)
+   Input channels: 15 (board) + 64 (AAREN) = 79

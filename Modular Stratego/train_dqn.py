@@ -170,6 +170,18 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
         max_turns = PHASE_MAX_TURNS.get(curriculum.current_phase.value, DEFAULT_MAX_TURNS)
         parallel_env.set_max_turns(max_turns)
         print(f"   Max turns per game: {max_turns} (Phase {curriculum.current_phase.value})")
+
+        # Ensure Agent 2 has history enabled if starting in Phase 4+
+        if curriculum.current_phase.value >= 4 and not agent2.use_pbs:
+            agent2.enable_history(num_envs)
+            print("[INFO] Agent 2 AAREN history ENABLED immediately (starting in Phase 4+)")
+    
+    # MARL Optimization: Disable heuristic move filtering for Agent 2
+    # During League Training, we want Agent 2 to learn pure RL policies quickly
+    # without the massive overhead of CPU-bound heuristic masking on every step.
+    if curriculum and curriculum.current_phase.value >= 4:
+        agent2.use_heuristic_filter = False
+        print("[INFO] Agent 2 heuristic filtering DISABLED for MARL speed")
     
     # Reward shaper is initialized per lane later
     
@@ -450,6 +462,9 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
     # All lanes run in parallel, each at their own pace
     # ==========================================================================
     
+    # Import MARL target update interval
+    from training_config import MARL_TARGET_UPDATE_INTERVAL
+    
     try:
         while completed_episodes < num_episodes:
             # Prepare batch actions based on whose turn it is in each lane
@@ -471,7 +486,11 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
             p1_indices = [i for i in range(num_envs) if lane_current_player[i] == 1]
             p2_indices = [i for i in range(num_envs) if lane_current_player[i] == -1]
             
+            import time
+            profiling = {"p1_act": 0.0, "p2_act": 0.0, "env_step": 0.0, "replay": 0.0}
+            
             # P1 batch action
+            t0 = time.perf_counter()
             if p1_indices:
                 p1_states = [lane_game_states[i].board for i in p1_indices]
                 p1_valid_moves = [lane_valid_moves[i] for i in p1_indices]
@@ -485,8 +504,10 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                 for idx, lane_i in enumerate(p1_indices):
                     actions[lane_i] = p1_actions[idx]
                     p1_acting_mask[lane_i] = True
+            profiling["p1_act"] = time.perf_counter() - t0
             
             # P2 batch action
+            t1 = time.perf_counter()
             if p2_indices:
                 # Group P2 by opponent for batched inference
                 opponent_groups = {}
@@ -511,9 +532,12 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                     )
                     for idx, lane_i in enumerate(group['indices']):
                         actions[lane_i] = p2_actions[idx]
+            profiling["p2_act"] = time.perf_counter() - t1
             
             # --- STEP ALL ENVIRONMENTS ---
+            t2 = time.perf_counter()
             next_states, rewards, dones, infos, next_valid_moves = parallel_env.step(actions)
+            profiling["env_step"] = time.perf_counter() - t2
             
             # --- COUNT STEPS (Agent 1 only) ---
             p1_step_count = len(p1_indices)
@@ -919,45 +943,61 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                     lane_current_player[lane_i] = 1
             
             # --- TRAINING STEP ---
+            t3 = time.perf_counter()
             # Use threshold check instead of modulo to avoid skipping updates when step_count > 1
             if global_step - last_replay_step >= REPLAY_UPDATE_INTERVAL:
                 loss1 = agent1.replay(episode=completed_episodes)
+                last_replay_step = global_step
                 
                 # Active Agent 2 MARL learning only in Phase 4+ (League Training) 
-                loss2 = None
-                if curriculum and curriculum.current_phase.value >= 4:
-                    loss2 = agent2.replay(episode=completed_episodes)
-                
-                last_replay_step = global_step
+                # Optimization: We offset Agent 2's training step by half the interval
+                # so that both networks aren't doing heavy backprop in the same exact loop iteration.
                 
                 if loss1:
                     metrics['losses_p1'].append(loss1)
                     metrics['loss_steps_p1'].append(global_step)  # Track step for proper plotting
                     
-                    # Accumulate loss for all active lanes (since replay updates are global but apply to active policy)
-                    # We interpret "episode loss" as the average loss *during the lifetime of that episode*.
-                    # Since training happens globally every N steps, we add this loss to all currently active episodes.
-                    for i in range(num_envs):
-                        if not dones[i]: # Only if episode is active
-                            lane_episode_loss_sum_p1[i] += loss1
-                            lane_episode_loss_count_p1[i] += 1
-                
-                if loss2 and 'losses_p2' not in metrics:
-                    metrics['losses_p2'] = []
-                if loss2:
-                    metrics['losses_p2'].append(loss2)
+            if curriculum and curriculum.current_phase.value >= 4:
+                # Agent 2 updates slightly offset from Agent 1 to smooth CPU/GPU load spikes
+                if global_step - getattr(agent2, 'last_replay_step_offset', 0) >= REPLAY_UPDATE_INTERVAL:
+                    # Initialize offset tracker on first run
+                    if not hasattr(agent2, 'last_replay_step_offset') or agent2.last_replay_step_offset == 0:
+                        agent2.last_replay_step_offset = global_step + (REPLAY_UPDATE_INTERVAL // 2)
+                        loss2 = None
+                    else:
+                        loss2 = agent2.replay(episode=completed_episodes)
+                        agent2.last_replay_step_offset = global_step
+                        
+                        if loss2 and 'losses_p2' not in metrics:
+                            metrics['losses_p2'] = []
+                        if loss2:
+                            metrics['losses_p2'].append(loss2)
             
-
+            if global_step - last_replay_step == 0 and 'loss1' in locals() and loss1:
+                # Accumulate loss for all active lanes (since replay updates are global but apply to active policy)
+                # We interpret "episode loss" as the average loss *during the lifetime of that episode*.
+                # Since training happens globally every N steps, we add this loss to all currently active episodes.
+                for i in range(num_envs):
+                    if not dones[i]: # Only if episode is active
+                        lane_episode_loss_sum_p1[i] += loss1
+                        lane_episode_loss_count_p1[i] += 1
+            
             # --- PERIODIC CUDA CLEANUP ---
+            profiling["replay"] = time.perf_counter() - t3
             # Removed aggressive empty_cache as it causes allocator sync and slowdown.
             
             # --- TARGET NETWORK UPDATE ---
             # Use threshold check to prevent double updates or skips
-            if global_step - last_target_update_step >= TARGET_UPDATE_INTERVAL:
+            # Apply MARL target update smoothing in Phase 4 (League Training) 
+            current_target_interval = TARGET_UPDATE_INTERVAL
+            if curriculum and curriculum.current_phase.value >= 4:
+                current_target_interval = MARL_TARGET_UPDATE_INTERVAL
+
+            if global_step - last_target_update_step >= current_target_interval:
                 agent1.update_target_network()
                 if curriculum and curriculum.current_phase.value >= 4:
                     agent2.update_target_network()
-                    tqdm.write(f"[INFO] Target Networks (P1 & P2) Updated (Step {global_step})")
+                    tqdm.write(f"[INFO] Target Networks (P1 & P2) Updated (Step {global_step} - {current_target_interval} interval)")
                 else:
                     tqdm.write(f"[INFO] Target Network (P1 Only) Updated (Step {global_step})")
                 last_target_update_step = global_step
@@ -999,8 +1039,11 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
             # Train AAREN supervised model periodically (lightweight cross-entropy on reveal data)
             if global_step % (REPLAY_UPDATE_INTERVAL * 10) == 0:
                 aaren_loss_1 = agent1.train_history(epochs=1)
-                if agent2.use_pbs:
-                    aaren_loss_2 = agent2.train_history(epochs=1)
+                # Optimization: Skip supervised AAREN training for Agent 2 in League Training. 
+                # MARL agent 2 learns end-to-end; supervised reveal training is too computationally expensive here.
+                # if agent2.use_pbs:
+                #     aaren_loss_2 = agent2.train_history(epochs=1)
+                
                 # if aaren_loss_1 is not None:
                 #     tqdm.write(f"[AAREN] Supervised loss: {aaren_loss_1:.4f}")
             
@@ -1077,7 +1120,8 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                     f"W1={metrics['wins_p1']:<4d} "
                     f"W2={metrics['wins_p2']:<4d} "
                     f"P={phase_val:<1d} "
-                    f"S={global_step/1000:<5.1f}k      "
+                    f"S={global_step/1000:<5.1f}k "
+                    f"[P1:{profiling['p1_act']:.2f} P2:{profiling['p2_act']:.2f} Env:{profiling['env_step']:.2f} Rep:{profiling['replay']:.2f}]"
                 )
                 pbar.set_postfix_str(postfix_str, refresh=False)
             
@@ -1094,8 +1138,14 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
         )
         print(f"[SUCCESS] Full training state (including buffers and AAREN) saved to: {archive_path}")
         print("[INFO] You can resume training by running the script again.")
-    
-    pbar.close()
+    except Exception as e:
+        print(f"\n[ERROR] Training crashed: {e}")
+        traceback.print_exc()
+    finally:
+        # Crucial fix for multiprocessing connection crashes
+        print("\n[INFO] Shutting down parallel environments...")
+        parallel_env.close()
+        pbar.close()
 
     print(f"\n[DONE] Training complete! Completed {completed_episodes} episodes, {global_step:,} steps")
 
