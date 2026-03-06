@@ -9,8 +9,12 @@ import os
 import sys
 import time
 
-# Add repository root to path
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+# Add repository root and its subdirectories to path
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(project_root)
+for d in ['environment', 'network', 'settings', 'test', 'visualizers', 'utils']:
+    sys.path.append(os.path.join(project_root, d))
+sys.path.append(os.path.dirname(project_root))
 
 from environment import StrategoEnvironment
 from drqn_agent import RainbowAgent

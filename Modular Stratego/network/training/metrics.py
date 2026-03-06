@@ -35,6 +35,9 @@ class MetricsTracker:
             'losses_p1': [],
             'loss_steps_p1': [],
             'avg_loss_p1_history': [],
+            'losses_p2': [],
+            'loss_steps_p2': [],
+            'avg_loss_p2_history': [],
             
             # Win type tracking
             'wins_by_flag': 0,
@@ -128,7 +131,12 @@ class MetricsTracker:
         self.metrics['rewards_p1'].append(reward_p1)
         self.metrics['rewards_p2'].append(reward_p2)
         self.metrics['lengths'].append(episode_length)
-        self.metrics['avg_loss_p1_history'].append(avg_loss)
+        if isinstance(avg_loss, tuple):
+            self.metrics['avg_loss_p1_history'].append(avg_loss[0])
+            self.metrics['avg_loss_p2_history'].append(avg_loss[1])
+        else:
+            self.metrics['avg_loss_p1_history'].append(avg_loss)
+            self.metrics['avg_loss_p2_history'].append(0.0)
         
         # History tracking
         self.metrics['wins_p1_history'].append(self.metrics['wins_p1'])
@@ -161,10 +169,17 @@ class MetricsTracker:
         self.metrics['avg_q_values_p1'].append(avg_q)
         self.metrics['avg_entropy_p1'].append(avg_entropy)
     
-    def record_loss(self, loss: float, global_step: int) -> None:
-        """Record a training loss."""
-        self.metrics['losses_p1'].append(loss)
-        self.metrics['loss_steps_p1'].append(global_step)
+    def record_loss(self, loss: float, global_step: int, player_id: int = 1) -> None:
+        """Record a training loss for a specific player."""
+        if player_id == 1:
+            self.metrics['losses_p1'].append(loss)
+            self.metrics['loss_steps_p1'].append(global_step)
+        elif player_id == -1:
+            if 'losses_p2' not in self.metrics:
+                self.metrics['losses_p2'] = []
+                self.metrics['loss_steps_p2'] = []
+            self.metrics['losses_p2'].append(loss)
+            self.metrics['loss_steps_p2'].append(global_step)
     
     def update_win_rate(self) -> None:
         """Calculate and record sliding window win rate."""
@@ -223,7 +238,10 @@ class MetricsTracker:
                 'agent1': self.metrics['wins_p1_history'],
                 'agent2': self.metrics['wins_p2_history']
             },
-            'policy_loss_history': {'agent1': self.metrics['losses_p1']},
+            'policy_loss_history': {
+                'agent1': self.metrics['losses_p1'],
+                'agent2': self.metrics.get('losses_p2', [])
+            },
             'phase_history': self.metrics.get('phase_history', []),
             'loss_steps': self.metrics.get('loss_steps_p1'),
             'episode_end_steps': self.metrics.get('episode_end_steps')

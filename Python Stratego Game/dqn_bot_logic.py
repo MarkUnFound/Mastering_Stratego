@@ -8,8 +8,15 @@ from typing import Tuple, Optional, List, Dict
 
 # Access the MARQ framework from the sibling directory
 MODULAR_STRATEGO_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "Modular Stratego"))
-if MODULAR_STRATEGO_PATH not in sys.path:
-    sys.path.append(MODULAR_STRATEGO_PATH)
+project_root = MODULAR_STRATEGO_PATH
+if project_root not in sys.path:
+    sys.path.append(project_root)
+for d in ['environment', 'network', 'settings', 'test', 'visualizers', 'utils']:
+    path_d = os.path.join(project_root, d)
+    if path_d not in sys.path:
+        sys.path.append(path_d)
+if os.path.dirname(project_root) not in sys.path:
+    sys.path.append(os.path.dirname(project_root))
 
 from drqn_agent import RainbowAgent
 from history_aggregator import HistoryAggregator

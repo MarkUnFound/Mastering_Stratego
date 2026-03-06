@@ -160,58 +160,89 @@ def plot_training_progress(
     axs[1].set_title('Cumulative Wins (with Win Rate)')
     axs[1].grid(True, alpha=0.3)
 
-    # Plot 3: Policy Loss - Agent 1 Only (Agent 2 doesn't train)
+    # Plot 3: Policy Loss - Agent 1 & Agent 2
     # Uses LINEAR SCALE with step-based x-axis for uniform spacing
-    losses = policy_loss_history.get('agent1', [])
+    losses_p1 = policy_loss_history.get('agent1', [])
+    losses_p2 = policy_loss_history.get('agent2', [])
     
-    if losses and len(losses) > 0:
-        # Determine x-axis: Use SEQUENTIAL UPDATE COUNT to remove gaps
-        x_values_scaled = list(range(1, len(losses) + 1))
+    if (losses_p1 and len(losses_p1) > 0) or (losses_p2 and len(losses_p2) > 0):
         x_label = 'Training Updates (Sequential)'
-        
-        # Filter out zero/near-zero values (outliers that make graph unreadable)
         threshold = 1e-6
+        max_updates = 0
         
-        valid_x = []
-        valid_losses = []
-        for x, loss in zip(x_values_scaled, losses):
-            if loss > threshold:
-                valid_x.append(x)
-                valid_losses.append(loss)
-        
-        if valid_x:
-            # Plot discrete points (scatter) for raw data - very faint
-            axs[2].scatter(valid_x, valid_losses, label='Raw Loss', 
-                          color='blue', marker='o', s=10, alpha=0.15, linewidths=0, zorder=1)
+        # Plot Agent 1
+        if losses_p1 and len(losses_p1) > 0:
+            max_updates = max(max_updates, len(losses_p1))
+            x_values_p1 = list(range(1, len(losses_p1) + 1))
+            valid_x1, valid_losses1 = [], []
+            for x, loss in zip(x_values_p1, losses_p1):
+                if loss > threshold:
+                    valid_x1.append(x)
+                    valid_losses1.append(loss)
             
-            # SMOOTHED CURVE 1: Rolling average (short window for local trends)
-            window_short = min(50, max(5, len(valid_losses) // 20)) if len(valid_losses) > 5 else 1
-            if len(valid_losses) >= window_short and window_short > 1:
-                windowed_avg = np.convolve(valid_losses, np.ones(window_short)/window_short, mode='valid')
-                windowed_x = valid_x[window_short-1:]
-                axs[2].plot(windowed_x, windowed_avg, color='dodgerblue', linestyle='-', linewidth=1.5, 
-                           label=f'Moving Avg ({window_short})', alpha=0.7, zorder=2)
-            
-            # SMOOTHED CURVE 2: Exponential Moving Average (for overall trend)
-            if len(valid_losses) >= 20:
-                alpha_ema = 0.01  # Smoothing factor (smaller = smoother)
-                ema = [valid_losses[0]]
-                for loss in valid_losses[1:]:
-                    ema.append(alpha_ema * loss + (1 - alpha_ema) * ema[-1])
-                axs[2].plot(valid_x, ema, color='darkblue', linestyle='-', linewidth=2.5, 
-                           label='EMA Trend (α=0.01)', alpha=0.9, zorder=3)
-        else:
-            axs[2].text(0.5, 0.5, 'No loss data recorded yet', ha='center', va='center', 
-                       transform=axs[2].transAxes, fontsize=12)
+            if valid_x1:
+                axs[2].scatter(valid_x1, valid_losses1, label='P1 Raw Loss', 
+                              color='blue', marker='o', s=10, alpha=0.15, linewidths=0, zorder=1)
+                
+                window_short = min(50, max(5, len(valid_losses1) // 20)) if len(valid_losses1) > 5 else 1
+                if len(valid_losses1) >= window_short and window_short > 1:
+                    windowed_avg = np.convolve(valid_losses1, np.ones(window_short)/window_short, mode='valid')
+                    windowed_x = valid_x1[window_short-1:]
+                    axs[2].plot(windowed_x, windowed_avg, color='dodgerblue', linestyle='-', linewidth=1.5, 
+                               label=f'P1 Moving Avg ({window_short})', alpha=0.7, zorder=2)
+                
+                if len(valid_losses1) >= 20:
+                    alpha_ema = 0.01
+                    ema = [valid_losses1[0]]
+                    for loss in valid_losses1[1:]:
+                        ema.append(alpha_ema * loss + (1 - alpha_ema) * ema[-1])
+                    axs[2].plot(valid_x1, ema, color='darkblue', linestyle='-', linewidth=2.5, 
+                               label='P1 EMA Trend', alpha=0.9, zorder=3)
         
+        # Plot Agent 2
+        if losses_p2 and len(losses_p2) > 0:
+            # Shift Agent 2 plot to align roughly with its appearance in later phases
+            start_x = max(1, len(losses_p1) - len(losses_p2) + 1)
+            max_updates = max(max_updates, start_x + len(losses_p2) - 1)
+            x_values_p2 = list(range(start_x, start_x + len(losses_p2)))
+            
+            valid_x2, valid_losses2 = [], []
+            for x, loss in zip(x_values_p2, losses_p2):
+                if loss > threshold:
+                    valid_x2.append(x)
+                    valid_losses2.append(loss)
+            
+            if valid_x2:
+                axs[2].scatter(valid_x2, valid_losses2, label='P2 Raw Loss', 
+                              color='red', marker='o', s=10, alpha=0.15, linewidths=0, zorder=1)
+                
+                window_short = min(50, max(5, len(valid_losses2) // 20)) if len(valid_losses2) > 5 else 1
+                if len(valid_losses2) >= window_short and window_short > 1:
+                    windowed_avg = np.convolve(valid_losses2, np.ones(window_short)/window_short, mode='valid')
+                    windowed_x = valid_x2[window_short-1:]
+                    axs[2].plot(windowed_x, windowed_avg, color='tomato', linestyle='-', linewidth=1.5, 
+                               label=f'P2 Moving Avg ({window_short})', alpha=0.7, zorder=2)
+                
+                if len(valid_losses2) >= 20:
+                    alpha_ema = 0.01
+                    ema = [valid_losses2[0]]
+                    for loss in valid_losses2[1:]:
+                        ema.append(alpha_ema * loss + (1 - alpha_ema) * ema[-1])
+                    axs[2].plot(valid_x2, ema, color='darkred', linestyle='-', linewidth=2.5, 
+                               label='P2 EMA Trend', alpha=0.9, zorder=3)
+                               
         axs[2].set_xlabel(x_label)
+        
+        # We need this to exist for the spanning lines logic below
+        losses = list(range(max_updates)) 
     else:
         axs[2].text(0.5, 0.5, 'No loss data recorded yet', ha='center', va='center', 
                    transform=axs[2].transAxes, fontsize=12)
         axs[2].set_xlabel('Training Steps')
+        losses = []
     
     axs[2].set_ylabel('Policy Loss')
-    axs[2].set_title('Agent 1 Policy Loss (Agent 2 does not train)')
+    axs[2].set_title('Agent Policy Loss (Agent 1 & 2)')
     axs[2].legend()
     axs[2].grid(True, alpha=0.3)
     

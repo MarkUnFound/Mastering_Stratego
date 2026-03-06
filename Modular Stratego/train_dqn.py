@@ -970,8 +970,10 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                         
                         if loss2 and 'losses_p2' not in metrics:
                             metrics['losses_p2'] = []
+                            metrics['loss_steps_p2'] = []
                         if loss2:
                             metrics['losses_p2'].append(loss2)
+                            metrics['loss_steps_p2'].append(global_step)
             
             if global_step - last_replay_step == 0 and 'loss1' in locals() and loss1:
                 # Accumulate loss for all active lanes (since replay updates are global but apply to active policy)

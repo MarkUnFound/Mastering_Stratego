@@ -45,7 +45,7 @@ button_states = {}
 
 # Battle popup state
 battle_popup = None  # dict with attacker, defender, result, timer when active
-BATTLE_POPUP_DURATION = 0.75  # seconds to show popup
+BATTLE_POPUP_DURATION = 1.5  # seconds to show popup
 bot_think_start_time = 0.0
 
 # Setup board
@@ -210,12 +210,10 @@ def calculate_optimal_tile_size(current_width, current_height, show_history=True
     return max(MIN_TILE_SIZE, min(optimal_tile, MAX_TILE_SIZE))
 
 def calculate_history_width(current_width, board_width_with_borders, game_state=None):
-    """Calculate history panel width"""
-    if game_state == "setup":
-        return 0
+    """Calculate side panel width (Legends + History)"""
     remaining_space = current_width - board_width_with_borders
     if remaining_space > MIN_HISTORY_WIDTH:
-        return min(remaining_space - 10, 200)
+        return min(remaining_space - 10, 320)
     return 0
 
 def toggle_fullscreen():
@@ -246,7 +244,7 @@ def get_board_dimensions():
     board_width_with_borders = board_width + border_size * 2
     board_height_with_borders = board_height + border_size * 2
     history_width = 0
-    if show_history_panel and game_state != "setup":
+    if show_history_panel:
         history_width = calculate_history_width(current_width, board_width_with_borders, game_state)
     available_board_width = current_width - history_width
     board_start_x = (available_board_width - board_width_with_borders) // 2
@@ -443,16 +441,70 @@ def draw_board():
         draw_text(str(10 - i), board_start_x + border_size - 18, rank_y, coord_size, coord_color, bold=True)
         draw_text(str(10 - i), board_start_x + border_size + BOARD_SIZE * tile_size + 18, rank_y, coord_size, coord_color, bold=True)
 
-def draw_move_history():
-    """Draw move history panel"""
+def draw_legends_panel():
+    """Draw game legends panel"""
     dims = get_board_dimensions()
     history_width = dims['history_width']
     if history_width == 0 or not show_history_panel:
         return
+    
+    current_width, current_height = screen.get_size()
+    legends_x = dims['board_start_x'] + dims['board_width_with_borders'] + 40
+    legends_y = 60
+    
+    # Legends panel height
+    legends_height = 250
+    
+    # Create rect and draw
+    legends_rect = pygame.Rect(legends_x, legends_y, history_width - 10, legends_height)
+    draw_rounded_rect(screen, CARD_BG, legends_rect, radius=10)
+    pygame.draw.rect(screen, GREY_700, legends_rect, 2, border_radius=10)
+    
+    # Header
+    header_height = 40
+    header_rect = pygame.Rect(legends_x, legends_y, history_width - 10, header_height)
+    draw_rounded_rect(screen, CARD_LIGHT, header_rect, radius=10)
+    draw_text("Legends & Rules", legends_rect.centerx, legends_y + header_height // 2,
+              get_font_size(14), WHITE, bold=True)
+              
+    y_offset = legends_y + header_height + 15
+    line_spacing = get_font_size(14) + 8
+    
+    # Text rules
+    rules = [
+        ("Green Tiles", "Valid Moves", SUCCESS),
+        ("Yellow Tiles", "Selected Piece", WARNING),
+        ("10 (Marshal)", "Beats all but Spy", WHITE),
+        ("1 (Spy)", "Beats 10 if attacking", WHITE),
+        ("3 (Miner)", "Defuses Bombs (B)", WHITE),
+        ("B (Bomb)", "Beats all but Miner", DANGER),
+        ("F (Flag)", "Capture to Win!", ACCENT)
+    ]
+    
+    for rule, desc, color in rules:
+        draw_text(rule, legends_x + 15, y_offset, get_font_size(13), color, bold=True, center=False)
+        draw_text(f"- {desc}", legends_x + 120, y_offset, get_font_size(13), GREY_300, center=False)
+        y_offset += line_spacing
+
+
+def draw_move_history():
+    """Draw move history panel"""
+    global game_state
+    dims = get_board_dimensions()
+    history_width = dims['history_width']
+    if history_width == 0 or not show_history_panel or game_state == "setup":
+        return
     current_width, current_height = screen.get_size()
     history_x = dims['board_start_x'] + dims['board_width_with_borders'] + 40
-    history_y = 60
-    history_height = current_height - 200
+    
+    legends_height = 250
+    gap = 20
+    history_y = 60 + legends_height + gap
+    history_height = current_height - history_y - 80
+    
+    if history_height < 50:
+        return
+        
     history_rect = pygame.Rect(history_x, history_y, history_width - 10, history_height)
     draw_rounded_rect(screen, CARD_BG, history_rect, radius=10)
     pygame.draw.rect(screen, GREY_700, history_rect, 2, border_radius=10)
@@ -464,6 +516,7 @@ def draw_move_history():
     move_y = history_y + header_height + 10
     move_height = get_font_size(14) + 4
     visible_moves = int((history_height - header_height - 20) / move_height)
+    if visible_moves <= 0: return
     start_index = max(0, len(move_history) - visible_moves)
     for i, move in enumerate(move_history[start_index:], start=start_index + 1):
         move_color = get_player_color(1 if i % 2 == 1 else 2, 'light')
@@ -856,6 +909,7 @@ while running:
 
     elif game_state == "setup":
         draw_board()
+        draw_legends_panel()
         dims = get_board_dimensions()
         board_width_with_borders = dims['board_width_with_borders']
         board_start_x = dims['board_start_x']
@@ -889,6 +943,7 @@ while running:
     elif game_state == "play":
         draw_board()
         draw_lost_pieces_tracker()
+        draw_legends_panel()
         draw_move_history()
         if vs_bot and current_player != human_side:
             if time.time() - bot_think_start_time > BATTLE_POPUP_DURATION:
