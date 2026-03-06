@@ -5,7 +5,7 @@ Configuration settings for DQN training.
 # =============================================================================
 # HARDWARE & TRAINING SCALE CONFIGURATION (Fixed)
 # =============================================================================
-NUM_LANES = 4             # Reduced to 8 (Safe for 6GB VRAM)
+NUM_LANES = 32             # Reduced to 8 (Safe for 6GB VRAM)
 NUM_ENVS = NUM_LANES      # LEGACY alias - always equals NUM_LANES (kept for compatibility)
 BATCH_SIZE = 256         # Reduced to 256 (Safe for 6GB VRAM)
 GAMMA = 0.995           # Discount factor - HIGH for long-term flag capture planning
@@ -24,11 +24,10 @@ MARL_REWARD_SCALE = 0.5   # Dampening factor for pure MARL (Phase 4)
 # =============================================================================
 # EXPLORATION SETTINGS (Noisy Networks Only - True Rainbow DQN)
 # =============================================================================
-# Epsilon-greedy DISABLED: Noisy Networks handle exploration (state-dependent)
-# This follows the original Rainbow DQN paper which replaces ε-greedy with NoisyNets
-EXPLORATION_EPSILON_START = 0.0   # Disabled - Noisy Networks handle exploration
-EXPLORATION_EPSILON_END = 0.0     # Disabled
-EXPLORATION_EPSILON_DECAY = 1     # Not used
+# Epsilon-greedy ENABLED: Vanilla DQN requires epsilon-greedy exploration
+EXPLORATION_EPSILON_START = 1.0   
+EXPLORATION_EPSILON_END = 0.05    
+EXPLORATION_EPSILON_DECAY = 50000 
 
 # Entropy Regularization (Soft Q-Learning)
 ENTROPY_REG_ENABLED = True
@@ -66,8 +65,7 @@ IMITATION_EPISODES = 2000     # Only use imitation for first N episodes (then pu
 IMITATION_REWARD_BOOST = 1.5  # Multiply reward for imitation actions (encourages learning good moves)
 
 # Multi-Step Returns (N-Step DQN)
-N_STEPS = 5               # 5-step returns for deeper credit assignment in long-horizon games (200-500 moves)
-GAMMA_N = GAMMA ** N_STEPS  # Pre-computed gamma^n
+# (N-Step returns were removed as part of transition to Vanilla DQN)
 
 # Episode-Level Replay Settings (Option B: Trajectory Segment Sampling)
 EPISODE_REPLAY_ENABLED = False        # Disable dual-buffer episode replay for speed

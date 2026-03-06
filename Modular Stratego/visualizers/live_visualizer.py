@@ -10,7 +10,7 @@ from typing import Dict, Tuple, Optional, List
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from environment import StrategoEnvironment
-from drqn_agent import RainbowAgent
+from drqn_agent import DQNAgent
 from piece import PieceType, PIECE_NAMES, PIECE_RANKS
 from board import BOARD_SIZE, LAKE_SQUARE
 
@@ -58,8 +58,8 @@ class StrategoVisualizer:
         
         # Agents
         print("Initializing Agents...")
-        self.agent1 = RainbowAgent(player_id=1, device=self.device)
-        self.agent2 = RainbowAgent(player_id=-1, device=self.device)
+        self.agent1 = DQNAgent(player_id=1, device=self.device)
+        self.agent2 = DQNAgent(player_id=-1, device=self.device)
         
         # Load Models (use load_model method)
         if model_path_p1 and os.path.exists(model_path_p1):

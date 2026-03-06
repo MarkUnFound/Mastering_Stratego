@@ -1,17 +1,13 @@
 # Networks Module - Neural Network Architectures
 # 
-# This module provides neural network components for DQN agents:
-# - NoisyLinear for exploration
-# - RainbowDQN for distributional RL
+# This module provides neural network components for DQN agents
 
 """
 Neural network architectures for Stratego DQN agents.
 """
 
-from .noisy_linear import NoisyLinear
-from .rainbow_dqn import RainbowDQN
+from .vanilla_dqn import VanillaDQN
 
 __all__ = [
-    'NoisyLinear',
-    'RainbowDQN',
+    'VanillaDQN',
 ]

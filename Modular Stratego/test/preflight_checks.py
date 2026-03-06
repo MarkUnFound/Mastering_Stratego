@@ -1,11 +1,18 @@
 import os
+import sys
+
+# Add repository root and its subdirectories to path
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(project_root)
+for d in ['environment', 'network', 'settings', 'test', 'visualizers', 'utils']:
+    sys.path.append(os.path.join(project_root, d))
+
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
 from training_visualizer import plot_training_progress, plot_pbs_evaluator_progress, plot_additional_metrics
 from environment import StrategoEnvironment
-from drqn_agent import RainbowAgent
-from training_config import NUM_ENVS
+from drqn_agent import DQNAgent
 
 def run_preflight_checks(model_save_path: str):
     print("\n   Running Pre-Flight Checks...")
@@ -68,12 +75,12 @@ def _test_game_simulation():
     print(f"      Using device: {device}")
 
     # Create dummy agents (minimal config)
-    print("      Instantiating RainbowAgent to verify class...")
+    print("      Instantiating DQNAgent to verify class...")
     try:
-        agent = RainbowAgent(player_id=1, device=device, num_envs=1)
-        print("      RainbowAgent instantiated successfully.")
+        agent = DQNAgent(player_id=1, device=device, num_envs=1)
+        print("      DQNAgent instantiated successfully.")
     except Exception as e:
-        print(f"      Failed to instantiate RainbowAgent: {e}")
+        print(f"      Failed to instantiate DQNAgent: {e}")
         raise
     
     # Use single environment for testing

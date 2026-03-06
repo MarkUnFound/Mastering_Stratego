@@ -23,7 +23,7 @@ from tqdm import tqdm
 
 from piece import PieceType
 from environment import StrategoEnvironment
-from drqn_agent import RainbowAgent
+from drqn_agent import DQNAgent
 from opponents import RandomAgent
 
 
@@ -158,7 +158,7 @@ class PieceValueCalculator:
         
         # Initialize agents
         if agent1_path:
-            agent1 = RainbowAgent(player_id=1, device=self.device)
+            agent1 = DQNAgent(player_id=1, device=self.device)
             agent1.load_model(agent1_path)
             print(f"Loaded Agent 1 from: {agent1_path}")
         else:
@@ -166,7 +166,7 @@ class PieceValueCalculator:
             print("Using Random Agent 1")
             
         if agent2_path:
-            agent2 = RainbowAgent(player_id=-1, device=self.device)
+            agent2 = DQNAgent(player_id=-1, device=self.device)
             agent2.load_model(agent2_path)
             print(f"Loaded Agent 2 from: {agent2_path}")
         else:

@@ -22,7 +22,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from environment import StrategoEnvironment
-from drqn_agent import RainbowAgent
+from drqn_agent import DQNAgent
 from piece import PieceType
 
 # Channel names for visualization
@@ -51,7 +51,7 @@ def visualize_input_channels(save_path: str = "dqn_models/input_visualization.pn
     
     # Create agent to get state representation
     print("Creating agent...")
-    agent = RainbowAgent(player_id=1, device=device, num_envs=1, use_pbs=False)
+    agent = DQNAgent(player_id=1, device=device, num_envs=1, use_pbs=False)
     
     # Get the 27-channel input tensor (with full observability)
     print("Generating input tensor...")

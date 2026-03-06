@@ -10,7 +10,7 @@ from collections import deque
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from drqn_agent import RainbowAgent
+from drqn_agent import DQNAgent
 from training import Checkpointer, MetricsTracker
 from league import LeagueManager
 
@@ -22,7 +22,7 @@ def test_serialization():
     
     # 1. Initialize Agent and add dummy data
     print("1. Initializing Agent 1...")
-    agent1 = RainbowAgent(player_id=1, device=device, buffer_size=1000)
+    agent1 = DQNAgent(player_id=1, device=device, buffer_size=1000)
     
     # Simulate some training steps
     agent1.step_count = 1234
@@ -61,8 +61,8 @@ def test_serialization():
     
     # 4. Load into New Agent
     print("4. Loading into New Agent...")
-    agent_new = RainbowAgent(player_id=1, device=device, buffer_size=1000)
-    checkpointer.load_agent_models(agent_new, RainbowAgent(player_id=-1, device=device, use_pbs=False))
+    agent_new = DQNAgent(player_id=1, device=device, buffer_size=1000)
+    checkpointer.load_agent_models(agent_new, DQNAgent(player_id=-1, device=device, use_pbs=False))
     
     # 5. Verify State
     print("5. Verifying State...")

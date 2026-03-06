@@ -65,7 +65,7 @@ class Checkpointer:
         
         # 1. Load Agent 1
         # Try .tar.gz first (Full state for seamless resumption)
-        result = self.find_latest_checkpoint("agent1_rainbow_episode_*.tar.gz")
+        result = self.find_latest_checkpoint("agent1_dqn_episode_*.tar.gz")
         if result:
             path, episode = result
             try:
@@ -76,7 +76,7 @@ class Checkpointer:
                 print(f"[WARN] Failed to load Agent 1 archive {path}: {e}")
         
         # Fallback to .pt if no archive found or if archive was older than latest .pt
-        pt_rainbow = self.find_latest_checkpoint("agent1_rainbow_episode_*.pt")
+        pt_rainbow = self.find_latest_checkpoint("agent1_dqn_episode_*.pt")
         pt_league = self.find_latest_checkpoint("agent1_league_episode_*.pt")
         
         pt_result = None
@@ -98,7 +98,7 @@ class Checkpointer:
 
         # 2. Load Agent 2
         # Try .tar.gz first
-        result = self.find_latest_checkpoint("agent2_rainbow_episode_*.tar.gz")
+        result = self.find_latest_checkpoint("agent2_dqn_episode_*.tar.gz")
         if result:
             path, pt_episode = result
             if pt_episode >= start_episode:
@@ -109,7 +109,7 @@ class Checkpointer:
                     print(f"[WARN] Failed to load Agent 2 archive {path}: {e}")
         
         # Fallback to .pt
-        pt_result = self.find_latest_checkpoint("agent2_rainbow_episode_*.pt")
+        pt_result = self.find_latest_checkpoint("agent2_dqn_episode_*.pt")
         if pt_result:
             pt_path, pt_episode = pt_result
             # Check if this .pt is newer than whatever we loaded (if anything)
@@ -147,14 +147,14 @@ class Checkpointer:
     ) -> None:
         """Save periodic models (checkpoints) as .pt files."""
         # Save Agent 1 (Weights only for periodic checkpoints)
-        agent1_path = os.path.join(self.save_dir, f"agent1_rainbow_episode_{episode}.pt")
+        agent1_path = os.path.join(self.save_dir, f"agent1_dqn_episode_{episode}.pt")
         agent1_tmp = agent1_path + ".tmp"
         torch.save(agent1.state_dict(include_buffers=False), agent1_tmp)
         os.replace(agent1_tmp, agent1_path)
 
         # Save Agent 2 (if it's a trainable agent)
         if hasattr(agent2, 'state_dict'):
-            agent2_path = os.path.join(self.save_dir, f"agent2_rainbow_episode_{episode}.pt")
+            agent2_path = os.path.join(self.save_dir, f"agent2_dqn_episode_{episode}.pt")
             agent2_tmp = agent2_path + ".tmp"
             torch.save(agent2.state_dict(include_buffers=False), agent2_tmp)
             os.replace(agent2_tmp, agent2_path)
@@ -191,12 +191,12 @@ class Checkpointer:
         Used primarily when training is interrupted.
         """
         # Save Agent 1 Full State (.tar.gz)
-        agent1_archive_path = os.path.join(self.save_dir, f"agent1_rainbow_episode_{episode}.tar.gz")
+        agent1_archive_path = os.path.join(self.save_dir, f"agent1_dqn_episode_{episode}.tar.gz")
         self._save_to_archive(agent1, agent1_archive_path)
 
         # Save Agent 2 Full State
         if hasattr(agent2, 'state_dict'):
-            agent2_archive_path = os.path.join(self.save_dir, f"agent2_rainbow_episode_{episode}.tar.gz")
+            agent2_archive_path = os.path.join(self.save_dir, f"agent2_dqn_episode_{episode}.tar.gz")
             self._save_to_archive(agent2, agent2_archive_path)
 
         # Ensure curriculum and metrics are also synced

@@ -20,7 +20,7 @@ import numpy as np
 # Ensure project modules are importable
 sys.path.insert(0, '.')
 
-from drqn_agent import RainbowAgent
+from drqn_agent import DQNAgent
 from history_aggregator import HistoryAggregator
 from aaren.network import PieceActionAaren
 from networks.rainbow_dqn import RainbowDQN
@@ -139,7 +139,7 @@ def test_channel_concatenation(device):
     """Verify get_state_representation() returns correct shape with AAREN channels."""
     print("\n── Test 3: Channel Concatenation ──")
 
-    agent = RainbowAgent(player_id=1, device=device, num_envs=1, use_pbs=True)
+    agent = DQNAgent(player_id=1, device=device, num_envs=1, use_pbs=True)
     game_state, env = make_dummy_game_state(device)
 
     # Feed some history so AAREN has data

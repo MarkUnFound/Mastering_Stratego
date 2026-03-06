@@ -6,7 +6,7 @@ import sys
 # Add repository root to path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from drqn_agent import RainbowAgent
+from drqn_agent import DQNAgent
 from environment import StrategoEnvironment
 
 def test_hooks():
@@ -14,7 +14,7 @@ def test_hooks():
     print(f"Testing hooks on {device}...")
     
     # Initialize agent
-    agent = RainbowAgent(player_id=1, device=device)
+    agent = DQNAgent(player_id=1, device=device)
     # Use a dummy state for testing if model not found
     model_path = r"c:\Users\Mark Lawrence Quibot\repo\Research\History\12\agent1_rainbow_episode_8000.pth"
     if os.path.exists(model_path):

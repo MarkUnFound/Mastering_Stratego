@@ -30,7 +30,7 @@ from collections import deque
 # Add parent directory
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from drqn_agent import RainbowAgent
+from drqn_agent import DQNAgent
 from environment import StrategoEnvironment
 from game_state import GameState
 from piece import PieceType, PIECE_RANKS, PIECE_NAMES
@@ -52,9 +52,9 @@ class GradientCatcher:
         if grad_out and len(grad_out) > 0:
             self.grads['input_grad'] = grad_out[0].detach().cpu()
 
-class VisualRainbowAgent(RainbowAgent):
+class VisualDQNAgent(DQNAgent):
     """
-    Subclass of RainbowAgent that exposes internal state for visualization.
+    Subclass of DQNAgent that exposes internal state for visualization.
     """
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -195,7 +195,7 @@ def visual_train():
     
     # Agents
     print("Initializing Agents...")
-    agent1 = VisualRainbowAgent(player_id=1, device=device, lr=LEARNING_RATE, buffer_size=10000)
+    agent1 = VisualDQNAgent(player_id=1, device=device, lr=LEARNING_RATE, buffer_size=10000)
     
     # Opponent Infrastructure (Aligned with train_dqn.py)
     master_reward_config = StrategoRewardConfig.from_training_config()
@@ -214,7 +214,7 @@ def visual_train():
     )
     
     # Specific Agents
-    rainbow_agent2 = RainbowAgent(player_id=-1, device=device, lr=LEARNING_RATE, buffer_size=10000, use_pbs=False)
+    dqn_agent2 = DQNAgent(player_id=-1, device=device, lr=LEARNING_RATE, buffer_size=10000, use_pbs=False)
     random_agent = RandomAgent()
     greedy_agent = GreedyAgent(device=device, player_id=-1, config=master_reward_config)
     
@@ -656,7 +656,7 @@ def visualize_top_moves(ax, top_moves, search_info=None):
     """
     Render a text list of top moves.
     top_moves: list of ((r1, c1), (r2, c2), q_val) or similiar.
-    Actually VisualRainbowAgent stores (move, q).
+    # Actually VisualDQNAgent stores (move, q).
     move is ((r1, c1), (r2, c2)).
     
     search_info: Optional dict with search results to display.

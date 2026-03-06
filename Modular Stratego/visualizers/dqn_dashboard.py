@@ -17,7 +17,7 @@ for d in ['environment', 'network', 'settings', 'test', 'visualizers', 'utils']:
 sys.path.append(os.path.dirname(project_root))
 
 from environment import StrategoEnvironment
-from drqn_agent import RainbowAgent
+from drqn_agent import DQNAgent
 from piece import PieceType, PIECE_NAMES, PIECE_RANKS
 from board import BOARD_SIZE, LAKE_SQUARE
 
@@ -28,7 +28,7 @@ class DQNDashboard:
 
         # Initialize environment and agent
         self.env = StrategoEnvironment(self.device)
-        self.agent = RainbowAgent(player_id=1, device=self.device)
+        self.agent = DQNAgent(player_id=1, device=self.device)
         
         if os.path.exists(model_path):
             print(f"Loading Model: {model_path}")
@@ -42,7 +42,9 @@ class DQNDashboard:
         # Hooks and Data Cache
         self.attn_weights = None
         self.hook_handle = None
-        self._register_hooks()
+        
+        # Spatial Attention removed for Vanilla DQN
+        # self._register_hooks()
         
         self.current_state = None
         self.selected_pos = (0, 0)  # Default selection (often a Marshall/General in setup)
@@ -94,15 +96,8 @@ class DQNDashboard:
         print("  Close Window: Exit")
 
     def _register_hooks(self):
-        """Register forward hook to extract attention weights."""
-        def hook_fn(module, input, output):
-            # output of nn.MultiheadAttention is (attn_output, attn_output_weights)
-            _, weights = output
-            self.attn_weights = weights.detach().cpu().numpy()
-            
-        target_layer = self.agent.q_network.spatial_attention.attn
-        self.hook_handle = target_layer.register_forward_hook(hook_fn)
-        print("[OK] SpatialAttention hook registered.")
+        """Register forward hook to extract attention weights (Removed in Vanilla DQN)."""
+        pass
 
     def _on_click(self, event):
         if event.inaxes in [self.ax_board, self.ax_q_heatmap, self.ax_attn]:
@@ -128,13 +123,11 @@ class DQNDashboard:
                 state_tensor = state_tensor.unsqueeze(0)
             
             # Forward pass to trigger hooks and get logits
-            log_probs = self.agent.q_network(state_tensor)
-            probs = log_probs.exp()
+            expected_q_values = self.agent.q_network(state_tensor).squeeze(0).cpu().numpy()
             
             # 1. Expected Q-Values for Heatmap (Inferred per square)
             self.q_heatmap = np.full((10, 10), np.nan)
             valid_moves = self.env.get_valid_moves()
-            expected_q_values = (probs * self.agent.support).sum(dim=2).squeeze(0).cpu().numpy()
             
             for move in valid_moves:
                 (r1, c1), (r2, c2) = move
@@ -143,8 +136,8 @@ class DQNDashboard:
                 if np.isnan(self.q_heatmap[r1, c1]) or q_val > self.q_heatmap[r1, c1]:
                     self.q_heatmap[r1, c1] = q_val
             
-            # 2. C51 Atoms for selected action
-            self.selected_action_probs = None
+            # 2. Extract Q Value for selected action
+            self.selected_action_q = None
             best_q = -float('inf')
             for move in valid_moves:
                 (r1, c1), (r2, c2) = move
@@ -153,7 +146,7 @@ class DQNDashboard:
                     q_val = expected_q_values[action_idx]
                     if q_val > best_q:
                         best_q = q_val
-                        self.selected_action_probs = probs[0, action_idx].cpu().numpy()
+                        self.selected_action_q = q_val
             
             # 3. Attention Map
             if self.attn_weights is not None:
@@ -256,19 +249,20 @@ class DQNDashboard:
         self.ax_board.text(10.5, 5, legend_text, color='white', fontsize=9, 
                           va='center', ha='left', bbox=dict(facecolor='#34495e', alpha=0.8, pad=5))
 
-        # 2. C51 PDF
-        if self.selected_action_probs is not None:
-            atoms = self.agent.support.cpu().numpy()
-            self.ax_c51.fill_between(atoms, self.selected_action_probs, color='#9b59b6', alpha=0.7)
-            self.ax_c51.plot(atoms, self.selected_action_probs, color='#8e44ad', lw=2)
-            self.ax_c51.set_xlabel("Return (Q)", color='white')
-            self.ax_c51.set_ylim(0, max(0.2, np.max(self.selected_action_probs)*1.2))
+        # 2. Vanilla Q-Values
+        if getattr(self, 'selected_action_q', None) is not None:
+            self.ax_c51.bar(['Q-Value'], [self.selected_action_q], color='#9b59b6', alpha=0.7)
+            self.ax_c51.set_ylabel("Value", color='white')
+            # Set ylim with some padding
+            ylim_top = max(1.0, self.selected_action_q * 1.2) if self.selected_action_q > 0 else 1.0
+            ylim_bot = min(-1.0, self.selected_action_q * 1.2) if self.selected_action_q < 0 else -1.0
+            self.ax_c51.set_ylim(ylim_bot, ylim_top)
             self.ax_c51.grid(True, alpha=0.3)
         else:
             self.ax_c51.text(0.5, 0.5, "No Valid Moves\nor Square Empty", ha='center', va='center', 
                              transform=self.ax_c51.transAxes, color='gray')
             
-        self.ax_c51.set_title(f"Outcome Prob (C51) for {self.selected_pos}", color='white', fontsize=10)
+        self.ax_c51.set_title(f"Q-Value for {self.selected_pos}", color='white', fontsize=10)
 
         # 3. Q-Heatmap
         masked_q = np.ma.masked_where(np.isnan(self.q_heatmap), self.q_heatmap)
@@ -278,12 +272,10 @@ class DQNDashboard:
             self.im_q.set_clim(np.nanmin(self.q_heatmap), np.nanmax(self.q_heatmap))
         self.ax_q_heatmap.set_title("Strategic Piece Priority (Max Q-Source)", color='white', fontsize=10)
 
-        # 4. Spatial Attention
-        self.im_attn.set_data(self.attn_map)
-        if self.attn_map is not None:
-            self.im_attn.set_clim(0, max(0.01, np.max(self.attn_map)))
+        # 4. Spatial Attention (Removed)
+        self.ax_attn.text(0.5, 0.5, "Spatial Attention Removed\nin Vanilla DQN", ha='center', va='center', 
+                         transform=self.ax_attn.transAxes, color='gray')
         self.ax_attn.set_title(f"Focus Attention from {self.selected_pos}", color='white', fontsize=10)
-        self.ax_attn.add_patch(plt.Circle((self.selected_pos[1], self.selected_pos[0]), 0.3, color='white', fill=False, lw=2))
 
         # 5. AAREN PCA (Enemy Identity)
         self.ax_aaren.set_facecolor('#2c3e50')

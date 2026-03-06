@@ -61,7 +61,7 @@ class PolicyRefinedSearch:
         Initialize search engine.
         
         Args:
-            agent: RainbowAgent instance (provides Q-network, state representation,
+            agent: DQNAgent instance (provides Q-network, state representation,
                    AAREN history, and C51 support parameters)
             config: Search configuration
         """
@@ -368,7 +368,7 @@ def create_search_engine(agent,
     Create a PolicyRefinedSearch instance.
     
     Args:
-        agent: RainbowAgent instance (provides network, device, state representation)
+        agent: DQNAgent instance (provides network, device, state representation)
         config: Optional search configuration
     """
     return PolicyRefinedSearch(agent, config)
@@ -412,7 +412,7 @@ class UpdateEquivalenceSearch:
         Initialize Update-Equivalence search engine.
         
         Args:
-            agent: RainbowAgent instance (provides Q-network, AAREN history,
+            agent: DQNAgent instance (provides Q-network, AAREN history,
                    state representation, and C51 support parameters)
             config: Search configuration
         """
@@ -675,7 +675,7 @@ def create_ue_search(agent,
     Create an UpdateEquivalenceSearch instance.
     
     Args:
-        agent: RainbowAgent instance
+        agent: DQNAgent instance
         config: Optional UE search configuration
     """
     return UpdateEquivalenceSearch(agent, config)

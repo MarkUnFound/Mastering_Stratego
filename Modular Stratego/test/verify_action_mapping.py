@@ -6,11 +6,11 @@ import os
 # Add parent directory to path to import Modular Stratego modules
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from drqn_agent import RainbowAgent
+from drqn_agent import DQNAgent
 
 def test_action_mapping():
     print(" Testing Action Mapping (400 Actions)...")
-    agent = RainbowAgent(player_id=1, device=torch.device('cpu'), action_size=400, num_envs=1)
+    agent = DQNAgent(player_id=1, device=torch.device('cpu'), action_size=400, num_envs=1)
     
     # Scout moves: Distance > 1 should be mapped to Direction Index
     # BUT decoding back will only give Distance 1.

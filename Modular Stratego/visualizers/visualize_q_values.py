@@ -8,7 +8,7 @@ from typing import List, Tuple, Dict, Optional
 # Add parent directory to path if needed
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from drqn_agent import RainbowAgent
+from drqn_agent import DQNAgent
 from environment import StrategoEnvironment
 from piece import PieceType
 from board import HIDDEN_PIECE, LAKE_SQUARE
@@ -65,10 +65,10 @@ def print_board(board_tensor, player_id):
         print(row_str)
     print("  +" + "-"*20 + "+")
 
-def analyze_moves(agent: RainbowAgent, game_state, valid_moves: List[Tuple[Tuple[int, int], Tuple[int, int]]]) -> List[Dict]:
+def analyze_moves(agent: DQNAgent, game_state, valid_moves: List[Tuple[Tuple[int, int], Tuple[int, int]]]) -> List[Dict]:
     """
     Analyze valid moves and return detailed Q-value components.
-    Replicates logic from RainbowAgent.act()
+    Replicates logic from DQNAgent.act()
     """
     if not valid_moves:
         return []
@@ -130,8 +130,8 @@ def run_visualization():
     env = StrategoEnvironment(device=device)
     
     # Initialize Agents
-    agent1 = RainbowAgent(player_id=1, device=device)
-    agent2 = RainbowAgent(player_id=-1, device=device)
+    agent1 = DQNAgent(player_id=1, device=device)
+    agent2 = DQNAgent(player_id=-1, device=device)
 
     # Load Models (Try to load if available)
     model_path = "dqn_models" # Assuming default path

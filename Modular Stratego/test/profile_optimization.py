@@ -3,7 +3,7 @@ import time
 import torch
 import numpy as np
 import copy
-from drqn_agent import RainbowAgent
+from drqn_agent import DQNAgent
 from game_state import GameState
 from piece import PieceType
 from history_aggregator import HistoryAggregator
@@ -14,7 +14,7 @@ def benchmark_history_update():
     print(f"Device: {device}")
     
     # Initialize Agent with AAREN history
-    agent = RainbowAgent(player_id=1, device=device, num_envs=32)
+    agent = DQNAgent(player_id=1, device=device, num_envs=32)
     
     # Create mock batch
     batch_size = 32

@@ -45,7 +45,7 @@ from environment import (
     LeagueManager, HeuristicSetupAgent
 )
 from network import (
-    RainbowAgent, create_unified_reward_shaper, StrategoRewardConfig,
+    DQNAgent, create_unified_reward_shaper, StrategoRewardConfig,
     RandomAgent, GreedyAgent, OpponentPool, RandomSetupAgent,
     get_random_exploiter, RusherAgent, TurtleAgent, FlankingAgent,
     LaneManager, MetricsTracker, Checkpointer, get_random_starting_player
@@ -116,11 +116,11 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
 
     
     # Initialize Agents
-    print("Initializing Rainbow Agents...")
-    agent1 = RainbowAgent(player_id=1, device=device, lr=LEARNING_RATE, batch_size=batch_size, num_envs=num_envs, buffer_size=memory_size)
+    print("Initializing DQN Agents...")
+    agent1 = DQNAgent(player_id=1, device=device, lr=LEARNING_RATE, batch_size=batch_size, num_envs=num_envs, buffer_size=memory_size)
     # Agent2: Active learning MARL agent. Own buffer and optimizer.
     # AAREN history will be enabled for Agent 2 when reaching Phase 4
-    agent2 = RainbowAgent(player_id=-1, device=device, lr=LEARNING_RATE, batch_size=batch_size, num_envs=num_envs, buffer_size=memory_size, use_pbs=False, inference_only=False)
+    agent2 = DQNAgent(player_id=-1, device=device, lr=LEARNING_RATE, batch_size=batch_size, num_envs=num_envs, buffer_size=memory_size, use_pbs=False, inference_only=False)
     print("[INFO] Agent 2 set to active learning (MARL). AAREN history disabled for early phases (will enable at Phase 4)")
     
     # Initialize Setup Agents (using fast heuristic instead of neural network)

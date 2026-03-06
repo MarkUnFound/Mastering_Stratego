@@ -14,6 +14,7 @@ Modular Stratego/pbs/__pycache__/
 Modular Stratego/networks/__pycache__/
 Modular Stratego/logs/
 Modular Stratego/visualizers/animations/
+Modular Stratego/models/
 # Ignore debug logs
 debug_log.txt
 **/debug_log.txt
