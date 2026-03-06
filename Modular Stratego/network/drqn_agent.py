@@ -1,10 +1,10 @@
 """
-Rainbow DQN Agent for Stratego Game
+Vanilla DQN Agent for Stratego Game
 Features:
 - Feed-Forward Architecture (AAREN HistoryAggregator for memory)
-- Noisy Nets for Exploration (No epsilon-greedy)
-- C51 Distributional RL (Categorical DQN)
-- Dueling Architecture
+- Epsilon-Greedy Exploration
+- Standard Q-Learning (MSE/Huber Loss)
+- Double DQN Target Calculation
 """
 
 import torch
@@ -29,15 +29,7 @@ from prioritized_memory import StandardReplayBuffer, PrioritizedReplayBuffer, Ex
 # Heuristic Action Filter for Top-100 move selection
 from heuristic_filter import HeuristicMoveFilter
 
-# C51 Hyperparameters - CRITICAL FOR DISTRIBUTIONAL RL
-# Support range [-10, +10] with 51 atoms → 0.4 units/atom resolution.
-# Terminal rewards are ±1.0, per-step shaping ~0.01–0.3;
-# accumulated returns over 200+ steps stay within ±5.
-# γ=0.995 is intentional for long-horizon flag-capture planning;
-# the tighter support (vs old ±30) ensures shaping rewards are C51-visible.
-V_MIN = -10.0   # Tightened from -30 for finer C51 atom resolution (0.4/atom vs 1.2)
-V_MAX = 10.0    # Matches rescaled reward range (terminal ±1.0, accumulated shaping ±~5)
-NUM_ATOMS = 51
+# Legacy C51 constants removed — Vanilla DQN uses raw Q-values directly.
 
 
 
@@ -919,10 +911,25 @@ class DQNAgent:
         # Apply masks to all Q-values efficiently on the GPU
         masked_q = expected_q_values + batch_masks_tensor
         
+        # FIX: Ensure at least one finite value in each row to prevent NaNs in softmax
+        # This happens for inactive environments or epsilon-greedy actions already taken.
+        invalid_rows = (batch_masks_tensor == float('-inf')).all(dim=1)
+        if invalid_rows.any():
+            # For invalid rows, set first action to 0.0 to prevent NaN.
+            # These rows will either be overwritten by epsilon-greedy actions or ignored later.
+            masked_q[invalid_rows, 0] = 0.0
+        
         # Determine best actions using batched PyTorch operations
         if temperature > 0.0:
             probs = torch.softmax(masked_q / temperature, dim=1)
-            best_action_indices = torch.multinomial(probs, 1).squeeze(1).tolist()
+            try:
+                best_action_indices = torch.multinomial(probs, 1).squeeze(1).tolist()
+            except RuntimeError as e:
+                # Fallback and debug info
+                print(f"DEBUG: Multinomial CRASH. Invalid rows: {invalid_rows.sum().item()}")
+                print(f"DEBUG: Probs contains NaN: {torch.isnan(probs).any().item()}")
+                # Last resort fallback to greedy if multinomial still fails
+                best_action_indices = masked_q.argmax(dim=1).tolist()
         else:
             best_action_indices = masked_q.argmax(dim=1).tolist()
             
@@ -1259,16 +1266,17 @@ class DQNAgent:
             
             self.q_network.eval()
             with torch.no_grad():
-                log_probs = self.q_network(states)
-                probs = log_probs.exp()
-                expected_q = (probs * self.support).sum(dim=2)  # (batch, actions)
+                with torch.amp.autocast('cuda', enabled=self.amp_enabled):
+                    q_values = self.q_network(states)  # (batch, actions) — raw Q-values
                 # Get max Q for each state
-                max_q = expected_q.max(dim=1)[0]
+                max_q = q_values.max(dim=1)[0]
                 avg_q = max_q.mean().item()
             self.q_network.train()
             
             return avg_q
-        except Exception:
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
             return 0.0
 
     def get_exploration_entropy(self) -> float:
