@@ -2,8 +2,6 @@
 \chapter{Results and Discussion}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-This chapter presents the training results and performance evaluation of the MARQ framework across different phases of the curriculum. The evaluation focus is on the agent's ability to acquire tactical knowledge and manage imperfect information.
-
 \section{Training Progress and Convergence}
 
 Training was conducted over 34,000 episodes, following the five-phase curriculum. Figure \ref{fig:training_progress} illustrates the convergence behavior of the Rainbow DQN agent.
@@ -40,3 +38,11 @@ Analysis of the AAREN embeddings indicates that the hidden state representations
 
 \section{Stalemate and Decisiveness Analysis}
 To address the draw rate, anti-stall rewards were introduced. Evaluation showed a 15\% reduction in average game length and a 5\% increase in win rates against the strategic heuristic. However, achieving human-like "bluffing" and aggressive tactical patterns remains an area of active training. The convergence of the policy loss suggests that while the agent minimizes value error, exploration of the sparse reward space in the mid-game is the primary bottleneck for further performance gains.
+
+\section{Performance Evaluation of the Vanilla DQN Architecture}
+Following the multi-phase curriculum, long-term stability and resilience were tracked over 13,985 episodes in the Vanilla DQN model iterations. Across these evaluations, the agent secured 3,555 victories (25.4\%) and drew 6,973 times (49.9\%), with an average reward profile stabilizing near 0.08 per episode. The hidden-state AAREN inference accuracy converged to 21.98\%, significantly outperforming random chance estimation (approximately 8.3\%) and validating its capability to deduce piece identities implicitly over time. This robust self-play league performance demonstrates a scalable baseline capable of managing adversarial uncertainty in Stratego without imposing prohibitive computational demands.
+
+\section{Comparative Study: Vanilla DQN vs. Rainbow DQN}
+While the initial MARQ architecture utilized a full Rainbow DQN implementation, optimizing and stabilizing the framework for league-based self-play revealed critical trade-offs. The Rainbow augmentations—specifically Categorical value distributions (C51) and Noisy Nets—offered strong initial exploration profiles but imposed substantial gradient and forward-pass overhead, slowing iteration times and complicating debugging in the MARL context.
+
+Conversely, migrating the core to a Vanilla DQN with scalar MSE/Huber Loss and structured $\epsilon$-greedy/Boltzmann exploration provided significant pipeline accelerations and simplified error tracing. The Vanilla variant seamlessly integrated with the Gradient Bridge of the AAREN module, allowing for end-to-end embedding updates during replay batches. Although Rainbow DQN theoretically excels at estimating multi-modal value bounds in sparse-reward tasks, the rapid empirical feedback loop and stationary target improvements of the Vanilla DQN resulted in a more manageable progression through the multi-phase curriculum. Consequently, the Vanilla formulation traded theoretical sample efficiency for substantial gains in computational throughput, making extensive MARL self-play practically feasible.

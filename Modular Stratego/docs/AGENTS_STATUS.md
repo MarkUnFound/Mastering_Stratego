@@ -37,14 +37,16 @@ Replaced additive dense rewards with Potential-Based Reward Shaping (PBRS) to fi
 - **SpatialAttention:** Passes non-identity, weight spread, positional sensitivity, grad flow, and semantic responsiveness checks.
 - **AAREN Integration:** AAREN gradient norms and accuracy metrics plot successfully on progress charts. Integrates correctly into DQN. Sparse death fixed via learnable default embeddings.
 
-## Current Results (First 1000 Episodes - Phase 1, 300 steps/episode)
+## Current Results (Phase 4 League Training - 13,985 Episodes)
 | Metric | Value |
 |--------|-------|
-| **Flag-capture wins** | 3.0% (30 captures) |
-| **Depletion losses** | 3.3% (33 depletions) |
-| **Draws (timeout)** | 93.6% (936 timeouts) |
-| **Avg P1 reward** | 1.74 ± 0.39 |
-| **AAREN accuracy** | ~9.7% (vs 8.3% random baseline) |
+| **Total P1 Wins** | 25.4% (3,555 wins) |
+| **Total P2 Wins** | 24.7% (3,457 wins) |
+| **Draws (timeout/stalemate)** | 49.9% (6,973 draws) |
+| **Avg P1 reward (All)** | 0.08 |
+| **AAREN accuracy (Final)** | 21.98% (vs 8.3% random baseline) |
+
+*Note: The results and comparative study vs Rainbow DQN have been formalized and integrated into the LaTeX paper (`results.tex`). Recommendations for future Transformer/LLM architectures have also been added to `recommendations.tex`.*
 
 ## Known Struggles & Fixes
 | Struggle | Status | Resolution |
@@ -70,6 +72,11 @@ Replaced additive dense rewards with Potential-Based Reward Shaping (PBRS) to fi
 | **Phase 4 MARL CUDA Multinomial Crash** | Fixed | `torch.multinomial` crashed when a batch row was fully masked with `-inf` (due to random action or no moves). Fixed by ensuring at least one finite value (0.0) in the mask for all rows before softmax. |
 | **Legacy Import Path Errors** | Fixed | Root project reorganization caused `ModuleNotFoundError` for `dqn_bot_logic.py` and `dqn_dashboard.py`. Replicated `train_dqn.py`'s `sys.path.append` logic for `environment` and `network` directories resolving the module resolution breakages immediately. |
 | **Zero Q-Value After Vanilla DQN Migration** | Fixed | `get_average_q()` in `drqn_agent.py` still used C51 distributional logic (`self.support`, `log_probs.exp()`, `probs * self.support`) after migration to Vanilla DQN. The `AttributeError` on `self.support` was silently caught by a bare `except`, causing Q-value metrics to always read 0.0 despite the network actually learning. Fixed by replacing with direct Q-value reads. Also cleaned stale C51 constants and docstring from file header. |
+| **Repeated League Model Loading (Every Episode)** | Fixed | `select_opponent_for_lane()` called `agent2.load_model(path)` on every lane reset when opponent type was "league", even when the same checkpoint was already loaded. This caused 3 log messages per episode, redundant disk I/O, and ~12s/episode overhead. Fixed by caching `_last_league_path` and skipping reload when the same file is selected. Cache is invalidated when switching to "self" play. |
+| **Windows Paging File OOM Crash (WinError 1455)** | Fixed | `NUM_LANES` was set to 32 in `training_config.py`, causing `ParallelStrategoEnvironment` to spawn 32 large processes and quickly exhausting virtual memory limits on Windows, crashing PyTorch initialization. Fixed by reducing `NUM_LANES` back to a safe baseline of 8. |
+| **Optimizer State Mismatch Warning Spam** | Fixed | Loading historical league opponents (trained with 32 lanes) into the current 8-lane agent caused a constant stream of `[WARN] Failed to load optimizer state (architecture/env mismatch)` messages. Fixed by adding a `load_optimizer=False` parameter to `drqn_agent.py`'s `load_model` method, and using it in `train_dqn.py` when loading inference-only league opponents. |
+| **Negative Average Reward / Suicidal Agents in Phase 4** | Fixed | Agents averaged -10 reward per episode and purposely lost instead of drawing. Cause: PBRS shaping disabled itself in Phase 4 (`shaping_mult=0`), but anti-stall step penalties (oscillation and diversity) did not. In a 200-step game, these penalties accumulated drastically. Fixed by strictly scaling these step penalties by `shaping_mult` in `distributional_reward.py` to restore pure objective-focused RL. |
+
 
 ## Research Methodology & Alignment
 - **RQ1 (Convergence & Win-Rates):** Evaluated strictly via TensorBoard reward stability and benchmark win ratios over decisive games.

@@ -14,20 +14,20 @@
 \contentsline {figure}{\numberline {4.7}{\ignorespaces Game Start}}{59}{figure.caption.62}%
 \contentsline {figure}{\numberline {4.8}{\ignorespaces Stratego Pieces}}{60}{figure.caption.63}%
 \addvspace {10\p@ }
-\contentsline {figure}{\numberline {5.1}{\ignorespaces Training metrics at episode 34,000. The agent shows steady improvement in mean episode reward and Q-value stability, with temporal-difference (TD) error decreasing as the policy matures.}}{64}{figure.caption.66}%
+\contentsline {figure}{\numberline {5.1}{\ignorespaces Training metrics at episode 34,000. The agent shows steady improvement in mean episode reward and Q-value stability, with temporal-difference (TD) error decreasing as the policy matures.}}{63}{figure.caption.66}%
 \addvspace {10\p@ }
-\contentsline {figure}{\numberline {A.1}{\ignorespaces Timeline: August 1 - September 5}}{67}{figure.caption.67}%
-\contentsline {figure}{\numberline {A.2}{\ignorespaces Timeline: September 11 - November 30}}{68}{figure.caption.68}%
-\contentsline {figure}{\numberline {A.3}{\ignorespaces Timeline: October 27 - January 27}}{68}{figure.caption.69}%
-\contentsline {figure}{\numberline {A.4}{\ignorespaces Timeline: December 1 - February 14}}{68}{figure.caption.70}%
-\contentsline {figure}{\numberline {A.5}{\ignorespaces Timeline: February 15 - May 4}}{68}{figure.caption.71}%
+\contentsline {figure}{\numberline {A.1}{\ignorespaces Timeline: August 1 - September 5}}{68}{figure.caption.67}%
+\contentsline {figure}{\numberline {A.2}{\ignorespaces Timeline: September 11 - November 30}}{69}{figure.caption.68}%
+\contentsline {figure}{\numberline {A.3}{\ignorespaces Timeline: October 27 - January 27}}{69}{figure.caption.69}%
+\contentsline {figure}{\numberline {A.4}{\ignorespaces Timeline: December 1 - February 14}}{69}{figure.caption.70}%
+\contentsline {figure}{\numberline {A.5}{\ignorespaces Timeline: February 15 - May 4}}{69}{figure.caption.71}%
 \addvspace {10\p@ }
-\contentsline {figure}{\numberline {B.1}{\ignorespaces Game Menu}}{70}{figure.caption.72}%
-\contentsline {figure}{\numberline {B.2}{\ignorespaces Setup Phase}}{70}{figure.caption.73}%
-\contentsline {figure}{\numberline {B.3}{\ignorespaces Game Start}}{71}{figure.caption.74}%
-\contentsline {figure}{\numberline {B.4}{\ignorespaces Battle and History}}{71}{figure.caption.75}%
-\contentsline {figure}{\numberline {B.5}{\ignorespaces Victory Screen}}{72}{figure.caption.76}%
-\contentsline {figure}{\numberline {B.6}{\ignorespaces Training Progress: Episode 10,000}}{73}{figure.caption.77}%
-\contentsline {figure}{\numberline {B.7}{\ignorespaces Training Progress: Episode 20,000}}{74}{figure.caption.78}%
-\contentsline {figure}{\numberline {B.8}{\ignorespaces Training Progress: Episode 34,000}}{75}{figure.caption.79}%
-\contentsline {figure}{\numberline {B.9}{\ignorespaces Interpretability Dashboard snapshots showing real-time agent reasoning.}}{76}{figure.caption.80}%
+\contentsline {figure}{\numberline {B.1}{\ignorespaces Game Menu}}{71}{figure.caption.72}%
+\contentsline {figure}{\numberline {B.2}{\ignorespaces Setup Phase}}{71}{figure.caption.73}%
+\contentsline {figure}{\numberline {B.3}{\ignorespaces Game Start}}{72}{figure.caption.74}%
+\contentsline {figure}{\numberline {B.4}{\ignorespaces Battle and History}}{72}{figure.caption.75}%
+\contentsline {figure}{\numberline {B.5}{\ignorespaces Victory Screen}}{73}{figure.caption.76}%
+\contentsline {figure}{\numberline {B.6}{\ignorespaces Training Progress: Episode 10,000}}{74}{figure.caption.77}%
+\contentsline {figure}{\numberline {B.7}{\ignorespaces Training Progress: Episode 20,000}}{75}{figure.caption.78}%
+\contentsline {figure}{\numberline {B.8}{\ignorespaces Training Progress: Episode 34,000}}{76}{figure.caption.79}%
+\contentsline {figure}{\numberline {B.9}{\ignorespaces Interpretability Dashboard snapshots showing real-time agent reasoning.}}{77}{figure.caption.80}%

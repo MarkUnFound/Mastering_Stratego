@@ -1135,7 +1135,7 @@ class DQNAgent:
             
         torch.save(checkpoint, filepath)
         
-    def load_model(self, filepath):
+    def load_model(self, filepath, load_optimizer=True):
         """Load model checkpoint"""
         try:
             # PyTorch 2.6+ defaults weights_only=True; allowlist deque for our checkpoints
@@ -1169,11 +1169,12 @@ class DQNAgent:
             load_robustly(self.q_network, checkpoint['q_network_state_dict'])
             load_robustly(self.target_network, checkpoint['target_network_state_dict'])
             
-            try:
-                self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-            except Exception as opt_err:
-                # Common when switching between single-env and multi-env (optimizer param count changes)
-                print(f"[WARN] Failed to load optimizer state (architecture/env mismatch): {opt_err}")
+            if load_optimizer and 'optimizer_state_dict' in checkpoint:
+                try:
+                    self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+                except Exception as opt_err:
+                    # Common when switching between single-env and multi-env (optimizer param count changes)
+                    print(f"[WARN] Failed to load optimizer state (architecture/env mismatch): {opt_err}")
                 
             self.step_count = checkpoint.get('step_count', 0)
             

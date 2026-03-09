@@ -397,8 +397,9 @@ class UnifiedRewardShaper:
                       (self.player_id == -1 and target_val > 0))
 
         if was_battle:
-            # Small constant combat-initiation bonus (not annealed)
-            reward_components['attack'] = self.config.attack_bonus
+            # Small constant combat-initiation bonus (not annealed? actually we should anneal it)
+            # Scaling it by shaping_mult so it zeroes out in Phase 4
+            reward_components['attack'] = self.config.attack_bonus * shaping_mult
 
             # Strategic bonuses for rare high-impact captures (not annealed)
             if abs(int(moving_val)) == 1 and abs(int(target_val)) == 10:  # Spy vs Marshal
@@ -410,7 +411,7 @@ class UnifiedRewardShaper:
         oscillation_count = self._count_oscillations(dest, source)
         if oscillation_count >= self.config.oscillation_threshold:
             reward_components['oscillation'] = (
-                self.config.oscillation_penalty * oscillation_count
+                self.config.oscillation_penalty * oscillation_count * shaping_mult
             )
 
         # Update piece tracking AFTER computing oscillation penalty
@@ -422,12 +423,12 @@ class UnifiedRewardShaper:
         if len(self.recent_moves) >= self.config.diversity_window:
             unique_moves = len(set(self.recent_moves))
             if unique_moves <= self.config.diversity_min_unique:
-                reward_components['low_diversity'] = self.config.low_diversity_penalty
+                reward_components['low_diversity'] = self.config.low_diversity_penalty * shaping_mult
 
         # ── 6. Stalemate (near-immobility) ───────────────────────────
         curr_mob = info.get('num_valid_moves', 100)  # Default high when not provided
         if curr_mob < self.config.stalemate_mobility_threshold:
-            reward_components['stalemate'] = self.config.stalemate_penalty
+            reward_components['stalemate'] = self.config.stalemate_penalty * shaping_mult
 
         total_reward = sum(reward_components.values())
         return total_reward

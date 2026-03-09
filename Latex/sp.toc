@@ -128,15 +128,17 @@
 \contentsline {paragraph}{Qualitative Analysis.}{61}{section*.65}%
 \contentsline {chapter}{\numberline {5}Results and Discussion}{63}{chapter.5}%
 \contentsline {section}{\numberline {5.1}Training Progress and Convergence}{63}{section.5.1}%
-\contentsline {section}{\numberline {5.2}Phase 1: Acquisition of Tactical Foundations}{63}{section.5.2}%
+\contentsline {section}{\numberline {5.2}Phase 1: Acquisition of Tactical Foundations}{64}{section.5.2}%
 \contentsline {section}{\numberline {5.3}Phase 2: Transition to Partial Observability}{64}{section.5.3}%
 \contentsline {section}{\numberline {5.4}Inference Accuracy and Representation}{64}{section.5.4}%
 \contentsline {section}{\numberline {5.5}Stalemate and Decisiveness Analysis}{65}{section.5.5}%
-\contentsline {chapter}{\numberline {A}Gantt Chart}{66}{appendix.A}%
-\contentsline {chapter}{\numberline {B}System UI and Training}{69}{appendix.B}%
-\contentsline {section}{\numberline {B.1}Interpretability Dashboard and Decision Metrics}{75}{section.B.1}%
-\contentsline {section}{\numberline {B.2}Discussion on Training Progress and Model Behavior}{77}{section.B.2}%
-\contentsline {subsection}{\numberline {B.2.1}Behavioral Evolution}{77}{subsection.B.2.1}%
-\contentsline {subsection}{\numberline {B.2.2}Implicit Belief and AAREN Performance}{77}{subsection.B.2.2}%
-\contentsline {subsection}{\numberline {B.2.3}Impact of Reward Overhaul}{78}{subsection.B.2.3}%
-\contentsline {section}{\numberline {B.3}AI Transparency, Inclusion, and Originality of Intent}{78}{section.B.3}%
+\contentsline {section}{\numberline {5.6}Performance Evaluation of the Vanilla DQN Architecture}{65}{section.5.6}%
+\contentsline {section}{\numberline {5.7}Comparative Study: Vanilla DQN vs. Rainbow DQN}{65}{section.5.7}%
+\contentsline {chapter}{\numberline {A}Gantt Chart}{67}{appendix.A}%
+\contentsline {chapter}{\numberline {B}System UI and Training}{70}{appendix.B}%
+\contentsline {section}{\numberline {B.1}Interpretability Dashboard and Decision Metrics}{76}{section.B.1}%
+\contentsline {section}{\numberline {B.2}Discussion on Training Progress and Model Behavior}{78}{section.B.2}%
+\contentsline {subsection}{\numberline {B.2.1}Behavioral Evolution}{78}{subsection.B.2.1}%
+\contentsline {subsection}{\numberline {B.2.2}Implicit Belief and AAREN Performance}{78}{subsection.B.2.2}%
+\contentsline {subsection}{\numberline {B.2.3}Impact of Reward Overhaul}{79}{subsection.B.2.3}%
+\contentsline {section}{\numberline {B.3}AI Transparency, Inclusion, and Originality of Intent}{79}{section.B.3}%

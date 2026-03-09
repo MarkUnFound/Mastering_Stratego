@@ -322,11 +322,11 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
             'starting_player': starting_player
         }
     
+    # Cache to avoid redundant disk loads when league selects the same opponent
+    _last_league_path = [None]  # Mutable container for nonlocal access
+    
     def select_opponent_for_lane(lane_idx):
         """Select opponent type for a lane based on curriculum or opponent pool."""
-        # nonlocal use_full_obs, agent2 # No longer needed as we return
-        # Logic remains the same, just returning selections
-
         
         opponent_type = "self"
         opponent_uses_history = True
@@ -361,14 +361,17 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
             elif opponent_type == "league":
                 path = league_manager.get_opponent()
                 if path:
-                    # Load league agent (shared agent2 weights)
-                    agent2.load_model(path)
+                    # Only reload if a different checkpoint was selected
+                    if path != _last_league_path[0]:
+                        agent2.load_model(path, load_optimizer=False)
+                        _last_league_path[0] = path
                     current_opponent = agent2
                     opponent_uses_history = True
                 else:
                     opponent_type = "self"
                     agent2.q_network.load_state_dict(agent1.q_network.state_dict())
                     agent2.target_network.load_state_dict(agent1.target_network.state_dict())
+                    _last_league_path[0] = None  # Invalidate cache
                     current_opponent = agent2
                     opponent_uses_history = True
             elif opponent_type == "exploiters":
@@ -377,13 +380,16 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
             else:  # self_500, self
                 agent2.q_network.load_state_dict(agent1.q_network.state_dict())
                 agent2.target_network.load_state_dict(agent1.target_network.state_dict())
+                _last_league_path[0] = None  # Invalidate cache
                 current_opponent = agent2
                 opponent_uses_history = True
         else:
             # Legacy mode: use opponent pool
             opponent_type, opponent_data = opponent_pool.select_opponent()
             if opponent_type == "league":
-                agent2.load_model(opponent_data)
+                if opponent_data != _last_league_path[0]:
+                    agent2.load_model(opponent_data, load_optimizer=False)
+                    _last_league_path[0] = opponent_data
                 current_opponent = agent2
                 opponent_uses_history = True
             elif opponent_type == "random":
@@ -395,6 +401,7 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
             else:
                 agent2.q_network.load_state_dict(agent1.q_network.state_dict())
                 agent2.target_network.load_state_dict(agent1.target_network.state_dict())
+                _last_league_path[0] = None  # Invalidate cache
                 current_opponent = agent2
                 opponent_uses_history = True
         
