@@ -1,8 +1,8 @@
 """
-History Aggregator - Lightweight AAREN wrapper for action history tracking.
+History Aggregator - Lightweight LSTM wrapper for action history tracking.
 
 Replaces the complex PBS (Probabilistic Belief State) system with a simpler
-approach: AAREN produces embeddings from action history, and the agent network
+approach: LSTM produces embeddings from action history, and the agent network
 learns to interpret these embeddings for piece inference.
 
 Based on DeepNash's end-to-end approach which achieved human-level Stratego
@@ -15,7 +15,7 @@ import torch.optim as optim
 from typing import Tuple, Optional, List, Dict
 from collections import defaultdict, deque
 
-from aaren.network import PieceActionAaren
+from lstm.network import PieceActionLSTM
 from piece import PieceType, NUM_PIECE_TYPES
 from training_config import DEFAULT_MAX_TURNS
 
@@ -33,11 +33,11 @@ MAX_SNAPSHOT_SEQ_LEN = 5    # Most-recent actions per position in snapshot
 
 class HistoryAggregator:
     """
-    Lightweight wrapper around AAREN for action history aggregation.
+    Lightweight wrapper around LSTM for action history aggregation.
     
     Instead of computing belief distributions, this class:
     1. Tracks action history per enemy piece position
-    2. Produces fixed-size embeddings via AAREN
+    2. Produces fixed-size embeddings via LSTM
     3. Lets the agent network learn piece inference implicitly
     
     This follows DeepNash's model-free approach where the network
@@ -46,7 +46,7 @@ class HistoryAggregator:
     
     def __init__(self, player_id: int, device, hidden_size: int = DEFAULT_HIDDEN_SIZE,
                  num_layers: int = DEFAULT_NUM_LAYERS,
-                 shared_aaren_model: Optional[nn.Module] = None,
+                 shared_lstm_model: Optional[nn.Module] = None,
                  input_size: int = 24):
         """
         Initialize the History Aggregator.
@@ -54,9 +54,9 @@ class HistoryAggregator:
         Args:
             player_id: Player ID (1 or -1)
             device: PyTorch device
-            hidden_size: AAREN hidden size (also embedding output size)
-            num_layers: Number of AAREN layers
-            shared_aaren_model: Optional shared AAREN model for multi-env
+            hidden_size: LSTM hidden size (also embedding output size)
+            num_layers: Number of LSTM layers
+            shared_lstm_model: Optional shared LSTM model for multi-env
             input_size: Size of action feature vector
         """
         self.player_id = player_id
@@ -64,23 +64,23 @@ class HistoryAggregator:
         self.hidden_size = hidden_size
         self.input_size = input_size
         
-        # AAREN model (shared or owned)
-        if shared_aaren_model is not None:
-            self.aaren = shared_aaren_model
-            self.owns_aaren = False
+        # LSTM model (shared or owned)
+        if shared_lstm_model is not None:
+            self.lstm_model = shared_lstm_model
+            self.owns_lstm = False
         else:
-            self.aaren = PieceActionAaren(
+            self.lstm_model = PieceActionLSTM(
                 input_size=input_size,
                 hidden_size=hidden_size,
                 num_layers=num_layers,
                 output_size=NUM_PIECE_TYPES,
                 device=device
             ).to(device)
-            self.owns_aaren = True
+            self.owns_lstm = True
         
         # Optimizer (only if we own the model)
-        if self.owns_aaren:
-            self.optimizer = optim.AdamW(self.aaren.parameters(), lr=0.001, weight_decay=0.01)
+        if self.owns_lstm:
+            self.optimizer = optim.AdamW(self.lstm_model.parameters(), lr=0.001, weight_decay=0.01)
         else:
             self.optimizer = None  # Use shared optimizer
         
@@ -209,7 +209,7 @@ class HistoryAggregator:
         
         with torch.no_grad():
             prev_state = self.position_hidden_states[pos]
-            _, new_state = self.aaren.forward_sequential(feature_tensor, prev_state)
+            _, new_state = self.lstm_model.forward_sequential(feature_tensor, prev_state)
             self.position_hidden_states[pos] = new_state
         
         # Update position tracking (piece moved from pos to new_pos)
@@ -254,7 +254,7 @@ class HistoryAggregator:
                 # Get prediction from current state
                 with torch.no_grad():
                     feature = torch.zeros(1, self.input_size, device=self.device)
-                    probs, _ = self.aaren.forward_sequential(feature, self.position_hidden_states[pos])
+                    probs, _ = self.lstm_model.forward_sequential(feature, self.position_hidden_states[pos])
                     predicted = probs.argmax(dim=1).item()
                     if predicted == true_type_idx:
                         self.predictions_correct += 1
@@ -346,14 +346,14 @@ class HistoryAggregator:
                 embeddings.append(snapshot.to(device=device, dtype=torch.float32))
         
         # --- Gradient Bridge ---
-        # Create a differentiable path through AAREN so DQN loss can
-        # update AAREN weights, without the cost of full sequence reconstruction.
+        # Create a differentiable path through LSTM so DQN loss can
+        # update LSTM weights, without the cost of full sequence reconstruction.
         # We run a zero vector through input_proj, producing a small-valued output
-        # that creates gradient flow: loss -> embedding -> bridge -> AAREN params.
+        # that creates gradient flow: loss -> embedding -> bridge -> LSTM params.
         # Using 1e-6 scaling so the perturbation is negligible (~0.0001% of values).
-        if self.aaren.training:
+        if self.lstm_model.training:
             zero_input = torch.zeros(1, 1, self.input_size, device=device)
-            bridge = self.aaren.input_proj(zero_input)  # (1, 1, hidden_size)
+            bridge = self.lstm_model.input_proj(zero_input)  # (1, 1, hidden_size)
             bridge_val = bridge.squeeze() * 1e-6  # Tiny perturbation, preserves grad
             # Add bridge to all tensor embeddings (skip None and legacy lists)
             for i, snapshot in enumerate(snapshots):
@@ -378,7 +378,7 @@ class HistoryAggregator:
         with torch.no_grad():
             # Use dummy zero feature for current timestep if just querying state
             feature = torch.zeros(1, self.input_size, device=self.device)
-            probs, _ = self.aaren.forward_sequential(feature, self.position_hidden_states[pos])
+            probs, _ = self.lstm_model.forward_sequential(feature, self.position_hidden_states[pos])
             probs = probs.squeeze(0).cpu().numpy()
             
             # Map to PieceType
@@ -390,7 +390,7 @@ class HistoryAggregator:
 
     def train(self, epochs: int = 1) -> Optional[float]:
         """
-        Train AAREN on collected reveal data.
+        Train LSTM on collected reveal data.
         
         Args:
             epochs: Number of training epochs
@@ -404,7 +404,7 @@ class HistoryAggregator:
         if self.optimizer is None:
             return None  # Using shared model
         
-        self.aaren.train()
+        self.lstm_model.train()
         total_loss = 0
         total_grad_norm = 0.0
         num_batches = 0
@@ -437,14 +437,14 @@ class HistoryAggregator:
             
             # Forward pass
             self.optimizer.zero_grad()
-            logits = self.aaren.forward_parallel(input_tensor)
+            logits = self.lstm_model.forward_parallel(input_tensor)
             
             # Loss
             loss = nn.functional.cross_entropy(logits, target_tensor)
             
             # Backward pass
             loss.backward()
-            grad_norm = torch.nn.utils.clip_grad_norm_(self.aaren.parameters(), 1.0)
+            grad_norm = torch.nn.utils.clip_grad_norm_(self.lstm_model.parameters(), 1.0)
             
             # Handle PyTorch version differences for grad_norm return type
             if hasattr(grad_norm, 'item'):
@@ -485,7 +485,7 @@ class HistoryAggregator:
     def state_dict(self, include_buffers=True) -> dict:
         """Get state dict for checkpointing."""
         state = {
-            'aaren_state_dict': self.aaren.state_dict(),
+            'lstm_state_dict': self.lstm_model.state_dict(),
             'optimizer_state_dict': self.optimizer.state_dict() if self.optimizer else None,
             'predictions_correct': self.predictions_correct,
             'predictions_total': self.predictions_total,
@@ -499,10 +499,18 @@ class HistoryAggregator:
     
     def load_state_dict(self, state_dict: dict):
         """Load state dict from checkpoint."""
-        if state_dict.get('aaren_state_dict'):
-            self.aaren.load_state_dict(state_dict['aaren_state_dict'])
+        # Support both new 'lstm_state_dict' and legacy 'aaren_state_dict' keys
+        lstm_sd = state_dict.get('lstm_state_dict') or state_dict.get('aaren_state_dict')
+        if lstm_sd:
+            try:
+                self.lstm_model.load_state_dict(lstm_sd)
+            except RuntimeError:
+                print(f"[WARN] LSTM state dict mismatch (likely old AAREN checkpoint), skipping")
         if state_dict.get('optimizer_state_dict') and self.optimizer:
-            self.optimizer.load_state_dict(state_dict['optimizer_state_dict'])
+            try:
+                self.optimizer.load_state_dict(state_dict['optimizer_state_dict'])
+            except (RuntimeError, ValueError):
+                print(f"[WARN] LSTM optimizer state dict mismatch, skipping")
         self.training_buffer = state_dict.get('training_buffer', [])
         self.training_losses = state_dict.get('training_losses', deque(maxlen=1000))
         self.predictions_correct = state_dict.get('predictions_correct', 0)

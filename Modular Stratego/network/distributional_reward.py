@@ -169,11 +169,11 @@ class StrategoRewardConfig:
 
     # ── Terminal Rewards ────────────────────────────────────────────────
     # Scaled to fit C51 support [-10, +10] with room for accumulated shaping.
-    win_reward_flag: float = 1.0        # Flag capture = primary objective
-    win_reward_depletion: float = 0.5   # Opponent immobilized = secondary
-    win_reward: float = 0.75            # Fallback if win_type not specified
+    win_reward_flag: float = 1.5        # Flag capture = primary objective (raised for stronger signal)
+    win_reward_depletion: float = 0.75  # Opponent immobilized = secondary (raised proportionally)
+    win_reward: float = 1.0             # Fallback if win_type not specified (raised)
     loss_penalty: float = -1.0          # Symmetric loss penalty
-    draw_penalty: float = -0.3          # Discourage passive draws
+    draw_penalty: float = -0.5          # Discourage passive draws (raised from -0.3 for stronger contrast)
 
     # Material-advantage draws: adjust draw reward based on piece count
     draw_material_bonus: float = 0.15   # Max bonus for having more pieces at draw
@@ -265,7 +265,10 @@ class UnifiedRewardShaper:
         elif self.current_phase == 3:
             return 0.2
         else:
-            return 0.0
+            # Phase 4+: Residual shaping to guide toward flag without corrupting
+            # the pure MARL objective. Raised from 0.05 to 0.2 to prevent Q-value collapse
+            # over 1500-step games where terminal signal alone is too sparse and discounting zeroes it out.
+            return 0.2
             
     def get_terminal_multiplier(self) -> float:
         """

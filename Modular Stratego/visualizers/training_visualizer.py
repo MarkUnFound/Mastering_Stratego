@@ -776,7 +776,7 @@ def plot_pbs_evaluator_progress(
             
             ax3.set_xlabel('Episodes')
             ax3.set_ylabel('Gradient Norm (log)')
-            ax3.set_title('AAREN Gradient Norm (Higher = Active Learning)')
+            ax3.set_title('AAREN Gradient Norm')
             ax3.legend()
             ax3.grid(True, alpha=0.3)
         
@@ -870,7 +870,7 @@ def plot_pbs_evaluator_progress(
             
             ax4.set_xlabel('Episodes')
             ax4.set_ylabel('Embedding Std Dev')
-            ax4.set_title('AAREN Embedding Diversity (Non-zero = Learning)')
+            ax4.set_title('AAREN Embedding Diversity')
             ax4.grid(True, alpha=0.3)
         
         elif has_legacy_aaren and aaren_accuracies:
@@ -899,7 +899,7 @@ def plot_pbs_evaluator_progress(
             
             ax4.set_xlabel('Episodes')
             ax4.set_ylabel('Accuracy (%)')
-            ax4.set_title('AAREN Prediction Accuracy (Higher is Better)')
+            ax4.set_title('AAREN Prediction Accuracy')
             ax4.set_ylim(0, 100)
             ax4.legend()
             ax4.grid(True, alpha=0.3)
@@ -1034,7 +1034,7 @@ def plot_additional_metrics(
         axs[1, 0].plot(episode_history, avg_q_history['agent1'], 'o-', label='Agent 1', color='blue', alpha=0.7, markersize=3)
     axs[1, 0].set_xlabel('Episodes')
     axs[1, 0].set_ylabel('Avg Q-Value')
-    axs[1, 0].set_title('Average Q-Value (Higher = Better Learning) ↑')
+    axs[1, 0].set_title('Average Q-Value')
     axs[1, 0].legend()
     axs[1, 0].grid(True, alpha=0.3)
     

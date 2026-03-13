@@ -95,7 +95,10 @@ PHASE_CONFIGS = {
         full_observability=False,
         min_episodes=0,  # NOT ENFORCED
         max_episodes=0,  # NOT ENFORCED
-        opponents=["league", "self"], # Pure MARL, no cheating heuristics
+        # Re-introduced true_random & greedy for generalization pressure:
+        # 15% true_random prevents over-fitting to self-play policy patterns
+        # 10% greedy keeps material-awareness sharp
+        opponents=["league", "self", "true_random", "greedy"],
         reward_focus="balanced",
         success_metrics={
             # Dynamic criteria: ELO-based
@@ -388,7 +391,19 @@ class CurriculumManager:
             return self._pfsp_weights(["self_500", "smart_heuristic"])
 
         elif self.current_phase == TrainingPhase.LEAGUE_TRAINING:
-            return self._pfsp_weights(config.opponents)
+            # Phase 4: Explicit weighted distribution for generalization + MARL.
+            # Fixed floor weights prevent PFSP from completely eliminating diversity
+            # opponents once the agent "masters" them (mastery floor is only 5%).
+            #   league:     50% — primary MARL challenge (historical opponents)
+            #   self:       25% — current self-play (MARL symmetry breaker via lag)
+            #   true_random: 15% — prevents policy over-fitting to self-play patterns
+            #   greedy:     10% — maintains material-awareness and aggression
+            return {
+                "league": 0.50,
+                "self": 0.25,
+                "true_random": 0.15,
+                "greedy": 0.10,
+            }
 
         elif self.current_phase == TrainingPhase.SCENARIO_DRILLS:
             return {"scenario": 1.0}

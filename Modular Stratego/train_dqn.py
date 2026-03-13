@@ -325,22 +325,59 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
     # Cache to avoid redundant disk loads when league selects the same opponent
     _last_league_path = [None]  # Mutable container for nonlocal access
     
+    # Epoch-Based Opponent Cycling state
+    from training_config import OPPONENT_CYCLE_INTERVAL
+    _opponent_cycle_types = [None]  # Sorted list of opponent types for deterministic cycling
+    _opponent_cycle_epoch = [-1]    # Current epoch index (tracks when to log transitions)
+    
+    # Lagged self-play cache: stores path of last checkpoint used as "self" opponent.
+    # Updated at epoch boundaries to periodically refresh the lag target.
+    _self_lag_path = [None]         # Mutable container for nonlocal access
+    
+    def _get_epoch_opponent_type(episode_count):
+        """
+        Determine the opponent type for the current epoch block.
+        All lanes use the same type for OPPONENT_CYCLE_INTERVAL episodes.
+        """
+        if not (curriculum and CURRICULUM_ENABLED):
+            return None  # Fall back to legacy random selection
+        
+        opponent_dist = curriculum.get_opponent_distribution()
+        types = sorted(opponent_dist.keys())  # Deterministic order
+        
+        if not types:
+            return "self"
+        
+        # Cache the type list for logging
+        _opponent_cycle_types[0] = types
+        
+        # Determine epoch index and cycle through types
+        epoch_idx = episode_count // OPPONENT_CYCLE_INTERVAL
+        type_idx = epoch_idx % len(types)
+        selected_type = types[type_idx]
+        
+        # Log on epoch transitions
+        if epoch_idx != _opponent_cycle_epoch[0]:
+            _opponent_cycle_epoch[0] = epoch_idx
+            remaining = OPPONENT_CYCLE_INTERVAL - (episode_count % OPPONENT_CYCLE_INTERVAL)
+            print(f"[CYCLE] Opponent epoch {epoch_idx}: '{selected_type}' for next {remaining} episodes (types: {types})")
+            # Invalidate lagged self-play path so a fresh checkpoint is selected each epoch
+            _self_lag_path[0] = None
+        
+        return selected_type
+    
     def select_opponent_for_lane(lane_idx):
-        """Select opponent type for a lane based on curriculum or opponent pool."""
+        """Select opponent type for a lane based on epoch-based cycling."""
         
         opponent_type = "self"
         opponent_uses_history = True
         current_opponent = agent2
         
         if curriculum and CURRICULUM_ENABLED:
-            opponent_dist = curriculum.get_opponent_distribution()
-            r = random.random()
-            cumulative = 0.0
-            for op_type, prob in opponent_dist.items():
-                cumulative += prob
-                if r < cumulative:
-                    opponent_type = op_type
-                    break
+            # Epoch-based cycling: deterministic opponent type per block
+            opponent_type = _get_epoch_opponent_type(completed_episodes)
+            if opponent_type is None:
+                opponent_type = "self"  # Fallback
             
             # Configure opponent based on type
             if opponent_type == "true_random":
@@ -377,10 +414,25 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
             elif opponent_type == "exploiters":
                 current_opponent = get_random_exploiter(device, player_id=-1)
                 opponent_uses_history = False
-            else:  # self_500, self
-                agent2.q_network.load_state_dict(agent1.q_network.state_dict())
-                agent2.target_network.load_state_dict(agent1.target_network.state_dict())
-                _last_league_path[0] = None  # Invalidate cache
+            else:  # self_500, self — use LAGGED league checkpoint to break Nash equilibrium
+                # FIX: Instead of copying live agent1 weights (which causes symmetric
+                # co-adaptation where both agents improve at the same rate and cancel
+                # each other out), load a randomly selected historical checkpoint.
+                # This gives agent1 an asymmetric, non-co-adapting target to exploit.
+                lag_path = league_manager.get_opponent()  # Random historical checkpoint
+                if lag_path:
+                    # Only reload if epoch changed (avoid redundant disk I/O mid-epoch)
+                    if lag_path != _self_lag_path[0]:
+                        agent2.load_model(lag_path, load_optimizer=False)
+                        _self_lag_path[0] = lag_path
+                        _last_league_path[0] = None  # Invalidate league cache (different file)
+                        print(f"[SELF-LAG] Loaded lagged opponent: {os.path.basename(lag_path)}")
+                else:
+                    # No league checkpoints yet — fall back to live copy (early training only)
+                    agent2.q_network.load_state_dict(agent1.q_network.state_dict())
+                    agent2.target_network.load_state_dict(agent1.target_network.state_dict())
+                    _self_lag_path[0] = None
+                    _last_league_path[0] = None  # Invalidate cache
                 current_opponent = agent2
                 opponent_uses_history = True
         else:

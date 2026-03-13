@@ -8,7 +8,7 @@ Configuration settings for DQN training.
 NUM_LANES = 16             # Reduced to 8 (Safe for 6GB VRAM)
 NUM_ENVS = NUM_LANES      # LEGACY alias - always equals NUM_LANES (kept for compatibility)
 BATCH_SIZE = 256         # Reduced to 256 (Safe for 6GB VRAM)
-GAMMA = 0.995           # Discount factor - HIGH for long-term flag capture planning
+GAMMA = 0.999           # Discount factor - EXTREMELY HIGH for 1500-step long-term flag capture planning in Phase 4
 MEMORY_SIZE = 150000      # 200k on GPU (~2.2GB) to leave room for model and batches
 LEARNING_RATE = 0.00003    # Reduced from 0.0001 for stable distributional RL
 NUM_EPISODES = 1000000    # Effectively infinite - train until manually stopped
@@ -19,7 +19,7 @@ REPLAY_UPDATE_INTERVAL = 2    # Train every 2 steps (balances data diversity vs 
 TARGET_UPDATE_INTERVAL = 2000   # Faster target updates for Phase 1 learning (was 5000)
 MARL_TARGET_UPDATE_INTERVAL = 5000   # Smoothing for Phase 4 MARL
 REWARD_SCALE = 1.0        # Scaling factor for reward calculations
-MARL_REWARD_SCALE = 0.5   # Dampening factor for pure MARL (Phase 4)
+MARL_REWARD_SCALE = 1.0   # Full terminal reward scale — dampening was killing signal contrast
 
 # =============================================================================
 # EXPLORATION SETTINGS (Noisy Networks Only - True Rainbow DQN)
@@ -27,7 +27,7 @@ MARL_REWARD_SCALE = 0.5   # Dampening factor for pure MARL (Phase 4)
 # Epsilon-greedy ENABLED: Vanilla DQN requires epsilon-greedy exploration
 EXPLORATION_EPSILON_START = 1.0   
 EXPLORATION_EPSILON_END = 0.05    
-EXPLORATION_EPSILON_DECAY = 50000 
+EXPLORATION_EPSILON_DECAY = 200000  # Slowed: keeps 10-15% exploration for longer (was 50000)
 
 # Entropy Regularization (Soft Q-Learning)
 ENTROPY_REG_ENABLED = True
@@ -100,20 +100,25 @@ GIF_INTERVAL = 100   # Generate GIF every N episodes (reduced frequency)
 
 # PBS Optimization Settings
 PBS_UPDATE_INTERVAL = 4  # Update PBS every 4 steps (faster inference for MARL)
-PBS_SKIP_SIMPLE_MOVES = True  # Skip AAREN for obvious 1-square non-attack moves
+PBS_SKIP_SIMPLE_MOVES = True  # Skip LSTM for obvious 1-square non-attack moves
 PBS_CACHE_UNCERTAINTY = True  # Cache uncertainty maps until beliefs change
 
-# AAREN Performance Optimizations
-AAREN_USE_FP16 = True           # Use half-precision inference (~30% faster)
-AAREN_USE_TORCHSCRIPT = False   # Disabled - AAREN uses dynamic ops that don't compile
-AAREN_HIDDEN_SIZE = 64          # Keep at 64 for checkpoint compatibility
-AAREN_NUM_LAYERS = 3            # Keep at 3 for checkpoint compatibility
-AAREN_USE_REVEAL_DATA = True    # When False, AAREN supervised training skips reveal data
-                                # (debug flag to test if PieceActionAaren overfits on open info)
+# LSTM Performance Optimizations (replaces AAREN)
+LSTM_USE_FP16 = True            # Use half-precision inference (~30% faster)
+LSTM_HIDDEN_SIZE = 64           # LSTM hidden state size
+LSTM_NUM_LAYERS = 2             # Number of stacked LSTM layers
+LSTM_USE_REVEAL_DATA = True     # When False, LSTM supervised training skips reveal data
+
+# Backward compatibility aliases (so old code doesn't break)
+AAREN_HIDDEN_SIZE = LSTM_HIDDEN_SIZE
+AAREN_NUM_LAYERS = LSTM_NUM_LAYERS
+AAREN_USE_FP16 = LSTM_USE_FP16
+AAREN_USE_REVEAL_DATA = LSTM_USE_REVEAL_DATA
+AAREN_USE_TORCHSCRIPT = False
 
 # History Aggregator Settings (Simplified PBS replacement)
-# Uses AAREN embeddings instead of explicit belief distributions
-HISTORY_EMBEDDING_SIZE = 64     # Size of AAREN embedding per position (matches hidden_size)
+# Uses LSTM embeddings instead of explicit belief distributions
+HISTORY_EMBEDDING_SIZE = 64     # Size of LSTM embedding per position (matches hidden_size)
 
 # Rainbow DQN Performance Optimizations  
 USE_TORCH_COMPILE = False     # Disabled on Windows due to missing Triton dependency
@@ -130,6 +135,12 @@ OPPONENT_LEAGUE_PROB = 0.0      # 0% historical opponents (disabled for now)
 OPPONENT_RANDOM_PROB = 0.85     # 85% random agent (easy to beat)
 OPPONENT_GREEDY_PROB = 0.15     # 15% heuristic agent (learning pressure)
 OPPONENT_SELF_PROB = 0.0        # 0% self-play (disabled for now)
+
+# Epoch-Based Opponent Cycling (Variance Reduction)
+# Instead of randomly sampling opponent type every episode, lock all lanes
+# to the same opponent type for OPPONENT_CYCLE_INTERVAL episodes, then rotate.
+# This reduces reward variance and gives stable learning signal per block.
+OPPONENT_CYCLE_INTERVAL = 50    # Episodes per opponent type block
 
 # =============================================================================
 # CURRICULUM LEARNING SETTINGS
@@ -176,9 +187,9 @@ REF_POLICY_UPDATE_INTERVAL = 50000  # Update reference network every N steps
 # ENTROPY REGULARIZATION SETTINGS (Bluffing/Mixed Strategies)
 # =============================================================================
 # Encourages stochastic policies to avoid being exploited
-ENTROPY_REG_ENABLED = False      # Disabled for Phase 1 to favor exploitation vs random opponents
-ENTROPY_COEFF_START = 0.1        # Initial entropy coefficient (used when re-enabled)
-ENTROPY_COEFF_END = 0.01         # Final entropy coefficient (decays over training)
+ENTROPY_REG_ENABLED = True       # Re-enabled for Phase 4 to prevent policy collapse
+ENTROPY_COEFF_START = 0.01       # Small coefficient (keep exploration without chaos)
+ENTROPY_COEFF_END = 0.001        # Final entropy coefficient (decays over training)
 ENTROPY_ANNEAL_EPISODES = 50000  # Episodes to anneal entropy coefficient
 
 # =============================================================================

@@ -1,7 +1,7 @@
 """
 Vanilla DQN Agent for Stratego Game
 Features:
-- Feed-Forward Architecture (AAREN HistoryAggregator for memory)
+- Feed-Forward Architecture (LSTM HistoryAggregator for memory)
 - Epsilon-Greedy Exploration
 - Standard Q-Learning (MSE/Huber Loss)
 - Double DQN Target Calculation
@@ -22,7 +22,7 @@ from board import LAKE_SQUARE
 # Import from new modular structure
 from networks import VanillaDQN
 from history_aggregator import HistoryAggregator
-from aaren import PieceActionAaren
+from lstm import PieceActionLSTM
 
 from prioritized_memory import StandardReplayBuffer, PrioritizedReplayBuffer, Experience
 
@@ -43,7 +43,7 @@ import sys
 
 
 class DQNAgent:
-    """Vanilla DQN Agent for Stratego with AAREN"""
+    """Vanilla DQN Agent for Stratego with LSTM"""
     
     def __init__(self, player_id: int, device, 
                  state_size: int = 200, action_size: int = 400,
@@ -77,50 +77,50 @@ class DQNAgent:
         
         # Support Variables Removed for Vanilla DQN
         
-        # History tracking (AAREN)
+        # History tracking (LSTM)
         self.pbs = None  # Legacy alias for self.history
         self.pbs_instances = []  # Legacy alias for self.history_instances
         self.action_pbs_buffer = {} 
         
-        # Import AAREN optimization settings
+        # Import LSTM optimization settings
         try:
-            from training_config import AAREN_HIDDEN_SIZE, AAREN_NUM_LAYERS, HISTORY_EMBEDDING_SIZE
+            from training_config import LSTM_HIDDEN_SIZE, LSTM_NUM_LAYERS, HISTORY_EMBEDDING_SIZE
         except ImportError:
-            AAREN_HIDDEN_SIZE = 64
-            AAREN_NUM_LAYERS = 2
+            LSTM_HIDDEN_SIZE = 64
+            LSTM_NUM_LAYERS = 2
             HISTORY_EMBEDDING_SIZE = 64
         
         # History Aggregator (replaces PBS)
-        # Uses AAREN embeddings instead of belief distributions
+        # Uses LSTM embeddings instead of belief distributions
         self.history = None
         self.history_instances = []
         self.history_embedding_size = HISTORY_EMBEDDING_SIZE
         
         if self.use_pbs:  # use_pbs now means use_history
             if num_envs > 1:
-                # Create shared AAREN for parallel environments
-                self.shared_aaren = PieceActionAaren(
-                    input_size=24, hidden_size=AAREN_HIDDEN_SIZE, 
-                    num_layers=AAREN_NUM_LAYERS, output_size=12, device=device
+                # Create shared LSTM for parallel environments
+                self.shared_lstm = PieceActionLSTM(
+                    input_size=24, hidden_size=LSTM_HIDDEN_SIZE, 
+                    num_layers=LSTM_NUM_LAYERS, output_size=12, device=device
                 ).to(device)
                 
-                # Note: AAREN uses main optimizer (combined with DQN) for end-to-end training
+                # Note: LSTM uses main optimizer (combined with DQN) for end-to-end training
                 # However, for supervised train_history(), we give the first instance its own optimizer
                 for i in range(num_envs):
                     history_instance = HistoryAggregator(
                         player_id, device, 
-                        hidden_size=AAREN_HIDDEN_SIZE,
-                        num_layers=AAREN_NUM_LAYERS,
-                        shared_aaren_model=self.shared_aaren
+                        hidden_size=LSTM_HIDDEN_SIZE,
+                        num_layers=LSTM_NUM_LAYERS,
+                        shared_lstm_model=self.shared_lstm
                     )
                     if i == 0:
-                        history_instance.optimizer = optim.AdamW(self.shared_aaren.parameters(), lr=0.001, weight_decay=0.01)
+                        history_instance.optimizer = optim.AdamW(self.shared_lstm.parameters(), lr=0.001, weight_decay=0.01)
                     else:
                         history_instance.optimizer = None
                     self.history_instances.append(history_instance)
                 self.history = self.history_instances[0]
             else:
-                self.history = HistoryAggregator(player_id, device, hidden_size=AAREN_HIDDEN_SIZE, num_layers=AAREN_NUM_LAYERS)
+                self.history = HistoryAggregator(player_id, device, hidden_size=LSTM_HIDDEN_SIZE, num_layers=LSTM_NUM_LAYERS)
                 self.history_instances = [self.history]
         
         # Legacy aliases (point to history)
@@ -132,14 +132,14 @@ class DQNAgent:
         self.uncertainty_penalty_scale = 0.5
         
         # Cached gradient norms (updated during replay for plotting)
-        self._cached_aaren_grad_norm = 0.0
+        self._cached_lstm_grad_norm = 0.0
         self._cached_dqn_grad_norm = 0.0
         
         # Soft Update Param
         self.tau = 0.001
         
         # Vanilla Networks
-        # 15 (Board) + HISTORY_EMBEDDING_SIZE (AAREN embeddings) = 79 Channels (with 64)
+        # 15 (Board) + HISTORY_EMBEDDING_SIZE (LSTM embeddings) = 79 Channels (with 64)
         self.input_channels = 15 + self.history_embedding_size
         self.q_network = VanillaDQN(input_shape=(self.input_channels, 10, 10), output_size=action_size).to(device)
         self.target_network = VanillaDQN(input_shape=(self.input_channels, 10, 10), output_size=action_size).to(device)
@@ -231,17 +231,17 @@ class DQNAgent:
         if device.type == 'cuda':
             torch.backends.cudnn.benchmark = True
         
-        # Combined Optimizer: DQN + AAREN (end-to-end training)
-        # AAREN learns jointly with Rainbow DQN via shared gradient flow
+        # Combined Optimizer: DQN + LSTM (end-to-end training)
+        # LSTM learns jointly with DQN via shared gradient flow
         self.optimizer = None
         if not self.inference_only:
             all_parameters = list(self.q_network.parameters())
-            if self.use_pbs and hasattr(self, 'shared_aaren') and self.shared_aaren:
-                all_parameters.extend(self.shared_aaren.parameters())
-                print(f"[OK] AAREN params added to optimizer (end-to-end training)")
-            elif self.use_pbs and self.history and self.history.owns_aaren:
-                all_parameters.extend(self.history.aaren.parameters())
-                print(f"[OK] AAREN params added to optimizer (end-to-end training)")
+            if self.use_pbs and hasattr(self, 'shared_lstm') and self.shared_lstm:
+                all_parameters.extend(self.shared_lstm.parameters())
+                print(f"[OK] LSTM params added to optimizer (end-to-end training)")
+            elif self.use_pbs and self.history and self.history.owns_lstm:
+                all_parameters.extend(self.history.lstm_model.parameters())
+                print(f"[OK] LSTM params added to optimizer (end-to-end training)")
             
             self.optimizer = optim.AdamW(all_parameters, lr=lr, weight_decay=0.01)
         
@@ -346,8 +346,8 @@ class DQNAgent:
 
     def enable_history(self, num_envs: int = None):
         """
-        Enable AAREN history aggregation for an agent created with use_pbs=False.
-        Used during curriculum phase transitions to dynamically enable AAREN.
+        Enable LSTM history aggregation for an agent created with use_pbs=False.
+        Used during curriculum phase transitions to dynamically enable LSTM.
         
         Args:
             num_envs: Number of parallel environments (uses self.num_envs if not provided)
@@ -361,42 +361,42 @@ class DQNAgent:
         self.use_pbs = True
         self.num_envs = num_envs
         
-        # Import AAREN settings
+        # Import LSTM settings
         try:
-            from training_config import AAREN_HIDDEN_SIZE, AAREN_NUM_LAYERS
+            from training_config import LSTM_HIDDEN_SIZE, LSTM_NUM_LAYERS
         except ImportError:
-            AAREN_HIDDEN_SIZE = 64
-            AAREN_NUM_LAYERS = 2
+            LSTM_HIDDEN_SIZE = 64
+            LSTM_NUM_LAYERS = 2
         
         if num_envs > 1:
-            # Create shared AAREN for parallel environments
-            self.shared_aaren = PieceActionAaren(
-                input_size=24, hidden_size=AAREN_HIDDEN_SIZE, 
-                num_layers=AAREN_NUM_LAYERS, output_size=12, device=self.device
+            # Create shared LSTM for parallel environments
+            self.shared_lstm = PieceActionLSTM(
+                input_size=24, hidden_size=LSTM_HIDDEN_SIZE, 
+                num_layers=LSTM_NUM_LAYERS, output_size=12, device=self.device
             ).to(self.device)
             
             for i in range(num_envs):
                 history_instance = HistoryAggregator(
                     self.player_id, self.device, 
-                    hidden_size=AAREN_HIDDEN_SIZE,
-                    num_layers=AAREN_NUM_LAYERS,
-                    shared_aaren_model=self.shared_aaren
+                    hidden_size=LSTM_HIDDEN_SIZE,
+                    num_layers=LSTM_NUM_LAYERS,
+                    shared_lstm_model=self.shared_lstm
                 )
                 if i == 0:
-                    history_instance.optimizer = optim.AdamW(self.shared_aaren.parameters(), lr=0.001, weight_decay=0.01)
+                    history_instance.optimizer = optim.AdamW(self.shared_lstm.parameters(), lr=0.001, weight_decay=0.01)
                 else:
                     history_instance.optimizer = None
                 self.history_instances.append(history_instance)
             self.history = self.history_instances[0]
         else:
-            self.history = HistoryAggregator(self.player_id, self.device, hidden_size=AAREN_HIDDEN_SIZE)
+            self.history = HistoryAggregator(self.player_id, self.device, hidden_size=LSTM_HIDDEN_SIZE)
             self.history_instances = [self.history]
         
         # Update legacy aliases
         self.pbs = self.history
         self.pbs_instances = self.history_instances
         
-        print(f"[OK] AAREN history enabled for {self.name} ({num_envs} environments)")
+        print(f"[OK] LSTM history enabled for {self.name} ({num_envs} environments)")
 
     # Backward compatibility alias
     enable_pbs = enable_history
@@ -409,17 +409,17 @@ class DQNAgent:
     def get_state_representation(self, board, pbs_instance=None, full_observability=False):
         """
         Convert raw board to feature tensor.
-        Includes AAREN history embeddings for enemy piece prediction.
-        Total channels: 15 (Board) + HISTORY_EMBEDDING_SIZE (AAREN) = 79 (default)
+        Includes LSTM history embeddings for enemy piece prediction.
+        Total channels: 15 (Board) + HISTORY_EMBEDDING_SIZE (LSTM) = 79 (default)
         
-        AAREN is never bypassed: the DQN always sees AAREN embeddings (or zeros
-        if AAREN is not yet active). This ensures co-evolution of the DQN backbone
-        and AAREN representations across all curriculum phases.
+        LSTM is never bypassed: the DQN always sees LSTM embeddings (or zeros
+        if LSTM is not yet active). This ensures co-evolution of the DQN backbone
+        and LSTM representations across all curriculum phases.
         
         Args:
             board: Game board tensor or GameState object
-            pbs_instance: History aggregator instance (AAREN)
-            full_observability: Controls board visibility only (does NOT affect AAREN channels)
+            pbs_instance: History aggregator instance (LSTM)
+            full_observability: Controls board visibility only (does NOT affect LSTM channels)
         """
         # Handle GameState object - extract the board tensor
         from game_state import GameState
@@ -456,12 +456,12 @@ class DQNAgent:
         
         state_tensor = features
         
-        # --- AAREN EMBEDDING CHANNELS ---
-        # AAREN is never bypassed with ground-truth one-hot encoding.
-        # The DQN must learn to rely on AAREN as the memory and piece prediction
+        # --- LSTM EMBEDDING CHANNELS ---
+        # LSTM is never bypassed with ground-truth one-hot encoding.
+        # The DQN must learn to rely on LSTM as the memory and piece prediction
         # module by classifying enemy actions, not by cheating with direct board info.
         if pbs_instance is not None:
-            # Use AAREN embeddings from HistoryAggregator
+            # Use LSTM embeddings from HistoryAggregator
             embedding = pbs_instance.get_embedding_tensor()
             
             # Ensure correct device
@@ -480,9 +480,9 @@ class DQNAgent:
     
     def get_board_only_representation(self, board):
         """
-        Extract 15-channel board features only (no AAREN channels).
+        Extract 15-channel board features only (no LSTM channels).
         
-        Used for replay buffer storage. AAREN embeddings are reconstructed
+        Used for replay buffer storage. LSTM embeddings are reconstructed
         at replay time using stored history snapshots.
         
         Args:
@@ -597,8 +597,8 @@ class DQNAgent:
         Store multiple experiences efficiently with batched state processing.
         Uses N-step returns if enabled.
         
-        Stores 15-channel board-only tensors + AAREN history snapshots.
-        AAREN embeddings are reconstructed at replay() time using the current model.
+        Stores 15-channel board-only tensors + LSTM history snapshots.
+        LSTM embeddings are reconstructed at replay() time using the current model.
         
         Args:
             states: List of game states (boards)
@@ -611,7 +611,7 @@ class DQNAgent:
             next_game_states: List of next GameState objects
             infos: List of info dicts from environment (contains revealed_in_step for battle detection)
         """
-        # Compute 15-channel board-only tensors (no AAREN — reconstructed at replay time)
+        # Compute 15-channel board-only tensors (no LSTM — reconstructed at replay time)
         state_tensors = []
         next_state_tensors = []
         history_snapshots = []
@@ -778,8 +778,8 @@ class DQNAgent:
         # Convert states to tensors
         state_tensors = []
         for i, state in enumerate(states):
-            # Always use AAREN embeddings regardless of observability mode
-            # AAREN is never bypassed — it co-evolves with the DQN from Phase 1
+            # Always use LSTM embeddings regardless of observability mode
+            # LSTM is never bypassed — it co-evolves with the DQN from Phase 1
             pbs_instance = None
             if self.pbs_instances and game_states and i < len(game_states) and game_states[i]:
                 pbs_instance = self.pbs_instances[i]
@@ -857,7 +857,7 @@ class DQNAgent:
         self._cached_state_tensor = state_tensor  # Cache for reuse in remember_batch
         
         # 2. Uncertainty maps removed - HistoryAggregator uses AAREN embeddings directly
-        # The agent learns to interpret uncertainty implicitly from AAREN patterns
+        # The agent learns to interpret uncertainty implicitly from LSTM patterns
         uncertainty_maps = [{}] * batch_size
             
         # 3. Network forward pass with mixed-precision inference
@@ -994,13 +994,13 @@ class DQNAgent:
 
     def train_history(self, epochs: int = 5):
         """
-        Train the history aggregator (AAREN) model using collected reveal data.
+        Train the history aggregator (LSTM) model using collected reveal data.
         """
         if not self.history:
             return
             
-        # If using shared AAREN model (Parallel Env)
-        if hasattr(self, 'shared_aaren') and self.shared_aaren and self.history_instances:
+        # If using shared LSTM model (Parallel Env)
+        if hasattr(self, 'shared_lstm') and self.shared_lstm and self.history_instances:
             # Aggregate training buffers from all instances
             total_buffer_size = sum(h.get_buffer_size() for h in self.history_instances)
             
@@ -1047,14 +1047,14 @@ class DQNAgent:
         states, actions, rewards, next_states, dones = sample_result
         hist_snapshots = [None] * states.size(0)
         
-        # --- RECONSTRUCT AAREN EMBEDDINGS FROM STORED HISTORIES ---
+        # --- RECONSTRUCT LSTM EMBEDDINGS FROM STORED HISTORIES ---
         if self.history and states.size(1) == 15:  # 15ch = board-only format
-            aaren_embeddings = self.history.reconstruct_embeddings_batch(
+            lstm_embeddings = self.history.reconstruct_embeddings_batch(
                 hist_snapshots, device=self.device
             )
             
-            aaren_tensor = torch.stack(aaren_embeddings)  # (batch, 64, 10, 10)
-            states = torch.cat([states, aaren_tensor], dim=1)  # (batch, 79, 10, 10)
+            lstm_tensor = torch.stack(lstm_embeddings)  # (batch, 64, 10, 10)
+            states = torch.cat([states, lstm_tensor], dim=1)  # (batch, 79, 10, 10)
             
             next_padding = torch.zeros(
                 next_states.size(0), self.history_embedding_size, 10, 10,
@@ -1129,7 +1129,7 @@ class DQNAgent:
             'step_count': self.step_count
         }
         
-        # Save history aggregator (AAREN) state
+        # Save history aggregator (LSTM) state
         if self.history:
             checkpoint['history_state_dict'] = self.history.state_dict()
             
@@ -1178,10 +1178,10 @@ class DQNAgent:
                 
             self.step_count = checkpoint.get('step_count', 0)
             
-            # Load history aggregator (AAREN) state
+            # Load history aggregator (LSTM) state
             if self.history and 'history_state_dict' in checkpoint:
                 self.history.load_state_dict(checkpoint['history_state_dict'])
-                print(f"[OK] AAREN history state loaded from {filepath}")
+                print(f"[OK] LSTM history state loaded from {filepath}")
             elif self.history and 'pbs_state_dict' in checkpoint:
                 # Backward compatibility with old PBS checkpoints - skip
                 print(f"[WARN] Old PBS checkpoint found, skipping (incompatible with HistoryAggregator)")
@@ -1306,25 +1306,25 @@ class DQNAgent:
     
     def _capture_gradient_norms(self):
         """
-        Capture gradient norms for AAREN and DQN after backward pass.
+        Capture gradient norms for LSTM and DQN after backward pass.
         Called internally during replay() to store values for later retrieval.
         """
         try:
-            # Capture AAREN gradient norm
-            aaren_model = None
-            if hasattr(self, 'shared_aaren') and self.shared_aaren:
-                aaren_model = self.shared_aaren
-            elif self.history and self.history.owns_aaren:
-                aaren_model = self.history.aaren
+            # Capture LSTM gradient norm
+            lstm_model = None
+            if hasattr(self, 'shared_lstm') and self.shared_lstm:
+                lstm_model = self.shared_lstm
+            elif self.history and self.history.owns_lstm:
+                lstm_model = self.history.lstm_model
             
-            if aaren_model is not None:
+            if lstm_model is not None:
                 total_norm = 0.0
                 num_params = 0
-                for param in aaren_model.parameters():
+                for param in lstm_model.parameters():
                     if param.grad is not None:
                         total_norm += param.grad.norm().item()
                         num_params += 1
-                self._cached_aaren_grad_norm = total_norm / max(num_params, 1)
+                self._cached_lstm_grad_norm = total_norm / max(num_params, 1)
             
             # Capture DQN gradient norm (for comparison)
             total_dqn_norm = 0.0
@@ -1340,9 +1340,9 @@ class DQNAgent:
     
     def get_aaren_grad_norm(self) -> float:
         """
-        Get the cached AAREN gradient norm.
+        Get the cached LSTM gradient norm.
         
-        Since AAREN is currently trained via supervised learning (train_history)
+        Since LSTM is currently trained via supervised learning (train_history)
         rather than end-to-end through the DQN, this returns the gradient norm
         captured during the last supervised training pass.
         """
@@ -1350,22 +1350,22 @@ class DQNAgent:
             return self.history._last_grad_norm
         
         # Fallback to the value captured during end-to-end replay (if applicable)
-        return getattr(self, '_cached_aaren_grad_norm', 0.0)
+        return getattr(self, '_cached_lstm_grad_norm', 0.0)
     
     def get_dqn_grad_norm(self) -> float:
         """
         Get the cached DQN network gradient norm (computed during replay).
-        Useful for comparison with AAREN gradient norm.
+        Useful for comparison with LSTM gradient norm.
         """
         return getattr(self, '_cached_dqn_grad_norm', 0.0)
     
     def get_aaren_embedding_stats(self) -> dict:
         """
-        Get statistics about AAREN embeddings (mean, std, max).
+        Get statistics about LSTM embeddings (mean, std, max).
         
         This helps track if embeddings are meaningful and changing over training.
         - Mean near 0 with reasonable std = good
-        - All zeros = AAREN not producing useful features
+        - All zeros = LSTM not producing useful features
         - Very high values = potential instability
         """
         stats = {'mean': 0.0, 'std': 0.0, 'max': 0.0, 'active_positions': 0}
