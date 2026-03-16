@@ -23,11 +23,13 @@
 \contentsline {figure}{\numberline {A.5}{\ignorespaces Timeline: February 15 - May 4}}{69}{figure.caption.71}%
 \addvspace {10\p@ }
 \contentsline {figure}{\numberline {B.1}{\ignorespaces Game Menu}}{71}{figure.caption.72}%
-\contentsline {figure}{\numberline {B.2}{\ignorespaces Setup Phase}}{71}{figure.caption.73}%
-\contentsline {figure}{\numberline {B.3}{\ignorespaces Game Start}}{72}{figure.caption.74}%
-\contentsline {figure}{\numberline {B.4}{\ignorespaces Battle and History}}{72}{figure.caption.75}%
-\contentsline {figure}{\numberline {B.5}{\ignorespaces Victory Screen}}{73}{figure.caption.76}%
-\contentsline {figure}{\numberline {B.6}{\ignorespaces Training Progress: Episode 10,000}}{74}{figure.caption.77}%
-\contentsline {figure}{\numberline {B.7}{\ignorespaces Training Progress: Episode 20,000}}{75}{figure.caption.78}%
-\contentsline {figure}{\numberline {B.8}{\ignorespaces Training Progress: Episode 34,000}}{76}{figure.caption.79}%
-\contentsline {figure}{\numberline {B.9}{\ignorespaces Interpretability Dashboard snapshots showing real-time agent reasoning.}}{77}{figure.caption.80}%
+\contentsline {figure}{\numberline {B.2}{\ignorespaces Game Rules and Instructions}}{71}{figure.caption.73}%
+\contentsline {figure}{\numberline {B.3}{\ignorespaces Setup Phase}}{72}{figure.caption.74}%
+\contentsline {figure}{\numberline {B.4}{\ignorespaces Game Start}}{72}{figure.caption.75}%
+\contentsline {figure}{\numberline {B.5}{\ignorespaces Change image of pieces to numbers}}{73}{figure.caption.76}%
+\contentsline {figure}{\numberline {B.6}{\ignorespaces Battle and History}}{73}{figure.caption.77}%
+\contentsline {figure}{\numberline {B.7}{\ignorespaces Victory Screen}}{74}{figure.caption.78}%
+\contentsline {figure}{\numberline {B.8}{\ignorespaces Training Progress: Episode 10,000}}{75}{figure.caption.79}%
+\contentsline {figure}{\numberline {B.9}{\ignorespaces Training Progress: Episode 20,000}}{76}{figure.caption.80}%
+\contentsline {figure}{\numberline {B.10}{\ignorespaces Training Progress: Episode 34,000}}{77}{figure.caption.81}%
+\contentsline {figure}{\numberline {B.11}{\ignorespaces Interpretability Dashboard snapshots showing real-time agent reasoning.}}{78}{figure.caption.82}%

@@ -136,9 +136,9 @@
 \contentsline {section}{\numberline {5.7}Comparative Study: Vanilla DQN vs. Rainbow DQN}{65}{section.5.7}%
 \contentsline {chapter}{\numberline {A}Gantt Chart}{67}{appendix.A}%
 \contentsline {chapter}{\numberline {B}System UI and Training}{70}{appendix.B}%
-\contentsline {section}{\numberline {B.1}Interpretability Dashboard and Decision Metrics}{76}{section.B.1}%
-\contentsline {section}{\numberline {B.2}Discussion on Training Progress and Model Behavior}{78}{section.B.2}%
-\contentsline {subsection}{\numberline {B.2.1}Behavioral Evolution}{78}{subsection.B.2.1}%
-\contentsline {subsection}{\numberline {B.2.2}Implicit Belief and AAREN Performance}{78}{subsection.B.2.2}%
-\contentsline {subsection}{\numberline {B.2.3}Impact of Reward Overhaul}{79}{subsection.B.2.3}%
-\contentsline {section}{\numberline {B.3}AI Transparency, Inclusion, and Originality of Intent}{79}{section.B.3}%
+\contentsline {section}{\numberline {B.1}Interpretability Dashboard and Decision Metrics}{77}{section.B.1}%
+\contentsline {section}{\numberline {B.2}Discussion on Training Progress and Model Behavior}{79}{section.B.2}%
+\contentsline {subsection}{\numberline {B.2.1}Behavioral Evolution}{79}{subsection.B.2.1}%
+\contentsline {subsection}{\numberline {B.2.2}Implicit Belief and AAREN Performance}{79}{subsection.B.2.2}%
+\contentsline {subsection}{\numberline {B.2.3}Impact of Reward Overhaul}{80}{subsection.B.2.3}%
+\contentsline {section}{\numberline {B.3}AI Transparency, Inclusion, and Originality of Intent}{80}{section.B.3}%
