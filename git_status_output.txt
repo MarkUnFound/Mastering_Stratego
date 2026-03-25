@@ -1,0 +1,42 @@
+On branch DQN-noAAREN
+Your branch and 'origin/DQN-noAAREN' have diverged,
+and have 1 and 1 different commits each, respectively.
+  (use "git pull" if you want to integrate the remote branch with yours)
+
+You have unmerged paths.
+  (fix conflicts and run "git commit")
+  (use "git merge --abort" to abort the merge)
+
+Changes to be committed:
+	modified:   Latex/chapters/AppendixB.tex
+	modified:   Latex/figures/StrategoWithMARQ_Battlepopup.png
+	new file:   Latex/figures/StrategoWithMARQ_ChangeImage.png
+	modified:   Latex/figures/StrategoWithMARQ_GameStart.png
+	new file:   Latex/figures/StrategoWithMARQ_Rules.png
+	modified:   Latex/figures/StrategoWithMARQ_SETUP.png
+	deleted:    Latex/figures/Victory.png
+	modified:   Latex/sp.fls
+	new file:   Python Stratego Game/stratego_game_improved.py
+
+Unmerged paths:
+  (use "git add <file>..." to mark resolution)
+	both modified:   Latex/chapters/AppendixB.aux
+	both modified:   Latex/misc/vita.aux
+	both modified:   Latex/sp.aux
+	both modified:   Latex/sp.fdb_latexmk
+	both modified:   Latex/sp.lof
+	both modified:   Latex/sp.log
+	both modified:   Latex/sp.pdf
+	both added:      Latex/sp.synctex.gz
+	both modified:   Latex/sp.toc
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   Latex/sp.fls
+	modified:   Latex/sp.ilg
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	git_status_output.txt
+
