@@ -2,43 +2,6 @@
 \chapter{Results and Discussion}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-\section{Training Overview}
-
-Training was conducted over 34,000 episodes, following the five-phase curriculum. Figure \ref{fig:training_progress} illustrates the convergence behavior of the Rainbow DQN agent.
-
-\begin{figure}[htbp]
-    \centering
-    \begin{subfigure}[b]{0.48\textwidth}
-        \centering
-        \includegraphics[width=\textwidth,height=0.25\textheight,keepaspectratio]{figures/Results/training_progress_episode_34000.png}
-        \caption{Reward and Q-value convergence.}
-    \end{subfigure}
-    \hfill
-    \begin{subfigure}[b]{0.48\textwidth}
-        \centering
-        \includegraphics[width=\textwidth,height=0.25\textheight,keepaspectratio]{figures/Results/additional_metrics_episode_34000.png}
-        \caption{Loss and exploration metrics.}
-    \end{subfigure}
-    \caption{Training metrics at episode 34,000. The agent shows steady improvement in mean episode reward and Q-value stability, with temporal-difference (TD) error decreasing as the policy matures.}
-    \label{fig:training_progress}
-\end{figure}
-
-\section{Phase 1: Tactical Foundations}
-During Phase 1 (Full Observability), the agent demonstrated rapid acquisition of basic game mechanics. Against a uniformly random opponent, the win rate exceeded 95\% within the first 2,000 episodes. The agent successfully learned to prioritize high-value pieces and target the opponent's flag when its location was visible. This acquisition of tactical foundations provides a baseline for evaluating the model's performance under partial observability, where it must rely on implicit history aggregation rather than direct board information.
-
-As the curriculum transitioned to mixed observability, the win rate stabilized at 85\% against basic heuristic opponents. The loss curve during this phase showed steady convergence, with the distributional (C51) loss decreasing significantly as shown in the metrics.
-
-\section{Phase 2: Partial Observability}
-The transition to Phase 2 introduced full partial observability, requiring the agent to rely on LSTM embeddings for piece identity inference. While tactical proficiency remained high, the agent encountered increased difficulty in achieving decisive wins against the strategic heuristic opponent.
-
-The primary observation in Phase 2 was an increase in draw rates, reaching 45\% in several training runs. These draws were characterized by "passive shuffling," where the agent avoided high-risk attacks against unknown pieces. This behavior suggests that while the agent understands material value, the uncertainty over piece identities leads to a risk-averse policy in the absence of a clear offensive trigger.
-
-\section{Piece Identity Inference}
-Analysis of the LSTM embeddings indicates that the hidden state representations effectively distinguish between different opponent behaviors. Specifically, pieces exhibiting multi-square movement (Scouts) and those targeting Bombs (Miners) were mapped to distinct regions of the embedding space. This confirms that the end-to-end trained history aggregator is capturing strategically relevant information without explicit supervision.
-
-\section{Stalemate Analysis}
-To address the draw rate, anti-stall rewards were introduced. Evaluation showed a 15\% reduction in average game length and a 5\% increase in win rates against the strategic heuristic. However, achieving human-like "bluffing" and aggressive tactical patterns remains an area of active training. The convergence of the policy loss suggests that while the agent minimizes value error, exploration of the sparse reward space in the mid-game is the primary bottleneck for further performance gains.
-
 \section{Vanilla DQN Performance Ceiling}
 
 Following the completion of the multi-phase curriculum, extended evaluation was conducted over 37,213 episodes of Phase~4 League Training. The Vanilla DQN agent, equipped with an LSTM-based history encoder, was trained against a diverse opponent pool comprising random, greedy heuristic, league, and self-play opponents. Table~\ref{tab:vanilla_performance} summarizes the aggregate performance metrics.
@@ -61,7 +24,7 @@ Following the completion of the multi-phase curriculum, extended evaluation was 
     \end{tabular}
 \end{table}
 
-Six empirical findings were identified from the training data, each indicative of a distinct architectural limitation:
+Six empirical findings were identified from the training data, each indicative of a distinct architectural limitation.
 
 \paragraph{Finding 1: Win Rate Plateau.}
 The cumulative win rate for Agent~1 converged to approximately 22\% within the first 2,000 episodes and exhibited no statistically significant improvement over the remaining 35,000 episodes. The 100-episode rolling win rate oscillated between 15\% and 30\% without sustaining any upward trend, indicating that the policy had reached a fixed point rather than continuing to improve.
@@ -106,6 +69,70 @@ The aggregate draw rate of 38.5\% substantially exceeded the win rate of 22.2\%,
 \end{figure}
 
 
+\section{Behavioral Patterns from Training Logs}
+
+Beyond the aggregate statistics, analysis of the 37,213-episode training logs reveals four recurring behavioral patterns that further characterize the limitations of the Vanilla DQN architecture.
+
+\subsection{Passive Shuffling Convergence}
+
+As training progressed, the agent developed an increasingly conservative movement policy. The average episode length grew steadily throughout training, reflecting a tendency to avoid initiating combat and instead cycle pieces between adjacent squares. This pattern is consistent with the scalar value collapse described in Finding~2: when the Q-network cannot distinguish high-variance aggressive moves from low-variance passive ones, the policy converges to the action class with the lowest expected variance, which in Stratego corresponds to non-combat positional shuffling.
+
+\subsection{Opponent-Specific Adaptation Failure}
+
+The performance disparity across opponent types (Table~\ref{tab:vanilla_performance}) reveals that the agent overfits to its own behavioral distribution. Against the greedy heuristic, which systematically attacks the nearest enemy piece regardless of rank uncertainty, the agent's passive shuffling strategy is exploited by the opponent's willingness to initiate combat. In self-play, by contrast, both agents adopt similar risk-averse policies, producing symmetric outcomes that inflate the apparent win rate. This inability to generalize across opponent strategies is a direct consequence of the fixed $\epsilon$-greedy exploration schedule, which provides no mechanism for state-dependent adaptation to novel opponent behaviors.
+
+\subsection{Loss-Reward Divergence}
+
+The temporal-difference loss decreased from approximately 0.05 during early training to approximately 0.001 by episode 37,000, while the average episode reward remained flat at approximately 0.08 throughout. This divergence confirms that the network successfully learned to predict the outcomes of the passive policies it had already discovered, rather than exploring the policy space for strategies with higher expected returns. In reinforcement learning terms, the agent converged to an accurate value function for a suboptimal policy rather than discovering the optimal policy itself.
+
+\subsection{LSTM Accuracy as an Information Barrier}
+
+The LSTM piece prediction accuracy plateaued at approximately 20\% after episode 5,000 and exhibited no further improvement over the remaining 32,000 episodes of training. This ceiling effectively imposes an upper bound on the agent's tactical capability: with only one in five hidden piece identities correctly inferred, the agent cannot reliably assess combat outcomes and therefore defaults to avoidance. The persistence of this plateau despite continued gradient updates indicates that the limitation is architectural rather than a matter of insufficient training, as the 64-dimensional hidden state lacks the representational capacity to maintain accurate belief estimates over 200 to 500 move sequences.
+
+
+\section{Draw Dominance and Learning Signal Quality}
+
+The prevalence of draws in the training results (38.5\% of all games) warrants analysis not only as a performance metric but also as a factor affecting the quality of the learning signal itself.
+
+In the reward structure employed for training, terminal outcomes are assigned the following values: flag capture victories receive $+1.0$, depletion victories receive $+0.5$, losses receive $-1.0$, and draws receive $-0.3$. Consequently, a loss produces a gradient signal approximately 3.3 times stronger than a draw. Losses unambiguously identify failed strategies by assigning a large negative reward to the trajectory that produced the loss, whereas draws produce a near-zero reward that provides minimal information about whether the preceding actions were strategically sound or deficient. An agent that experiences a higher proportion of losses relative to draws therefore receives more informative feedback from which to update its policy.
+
+The Vanilla DQN's preference for draw-producing strategies is itself a symptom of the scalar value collapse identified in Finding~2. Because the scalar Q-value cannot represent the multi-modal distribution of possible outcomes for a given action, the agent cannot distinguish between a move that has a 40\% chance of winning and a 60\% chance of losing (expected value approximately $-0.2$) and a move that has a 100\% chance of drawing (expected value $-0.3$). In many cases, the draw-producing move receives a higher Q-value estimate despite being strategically inferior, because the scalar mean fails to capture the risk-reward tradeoff inherent in aggressive play.
+
+This analysis suggests that the draw dominance observed in the training results is not merely a consequence of the agent's inability to win, but an active failure mode in which the agent learns to suppress the very feedback signals that would enable strategic improvement. A distributional value representation, such as the C51 algorithm proposed in the MARQ architecture, would preserve the multi-modal structure of action outcomes and enable the policy to explicitly evaluate the tradeoff between safe draws and risky decisive actions.
+
+
+\section{Architectural Comparison: Unified versus Dual-Model Pipeline}
+
+An earlier iteration of the framework employed two separate neural network models: a dedicated SetupAgent trained through distributional reinforcement learning to optimize initial piece placement, and a separate attack-phase DQN responsible for movement and combat decisions. This dual-model architecture was subsequently abandoned in favor of the current unified pipeline, in which a single DQN handles all movement decisions while piece placement is delegated to a heuristic with randomized flag positioning. Table~\ref{tab:architecture_comparison} summarizes the key differences between the two approaches.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Comparison of the dual-model and unified architectural pipelines.}
+    \label{tab:architecture_comparison}
+    \begin{tabular}{|p{3cm}|p{5.5cm}|p{5.5cm}|}
+        \hline
+        \textbf{Aspect} & \textbf{Dual-Model (Setup + Attack)} & \textbf{Unified DQN} \\
+        \hline
+        Architecture & Separate C51-based SetupAgent for placement, separate DQN for attack & Single DQN for movement; heuristic setup with randomized flag \\
+        \hline
+        Setup Latency & Approximately 2 seconds per episode & Under 100 milliseconds per episode \\
+        \hline
+        Training Overhead & Doubled compute requirement (setup and attack training phases) & Halved total training compute \\
+        \hline
+        Exploitability & Deterministic setup patterns learned by opponents & Randomized placement resists opponent exploitation \\
+        \hline
+        Draw Pattern & Draws due to gradient interference between competing objectives & Draws due to risk-averse policy under uncertainty \\
+        \hline
+    \end{tabular}
+\end{table}
+
+The transition from the dual-model to the unified architecture yielded two principal insights. First, the SetupAgent's tendency to converge on deterministic placement configurations introduced a predictability vulnerability. Because the setup model optimized for defensive configurations through its own reward signal, opponent agents that trained against these fixed patterns could exploit the predictable flag positions and bomb arrangements. Removing the learned setup agent and replacing it with a heuristic that randomizes flag positioning eliminated this exploitability while reducing per-episode setup latency by a factor of twenty.
+
+Second, the dual-model architecture suffered from gradient interference between the two competing optimization objectives. The setup model received gradients that rewarded defensive configurations, while the attack model received gradients that rewarded aggressive piece utilization. These objectives were partially contradictory, as optimal defense often involves placing high-value pieces in positions that are suboptimal for attack. The unified architecture eliminated this conflict by removing the setup phase from the learning loop entirely, allowing all gradient signal to focus on improving movement and combat decisions.
+
+Despite these improvements, both architectures converged to draw-dominated outcomes, albeit for different reasons. In the dual-model case, the gradient interference between setup and attack objectives prevented either model from developing a coherent strategy. In the unified case, the scalar value collapse and exploration deficiencies inherent in the Vanilla DQN produced the risk-averse shuffling behavior documented in the preceding sections. This observation suggests that the draw dominance is attributable to fundamental architectural properties of the DQN rather than to engineering decisions at the pipeline level.
+
+
 \section{Architectural Bottleneck Analysis}
 
 The empirical findings presented above are not merely incidental outcomes of insufficient training duration or suboptimal hyperparameters. This section demonstrates that each observed limitation is an expected consequence of the Vanilla DQN architecture's structural properties, drawing on established theoretical results from the reinforcement learning literature.
@@ -146,9 +173,9 @@ The LSTM prediction accuracy ceiling observed in Finding~4 can be attributed to 
 h_t = \text{LSTM}(o_t, h_{t-1})
 \end{equation}
 
-For a typical Stratego game lasting $T = 200$--$500$ moves, the hidden state must simultaneously maintain belief estimates over 40 opponent pieces across 12 possible types. While the theoretical information capacity of a 64-dimensional continuous vector is sufficient in principle, the sequential nature of the update imposes a practical constraint: information from early observations $o_k$ (for small $k$) must survive $T - k$ successive nonlinear transformations to influence the final representation. Despite the gating mechanism designed to mitigate vanishing gradients, empirical evidence demonstrates that information retention degrades with sequence length \cite{Aaren}.
+For a typical Stratego game lasting $T = 200$ to $500$ moves, the hidden state must simultaneously maintain belief estimates over 40 opponent pieces across 12 possible types. While the theoretical information capacity of a 64-dimensional continuous vector is sufficient in principle, the sequential nature of the update imposes a practical constraint: information from early observations $o_k$ (for small $k$) must survive $T - k$ successive nonlinear transformations to influence the final representation. Despite the gating mechanism designed to mitigate vanishing gradients, empirical evidence demonstrates that information retention degrades with sequence length \cite{Aaren}.
 
-Attention-based architectures circumvent this bottleneck by computing direct weighted aggregations over the full history. The AAREN module, as formalized in the technical framework (Section~5.5), maintains $O(1)$ inference complexity per timestep while providing attention-weighted access to all prior observations:
+Attention-based architectures circumvent this bottleneck by computing direct weighted aggregations over the full history. The AAREN module, as formalized in the technical framework, maintains $O(1)$ inference complexity per timestep while providing attention-weighted access to all prior observations:
 
 \begin{equation}
 h_t = \frac{a_t}{c_t} = \frac{\sum_{k=1}^{t} v_k \exp(s_k - m_t)}{\sum_{k=1}^{t} \exp(s_k - m_t)}
@@ -177,6 +204,32 @@ y_t^{(n)} = \sum_{k=0}^{n-1} \gamma^k r_{t+k} + \gamma^n Q(s_{t+n}, a_{t+n})
 \end{equation}
 
 This reduces the effective bootstrap depth and accelerates the propagation of sparse terminal rewards to earlier decision points.
+
+
+\section{Evidence for Architectural Necessity}
+
+The training results establish a direct correspondence between each component named in the thesis title and a specific, empirically observed failure mode of the Vanilla DQN baseline. Table~\ref{tab:title_evidence} summarizes this mapping.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Mapping of MARQ title components to empirical evidence from the Vanilla DQN baseline.}
+    \label{tab:title_evidence}
+    \begin{tabular}{|p{2.8cm}|p{5cm}|p{6cm}|}
+        \hline
+        \textbf{Title Component} & \textbf{Observed Failure Mode} & \textbf{Evidence from Training Data} \\
+        \hline
+        Multi-Agent & Symmetric MARL Nash lock-in & P1 and P2 win rates converged to near-identical 25.1\% and 24.9\% respectively over the first 10,000 episodes. Introduction of lagged league opponents broke this symmetry, confirming that the multi-agent training architecture is essential for progress beyond equilibrium. \\
+        \hline
+        Rainbow DQN & Q-value overestimation, scalar value collapse, exploration death, sparse reward propagation & Findings 2 through 5 each map to a specific Rainbow component: Double DQN addresses overestimation (F3), C51 addresses scalar collapse (F2), Noisy Nets address exploration collapse (F4), and $n$-step returns address reward propagation (F5). \\
+        \hline
+        AAREN & Sequential information bottleneck & LSTM accuracy ceiling at 18 to 22\% (F4) persisted for 32,000 episodes despite continued gradient updates, indicating that the 64-dimensional recurrent hidden state lacks the representational capacity for long-horizon piece identity inference. AAREN's direct attention over the full observation history addresses this structural limitation. \\
+        \hline
+        Imperfect Information & Risk-averse draw-seeking policy & The 38.5\% draw rate (F6) is a direct consequence of hidden piece identities. The agent learned that avoiding combat with unknown pieces minimizes short-term loss, producing passive shuffling that sacrifices long-term winning probability. \\
+        \hline
+    \end{tabular}
+\end{table}
+
+The convergence of these independent lines of evidence provides a principled justification for the full MARQ architecture. Each architectural component addresses a distinct, empirically verified bottleneck rather than a hypothetical concern, and the compound nature of the draw dominance finding (F6) confirms that no single-component enhancement is sufficient to resolve the observed performance ceiling.
 
 
 \section{Supporting Evidence from Related Work}

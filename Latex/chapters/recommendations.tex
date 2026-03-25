@@ -2,21 +2,7 @@
 \chapter{Contributions and Recommendations}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-\section{LSTM History Encoding vs.\ Full DRQN}
-
-A key architectural decision in designing the Stratego agent concerns how sequential information, specifically the history of opponent actions, should be integrated into the Deep Q-Network. Two principal approaches exist. The first is a full Deep Recurrent Q-Network (DRQN), where the Q-network itself contains recurrent layers and carries hidden state across timesteps. The second is an LSTM-based per-position history encoder, where the LSTM operates as a separate module that encodes action sequences into fixed-size embeddings consumed by a feed-forward DQN. This work adopts the latter approach for several principled reasons.
-
-The separated encoder preserves full compatibility with standard experience replay, a cornerstone of DQN stability that stores individual transitions $(s, a, r, s')$. A full DRQN would require either storing and replaying contiguous episode segments with their associated hidden states, thereby breaking the i.i.d.\ sampling assumption, or ``burning in'' hidden states by processing a prefix of each sampled sequence at substantial computational cost. The LSTM-based approach instead stores compact embedding snapshots alongside 15-channel board tensors, preserving the standard replay buffer infrastructure without modification.
-
-The design also provides per-position granularity that a monolithic DRQN hidden state cannot achieve. In Stratego, the critical sequential signal is \emph{per-piece}, as the movement history of each individual opponent piece reveals its likely identity. For example, a piece that moves multiple squares is almost certainly a Scout. A single DRQN hidden state would conflate action histories across all 40 opponent pieces into one vector, losing this spatial specificity. The LSTM-based approach maintains independent hidden states for each of the 100 board positions, producing a spatially structured $(64, 10, 10)$ embedding tensor that preserves piece-level temporal information.
-
-An additional advantage lies in gradient isolation. Separating the history encoder from the Q-network enables independent optimization, as the LSTM receives gradients from both supervised cross-entropy loss on revealed piece identities and end-to-end DQN loss via a gradient bridge mechanism. A full DRQN would couple these objectives within a single recurrent computation, potentially causing gradient interference between value estimation and history encoding. Furthermore, the LSTM encoder processes only positions with observed enemy actions, typically 5 to 15 active positions per turn, whereas a DRQN would process the full board state recurrently at every timestep. This sparsity reduces per-step LSTM computation by an order of magnitude compared to a full DRQN forward pass.
-
-This design aligns with DeepNash's approach to Stratego \cite{Perolat2022}, where history information is encoded by a separate module and concatenated with board features, rather than being processed recurrently within the value network itself.
-
 \section{Recommended Architectural Enhancements}
-
-The analytical diagnosis presented in the Results chapter establishes that each observed performance limitation of the Vanilla DQN architecture corresponds to a specific, theoretically grounded failure mode. This section synthesizes those findings into concrete architectural recommendations for the MARQ framework.
 
 \subsection{Value Estimation}
 
@@ -24,7 +10,9 @@ The Q-value overestimation and scalar value collapse identified in the training 
 
 \subsection{LSTM to AAREN Transition}
 
-The LSTM prediction accuracy ceiling of approximately 18--22\% represents the most direct evidence for the necessity of the AAREN module. While the LSTM-based history encoder described in the previous section offers principled advantages over a full DRQN architecture in terms of replay compatibility, per-position granularity, and gradient isolation, the sequential information bottleneck inherent in any recurrent encoder limits its representational capacity over long game horizons. The AAREN architecture, as formalized in the technical framework, preserves all of the structural advantages of the separated encoder design while replacing the recurrent computation with attention-based history aggregation. This substitution addresses the compression bottleneck without requiring modifications to the replay buffer infrastructure or the DQN backbone.
+The LSTM prediction accuracy ceiling of approximately 18 to 22\% represents the most direct evidence for the necessity of the AAREN module. While the LSTM-based history encoder offers principled advantages over a full DRQN architecture in terms of replay compatibility, per-position granularity, and gradient isolation, the sequential information bottleneck inherent in any recurrent encoder limits its representational capacity over long game horizons. The AAREN architecture preserves all of the structural advantages of the separated encoder design while replacing the recurrent computation with attention-based history aggregation. This substitution addresses the compression bottleneck without requiring modifications to the replay buffer infrastructure or the DQN backbone.
+
+The separated encoder design itself represents a contribution of the current work. By maintaining independent hidden states for each of the 100 board positions, the encoder produces a spatially structured $(64, 10, 10)$ embedding tensor that preserves piece-level temporal information. A monolithic DRQN hidden state would conflate action histories across all 40 opponent pieces into a single vector, losing this spatial specificity. The per-position design also preserves full compatibility with standard experience replay by storing compact embedding snapshots alongside 15-channel board tensors, avoiding the computational cost of sequence burn-in required by full DRQN architectures.
 
 \subsection{Exploration Recovery}
 
@@ -34,20 +22,36 @@ The observation that the Noisy Net sigma remained at zero throughout the entire 
 
 The sparse reward propagation analysis demonstrated that single-step temporal-difference learning attenuates terminal reward signals by a factor of $\gamma^{200} \approx 0.134$ for mid-game decisions. Multi-step returns ($n$-step TD with $n = 5$), as specified in the MARQ framework, would reduce this effective bootstrap depth and accelerate the propagation of strategic outcomes to earlier decision points, promoting the development of long-horizon planning behavior.
 
-\subsection{Advanced Architectures}
 
-Beyond the immediate MARQ enhancements, the integration of more expressive sequence modeling architectures presents a substantial area of opportunity. Transformer-based architectures and Large Language Model (LLM)-driven heuristics offer sophisticated reasoning capabilities that could significantly improve decision-making in high-dimensional, sparse-reward spaces. Utilizing such architectures for strategic evaluation is anticipated to yield more robust, human-like reasoning and improve the interpretability of hidden game states compared to the current deep reinforcement learning pipeline.
+\section{Computer Science Contributions}
+
+The primary contributions of this work are in the domain of reinforcement learning systems engineering rather than in the game of Stratego itself. Stratego serves as the experimental domain, but the following contributions are architecture-agnostic and transferable to other imperfect information environments.
+
+\subsection{Five-Phase Curriculum Design}
+
+The multi-phase training curriculum provides a structured methodology for transitioning reinforcement learning agents from fully observable to partially observable environments. The progressive reduction of observability, combined with opponent difficulty scaling and reward annealing, addresses the cold-start problem that arises when agents must simultaneously learn basic game mechanics and hidden information reasoning. This curriculum structure is applicable to any domain in which partial observability is introduced gradually.
+
+\subsection{Gradient Bridge for Replay Compatibility}
+
+The gradient bridge mechanism, which adds a differentiable epsilon-scaled zero-vector to stored embedding snapshots, preserves end-to-end gradient flow from the DQN loss through the LSTM encoder while maintaining the computational efficiency of pre-computed embeddings. This technique resolves a fundamental tension in replay-based training of hybrid architectures: full sequential reconstruction at replay time produces correct gradients but incurs a 4$\times$ throughput penalty, while standard detached snapshots preserve throughput but sever the gradient path. The gradient bridge achieves both objectives simultaneously and is applicable to any architecture that combines a recurrent encoder with an experience replay buffer.
+
+\subsection{Expectamax Search Integration}
+
+The integration of formal Expectamax search with learned belief distributions provides a principled approach to test-time decision refinement in partially observable environments. By weighting the DQN's positional Q-values against the expected combat utility computed from AAREN-derived rank probabilities, the system grounds neural predictions in tactical reality and prevents overconfident attacks on hidden pieces. This hierarchical policy blending approach is transferable to any domain where learned value functions must be combined with probabilistic state estimation.
+
+\subsection{Potential-Based Reward Shaping with Phase Annealing}
+
+The PBRS implementation guarantees optimal policy invariance while providing dense learning signals during early training. The phase-based annealing schedule, which multiplicatively reduces the shaping signal across curriculum phases until it reaches zero in the final league training phase, ensures that the agent transitions from shaped to purely objective-driven learning without manual intervention. This design eliminates the reward-farming failure mode observed in additive shaping schemes while accelerating early convergence.
 
 
 \section{Limitations and Future Work}
 
 While the analytical diagnosis provides strong theoretical justification for the MARQ architecture's design choices, several limitations must be acknowledged.
 
-The theoretical analysis establishes that the Vanilla DQN's limitations are structurally inherent, but it does not guarantee that the proposed enhancements will achieve superior empirical performance in the Stratego domain. The interaction between multiple architectural components including C51, Noisy Nets, Dueling Networks, AAREN, and $n$-step returns in a multi-agent self-play setting may introduce emergent challenges not predicted by single-component theoretical analysis.
+The theoretical analysis establishes that the Vanilla DQN's limitations are structurally inherent, but it does not guarantee that the proposed enhancements will achieve superior empirical performance in the Stratego domain. The interaction between multiple architectural components, including C51, Noisy Nets, Dueling Networks, AAREN, and $n$-step returns, in a multi-agent self-play setting may introduce emergent challenges not predicted by single-component theoretical analysis.
 
 The computational overhead of the full MARQ pipeline relative to the Vanilla DQN baseline also represents a practical constraint. The Vanilla DQN's principal advantage of rapid training iteration enabled the extensive 37,213-episode evaluation reported in this work. The full Rainbow DQN configuration with AAREN may require substantially longer wall-clock training time, potentially limiting the total number of self-play episodes achievable within a fixed compute budget.
 
 Systematic ablation studies are additionally required to isolate the marginal contribution of each MARQ component. The theoretical analysis predicts that each enhancement addresses a distinct failure mode, but empirical validation of this independence assumption is necessary to confirm that the improvements are additive rather than redundant.
 
-Future work should prioritize the incremental integration and evaluation of each MARQ component, beginning with the transition from LSTM to AAREN for history encoding and the reintroduction of C51 distributional value estimation. Each component should be evaluated in isolation against the Vanilla DQN baseline before the full pipeline is assembled, ensuring that the theoretical predictions are validated through controlled experimentation.
-
+Future work should prioritize the incremental integration and evaluation of each MARQ component, beginning with the transition from LSTM to AAREN for history encoding and the reintroduction of C51 distributional value estimation. Each component should be evaluated in isolation against the Vanilla DQN baseline before the full pipeline is assembled, ensuring that the theoretical predictions are validated through controlled experimentation. The introduction of Stratego to a broader participant pool for human testing should be considered only if time and computational resources permit, as the primary scientific contribution of this work resides in the reinforcement learning framework rather than in the game-specific application.

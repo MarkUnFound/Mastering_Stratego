@@ -3,49 +3,54 @@
 \@writefile{toc}{\contentsline {chapter}{\numberline {5}Results and Discussion}{63}{chapter.5}\protected@file@percent }
 \@writefile{lof}{\addvspace {10\p@ }}
 \@writefile{lot}{\addvspace {10\p@ }}
-\@writefile{toc}{\contentsline {section}{\numberline {5.1}Training Overview}{63}{section.5.1}\protected@file@percent }
-\@writefile{lof}{\contentsline {figure}{\numberline {5.1}{\ignorespaces Training metrics at episode 34,000. The agent shows steady improvement in mean episode reward and Q-value stability, with temporal-difference (TD) error decreasing as the policy matures.}}{63}{figure.caption.66}\protected@file@percent }
-\newlabel{fig:training_progress}{{5.1}{63}{Training metrics at episode 34,000. The agent shows steady improvement in mean episode reward and Q-value stability, with temporal-difference (TD) error decreasing as the policy matures}{figure.caption.66}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {5.2}Phase 1: Tactical Foundations}{64}{section.5.2}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {5.3}Phase 2: Partial Observability}{64}{section.5.3}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {5.4}Piece Identity Inference}{64}{section.5.4}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {5.5}Stalemate Analysis}{65}{section.5.5}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {5.6}Vanilla DQN Performance Ceiling}{65}{section.5.6}\protected@file@percent }
-\@writefile{lot}{\contentsline {table}{\numberline {5.1}{\ignorespaces Vanilla DQN Performance Summary after 37,213 Episodes of Phase~4 League Training.}}{65}{table.caption.67}\protected@file@percent }
-\newlabel{tab:vanilla_performance}{{5.1}{65}{Vanilla DQN Performance Summary after 37,213 Episodes of Phase~4 League Training}{table.caption.67}{}}
-\@writefile{toc}{\contentsline {paragraph}{Finding 1: Win Rate Plateau.}{65}{section*.68}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Finding 2: Loss--Performance Decoupling.}{65}{section*.69}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Finding 3: Q-Value Overestimation.}{66}{section*.70}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Finding 4: LSTM Prediction Accuracy Ceiling.}{66}{section*.71}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Finding 5: Opponent-Specific Performance Asymmetry.}{66}{section*.72}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Finding 6: Draw Dominance.}{66}{section*.73}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {5.7}Architectural Bottleneck Analysis}{66}{section.5.7}\protected@file@percent }
-\@writefile{lof}{\contentsline {figure}{\numberline {5.2}{\ignorespaces Training diagnostics at episode 37,000. The win rate (dashed blue line) remains at approximately 22\% despite continued training, while Q-values exhibit an upward trend decoupled from performance. The Noisy Net sigma remains at zero throughout, indicating no learned exploration.}}{67}{figure.caption.74}\protected@file@percent }
-\newlabel{fig:training_diagnostics_37k}{{5.2}{67}{Training diagnostics at episode 37,000. The win rate (dashed blue line) remains at approximately 22\% despite continued training, while Q-values exhibit an upward trend decoupled from performance. The Noisy Net sigma remains at zero throughout, indicating no learned exploration}{figure.caption.74}{}}
-\@writefile{lof}{\contentsline {figure}{\numberline {5.3}{\ignorespaces AAREN/LSTM training metrics at episode 37,000. The prediction accuracy (orange line) plateaus at approximately 18--22\% after episode 5,000, while gradient norms remain stable, suggesting the module has converged to a local optimum.}}{67}{figure.caption.75}\protected@file@percent }
-\newlabel{fig:aaren_diagnostics_37k}{{5.3}{67}{AAREN/LSTM training metrics at episode 37,000. The prediction accuracy (orange line) plateaus at approximately 18--22\% after episode 5,000, while gradient norms remain stable, suggesting the module has converged to a local optimum}{figure.caption.75}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {5.1}Vanilla DQN Performance Ceiling}{63}{section.5.1}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {5.1}{\ignorespaces Vanilla DQN Performance Summary after 37,213 Episodes of Phase~4 League Training.}}{63}{table.caption.66}\protected@file@percent }
+\newlabel{tab:vanilla_performance}{{5.1}{63}{Vanilla DQN Performance Summary after 37,213 Episodes of Phase~4 League Training}{table.caption.66}{}}
+\@writefile{toc}{\contentsline {paragraph}{Finding 1: Win Rate Plateau.}{63}{section*.67}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Finding 2: Loss--Performance Decoupling.}{64}{section*.68}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Finding 3: Q-Value Overestimation.}{64}{section*.69}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Finding 4: LSTM Prediction Accuracy Ceiling.}{64}{section*.70}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Finding 5: Opponent-Specific Performance Asymmetry.}{64}{section*.71}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Finding 6: Draw Dominance.}{64}{section*.72}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {5.1}{\ignorespaces Training diagnostics at episode 37,000. The win rate (dashed blue line) remains at approximately 22\% despite continued training, while Q-values exhibit an upward trend decoupled from performance. The Noisy Net sigma remains at zero throughout, indicating no learned exploration.}}{65}{figure.caption.73}\protected@file@percent }
+\newlabel{fig:training_diagnostics_37k}{{5.1}{65}{Training diagnostics at episode 37,000. The win rate (dashed blue line) remains at approximately 22\% despite continued training, while Q-values exhibit an upward trend decoupled from performance. The Noisy Net sigma remains at zero throughout, indicating no learned exploration}{figure.caption.73}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {5.2}{\ignorespaces AAREN/LSTM training metrics at episode 37,000. The prediction accuracy (orange line) plateaus at approximately 18--22\% after episode 5,000, while gradient norms remain stable, suggesting the module has converged to a local optimum.}}{65}{figure.caption.74}\protected@file@percent }
+\newlabel{fig:aaren_diagnostics_37k}{{5.2}{65}{AAREN/LSTM training metrics at episode 37,000. The prediction accuracy (orange line) plateaus at approximately 18--22\% after episode 5,000, while gradient norms remain stable, suggesting the module has converged to a local optimum}{figure.caption.74}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {5.2}Behavioral Patterns from Training Logs}{66}{section.5.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.2.1}Passive Shuffling Convergence}{66}{subsection.5.2.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.2.2}Opponent-Specific Adaptation Failure}{66}{subsection.5.2.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.2.3}Loss-Reward Divergence}{66}{subsection.5.2.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.2.4}LSTM Accuracy as an Information Barrier}{67}{subsection.5.2.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {5.3}Draw Dominance and Learning Signal Quality}{67}{section.5.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {5.4}Architectural Comparison: Unified versus Dual-Model Pipeline}{68}{section.5.4}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {5.2}{\ignorespaces Comparison of the dual-model and unified architectural pipelines.}}{68}{table.caption.75}\protected@file@percent }
+\newlabel{tab:architecture_comparison}{{5.2}{68}{Comparison of the dual-model and unified architectural pipelines}{table.caption.75}{}}
+\citation{RainbowJMLR2021}
+\@writefile{toc}{\contentsline {section}{\numberline {5.5}Architectural Bottleneck Analysis}{69}{section.5.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.5.1}Q-Value Overestimation}{69}{subsection.5.5.1}\protected@file@percent }
 \citation{RainbowJMLR2021}
 \citation{RainbowJMLR2021}
 \citation{RainbowJMLR2021}
-\@writefile{toc}{\contentsline {subsection}{\numberline {5.7.1}Q-Value Overestimation}{68}{subsection.5.7.1}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {5.7.2}Scalar Value Collapse}{68}{subsection.5.7.2}\protected@file@percent }
-\citation{RainbowJMLR2021}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.5.2}Scalar Value Collapse}{70}{subsection.5.5.2}\protected@file@percent }
 \citation{Aaren}
-\@writefile{toc}{\contentsline {subsection}{\numberline {5.7.3}LSTM Information Bottleneck}{69}{subsection.5.7.3}\protected@file@percent }
 \citation{perolat2022stratego}
 \citation{RainbowJMLR2021}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.5.3}LSTM Information Bottleneck}{71}{subsection.5.5.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.5.4}Exploration Collapse}{71}{subsection.5.5.4}\protected@file@percent }
 \citation{RainbowJMLR2021}
-\@writefile{toc}{\contentsline {subsection}{\numberline {5.7.4}Exploration Collapse}{70}{subsection.5.7.4}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {5.7.5}Sparse Reward Propagation}{70}{subsection.5.7.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.5.5}Sparse Reward Propagation}{72}{subsection.5.5.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {5.6}Evidence for Architectural Necessity}{72}{section.5.6}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {5.3}{\ignorespaces Mapping of MARQ title components to empirical evidence from the Vanilla DQN baseline.}}{73}{table.caption.76}\protected@file@percent }
+\newlabel{tab:title_evidence}{{5.3}{73}{Mapping of MARQ title components to empirical evidence from the Vanilla DQN baseline}{table.caption.76}{}}
 \citation{perolat2022stratego}
 \citation{Ataraxos2025}
 \citation{RainbowJMLR2021}
-\@writefile{toc}{\contentsline {section}{\numberline {5.8}Supporting Evidence from Related Work}{71}{section.5.8}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {5.9}Implications for MARQ}{71}{section.5.9}\protected@file@percent }
-\@writefile{lot}{\contentsline {table}{\numberline {5.2}{\ignorespaces Mapping of observed limitations to theoretical causes and proposed MARQ components.}}{72}{table.caption.76}\protected@file@percent }
-\newlabel{tab:limitation_mapping}{{5.2}{72}{Mapping of observed limitations to theoretical causes and proposed MARQ components}{table.caption.76}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {5.7}Supporting Evidence from Related Work}{74}{section.5.7}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {5.8}Implications for MARQ}{74}{section.5.8}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {5.4}{\ignorespaces Mapping of observed limitations to theoretical causes and proposed MARQ components.}}{75}{table.caption.77}\protected@file@percent }
+\newlabel{tab:limitation_mapping}{{5.4}{75}{Mapping of observed limitations to theoretical causes and proposed MARQ components}{table.caption.77}{}}
 \@setckpt{chapters/results}{
-\setcounter{page}{73}
+\setcounter{page}{76}
 \setcounter{equation}{7}
 \setcounter{enumi}{3}
 \setcounter{enumii}{0}
@@ -55,17 +60,17 @@
 \setcounter{mpfootnote}{0}
 \setcounter{part}{0}
 \setcounter{chapter}{5}
-\setcounter{section}{9}
+\setcounter{section}{8}
 \setcounter{subsection}{0}
 \setcounter{subsubsection}{0}
 \setcounter{paragraph}{0}
 \setcounter{subparagraph}{0}
-\setcounter{figure}{3}
-\setcounter{table}{2}
+\setcounter{figure}{2}
+\setcounter{table}{4}
 \setcounter{section@level}{1}
 \setcounter{Item}{11}
 \setcounter{Hfootnote}{0}
-\setcounter{bookmark@seq@number}{98}
+\setcounter{bookmark@seq@number}{101}
 \setcounter{parentequation}{0}
 \setcounter{float@type}{16}
 \setcounter{caption@flags}{2}

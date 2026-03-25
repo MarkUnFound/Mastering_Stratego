@@ -8,8 +8,10 @@
 \contentsline {table}{\numberline {4.3}{\ignorespaces State representation input channels for the Rainbow DQN.}}{48}{table.caption.43}%
 \contentsline {table}{\numberline {4.4}{\ignorespaces Heuristic scoring criteria for move filtering.}}{55}{table.caption.59}%
 \addvspace {10\p@ }
-\contentsline {table}{\numberline {5.1}{\ignorespaces Vanilla DQN Performance Summary after 37,213 Episodes of Phase~4 League Training.}}{65}{table.caption.67}%
-\contentsline {table}{\numberline {5.2}{\ignorespaces Mapping of observed limitations to theoretical causes and proposed MARQ components.}}{72}{table.caption.76}%
+\contentsline {table}{\numberline {5.1}{\ignorespaces Vanilla DQN Performance Summary after 37,213 Episodes of Phase~4 League Training.}}{63}{table.caption.66}%
+\contentsline {table}{\numberline {5.2}{\ignorespaces Comparison of the dual-model and unified architectural pipelines.}}{68}{table.caption.75}%
+\contentsline {table}{\numberline {5.3}{\ignorespaces Mapping of MARQ title components to empirical evidence from the Vanilla DQN baseline.}}{73}{table.caption.76}%
+\contentsline {table}{\numberline {5.4}{\ignorespaces Mapping of observed limitations to theoretical causes and proposed MARQ components.}}{75}{table.caption.77}%
 \addvspace {10\p@ }
 \addvspace {10\p@ }
 \addvspace {10\p@ }

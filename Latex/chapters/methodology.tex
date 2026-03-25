@@ -228,7 +228,7 @@ The framework employs Potential-Based Reward Shaping (PBRS) as its primary mecha
 F(s, a, s') = \gamma \cdot \Phi(s') - \Phi(s)
 \end{equation}
 
-\noindent This formulation, originally established by Ng et al. \cite{ng1999policy} and extended to intrinsic motivation settings by Potential-Based Intrinsic Motivation (AAMAS, 2024), guarantees optimal policy invariance: the same optimal policy is recovered regardless of the choice of $\Phi$, while convergence speed improves when $\Phi$ approximates the true value function. Crucially, stationary behavior ($s' \approx s$) yields $F \approx 0$, eliminating the reward-farming failure mode observed in additive shaping schemes.
+\noindent This formulation, heavily utilized in Potential-Based Reward Shaping \cite{PBRSModern2022} and extended to intrinsic motivation settings by Potential-Based Intrinsic Motivation (AAMAS, 2024), guarantees optimal policy invariance: the same optimal policy is recovered regardless of the choice of $\Phi$, while convergence speed improves when $\Phi$ approximates the true value function. Crucially, stationary behavior ($s' \approx s$) yields $F \approx 0$, eliminating the reward-farming failure mode observed in additive shaping schemes.
 
 The potential function $\Phi(s)$ combines four normalized components:
 \begin{equation}
@@ -289,7 +289,7 @@ G_t^{(n)} = \sum_{k=0}^{n-1} \gamma^k r_{t+k} + \gamma^n Q(s_{t+n}, a^*)
 \paragraph{Episode-Level Replay via Trajectory Segment Sampling.}
 While $n$-step returns extend credit assignment over a fixed window, they cannot capture longer-horizon strategic patterns such as multi-move flanking maneuvers or gradual positional improvements that unfold over dozens of transitions. Flat experience replay compounds this limitation by sampling individual transitions independently, discarding the temporal structure of the episodes from which they originated.
 
-To address this, the framework employs a dual-buffer replay architecture inspired by the trajectory storage mechanism of R2D2~\cite{kapturowski2018recurrent}. An \texttt{EpisodicReplayBuffer} operates alongside the existing Prioritized Experience Replay buffer as a shadow storage. During data collection, every transition is stored in both buffers: the PER buffer indexes transitions individually by TD-error priority, while the episode buffer groups transitions by episode and retains episode-level metadata (game outcome, cumulative reward, episode length).
+To address this, the framework employs a dual-buffer replay architecture inspired by recurrent trajectory storage mechanisms~\cite{wang2026history, 2503_14555v1}. An \texttt{EpisodicReplayBuffer} operates alongside the existing Prioritized Experience Replay buffer as a shadow storage. During data collection, every transition is stored in both buffers: the PER buffer indexes transitions individually by TD-error priority, while the episode buffer groups transitions by episode and retains episode-level metadata (game outcome, cumulative reward, episode length).
 
 During each training step, the minibatch of $B = 512$ transitions is composed from both sources using a mixing ratio $\alpha$:
 

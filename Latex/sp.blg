@@ -27,21 +27,10 @@ Reallocating 'name_of_file' (item size: 1) to 11 items.
 Reallocating 'name_of_file' (item size: 1) to 14 items.
 A level-1 auxiliary file: misc/vita.aux
 Database file #1: references.bib
-Warning--I didn't find a database entry for "National"
-Warning--I didn't find a database entry for "GeneralGame"
-Warning--I didn't find a database entry for "MARLCOMP"
-Warning--I didn't find a database entry for "AlphaStar"
-Warning--I didn't find a database entry for "starcraft"
-Warning--I didn't find a database entry for "StrategoOrigin"
-Warning--I didn't find a database entry for "Michie1966"
-Warning--I didn't find a database entry for "Ballard1983"
-Warning--I didn't find a database entry for "ng1999policy"
-Warning--I didn't find a database entry for "kapturowski2018recurrent"
-Warning--I didn't find a database entry for "Perolat2022"
 Warning--can't use both volume and number fields in li2024opponent
 You've used 54 entries,
             2253 wiz_defined-function locations,
-            883 strings with 15941 characters,
+            864 strings with 15732 characters,
 and the built_in function-call counts, 19927 in all, are:
 = -- 1845
 > -- 1153
@@ -80,4 +69,4 @@ warning$ -- 1
 while$ -- 166
 width$ -- 56
 write$ -- 540
-(There were 12 warnings)
+(There was 1 warning)

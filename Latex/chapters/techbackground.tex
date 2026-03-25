@@ -2,7 +2,7 @@
 
 \section{Stratego Game Domain}
 
-Stratego is an imperfect information board game with European roots, popularized in the Netherlands in the 1940s and released in North America in 1961 \cite{StrategoOrigin}. The game is played on a 10x10 board that includes two 2x2 ``lake'' areas in the center, which are impassable. Each player commands an army of 40 pieces of varying ranks, and during the game, the identity and rank of the pieces are kept secret from the opposing player. The objective is to capture the opponent's flag or eliminate all of their movable pieces.
+Stratego is an imperfect information board game with European roots, popularized in the Netherlands in the 1940s and released in North America in 1961 \cite{perolat2022stratego}. The game is played on a 10x10 board that includes two 2x2 ``lake'' areas in the center, which are impassable. Each player commands an army of 40 pieces of varying ranks, and during the game, the identity and rank of the pieces are kept secret from the opposing player. The objective is to capture the opponent's flag or eliminate all of their movable pieces.
 
 Each army consists of 12 different types of pieces, with ranks ranging from 1 (the Spy) to 10 (the Marshal), alongside Bombs and a Flag. Higher-ranked pieces defeat lower-ranked ones during combat, except in special situations: the Spy can defeat a Marshal if attacking first, the Miner is the only piece that can defuse Bombs, and Scouts can move multiple squares in a straight line. Victory is achieved by capturing the opponent's Flag, immobilizing all movable enemy pieces, or forcing the opponent to run out of time.
 
@@ -312,7 +312,7 @@ The decay factor addresses the non-stationary nature of piece behavior in Strate
 Multi-agent learning in zero-sum games requires stable training architectures to manage evolving strategy distributions. MARQ employs a league-based system for this purpose.
 
 \subsection{League-Based Training Architecture}
-The league has a changing group of agents to help the model learn to play against many different strategies \cite{AlphaStar}. The main agent is the best current policy being trained. The historical pool has old versions of the main agent that represent different stages of training.
+The league has a changing group of agents to help the model learn to play against many different strategies \cite{perolat2022stratego}. The main agent is the best current policy being trained. The historical pool has old versions of the main agent that represent different stages of training.
 
 During training, opponents are sampled using a specific probability distribution.
 \begin{equation}
@@ -468,7 +468,7 @@ To ensure rule compliance and efficiency, the agent applies legal move masking. 
 For defensive and positional moves, the agent relies on the DQN's positional priors. However, for offensive actions, the agent employs a hierarchical blend: the score from the neural network is weighted against the analytical outcome of the search. This prevents "hallucinated" aggression by grounding neural predictions in tactical reality.
 
 \subsection{Expectamax Search and Tactical Summation}
-While standard adversarial search algorithms like Minimax assume an opponent who plays optimally to minimize the agent's utility, many environments involve stochastic elements or hidden information that are better modeled as probabilistic transitions. The \textit{Expectamax} algorithm, originally presented by Michie \cite{Michie1966} and formalized by Ballard \cite{Ballard1983}, addresses this by introducing "Chance Nodes" into the game tree.
+While standard adversarial search algorithms like Minimax assume an opponent who plays optimally to minimize the agent's utility, many environments involve stochastic elements or hidden information that are better modeled as probabilistic transitions \cite{DRLImperfectInfo2023, SubgameSolving2021}. Algorithms addressing this introduce "Chance Nodes" into the game tree.
 
 In the case of Stratego, the identity of an opponent piece encountered during an attack is modeled as a stochastic variable. The Expectamax value is computed as an exact summation over the rank probabilities provided by the belief extractor: 
 \begin{equation}
