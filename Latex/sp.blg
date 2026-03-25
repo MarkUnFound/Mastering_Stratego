@@ -15,6 +15,8 @@ Reallocating 'name_of_file' (item size: 1) to 25 items.
 A level-1 auxiliary file: chapters/methodology.aux
 Reallocating 'name_of_file' (item size: 1) to 21 items.
 A level-1 auxiliary file: chapters/results.aux
+Reallocating 'name_of_file' (item size: 1) to 29 items.
+A level-1 auxiliary file: chapters/recommendations.aux
 Reallocating 'name_of_file' (item size: 1) to 23 items.
 A level-1 auxiliary file: chapters/AppendixA.aux
 Reallocating 'name_of_file' (item size: 1) to 23 items.
@@ -25,47 +27,57 @@ Reallocating 'name_of_file' (item size: 1) to 11 items.
 Reallocating 'name_of_file' (item size: 1) to 14 items.
 A level-1 auxiliary file: misc/vita.aux
 Database file #1: references.bib
+Warning--I didn't find a database entry for "National"
+Warning--I didn't find a database entry for "GeneralGame"
+Warning--I didn't find a database entry for "MARLCOMP"
+Warning--I didn't find a database entry for "AlphaStar"
+Warning--I didn't find a database entry for "starcraft"
+Warning--I didn't find a database entry for "StrategoOrigin"
+Warning--I didn't find a database entry for "Michie1966"
+Warning--I didn't find a database entry for "Ballard1983"
 Warning--I didn't find a database entry for "ng1999policy"
+Warning--I didn't find a database entry for "kapturowski2018recurrent"
+Warning--I didn't find a database entry for "Perolat2022"
 Warning--can't use both volume and number fields in li2024opponent
-You've used 67 entries,
+You've used 54 entries,
             2253 wiz_defined-function locations,
-            960 strings with 18635 characters,
-and the built_in function-call counts, 25863 in all, are:
-= -- 2425
-> -- 1478
+            883 strings with 15941 characters,
+and the built_in function-call counts, 19927 in all, are:
+= -- 1845
+> -- 1153
 < -- 0
-+ -- 608
-- -- 535
-* -- 2111
-:= -- 4186
-add.period$ -- 207
-call.type$ -- 67
-change.case$ -- 464
++ -- 476
+- -- 416
+* -- 1613
+:= -- 3255
+add.period$ -- 163
+call.type$ -- 54
+change.case$ -- 366
 chr.to.int$ -- 0
-cite$ -- 68
-duplicate$ -- 889
-empty$ -- 1911
-format.name$ -- 535
-if$ -- 5341
+cite$ -- 55
+duplicate$ -- 686
+empty$ -- 1480
+format.name$ -- 416
+if$ -- 4100
 int.to.chr$ -- 0
-int.to.str$ -- 67
-missing$ -- 60
-newline$ -- 341
-num.names$ -- 140
-pop$ -- 491
+int.to.str$ -- 54
+missing$ -- 49
+newline$ -- 272
+num.names$ -- 112
+pop$ -- 390
 preamble$ -- 1
-purify$ -- 396
+purify$ -- 312
 quote$ -- 0
-skip$ -- 613
+skip$ -- 467
 stack$ -- 0
-substring$ -- 1400
-swap$ -- 282
+substring$ -- 1007
+swap$ -- 208
 text.length$ -- 0
 text.prefix$ -- 0
 top$ -- 0
-type$ -- 266
+type$ -- 214
 warning$ -- 1
-while$ -- 220
-width$ -- 69
-write$ -- 691
-(There were 2 warnings)
+while$ -- 166
+width$ -- 56
+write$ -- 540
+(There were 12 warnings)

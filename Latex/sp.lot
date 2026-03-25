@@ -8,5 +8,8 @@
 \contentsline {table}{\numberline {4.3}{\ignorespaces State representation input channels for the Rainbow DQN.}}{48}{table.caption.43}%
 \contentsline {table}{\numberline {4.4}{\ignorespaces Heuristic scoring criteria for move filtering.}}{55}{table.caption.59}%
 \addvspace {10\p@ }
+\contentsline {table}{\numberline {5.1}{\ignorespaces Vanilla DQN Performance Summary after 37,213 Episodes of Phase~4 League Training.}}{65}{table.caption.67}%
+\contentsline {table}{\numberline {5.2}{\ignorespaces Mapping of observed limitations to theoretical causes and proposed MARQ components.}}{72}{table.caption.76}%
+\addvspace {10\p@ }
 \addvspace {10\p@ }
 \addvspace {10\p@ }

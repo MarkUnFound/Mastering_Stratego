@@ -127,18 +127,40 @@
 \contentsline {paragraph}{Quantitative Analysis.}{61}{section*.64}%
 \contentsline {paragraph}{Qualitative Analysis.}{61}{section*.65}%
 \contentsline {chapter}{\numberline {5}Results and Discussion}{63}{chapter.5}%
-\contentsline {section}{\numberline {5.1}Training Progress and Convergence}{63}{section.5.1}%
-\contentsline {section}{\numberline {5.2}Phase 1: Acquisition of Tactical Foundations}{64}{section.5.2}%
-\contentsline {section}{\numberline {5.3}Phase 2: Transition to Partial Observability}{64}{section.5.3}%
-\contentsline {section}{\numberline {5.4}Inference Accuracy and Representation}{64}{section.5.4}%
-\contentsline {section}{\numberline {5.5}Stalemate and Decisiveness Analysis}{65}{section.5.5}%
-\contentsline {section}{\numberline {5.6}Performance Evaluation of the Vanilla DQN Architecture}{65}{section.5.6}%
-\contentsline {section}{\numberline {5.7}Comparative Study: Vanilla DQN vs. Rainbow DQN}{65}{section.5.7}%
-\contentsline {chapter}{\numberline {A}Gantt Chart}{67}{appendix.A}%
-\contentsline {chapter}{\numberline {B}System UI and Training}{70}{appendix.B}%
-\contentsline {section}{\numberline {B.1}Interpretability Dashboard and Decision Metrics}{76}{section.B.1}%
-\contentsline {section}{\numberline {B.2}Discussion on Training Progress and Model Behavior}{78}{section.B.2}%
-\contentsline {subsection}{\numberline {B.2.1}Behavioral Evolution}{78}{subsection.B.2.1}%
-\contentsline {subsection}{\numberline {B.2.2}Implicit Belief and AAREN Performance}{78}{subsection.B.2.2}%
-\contentsline {subsection}{\numberline {B.2.3}Impact of Reward Overhaul}{79}{subsection.B.2.3}%
-\contentsline {section}{\numberline {B.3}AI Transparency, Inclusion, and Originality of Intent}{79}{section.B.3}%
+\contentsline {section}{\numberline {5.1}Training Overview}{63}{section.5.1}%
+\contentsline {section}{\numberline {5.2}Phase 1: Tactical Foundations}{64}{section.5.2}%
+\contentsline {section}{\numberline {5.3}Phase 2: Partial Observability}{64}{section.5.3}%
+\contentsline {section}{\numberline {5.4}Piece Identity Inference}{64}{section.5.4}%
+\contentsline {section}{\numberline {5.5}Stalemate Analysis}{65}{section.5.5}%
+\contentsline {section}{\numberline {5.6}Vanilla DQN Performance Ceiling}{65}{section.5.6}%
+\contentsline {paragraph}{Finding 1: Win Rate Plateau.}{65}{section*.68}%
+\contentsline {paragraph}{Finding 2: Loss--Performance Decoupling.}{65}{section*.69}%
+\contentsline {paragraph}{Finding 3: Q-Value Overestimation.}{66}{section*.70}%
+\contentsline {paragraph}{Finding 4: LSTM Prediction Accuracy Ceiling.}{66}{section*.71}%
+\contentsline {paragraph}{Finding 5: Opponent-Specific Performance Asymmetry.}{66}{section*.72}%
+\contentsline {paragraph}{Finding 6: Draw Dominance.}{66}{section*.73}%
+\contentsline {section}{\numberline {5.7}Architectural Bottleneck Analysis}{66}{section.5.7}%
+\contentsline {subsection}{\numberline {5.7.1}Q-Value Overestimation}{68}{subsection.5.7.1}%
+\contentsline {subsection}{\numberline {5.7.2}Scalar Value Collapse}{68}{subsection.5.7.2}%
+\contentsline {subsection}{\numberline {5.7.3}LSTM Information Bottleneck}{69}{subsection.5.7.3}%
+\contentsline {subsection}{\numberline {5.7.4}Exploration Collapse}{70}{subsection.5.7.4}%
+\contentsline {subsection}{\numberline {5.7.5}Sparse Reward Propagation}{70}{subsection.5.7.5}%
+\contentsline {section}{\numberline {5.8}Supporting Evidence from Related Work}{71}{section.5.8}%
+\contentsline {section}{\numberline {5.9}Implications for MARQ}{71}{section.5.9}%
+\contentsline {chapter}{\numberline {6}Contributions and Recommendations}{73}{chapter.6}%
+\contentsline {section}{\numberline {6.1}LSTM History Encoding vs.\ Full DRQN}{73}{section.6.1}%
+\contentsline {section}{\numberline {6.2}Recommended Architectural Enhancements}{74}{section.6.2}%
+\contentsline {subsection}{\numberline {6.2.1}Value Estimation}{74}{subsection.6.2.1}%
+\contentsline {subsection}{\numberline {6.2.2}LSTM to AAREN Transition}{75}{subsection.6.2.2}%
+\contentsline {subsection}{\numberline {6.2.3}Exploration Recovery}{75}{subsection.6.2.3}%
+\contentsline {subsection}{\numberline {6.2.4}Long-Range Credit Assignment}{75}{subsection.6.2.4}%
+\contentsline {subsection}{\numberline {6.2.5}Advanced Architectures}{76}{subsection.6.2.5}%
+\contentsline {section}{\numberline {6.3}Limitations and Future Work}{76}{section.6.3}%
+\contentsline {chapter}{\numberline {A}Gantt Chart}{78}{appendix.A}%
+\contentsline {chapter}{\numberline {B}System UI and Training}{81}{appendix.B}%
+\contentsline {section}{\numberline {B.1}Interpretability Dashboard and Decision Metrics}{87}{section.B.1}%
+\contentsline {section}{\numberline {B.2}Discussion on Training Progress and Model Behavior}{89}{section.B.2}%
+\contentsline {subsection}{\numberline {B.2.1}Behavioral Evolution}{89}{subsection.B.2.1}%
+\contentsline {subsection}{\numberline {B.2.2}Implicit Belief and AAREN Performance}{89}{subsection.B.2.2}%
+\contentsline {subsection}{\numberline {B.2.3}Impact of Reward Overhaul}{90}{subsection.B.2.3}%
+\contentsline {section}{\numberline {B.3}AI Transparency, Inclusion, and Originality of Intent}{90}{section.B.3}%

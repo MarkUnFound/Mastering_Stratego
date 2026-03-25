@@ -2,7 +2,7 @@
 \chapter{Results and Discussion}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-\section{Training Progress and Convergence}
+\section{Training Overview}
 
 Training was conducted over 34,000 episodes, following the five-phase curriculum. Figure \ref{fig:training_progress} illustrates the convergence behavior of the Rainbow DQN agent.
 
@@ -23,26 +23,196 @@ Training was conducted over 34,000 episodes, following the five-phase curriculum
     \label{fig:training_progress}
 \end{figure}
 
-\section{Phase 1: Acquisition of Tactical Foundations}
+\section{Phase 1: Tactical Foundations}
 During Phase 1 (Full Observability), the agent demonstrated rapid acquisition of basic game mechanics. Against a uniformly random opponent, the win rate exceeded 95\% within the first 2,000 episodes. The agent successfully learned to prioritize high-value pieces and target the opponent's flag when its location was visible. This acquisition of tactical foundations provides a baseline for evaluating the model's performance under partial observability, where it must rely on implicit history aggregation rather than direct board information.
 
 As the curriculum transitioned to mixed observability, the win rate stabilized at 85\% against basic heuristic opponents. The loss curve during this phase showed steady convergence, with the distributional (C51) loss decreasing significantly as shown in the metrics.
 
-\section{Phase 2: Transition to Partial Observability}
+\section{Phase 2: Partial Observability}
 The transition to Phase 2 introduced full partial observability, requiring the agent to rely on LSTM embeddings for piece identity inference. While tactical proficiency remained high, the agent encountered increased difficulty in achieving decisive wins against the strategic heuristic opponent.
 
 The primary observation in Phase 2 was an increase in draw rates, reaching 45\% in several training runs. These draws were characterized by "passive shuffling," where the agent avoided high-risk attacks against unknown pieces. This behavior suggests that while the agent understands material value, the uncertainty over piece identities leads to a risk-averse policy in the absence of a clear offensive trigger.
 
-\section{Inference Accuracy and Representation}
+\section{Piece Identity Inference}
 Analysis of the LSTM embeddings indicates that the hidden state representations effectively distinguish between different opponent behaviors. Specifically, pieces exhibiting multi-square movement (Scouts) and those targeting Bombs (Miners) were mapped to distinct regions of the embedding space. This confirms that the end-to-end trained history aggregator is capturing strategically relevant information without explicit supervision.
 
-\section{Stalemate and Decisiveness Analysis}
+\section{Stalemate Analysis}
 To address the draw rate, anti-stall rewards were introduced. Evaluation showed a 15\% reduction in average game length and a 5\% increase in win rates against the strategic heuristic. However, achieving human-like "bluffing" and aggressive tactical patterns remains an area of active training. The convergence of the policy loss suggests that while the agent minimizes value error, exploration of the sparse reward space in the mid-game is the primary bottleneck for further performance gains.
 
-\section{Performance Evaluation of the Vanilla DQN Architecture}
-Following the multi-phase curriculum, long-term stability and resilience were tracked over 13,985 episodes in the Vanilla DQN model iterations. Across these evaluations, the agent secured 3,555 victories (25.4\%) and drew 6,973 times (49.9\%), with an average reward profile stabilizing near 0.08 per episode. The hidden-state LSTM inference accuracy converged to 21.98\%, significantly outperforming random chance estimation (approximately 8.3\%) and validating its capability to deduce piece identities implicitly over time. This robust self-play league performance demonstrates a scalable baseline capable of managing adversarial uncertainty in Stratego without imposing prohibitive computational demands.
+\section{Vanilla DQN Performance Ceiling}
 
-\section{Comparative Study: Vanilla DQN vs. Rainbow DQN}
-While the initial MARQ architecture utilized a full Rainbow DQN implementation, optimizing and stabilizing the framework for league-based self-play revealed critical trade-offs. The Rainbow augmentations—specifically Categorical value distributions (C51) and Noisy Nets—offered strong initial exploration profiles but imposed substantial gradient and forward-pass overhead, slowing iteration times and complicating debugging in the MARL context.
+Following the completion of the multi-phase curriculum, extended evaluation was conducted over 37,213 episodes of Phase~4 League Training. The Vanilla DQN agent, equipped with an LSTM-based history encoder, was trained against a diverse opponent pool comprising random, greedy heuristic, league, and self-play opponents. Table~\ref{tab:vanilla_performance} summarizes the aggregate performance metrics.
 
-Conversely, migrating the core to a Vanilla DQN with scalar MSE/Huber Loss and structured $\epsilon$-greedy/Boltzmann exploration provided significant pipeline accelerations and simplified error tracing. The Vanilla variant seamlessly integrated with the Gradient Bridge of the LSTM module, allowing for end-to-end embedding updates during replay batches. Although Rainbow DQN theoretically excels at estimating multi-modal value bounds in sparse-reward tasks, the rapid empirical feedback loop and stationary target improvements of the Vanilla DQN resulted in a more manageable progression through the multi-phase curriculum. Consequently, the Vanilla formulation traded theoretical sample efficiency for substantial gains in computational throughput, making extensive MARL self-play practically feasible.
+\begin{table}[htbp]
+    \centering
+    \caption{Vanilla DQN Performance Summary after 37,213 Episodes of Phase~4 League Training.}
+    \label{tab:vanilla_performance}
+    \begin{tabular}{|l|c|c|c|c|}
+        \hline
+        \textbf{Opponent Type} & \textbf{Episodes} & \textbf{Wins} & \textbf{Win Rate} & \textbf{Draw Rate} \\
+        \hline
+        Greedy Heuristic & 9,319 & 1,418 & 15.2\% & 41.3\% \\
+        Self-Play        & 9,565 & 2,370 & 24.8\% & 36.8\% \\
+        Random           & 9,294 & 2,260 & 24.3\% & 37.7\% \\
+        League           & 9,035 & 2,231 & 24.7\% & 38.2\% \\
+        \hline
+        \textbf{Aggregate} & \textbf{37,213} & \textbf{8,279} & \textbf{22.2\%} & \textbf{38.5\%} \\
+        \hline
+    \end{tabular}
+\end{table}
+
+Six empirical findings were identified from the training data, each indicative of a distinct architectural limitation:
+
+\paragraph{Finding 1: Win Rate Plateau.}
+The cumulative win rate for Agent~1 converged to approximately 22\% within the first 2,000 episodes and exhibited no statistically significant improvement over the remaining 35,000 episodes. The 100-episode rolling win rate oscillated between 15\% and 30\% without sustaining any upward trend, indicating that the policy had reached a fixed point rather than continuing to improve.
+
+\paragraph{Finding 2: Loss--Performance Decoupling.}
+The policy loss (temporal-difference error) decreased monotonically to approximately 0.001, demonstrating successful minimization of the Bellman residual. However, this convergence in the loss function was not accompanied by a corresponding increase in win rate. The agent achieved low prediction error by accurately estimating the value of passive, draw-oriented policies rather than discovering superior offensive strategies.
+
+\paragraph{Finding 3: Q-Value Overestimation.}
+The average Q-value exhibited a rising trajectory from 0.2 to 1.2 over the course of training, despite the absence of any corresponding improvement in game outcomes. This monotonic increase in estimated action values without realized performance gains is characteristic of systematic overestimation bias.
+
+\paragraph{Finding 4: LSTM Prediction Accuracy Ceiling.}
+The LSTM-based piece identity inference module plateaued at approximately 18--22\% prediction accuracy. While this represents a 2.2--2.6$\times$ improvement over the random chance baseline of 8.3\% (given 12 piece types), it remains far below the accuracy required for reliable tactical decision-making. The prediction accuracy curve flattened after episode 5,000, with no further improvement observed despite continued training.
+
+\paragraph{Finding 5: Opponent-Specific Performance Asymmetry.}
+A pronounced disparity was observed across opponent types. The agent achieved only 15.2\% win rate against the greedy heuristic opponent, compared to 24.8\% in self-play. This asymmetry indicates that the learned policy is closely adapted to its own behavioral distribution and fails to generalize to opponents employing fundamentally different strategies.
+
+\paragraph{Finding 6: Draw Dominance.}
+The aggregate draw rate of 38.5\% substantially exceeded the win rate of 22.2\%, indicating a risk-averse policy characterized by passive piece shuffling and avoidance of uncertain engagements. This behavior is consistent with an agent that has learned to minimize short-term losses rather than maximize long-term winning probability.
+
+\begin{figure}[htbp]
+    \centering
+    \begin{subfigure}[b]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\textwidth,height=0.25\textheight,keepaspectratio]{figures/Results/training_progress_episode_37000.png}
+        \caption{Reward convergence and win rate trajectory.}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[b]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\textwidth,height=0.25\textheight,keepaspectratio]{figures/Results/additional_metrics_episode_37000.png}
+        \caption{Q-value, episode length, and exploration metrics.}
+    \end{subfigure}
+    \caption{Training diagnostics at episode 37,000. The win rate (dashed blue line) remains at approximately 22\% despite continued training, while Q-values exhibit an upward trend decoupled from performance. The Noisy Net sigma remains at zero throughout, indicating no learned exploration.}
+    \label{fig:training_diagnostics_37k}
+\end{figure}
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.65\textwidth,height=0.3\textheight,keepaspectratio]{figures/Results/aaren_progress_episode_37000.png}
+    \caption{AAREN/LSTM training metrics at episode 37,000. The prediction accuracy (orange line) plateaus at approximately 18--22\% after episode 5,000, while gradient norms remain stable, suggesting the module has converged to a local optimum.}
+    \label{fig:aaren_diagnostics_37k}
+\end{figure}
+
+
+\section{Architectural Bottleneck Analysis}
+
+The empirical findings presented above are not merely incidental outcomes of insufficient training duration or suboptimal hyperparameters. This section demonstrates that each observed limitation is an expected consequence of the Vanilla DQN architecture's structural properties, drawing on established theoretical results from the reinforcement learning literature.
+
+\subsection{Q-Value Overestimation}
+
+The systematic Q-value inflation observed in Finding~3 is a well-characterized property of single-estimator Q-learning. Standard DQN uses the same network $Q_\theta$ for both action selection and value evaluation in the target computation:
+
+\begin{equation}
+y_t = r_t + \gamma \max_{a'} Q_\theta(s_{t+1}, a')
+\end{equation}
+
+It has been established that when Q-value estimates contain approximation noise $\epsilon_a \sim \mathcal{N}(0, \sigma^2)$, the max operator introduces a systematic positive bias \cite{RainbowJMLR2021}:
+
+\begin{equation}
+\mathbb{E}\left[\max_{a} (Q^*(s, a) + \epsilon_a)\right] \geq \max_{a} Q^*(s, a)
+\end{equation}
+
+This follows directly from the convexity of the max function and Jensen's inequality. The magnitude of this bias increases with both the variance of the noise and the cardinality of the action space $|\mathcal{A}|$. In Stratego, where the legal action space can exceed 200 moves per turn, the overestimation effect is amplified substantially. The Double DQN formulation addresses this by decoupling action selection from value evaluation, provably reducing the bias through the use of two independent estimators \cite{RainbowJMLR2021}.
+
+\subsection{Scalar Value Collapse}
+
+Finding~2, wherein loss convergence failed to produce corresponding performance improvement, can be explained through the lens of distributional reinforcement learning theory. Standard DQN approximates the expected return $\mathbb{E}[Z(s,a)]$ using scalar Q-values and minimizes the mean squared Bellman error:
+
+\begin{equation}
+\mathcal{L} = \mathbb{E}\left[\left(r + \gamma \max_{a'} Q(s', a') - Q(s, a)\right)^2\right]
+\end{equation}
+
+Distributional reinforcement learning theory demonstrates that in stochastic environments, the full return distribution $Z(s,a)$ may be multi-modal \cite{RainbowJMLR2021}. In Stratego, outcomes naturally cluster into distinct modes: decisive victories ($R \approx +1$), decisive losses ($R \approx -1$), material exchanges ($R \in [-0.5, +0.5]$), and draws ($R \approx 0$). A scalar Q-value collapses these modes into a single mean, which may not correspond to any realizable outcome. The loss function converges when this mean is correctly estimated, even if the policy cannot distinguish between high-variance aggressive strategies and low-variance passive ones.
+
+The Categorical DQN (C51) algorithm addresses this by modeling the value distribution over 51 discrete atoms. The projected distributional Bellman operator has been proven to be a contraction in the Cram\'{e}r distance, establishing formal convergence guarantees for the distributional approach \cite{RainbowJMLR2021}.
+
+\subsection{LSTM Information Bottleneck}
+
+The LSTM prediction accuracy ceiling observed in Finding~4 can be attributed to the sequential compression inherent in recurrent architectures. The LSTM processes the observation sequence $o_1, o_2, \ldots, o_T$ through a fixed-width hidden state $h_t \in \mathbb{R}^{64}$, which must encode all strategically relevant information from the entire history at each timestep:
+
+\begin{equation}
+h_t = \text{LSTM}(o_t, h_{t-1})
+\end{equation}
+
+For a typical Stratego game lasting $T = 200$--$500$ moves, the hidden state must simultaneously maintain belief estimates over 40 opponent pieces across 12 possible types. While the theoretical information capacity of a 64-dimensional continuous vector is sufficient in principle, the sequential nature of the update imposes a practical constraint: information from early observations $o_k$ (for small $k$) must survive $T - k$ successive nonlinear transformations to influence the final representation. Despite the gating mechanism designed to mitigate vanishing gradients, empirical evidence demonstrates that information retention degrades with sequence length \cite{Aaren}.
+
+Attention-based architectures circumvent this bottleneck by computing direct weighted aggregations over the full history. The AAREN module, as formalized in the technical framework (Section~5.5), maintains $O(1)$ inference complexity per timestep while providing attention-weighted access to all prior observations:
+
+\begin{equation}
+h_t = \frac{a_t}{c_t} = \frac{\sum_{k=1}^{t} v_k \exp(s_k - m_t)}{\sum_{k=1}^{t} \exp(s_k - m_t)}
+\end{equation}
+
+This formulation eliminates the sequential compression requirement, allowing the network to attend directly to observations from any prior timestep without information degradation.
+
+\subsection{Exploration Collapse}
+
+The flat Noisy Net sigma observed in the additional training metrics (Figure~\ref{fig:training_diagnostics_37k}) reveals that the agent's exploration capacity has collapsed entirely. In the Vanilla DQN configuration, exploration is governed by an $\epsilon$-greedy schedule with a fixed decay from $\epsilon = 1.0$ to $\epsilon_{\min} = 0.01$. Once the decay schedule is exhausted, the agent explores with a spatially uniform probability of 1\% regardless of the state.
+
+In Stratego's state space, which exceeds $10^{535}$ configurations \cite{perolat2022stratego}, uniform random exploration is exponentially unlikely to discover improved strategies in unexplored regions of the state space. Noisy Networks \cite{RainbowJMLR2021} address this limitation by parameterizing the exploration noise as learnable per-weight perturbations $\sigma_w$, enabling state-dependent exploration that concentrates uncertainty on states where the value function is unreliable.
+
+\subsection{Sparse Reward Propagation}
+
+The inability of the Vanilla DQN to develop long-horizon strategic behavior (as evidenced by Findings~1, 5, and 6) is compounded by its reliance on single-step temporal-difference learning. In standard Q-learning, the value information from a terminal reward at step $T$ propagates backward through the Bellman backup at a rate governed by the discount factor $\gamma$:
+
+\begin{equation}
+Q(s_k, a_k) \leftarrow Q(s_k, a_k) + \alpha \left( r_k + \gamma Q(s_{k+1}, a_{k+1}) - Q(s_k, a_k) \right)
+\end{equation}
+
+For a decisive game outcome occurring at step $T$ in a game of length 300, a mid-game decision at step 100 receives an effective signal of $\gamma^{200}$. With $\gamma = 0.99$, this yields $0.99^{200} \approx 0.134$, meaning that only 13.4\% of the terminal reward signal reaches mid-game decisions through single-step bootstrapping. Multi-step returns ($n$-step TD) \cite{RainbowJMLR2021} propagate terminal signals $n$ times faster by directly incorporating rewards over $n$ consecutive steps:
+
+\begin{equation}
+y_t^{(n)} = \sum_{k=0}^{n-1} \gamma^k r_{t+k} + \gamma^n Q(s_{t+n}, a_{t+n})
+\end{equation}
+
+This reduces the effective bootstrap depth and accelerates the propagation of sparse terminal rewards to earlier decision points.
+
+
+\section{Supporting Evidence from Related Work}
+
+The limitations identified above are consistent with prior findings in the deep reinforcement learning literature applied to imperfect information games of comparable complexity.
+
+P\'{e}rolat et al. (2022) achieved expert-level play in full-size Stratego with DeepNash \cite{perolat2022stratego}, employing a fundamentally different approach from scalar value-based methods. DeepNash utilized game-theoretic regularization with a deep convolutional backbone, relying on regularized Nash dynamics (R-NaD) rather than Q-value maximization. The success of DeepNash demonstrates that Stratego is solvable by deep RL systems, but that the architectural design must explicitly address the challenges of non-stationarity and strategic diversity. The Ataraxos system extended this paradigm to no-press Diplomacy, achieving superhuman performance through KL-divergence stabilization with time-varying coefficients \cite{Ataraxos2025}, a regularization mechanism analogous to the dynamic damping proposed in the MARQ framework but not operative in the Vanilla DQN baseline.
+
+Hessel et al. (2021) demonstrated in the Rainbow DQN study that each individual enhancement (Double DQN, Prioritized Experience Replay, Dueling Networks, Noisy Nets, C51, and multi-step returns) provides additive performance improvements, with the combined agent outperforming any single-component variant \cite{RainbowJMLR2021}. The ablation study in that work is particularly relevant: removing any single component degraded performance, confirming that the architectural limitations identified in this section cannot be resolved by addressing any single bottleneck in isolation.
+
+
+\section{Implications for MARQ}
+
+The analytical diagnosis establishes that the observed performance ceiling is attributable to specific, identifiable architectural properties of the Vanilla DQN rather than to insufficient training duration or suboptimal hyperparameters. Each theoretical limitation maps directly to a component of the proposed MARQ architecture, as summarized in Table~\ref{tab:limitation_mapping}.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Mapping of observed limitations to theoretical causes and proposed MARQ components.}
+    \label{tab:limitation_mapping}
+    \begin{tabular}{|p{3cm}|p{4cm}|p{3.5cm}|p{2cm}|}
+        \hline
+        \textbf{Finding} & \textbf{Theoretical Cause} & \textbf{MARQ Component} & \textbf{Status} \\
+        \hline
+        Q-Value Overestimation & Maximization Bias & Double DQN / Dueling & Proposed \\
+        \hline
+        Loss--Perf. Decoupling & Scalar Value Collapse & C51 Distributional RL & Proposed \\
+        \hline
+        LSTM Accuracy Ceiling & Sequential Bottleneck & AAREN Attention & Proposed \\
+        \hline
+        Exploration Collapse & Fixed $\epsilon$-greedy & Noisy Networks & Proposed \\
+        \hline
+        Reward Propagation & 1-step Bootstrapping & $n$-step Returns & Proposed \\
+        \hline
+        Draw Dominance & Compound Effect & Full MARQ Pipeline & Proposed \\
+        \hline
+    \end{tabular}
+\end{table}
+
+It is important to note that while the theoretical analysis provides a principled basis for the proposed architectural enhancements, empirical validation of the full MARQ pipeline in the Stratego domain remains an objective for future work. The Vanilla DQN baseline presented in this chapter serves as a controlled reference point against which the incremental contributions of each MARQ component can be measured through systematic ablation studies.
