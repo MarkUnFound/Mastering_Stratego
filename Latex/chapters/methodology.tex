@@ -17,6 +17,8 @@ Each session will last one (1) hour, during which participants must complete at 
 \section{System Development}
 The system development consists of two components: the game environment and the MARQ framework. The game environment was developed to serve as the interface for human players and the world in which the trained agent operates. The MARQ framework provides the trained agent that competes against human players.
 
+To maintain consistency between the local development environment and the remote repository, we implemented a synchronized research pipeline. This process ensures that all architectural changes, training configurations, and documentation remains uniform across different computing resources. We utilize a rigid version control strategy to discard local experimental discrepancies and align the workspace with the latest verified repository state before initiating new training or evaluation cycles.
+
 \begin{figure}[htbp]
     \centering
     \includegraphics[width=1.1\textwidth]{figures/MARQArchi.png}

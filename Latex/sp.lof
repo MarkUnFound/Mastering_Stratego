@@ -1,35 +1,41 @@
 \addvspace {10\p@ }
 \addvspace {10\p@ }
-\contentsline {figure}{\numberline {2.1}{\ignorespaces Stratego Game board.}}{13}{figure.caption.5}%
+\contentsline {figure}{\numberline {2.1}{\ignorespaces Stratego Game board.}}{13}{figure.2.1}%
 \addvspace {10\p@ }
-\contentsline {figure}{\numberline {3.1}{\ignorespaces Stratego Pieces}}{18}{figure.caption.6}%
-\contentsline {figure}{\numberline {3.2}{\ignorespaces Stratego Game board.}}{19}{figure.caption.7}%
+\contentsline {figure}{\numberline {3.1}{\ignorespaces Stratego Pieces}}{18}{figure.3.1}%
+\contentsline {figure}{\numberline {3.2}{\ignorespaces Stratego Game board.}}{19}{figure.3.2}%
 \addvspace {10\p@ }
-\contentsline {figure}{\numberline {4.1}{\ignorespaces MARQ Framework Architecture. The input pipeline processes board states and move history through AAREN to produce implicit belief embeddings. These are concatenated with board features and fed into a ResNet-based Rainbow DQN with Spatial Attention and Dueling Heads.}}{41}{figure.caption.27}%
-\contentsline {figure}{\numberline {4.2}{\ignorespaces MARQ Training Architecture. The system employs a dual-buffer replay mechanism (PER and Episodic) alongside a league-based opponent pool to facilitate stable policy development in imperfect information settings.}}{45}{figure.caption.37}%
-\contentsline {figure}{\numberline {4.3}{\ignorespaces Dueling Network Heads. The architecture separates the value stream $V(s)$ and the advantage stream $A(s, a)$, allowing the agent to stabilize learning by identifying state importance independently of action selection.}}{46}{figure.caption.39}%
-\contentsline {figure}{\numberline {4.4}{\ignorespaces ResNet Backbone. The six-block residual architecture provides a $27 \times 27$ receptive field, ensuring full spatial coverage and effective feature propagation for the $10 \times 10$ board representation.}}{46}{figure.caption.41}%
-\contentsline {figure}{\numberline {4.5}{\ignorespaces 79-Channel Input Representation. The state is encoded as a multi-channel tensor consisting of binary board features and 64-dimensional AAREN-generated embeddings for piece-type inference.}}{47}{figure.caption.42}%
-\contentsline {figure}{\numberline {4.6}{\ignorespaces Game Sequence Diagram}}{58}{figure.caption.61}%
-\contentsline {figure}{\numberline {4.7}{\ignorespaces Game Start}}{59}{figure.caption.62}%
-\contentsline {figure}{\numberline {4.8}{\ignorespaces Stratego Pieces}}{60}{figure.caption.63}%
+\contentsline {figure}{\numberline {4.1}{\ignorespaces MARQ Framework Architecture. The input pipeline processes board states and move history through AAREN to produce implicit belief embeddings. These are concatenated with board features and fed into a ResNet-based Rainbow DQN with Spatial Attention and Dueling Heads.}}{42}{figure.4.1}%
+\contentsline {figure}{\numberline {4.2}{\ignorespaces MARQ Training Architecture. The system employs a dual-buffer replay mechanism (PER and Episodic) alongside a league-based opponent pool to facilitate stable policy development in imperfect information settings.}}{45}{figure.4.2}%
+\contentsline {figure}{\numberline {4.3}{\ignorespaces Dueling Network Heads. The architecture separates the value stream $V(s)$ and the advantage stream $A(s, a)$, allowing the agent to stabilize learning by identifying state importance independently of action selection.}}{46}{figure.4.3}%
+\contentsline {figure}{\numberline {4.4}{\ignorespaces ResNet Backbone. The six-block residual architecture provides a $27 \times 27$ receptive field, ensuring full spatial coverage and effective feature propagation for the $10 \times 10$ board representation.}}{47}{figure.4.4}%
+\contentsline {figure}{\numberline {4.5}{\ignorespaces 79-Channel Input Representation. The state is encoded as a multi-channel tensor consisting of binary board features and 64-dimensional AAREN-generated embeddings for piece-type inference.}}{47}{figure.4.5}%
+\contentsline {figure}{\numberline {4.6}{\ignorespaces Game Sequence Diagram}}{58}{figure.4.6}%
+\contentsline {figure}{\numberline {4.7}{\ignorespaces Game Start}}{59}{figure.4.7}%
+\contentsline {figure}{\numberline {4.8}{\ignorespaces Stratego Pieces}}{60}{figure.4.8}%
 \addvspace {10\p@ }
-\contentsline {figure}{\numberline {5.1}{\ignorespaces Training metrics at episode 34,000. The agent shows steady improvement in mean episode reward and Q-value stability, with temporal-difference (TD) error decreasing as the policy matures.}}{63}{figure.caption.66}%
+\contentsline {figure}{\numberline {A.1}{\ignorespaces Timeline: August 1 - September 5}}{64}{figure.A.1}%
+\contentsline {figure}{\numberline {A.2}{\ignorespaces Timeline: September 11 - November 30}}{65}{figure.A.2}%
+\contentsline {figure}{\numberline {A.3}{\ignorespaces Timeline: October 27 - January 27}}{65}{figure.A.3}%
+\contentsline {figure}{\numberline {A.4}{\ignorespaces Timeline: December 1 - February 14}}{65}{figure.A.4}%
+\contentsline {figure}{\numberline {A.5}{\ignorespaces Timeline: February 15 - May 4}}{66}{figure.A.5}%
 \addvspace {10\p@ }
-\contentsline {figure}{\numberline {A.1}{\ignorespaces Timeline: August 1 - September 5}}{68}{figure.caption.67}%
-\contentsline {figure}{\numberline {A.2}{\ignorespaces Timeline: September 11 - November 30}}{69}{figure.caption.68}%
-\contentsline {figure}{\numberline {A.3}{\ignorespaces Timeline: October 27 - January 27}}{69}{figure.caption.69}%
-\contentsline {figure}{\numberline {A.4}{\ignorespaces Timeline: December 1 - February 14}}{69}{figure.caption.70}%
-\contentsline {figure}{\numberline {A.5}{\ignorespaces Timeline: February 15 - May 4}}{69}{figure.caption.71}%
-\addvspace {10\p@ }
-\contentsline {figure}{\numberline {B.1}{\ignorespaces Game Menu}}{71}{figure.caption.72}%
-\contentsline {figure}{\numberline {B.2}{\ignorespaces Game Rules and Instructions}}{71}{figure.caption.73}%
-\contentsline {figure}{\numberline {B.3}{\ignorespaces Setup Phase}}{72}{figure.caption.74}%
-\contentsline {figure}{\numberline {B.4}{\ignorespaces Game Start}}{72}{figure.caption.75}%
-\contentsline {figure}{\numberline {B.5}{\ignorespaces Change image of pieces to numbers}}{73}{figure.caption.76}%
-\contentsline {figure}{\numberline {B.6}{\ignorespaces Battle and History}}{73}{figure.caption.77}%
-\contentsline {figure}{\numberline {B.7}{\ignorespaces Victory Screen}}{74}{figure.caption.78}%
-\contentsline {figure}{\numberline {B.8}{\ignorespaces Training Progress: Episode 10,000}}{75}{figure.caption.79}%
-\contentsline {figure}{\numberline {B.9}{\ignorespaces Training Progress: Episode 20,000}}{76}{figure.caption.80}%
-\contentsline {figure}{\numberline {B.10}{\ignorespaces Training Progress: Episode 34,000}}{77}{figure.caption.81}%
-\contentsline {figure}{\numberline {B.11}{\ignorespaces Interpretability Dashboard snapshots showing real-time agent reasoning.}}{78}{figure.caption.82}%
+\contentsline {figure}{\numberline {B.1}{\ignorespaces Game Menu}}{68}{figure.B.1}%
+\contentsline {figure}{\numberline {B.2}{\ignorespaces Game Rules and Instructions}}{68}{figure.B.2}%
+\contentsline {figure}{\numberline {B.3}{\ignorespaces Setup Phase}}{69}{figure.B.3}%
+\contentsline {figure}{\numberline {B.4}{\ignorespaces Game Start}}{69}{figure.B.4}%
+\contentsline {figure}{\numberline {B.5}{\ignorespaces Change image of pieces to numbers}}{70}{figure.B.5}%
+\contentsline {figure}{\numberline {B.6}{\ignorespaces Battle and History}}{70}{figure.B.6}%
+\contentsline {figure}{\numberline {B.7}{\ignorespaces Victory Screen}}{71}{figure.B.7}%
+\contentsline {figure}{\numberline {B.8}{\ignorespaces Training Progress: Episode 10,000}}{72}{figure.B.8}%
+\contentsline {figure}{\numberline {B.9}{\ignorespaces Training Progress: Episode 20,000}}{73}{figure.B.9}%
+\contentsline {figure}{\numberline {B.10}{\ignorespaces Training Progress: Episode 34,000}}{74}{figure.B.10}%
+\contentsline {figure}{\numberline {B.11}{\ignorespaces Dashboard Overview}}{75}{figure.B.11}%
+\contentsline {subfigure}{\numberline {(a)}{\ignorespaces {b}}}{75}{figure.B.11}%
+\contentsline {figure}{\numberline {B.12}{\ignorespaces Q-Value Heatmap}}{75}{figure.B.12}%
+\contentsline {subfigure}{\numberline {(a)}{\ignorespaces {b}}}{75}{figure.B.12}%
+\contentsline {figure}{\numberline {B.13}{\ignorespaces Spatial Attention }}{75}{figure.B.13}%
+\contentsline {subfigure}{\numberline {(a)}{\ignorespaces {b}}}{75}{figure.B.13}%
+\contentsline {figure}{\numberline {B.14}{\ignorespaces Latent Trajectories}}{75}{figure.B.14}%
+\contentsline {subfigure}{\numberline {(a)}{\ignorespaces {b}}}{75}{figure.B.14}%
+\contentsline {figure}{\numberline {B.15}{\ignorespaces Interpretability Dashboard snapshots showing real-time agent reasoning.}}{75}{figure.B.15}%
