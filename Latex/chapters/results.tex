@@ -8,7 +8,7 @@ Extended evaluation over 37,213 episodes of Phase~4 League Training followed the
 
 \begin{table}[htbp]
     \centering
-    \caption{Vanilla DQN Performance Summary after 37,213 Episodes of Phase~4 League Training.}
+    \caption{Vanilla DQN performance after 37,213 episodes of Phase~4 League Training.}
     \label{tab:vanilla_performance}
     \begin{tabular}{|l|c|c|c|c|}
         \hline
@@ -57,14 +57,14 @@ The aggregate draw rate of 38.5\% substantially exceeded the win rate of 22.2\%.
         \includegraphics[width=\textwidth,height=0.25\textheight,keepaspectratio]{figures/Results/additional_metrics_episode_37000.png}
         \caption{Q-value, episode length, and exploration metrics.}
     \end{subfigure}
-    \caption{Training diagnostics at episode 37,000. The win rate (dashed blue line) remains at approximately 22\% despite continued training, while Q-values exhibit an upward trend decoupled from performance. The Noisy Net sigma remains at zero throughout, indicating no learned exploration.}
+    \caption{Training diagnostics at episode 37,000.}
     \label{fig:training_diagnostics_37k}
 \end{figure}
 
 \begin{figure}[htbp]
     \centering
     \includegraphics[width=0.65\textwidth,height=0.3\textheight,keepaspectratio]{figures/Results/aaren_progress_episode_37000.png}
-    \caption{AAREN/LSTM training metrics at episode 37,000. The prediction accuracy (orange line) plateaus at approximately 18--22\% after episode 5,000, while gradient norms remain stable, suggesting the module has converged to a local optimum.}
+    \caption{AAREN/LSTM training metrics at episode 37,000.}
     \label{fig:aaren_diagnostics_37k}
 \end{figure}
 
@@ -107,7 +107,7 @@ An earlier iteration employed two separate neural network models: a dedicated Se
 
 \begin{table}[htbp]
     \centering
-    \caption{Comparison of the dual-model and unified architectural pipelines.}
+    \caption{Dual-model versus unified architectural pipelines.}
     \label{tab:architecture_comparison}
     \begin{tabular}{|p{3cm}|p{5.5cm}|p{5.5cm}|}
         \hline
@@ -212,7 +212,7 @@ The training results establish a direct correspondence between each component na
 
 \begin{table}[htbp]
     \centering
-    \caption{Mapping of MARQ title components to empirical evidence from the Vanilla DQN baseline.}
+    \caption{MARQ title components mapped to Vanilla DQN failure modes.}
     \label{tab:title_evidence}
     \begin{tabular}{|p{2.8cm}|p{5cm}|p{6cm}|}
         \hline
@@ -247,7 +247,7 @@ The analysis establishes that the observed performance ceiling stems from specif
 
 \begin{table}[htbp]
     \centering
-    \caption{Mapping of observed limitations to theoretical causes and proposed MARQ components.}
+    \caption{Observed limitations mapped to theoretical causes and MARQ components.}
     \label{tab:limitation_mapping}
     \begin{tabular}{|p{3cm}|p{4cm}|p{3.5cm}|p{2cm}|}
         \hline

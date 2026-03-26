@@ -20,7 +20,7 @@ System development consists of two components: the game environment and the MARQ
 \begin{figure}[htbp]
     \centering
     \includegraphics[width=1.1\textwidth]{figures/MARQArchi.png}
-    \caption{MARQ Framework Architecture. The input pipeline processes board states and move history through AAREN to produce implicit belief embeddings. These are concatenated with board features and fed into a ResNet-based Rainbow DQN with Spatial Attention and Dueling Heads.}
+    \caption{MARQ framework architecture.}
     \label{fig:marq_architecture}
 \end{figure}
 
@@ -52,7 +52,7 @@ Three additional factors contribute to piece value:
 
 \begin{table}[h]
 \centering
-\caption{Strategic ability bonuses for pieces with special capabilities.}
+\caption{Strategic ability bonuses for special-capability pieces.}
 \label{tab:strategic_bonus}
 \begin{tabular}{lcp{6cm}}
 \hline
@@ -85,7 +85,7 @@ V(p) = \alpha_1 \cdot \text{CDS}(p) + \alpha_2 \cdot \text{SR}(p) + \alpha_3 \cd
 
 \begin{table}[h]
 \centering
-\caption{Computed piece values with associated combat and survival metrics.}
+\caption{Computed piece values with combat and survival metrics.}
 \label{tab:piece_values}
 \begin{tabular}{lccc}
 \hline
@@ -131,7 +131,7 @@ AAREN learns jointly with the Rainbow DQN through shared gradient flow. The comb
 \begin{figure}[htbp]
     \centering
     \includegraphics[width=1.1\textwidth]{figures/Training Architecture.drawio.png}
-    \caption{MARQ Training Architecture. The system employs a dual-buffer replay mechanism (PER and Episodic) alongside a league-based opponent pool to facilitate stable policy development in imperfect information settings.}
+    \caption{MARQ training architecture.}
     \label{fig:training_architecture}
 \end{figure}
 
@@ -143,7 +143,7 @@ The MARQ system uses a Rainbow DQN framework with several architectural enhancem
 \begin{figure}[htbp]
     \centering
     \includegraphics[width=0.8\textwidth]{figures/Dueling Heads.png}
-    \caption{Dueling Network Heads. The architecture separates the value stream $V(s)$ and the advantage stream $A(s, a)$, allowing the agent to stabilize learning by identifying state importance independently of action selection.}
+    \caption{Dueling network heads.}
     \label{fig:dueling_heads}
 \end{figure}
 
@@ -153,7 +153,7 @@ The Q-network features a ResNet backbone for spatial feature extraction. An init
 \begin{figure}[htbp]
     \centering
     \includegraphics[width=0.8\textwidth]{figures/Resnet.png}
-    \caption{ResNet Backbone. The six-block residual architecture provides a $27 \times 27$ receptive field, ensuring full spatial coverage and effective feature propagation for the $10 \times 10$ board representation.}
+    \caption{ResNet backbone.}
     \label{fig:resnet_backbone}
 \end{figure}
 
@@ -162,7 +162,7 @@ A spatial self-attention layer follows the ResNet backbone. It captures relation
 \begin{figure}[htbp]
     \centering
     \includegraphics[width=0.8\textwidth]{figures/Input layer.png}
-    \caption{79-Channel Input Representation. The state is encoded as a multi-channel tensor consisting of binary board features and 64-dimensional AAREN-generated embeddings for piece-type inference.}
+    \caption{79-channel input representation.}
     \label{fig:input_layer}
 \end{figure}
 
@@ -170,7 +170,7 @@ The 79-channel state representation is partitioned into two functional sets, as 
 
 \begin{table}[h]
 \centering
-\caption{State representation input channels for the Rainbow DQN.}
+\caption{State representation input channels.}
 \label{tab:state_channels}
 \begin{tabular}{clp{8cm}}
 \hline
@@ -312,7 +312,7 @@ A heuristic pre-filter scores all legal moves and selects the top-$k$ candidates
 
 \begin{table}[h]
 \centering
-\caption{Heuristic scoring criteria for move filtering.}
+\caption{Heuristic scoring criteria.}
 \label{tab:heuristic_scoring}
 \begin{tabular}{lcp{7cm}}
 \hline
@@ -370,8 +370,8 @@ The deployed system functions as the complete application used during user testi
 \begin{figure}[H]
     \centering
     \includegraphics[width=.7\textwidth]{figures/Game diagram.png}
-    \caption{Game Sequence Diagram}
-    \label{fig:Sequence Diagram}
+    \caption{Game sequence diagram.}
+    \label{fig:sequence_diagram}
 \end{figure}
 
 In the figure above, the player starts the game. The loop continues until either the player captures the opponent's flag or the agent captures the player's flag. The agent receives the current board state and updates the AAREN module, which produces learned embeddings encoding implicit piece identity inference from observed action history. The DQN evaluates Q-values for all legal actions given this embedding-enhanced state representation and selects the action with the highest expected value.
@@ -382,8 +382,8 @@ The game environment is a digital version of Stratego, a two-player board game o
 \begin{figure}[H]
     \centering
     \includegraphics[width=1\textwidth]{figures/StrategoWithMARQ_GameStart.png}
-    \caption{Game Start}
-    \label{fig:Game Start}
+    \caption{Game start screen.}
+    \label{fig:game_start}
 \end{figure}
 
 \subsection{Asset Design}
@@ -391,8 +391,8 @@ The game assets use pixel art, with each piece represented by a unique image. Th
 \begin{figure}[H]
     \centering
     \includegraphics[width=.7\textwidth]{figures/StrategoPieces.png}
-    \caption{Stratego Pieces}
-    \label{fig:Stratego Pieces}
+    \caption{Stratego piece assets.}
+    \label{fig:stratego_pieces}
 \end{figure}
 
 \section{AI-Driven Guidance and Evaluation Interface}

@@ -10,7 +10,7 @@ Each army consists of 12 different types of pieces, with ranks ranging from 1 (t
 \begin{figure}[ht]
     \centering
     \includegraphics[width=0.5\textwidth]{figures/stratego_piece.png}
-    \caption{Stratego Pieces}
+    \caption{Stratego pieces.}
 \end{figure}
 
 \begin{figure}[ht]
@@ -26,7 +26,7 @@ The high theoretical state space of Stratego shows how difficult the game is to 
 |\mathcal{S}| = \binom{40}{1,1,2,3,4,4,4,5,8} \times 10^{10} \times 2^{40} \approx 10^{535}
 \end{equation}
 
-Perolat et al. \cite{perolat2022stratego} established the permutation for game state. The agent must use reasoning with limited information rather than trying to look at every possible outcome, making the computation intra.
+Perolat et al. \cite{perolat2022stratego} established the permutation for game state. The agent must use reasoning with limited information rather than trying to look at every possible outcome, making the computation intractable.
 
 
 \section{MARQ Framework Overview}
@@ -41,7 +41,7 @@ The architecture connects these components in a pipeline. The AAREN module takes
 
 \begin{table}[htbp]
     \centering
-    \caption{Key Symbols and Descriptions from the MARQ Framework}
+    \caption{Key symbols and descriptions.}
     \label{tab:MARQ-symbols}
     \begin{tabular}{|l|p{4cm}|p{6cm}|}
         \hline
@@ -183,7 +183,7 @@ Here $U(a)$ represents the entropy of the learned distribution at the target loc
 
 \subsection{Training Stability via Regularization}
 
-The Ataraxos system reached superhuman performance in no-press Diplomacy, and its designers found that training stability matters as much as the algorithm itself \cite{Ataraxos2025}. Deep reinforcement learning agents face two recurring problems: wasting updates on low-information experiences, and cycling between strategies without settling on a robust one. MARQ addresses both.
+The Ataraxos system reached superhuman performance in no-press Diplomacy, and its designers found that training stability matters as much as the algorithm itself \cite{Ataraxos2025}. Deep reinforcement learning agents face two recurring problems: wasting updates on low-information experiences, and cycling between strategies without settling on a robust one.
 
 \paragraph{Advantage Filtering for Sample Efficiency.}
 Advantage filtering concentrates learning on the most informative transitions \cite{RegularizationStrategyExploration}. In reinforcement learning, the temporal-difference (TD) error measures the gap between predicted values and outcomes. A standard replay buffer samples past transitions at random, treating every move equally. Advantage filtering breaks this uniformity. It samples the buffer and retains only the transitions with the largest TD errors:
@@ -297,19 +297,8 @@ Sinkhorn normalization corrects this through iterative proportional fitting. Giv
 
 The Sinkhorn algorithm alternates between row and column normalization until convergence. The approach is differentiable, so gradients pass through it. When piece A is confirmed as the Spy, the Sinkhorn layer automatically redistributes probability across all other pieces, creating a shared update across the entire inferred state.
 
-\paragraph{Retrospective KL Divergence.}
-When a piece with identity $s^*_p$ is revealed at time $t$, the retrospective loss spans the entire history of that piece:
-\begin{equation}
-\mathcal{L}_{retro} = \sum_{k=1}^{t} \lambda^{t-k} D_{KL}(\text{Rep}_k(p) \parallel \delta_{s^*_p})
-\end{equation}
-where $\delta_{s^*_p}$ is the Dirac delta distribution concentrated on the true piece type. The temporal decay factor $\lambda < 1$ (typically 0.9) assigns higher weight to recent predictions.
-
-The decay factor accounts for the non-stationary nature of piece behavior in Stratego. A Marshal may move conservatively in the early game to hide its identity, then adopt more characteristic patterns in the endgame. Weighting recent observations more heavily makes the loss function prioritize learning from high-information behaviors near the revelation event while still providing a smoothed signal across the piece's history.
-
 
 \section{Multi-Agent Learning and Strategy Mixing}
-
-Multi-agent learning in zero-sum games demands stable training architectures that can handle evolving strategy distributions. MARQ uses a league-based system for this purpose.
 
 \subsection{League-Based Training Architecture}
 The league maintains a changing pool of agents so that the model encounters many different strategies \cite{perolat2022stratego}. The main agent is the best current policy under training. The historical pool stores earlier versions of the main agent, each representing a different stage of development.
