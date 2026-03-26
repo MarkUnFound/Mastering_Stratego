@@ -439,7 +439,7 @@ The MARQ framework's architectural components converge in the real-time move sel
 \end{algorithm}
 
 \subsection{Historical Context Update}
-The decision process begins with the AAREN module's recurrent attention system. As game observations arrive (moves and combat outcomes), the history aggregator updates its internal state. The agent's current embedding thus reflects the opponent's cumulative behavioral patterns, not just the immediate board state.
+The decision process begins with the AAREN module's recurrent attention system. As game observations arrive, the history aggregator updates its internal state. The agent's current embedding thus reflects the opponent's cumulative behavioral patterns, not just the immediate board state.
 
 \subsection{Probabilistic Belief Extraction}
 After updating the history, the system extracts softmax probability distributions for hidden pieces. These piece-identity predictions are generated for every square on the board. They represent the agent's current belief about the hidden ranks of unrevealed opponent pieces.
@@ -452,9 +452,6 @@ The Rainbow DQN's convolutional backbone and C51 distributional head process the
 
 \subsection{Action-Space Filtering}
 Legal move masking ensures rule compliance and efficiency. The Q-network's output is filtered against the set of valid moves $\mathcal{A}$ defined by Stratego's rules. Illegal actions cannot be selected.
-
-\subsection{Hierarchical Policy Blending}
-For defensive and positional moves, the agent relies on the DQN's positional priors. For offensive actions, it blends the neural network's score with the analytical outcome of the search. This grounding in tactical reality prevents the agent from launching attacks based on overconfident value estimates.
 
 \subsection{Expectamax Search and Tactical Summation}
 Standard adversarial search algorithms like Minimax assume an opponent who plays optimally to minimize the agent's utility. Many environments involve stochastic elements or hidden information that are better modeled as probabilistic transitions \cite{DRLImperfectInfo2023, SubgameSolving2021}. Algorithms addressing this class of problems introduce ``Chance Nodes'' into the game tree.
@@ -523,7 +520,7 @@ These convergence properties and the transferability of the learned embeddings s
 The final MARQ architecture emerged from systematic experimentation and the refinement of several reinforcement learning components. Multiple established algorithms were evaluated and replaced because of performance bottlenecks or insufficient strategic depth in the Stratego domain.
 
 \paragraph{Value Optimization and Exploration.} 
-Early iterations used a vanilla DQN with $\epsilon$-greedy exploration. This approach proved inadequate for Stratego's sparse rewards and led to early stagnation. The implementation was upgraded to a Rainbow DQN architecture incorporating Noisy Networks for state-dependent exploration. The standard double-DQN configuration was then replaced with a Dueling Head architecture, which improved value estimation accuracy in states where multiple actions carry similar utility. To mitigate overfitting to deterministic opponent policies during self-play, the system also employs \textit{Boltzmann Exploration} (Temperature Scaling). The opponent's action selection uses a temperature-scaled softmax over Q-values, injecting controlled stochasticity to produce a more robust training curriculum.
+Early iterations used a normal DQN with $\epsilon$-greedy exploration. This approach proved inadequate for Stratego's sparse rewards and led to early stagnation. The implementation was upgraded to a Rainbow DQN architecture incorporating Noisy Networks for state-dependent exploration. The standard double-DQN configuration was then replaced with a Dueling Head architecture, which improved value estimation accuracy in states where multiple actions carry similar utility. To mitigate overfitting to deterministic opponent policies during self-play, the system also employs \textit{Boltzmann Exploration} (Temperature Scaling). The opponent's action selection uses a temperature-scaled softmax over Q-values, injecting controlled stochasticity to produce a more robust training curriculum.
 
 \paragraph{History and Memory Representation.} 
 Initial attempts to manage hidden information relied on explicit Probabilistic Belief States. These states introduced prohibitive computational complexity and memory overhead. They required $O(N^2)$ updates that throttled training throughput. The framework moved to an implicit belief system powered by the AAREN architecture. Long Short-Term Memory cells for trajectory embeddings were also replaced by AAREN's attention-based recurrence, which provided more stable gradient flow over long sequences and better handled the non-Markovian nature of piece identity inference.

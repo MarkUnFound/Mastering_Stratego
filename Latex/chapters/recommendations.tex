@@ -1,5 +1,5 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\chapter{Contributions and Recommendations}
+\chapter{Conclusion and Recommendations}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 \section{Recommended Architectural Enhancements}
@@ -20,38 +20,38 @@ The Noisy Net sigma remained at zero throughout the entire training run. This co
 
 \subsection{Long-Range Credit Assignment}
 
-The sparse reward propagation analysis showed that single-step temporal-difference learning attenuates terminal reward signals by a factor of $\gamma^{200} \approx 0.134$ for mid-game decisions. Multi-step returns ($n$-step TD with $n = 5$), as specified in the MARQ framework, reduce this effective bootstrap depth and accelerate the propagation of strategic outcomes to earlier decision points. This promotes the development of long-horizon planning behavior.
+Single-step TD learning attenuates terminal rewards by $\gamma^{200} \approx 0.134$ for mid-game decisions. Five-step returns ($n = 5$), as specified in MARQ, shorten the effective bootstrap depth and push strategic outcomes back to earlier decision points faster.
 
 
 \section{Computer Science Contributions}
 
-The primary contributions of this work lie in reinforcement learning systems engineering rather than in the game of Stratego itself. Stratego serves as the experimental domain, but the following contributions are architecture-agnostic and transferable to other imperfect information environments.
+The contributions below belong to reinforcement learning systems engineering, not to Stratego specifically. Stratego is the test domain. The techniques themselves are architecture-agnostic.
 
 \subsection{Five-Phase Curriculum Design}
 
-The multi-phase training curriculum provides a structured methodology for transitioning reinforcement learning agents from fully observable to partially observable environments. Progressive observability reduction, combined with opponent difficulty scaling and reward annealing, addresses the cold-start problem that arises when agents must simultaneously learn basic game mechanics and hidden information reasoning. This curriculum structure applies to any domain where partial observability is introduced gradually.
+The curriculum transitions agents from full to partial observability in stages. Observability drops progressively while opponent difficulty rises and reward shaping decays. This solves the cold-start problem: agents do not need to learn basic mechanics and hidden-information reasoning at the same time. The structure applies wherever partial observability can be introduced gradually.
 
 \subsection{Gradient Bridge for Replay Compatibility}
 
-The gradient bridge adds a differentiable epsilon-scaled zero-vector to stored embedding snapshots, preserving end-to-end gradient flow from the DQN loss through the LSTM encoder while maintaining the computational efficiency of pre-computed embeddings. This technique resolves a fundamental tension in replay-based training of hybrid architectures. Full sequential reconstruction at replay time produces correct gradients but incurs a 4$\times$ throughput penalty. Standard detached snapshots preserve throughput but sever the gradient path. The gradient bridge achieves both objectives simultaneously and applies to any architecture that combines a recurrent encoder with an experience replay buffer.
+Hybrid architectures face a tension between replay accuracy and speed. Reconstructing full LSTM sequences at replay time gives correct gradients but costs 4$\times$ throughput. Detaching snapshot embeddings keeps throughput but kills the gradient path. The gradient bridge resolves this: it adds a differentiable epsilon-scaled zero-vector ($\epsilon \cdot W_{proj}(\mathbf{0})$) to stored embeddings. Gradients flow through to the encoder. Throughput stays high. The technique works for any recurrent-encoder-plus-replay-buffer architecture.
 
 \subsection{Expectamax Search Integration}
 
-The Expectamax search integration with learned belief distributions provides a principled approach to test-time decision refinement in partially observable environments. The system weights the DQN's positional Q-values against the expected combat utility computed from AAREN-derived rank probabilities. This grounds neural predictions in tactical reality and prevents overconfident attacks on hidden pieces. The hierarchical policy blending approach transfers to any domain where learned value functions must be combined with probabilistic state estimation.
+At test time, the system blends the DQN's positional Q-values with combat utilities derived from AAREN's rank-probability predictions through Expectamax search. This grounds neural value estimates in tactical reality and blocks overconfident attacks on hidden pieces. The approach transfers to any partially observable domain that combines learned value functions with probabilistic state inference.
 
 \subsection{Potential-Based Reward Shaping with Phase Annealing}
 
-The PBRS implementation guarantees optimal policy invariance while providing dense learning signals during early training. The phase-based annealing schedule multiplicatively reduces the shaping signal across curriculum phases until it reaches zero in the final league training phase. The agent transitions from shaped to purely objective-driven learning without manual intervention. This design eliminates the reward-farming failure mode observed in additive shaping schemes while accelerating early convergence.
+PBRS guarantees policy invariance while providing dense signals during early training. A multiplicative schedule tapers the shaping coefficient to zero across curriculum phases, so the final training phase runs on terminal rewards alone. No manual cutoff is needed. The design avoids the reward-farming problem common in additive shaping.
 
 
 \section{Limitations and Future Work}
 
-Several limitations must be acknowledged despite the strong theoretical justification for the MARQ architecture's design.
+Several limitations remain.
 
-The analysis establishes that the Vanilla DQN's limitations are structurally inherent, but it does not guarantee that the proposed enhancements will achieve superior empirical performance in the Stratego domain. The interaction between C51, Noisy Nets, Dueling Networks, AAREN, and $n$-step returns in a multi-agent self-play setting may introduce emergent challenges not predicted by single-component theoretical analysis.
+The analysis shows the normal DQN's problems are structural. It does not guarantee that the proposed replacements will perform better in Stratego specifically. Combining C51, Noisy Nets, Dueling Networks, AAREN, and $n$-step returns in a multi-agent self-play loop may produce challenges that single-component theory does not predict.
 
-The computational overhead of the full MARQ pipeline relative to the Vanilla DQN baseline is a practical constraint. The Vanilla DQN's rapid training iteration enabled the 37,213-episode evaluation reported here. The full Rainbow DQN configuration with AAREN may require substantially longer wall-clock training time, limiting the total number of self-play episodes achievable within a fixed compute budget.
+The full MARQ pipeline is heavier than the normal DQN. Fast iteration with the normal DQN enabled the 37,213-episode evaluation reported here. Rainbow plus AAREN will likely need more wall-clock time per episode, reducing total episode count under a fixed compute budget.
 
-Systematic ablation studies are required to isolate the marginal contribution of each MARQ component. The analysis predicts that each enhancement addresses a distinct failure mode, but empirical validation of this independence assumption is needed to confirm that the improvements are additive rather than redundant.
+Ablation studies are needed. The theory says each component fixes a different problem, but empirical confirmation that the gains are additive, not redundant, is still required.
 
-Future work should prioritize the incremental integration and evaluation of each MARQ component, beginning with the transition from LSTM to AAREN for history encoding and the reintroduction of C51 distributional value estimation. Each component should be evaluated in isolation against the Vanilla DQN baseline before the full pipeline is assembled, ensuring that theoretical predictions are validated through controlled experimentation. Introducing Stratego to a broader participant pool for human testing should be considered only if time and computational resources permit, as the primary scientific contribution resides in the reinforcement learning framework rather than the game-specific application.
+Future work should integrate MARQ components one at a time, starting with the LSTM-to-AAREN swap and C51 reintroduction. Each component should be tested alone against the normal DQN baseline before the full pipeline is assembled. Human testing with a broader participant pool is secondary; the primary contribution is the RL framework, not the game application.
