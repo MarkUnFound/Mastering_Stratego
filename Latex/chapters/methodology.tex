@@ -1,21 +1,21 @@
 \chapter{Methodology}
-This chapter explains how we tested the MARQ framework's ability to solve games with hidden information. We built a competitive system and then tested its win-rate against human players and its adaptability across different games. The following sections describe the steps we took.
+This chapter describes how the MARQ framework was tested for its ability to play games with hidden information. A competitive system was built and then evaluated on win-rate against human players and adaptability across different games. The following sections detail each step.
 
 \section{Project Planning}
-We conducted this research using a plan that includes choosing participants and setting up the experiment. We used a rapid prototyping method to design and build the MARQ framework. The development phase ran from September 2025 to February 2026, including building the game environment and training the agent. User testing took place in March 2026, and we analyzed the data in April 2026.
+This research followed a plan covering participant selection and experimental setup. A rapid prototyping method guided the design and construction of the MARQ framework. Development ran from September 2025 to February 2026 and included building the game environment and training the agent. User testing took place in March 2026. Data analysis followed in April 2026.
 
 \subsection{Community Introduction to Stratego}
-We introduced Stratego to the participants first because none of them knew the rules or strategies. Stratego is a niche game, so there weren't many experienced players available to test against our model. By teaching everyone the game from scratch, we ensured that both the humans and the AI were learning at the same time, making the test fairer.
+Participants were first introduced to Stratego because none of them knew the rules or strategies. Stratego is a niche game, and experienced players were difficult to recruit for testing. Teaching everyone the game from scratch meant that both the humans and the AI started from the same baseline, producing a fairer comparison.
 
-We selected 20 participants based on their availability and experience with strategy games. We looked for people from different backgrounds who enjoyed strategic thinking but didn't know how to play Stratego. This ensured they had the skills needed to play well while starting fresh with this specific game, allowing us to maintain a consistent starting point for the study.
+Twenty participants were selected based on their availability and experience with strategy games. The selection criteria targeted people from different backgrounds who enjoyed strategic thinking but had no prior Stratego experience. This ensured they had the cognitive skills needed to play well while starting fresh with the specific game, maintaining a consistent starting point for the study.
 
 \subsection{Experimental Procedures}
-One-on-one matches between human participants and the MARQ framework will be conducted on-site using a single device. To ensure consistency, each participant will receive a checklist outlining the procedures for interacting with the game.
+One-on-one matches between human participants and the MARQ framework will be conducted on-site using a single device. Each participant will receive a checklist outlining the procedures for interacting with the game to ensure consistency.
 
-Each session will last one (1) hour, during which participants must complete at least two (2) games against the MARQ framework. Additional games may be played if the time permits. The following game statistics will be recorded will include the winner, total game duration, total moves per player, and the number and type of remaining pieces for both players. Immediately following the session, each participant will be given an evaluation form to provide open-ended feedback on their experience.
+Each session will last one hour, during which participants must complete at least two games against the MARQ framework. Additional games may be played if time permits. The recorded statistics will include the winner, total game duration, total moves per player, and the number and type of remaining pieces for both players. Immediately after the session, each participant will complete an evaluation form providing open-ended feedback on their experience.
 
 \section{System Development}
-The system development consists of two components: the game environment and the MARQ framework. The game environment was developed to serve as the interface for human players and the world in which the trained agent operates. The MARQ framework provides the trained agent that competes against human players.
+System development consists of two components: the game environment and the MARQ framework. The game environment serves as the interface for human players and the world in which the trained agent operates. The MARQ framework provides the trained agent that competes against human players.
 
 \begin{figure}[htbp]
     \centering
@@ -117,19 +117,13 @@ The primary challenge in Stratego involves decision-making under partial observa
 To mitigate the "sparse death" problem, where a lack of observation history produces uninformative zero tensors, a learnable default embedding is integrated. This provides a consistent initialization for the network and maintains training stability during initial game states.
 
 \paragraph{Action Feature Extraction.}
-For each observed opponent action, AAREN extracts a 24-dimensional feature vector.
-\begin{itemize}
-    \item \textbf{Movement features}: Direction (normalized), distance, whether the move was an attack
-    \item \textbf{Position features}: Starting position (normalized), board region indicators
-    \item \textbf{Behavioral indicators}: Scout move flag (distance $> 1$), forward advancement, lateral movement
-    \item \textbf{Temporal features}: Turn number, piece activity (historical movement frequency)
-\end{itemize}
+For each observed opponent action, AAREN extracts a 24-dimensional feature vector encoding movement features (direction, distance, whether the move was an attack), position features (starting position, board region indicators), behavioral indicators (Scout move flag for distance greater than 1, forward advancement, lateral movement), and temporal features (turn number, piece activity based on historical movement frequency).
 
 \paragraph{Recurrent Embedding Generation.}
-The AAREN module processes action sequences using a parallel prefix scan algorithm during training for computational efficiency, and $O(1)$ recurrent updates during inference for real-time play. For each enemy piece position with observed history, AAREN maintains a hidden state that captures temporal patterns in the piece's behavior. This hidden state is output as a 64-dimensional embedding vector per board position.
+The AAREN module processes action sequences using a parallel prefix scan algorithm during training for computational efficiency and $O(1)$ recurrent updates during inference for real-time play. For each enemy piece position with observed history, AAREN maintains a hidden state capturing temporal patterns in the piece's behavior. This hidden state produces a 64-dimensional embedding vector per board position.
 
 \paragraph{End-to-End Training.}
-Unlike separate belief state modules that require explicit supervision, AAREN learns jointly with the Rainbow DQN through shared gradient flow. The combined optimizer updates both the AAREN encoder and the Q-network simultaneously, allowing the system to discover representations that are directly useful for action selection rather than optimizing for auxiliary prediction tasks.
+AAREN learns jointly with the Rainbow DQN through shared gradient flow. The combined optimizer updates both the AAREN encoder and the Q-network simultaneously. This allows the system to discover representations directly useful for action selection rather than requiring auxiliary prediction tasks.
 
 
 \section{Model Training}
@@ -141,10 +135,10 @@ Unlike separate belief state modules that require explicit supervision, AAREN le
     \label{fig:training_architecture}
 \end{figure}
 
-Training the MARQ agent is computationally intensive due to the large state-action space and the requirement for accurate belief state representations over extended game horizons.
+Training the MARQ agent is computationally intensive. The large state-action space and the need for accurate belief state representations over extended game horizons drive this cost.
 
 \paragraph{Rainbow DQN Architecture.}
-The MARQ system utilizes a Rainbow DQN framework incorporating several architectural enhancements. It employs Categorical DQN (C51) for value distribution estimation, Noisy Networks for exploration, and a Dueling Network architecture to decouple state values from action advantages. Noisy layers introduce state-dependent stochasticity, facilitating exploration without manual epsilon-greedy scheduling.
+The MARQ system uses a Rainbow DQN framework with several architectural enhancements. Categorical DQN (C51) handles value distribution estimation. Noisy Networks drive exploration. A Dueling Network architecture decouples state values from action advantages. The noisy layers introduce state-dependent stochasticity, removing the need for manual epsilon-greedy scheduling.
 
 \begin{figure}[htbp]
     \centering
@@ -154,7 +148,7 @@ The MARQ system utilizes a Rainbow DQN framework incorporating several architect
 \end{figure}
 
 \paragraph{Network Structure.}
-The Q-network architecture features a ResNet backbone for spatial feature extraction. The structure includes an initial convolutional layer and six residual blocks. This configuration ensures a sufficient receptive field to evaluate global board state interactions.
+The Q-network features a ResNet backbone for spatial feature extraction. An initial convolutional layer feeds into six residual blocks. This configuration provides a sufficient receptive field to evaluate global board state interactions.
 
 \begin{figure}[htbp]
     \centering
@@ -163,7 +157,7 @@ The Q-network architecture features a ResNet backbone for spatial feature extrac
     \label{fig:resnet_backbone}
 \end{figure}
 
-A spatial self-attention layer follows the ResNet backbone to let the agent think about the whole board at once, capturing relationships between pieces even if they are far apart. This part of the network feeds into the dueling heads, helping the agent develop more complex strategies than simpler models.
+A spatial self-attention layer follows the ResNet backbone. It captures relationships between pieces across the full board, even at long range. This layer feeds into the dueling heads, enabling the agent to develop strategies that depend on board-wide interactions.
 
 \begin{figure}[htbp]
     \centering
@@ -194,41 +188,41 @@ The 79-channel state representation is partitioned into two functional sets, as 
 \end{tabular}
 \end{table}
 
-The board feature channels provide deterministic knowledge of the agent's own piece positions and observed enemy locations. The AAREN embedding channels encode learned representations of hidden enemy piece identities based on their observed behavior. Unlike explicit probability distributions, these embeddings are dense learned vectors that the network interprets through end-to-end training. The AAREN embedding channels are populated in all training phases; the agent always receives embeddings from the history aggregator rather than ground truth one-hot encodings. However, the board feature channels themselves carry different levels of enemy information depending on the observability setting. During full observability (Phase 1), the board tensor reveals all enemy piece identities, providing a strong signal in the piece-specific board channels. During partial observability phases, unrevealed enemy pieces are represented solely by a "hidden piece" presence marker (affecting only Channel 12, the enemy mask), and the agent must rely on AAREN embeddings to infer their true identities. An earlier version of this transition suffered from a bug where the hidden piece marker was unintentionally filtered out of Channel 12, catastrophically blinding the network to even the presence of enemy pieces; correcting this ensures the network maintains spatial awareness while shifting the burden of identity inference to the AAREN module. The AAREN module uses 24-dimensional action feature vectors, 64 hidden units, and 3 layers to process action histories and output embedding vectors.
+The board feature channels provide deterministic knowledge of the agent's own piece positions and observed enemy locations. The AAREN embedding channels encode learned representations of hidden enemy piece identities based on observed behavior. These embeddings are dense learned vectors that the network interprets through end-to-end training, not explicit probability distributions. The AAREN embedding channels are populated in all training phases; the agent always receives embeddings from the history aggregator rather than ground truth one-hot encodings. The board feature channels carry different levels of enemy information depending on the observability setting. During full observability (Phase 1), the board tensor reveals all enemy piece identities, providing a strong signal in the piece-specific board channels. During partial observability phases, unrevealed enemy pieces appear only as a ``hidden piece'' presence marker (affecting Channel 12, the enemy mask), and the agent must rely on AAREN embeddings to infer their true identities. An earlier version suffered from a bug where the hidden piece marker was filtered out of Channel 12, blinding the network to the presence of enemy pieces. Correcting this restores spatial awareness while shifting the burden of identity inference to the AAREN module. The AAREN module uses 24-dimensional action feature vectors, 64 hidden units, and 3 layers to process action histories and output embedding vectors.
 
 \paragraph{Training Hyperparameters.}
-The training configuration uses several key parameters. These include a learning rate $\alpha = 3 \times 10^{-5}$ with AdamW optimizer and weight decay $\lambda = 0.01$, and a discount factor $\gamma = 0.995$ to capture long-term strategic consequences. We utilize a batch size of 512 transitions and a replay buffer capacity of 150,000 transitions with prioritized sampling. Soft target network updates ($\tau = 0.001$) occur every 5,000 steps. Model updates are performed every 2 steps utilizing 8 parallel lanes and 5-step returns for deeper credit assignment in long-horizon games. The AAREN history aggregator retains up to 50 actions per position in its training buffer to preserve early-game movement patterns across 200--500 move games. Turn normalization is aligned with the maximum game length of 1,000 turns. To improve sample efficiency, data augmentation is applied via horizontal flip, exploiting the game's symmetry. Training proceeds for 35,000+ episodes with checkpoints saved every 1,000 episodes.
+The training configuration specifies a learning rate $\alpha = 3 \times 10^{-5}$ with AdamW optimizer and weight decay $\lambda = 0.01$, and a discount factor $\gamma = 0.995$ to capture long-term strategic consequences. A batch size of 512 transitions and a replay buffer capacity of 150,000 transitions with prioritized sampling are used. Soft target network updates ($\tau = 0.001$) occur every 5,000 steps. Model updates run every 2 steps across 8 parallel lanes with 5-step returns for deeper credit assignment in long-horizon games. The AAREN history aggregator retains up to 50 actions per position in its training buffer to preserve early-game movement patterns across 200 to 500 move games. Turn normalization is aligned with the maximum game length of 1,000 turns. Horizontal flip augmentation exploits the game's symmetry to improve sample efficiency. Training proceeds for 35,000+ episodes with checkpoints saved every 1,000 episodes.
 
 \paragraph{Computational Optimizations.}
-To accelerate training throughput, the implementation employs mixed-precision inference using PyTorch's automatic mixed-precision (AMP) framework. During action selection, network forward passes operate in FP16 precision via \texttt{torch.amp.autocast}, reducing memory bandwidth requirements and leveraging Tensor Core acceleration on NVIDIA GPUs. 
+Mixed-precision inference accelerates training throughput. During action selection, network forward passes operate in FP16 precision via \texttt{torch.amp.autocast}, reducing memory bandwidth requirements and leveraging Tensor Core acceleration on NVIDIA GPUs.
 
-A critical optimization handles the integration of the recurrent AAREN module into the replay pipeline. Full sequential reconstruction of action histories during replay introduces a significant bottleneck, increasing iteration time from 15s to 60s. To preserve high throughput, MARQ utilizes pre-computed embedding snapshots stored in the replay buffer. To maintain differentiability despite using detached snapshots, a ``Gradient Bridge'' is implemented by adding a differentiable epsilon-scaled zero-vector ($\epsilon \cdot W_{proj}(\mathbf{0})$) to the stored snapshots during replay. This preserves the 4x speedup while providing a gradient path from the DQN loss back to AAREN's input projection layer. The resulting value-staleness is mitigated by AAREN's Dual Training Regime, which provides a fresh supervised signal during piece reveals.
+Integrating the recurrent AAREN module into the replay pipeline presents a significant bottleneck. Full sequential reconstruction of action histories during replay increases iteration time from 15s to 60s. To maintain high throughput, MARQ stores pre-computed embedding snapshots in the replay buffer. A ``Gradient Bridge'' preserves differentiability despite the detached snapshots: a differentiable epsilon-scaled zero-vector ($\epsilon \cdot W_{proj}(\mathbf{0})$) is added to the stored snapshots during replay. This preserves the 4x speedup while providing a gradient path from the DQN loss back to AAREN's input projection layer. The resulting value-staleness is mitigated by AAREN's Dual Training Regime, which provides a fresh supervised signal during piece reveals.
 
-The replay buffer stores transitions in FP16 format, reducing GPU memory consumption by approximately 50\% compared to FP32 storage. Additionally, CUDNN benchmark mode is enabled to automatically select the fastest convolution algorithms for the fixed input tensor dimensions.
+The replay buffer stores transitions in FP16 format, reducing GPU memory consumption by approximately 50\% compared to FP32 storage. CUDNN benchmark mode is enabled to select the fastest convolution algorithms for the fixed input tensor dimensions automatically.
 
 \paragraph{League-Based Training.}
-To prevent policy cycling, the agent trains against a diverse opponent pool. The opponent selection distribution allocates 50\% to historical league agents, 20\% to random agents, 20\% to greedy heuristic agents, and 10\% to self-play. Agent checkpoints are added to the league every 500 episodes, with a maximum pool size of 50 historical agents.
+The agent trains against a diverse opponent pool to prevent policy cycling. Opponent selection allocates 50\% to historical league agents, 20\% to random agents, 20\% to greedy heuristic agents, and 10\% to self-play. Agent checkpoints enter the league every 500 episodes, with a maximum pool size of 50 historical agents.
 
 \paragraph{Multi-Phase Curriculum.}
-The training progression follows a multi-phase curriculum. Phase 1 establishes foundational rules under full observability. To facilitate the transition to partial observability, the curriculum introduces mixed observability as win rates stabilize. This requires the agent to utilize AAREN-based inference before full information occlusion is enforced.
+Training follows a multi-phase curriculum. Phase 1 establishes foundational rules under full observability. As win rates stabilize, the curriculum introduces mixed observability, requiring the agent to use AAREN-based inference before full information occlusion is enforced.
 
-Training proceeds for 5,000--10,000 episodes against a progressively challenging opponent mix. This includes initially random opponents, then basic heuristic agents, and finally a sophisticated multi-factor heuristic opponent. Phase advancement requires $\geq$95\% win rate against random opponents, $\geq$75\% against the basic heuristic, and $\geq$60\% against the strategic heuristic. To ensure statistical robustness given the high frequency of early-stage draws, all win-rate metrics are calculated relative to decisive games (wins and losses) rather than total episodes.
+Phase 1 runs for 5,000 to 10,000 episodes against a progressively challenging opponent mix: initially random opponents, then basic heuristic agents, and finally a multi-factor heuristic opponent. Phase advancement requires $\geq$95\% win rate against random opponents, $\geq$75\% against the basic heuristic, and $\geq$60\% against the strategic heuristic. All win-rate metrics are computed relative to decisive games (wins and losses) rather than total episodes to account for the high frequency of early-stage draws.
 
-Phase 2 (Partial Observability) disables full observability, requiring reliance on AAREN-generated embeddings for 5,000--10,000 episodes. The opponent distribution allocates 40\% to frozen heuristic agents and 60\% to the strategic heuristic opponent. Phase advancement requires embedding-based inference accuracy $\geq$75\% and an overall win rate $\geq$60\% relative to decisive games.
+Phase 2 (Partial Observability) disables full observability and requires reliance on AAREN-generated embeddings for 5,000 to 10,000 episodes. The opponent distribution allocates 40\% to frozen heuristic agents and 60\% to the strategic heuristic. Phase advancement requires embedding-based inference accuracy $\geq$75\% and an overall win rate $\geq$60\% relative to decisive games.
 
-Phase 3 (Self-Play) trains against a mixture of delayed agent copies (60\%) and strategic heuristic opponents (40\%) for 5,000--15,000 episodes to discover novel strategies while preventing policy collapse. Phase 4 (League Training) activates the full opponent distribution with 40\% historical league agents, 30\% strategic heuristic, 20\% greedy agents, and 10\% self-play. This phase additionally activates independent parallel-learning (MARL) for Agent 2, transitioning the opponent from a fixed policy pool to a continuously updating student agent. Phase 5 (Scenario Drills) introduces specialized board configurations every 1,000 episodes for targeted skill training.
+Phase 3 (Self-Play) trains against a mixture of delayed agent copies (60\%) and strategic heuristic opponents (40\%) for 5,000 to 15,000 episodes to discover novel strategies while preventing policy collapse. Phase 4 (League Training) activates the full opponent distribution with 40\% historical league agents, 30\% strategic heuristic, 20\% greedy agents, and 10\% self-play. This phase also activates independent parallel-learning (MARL) for Agent 2, transitioning the opponent from a fixed policy pool to a continuously updating student agent. Phase 5 (Scenario Drills) introduces specialized board configurations every 1,000 episodes for targeted skill training.
 
 \subsection{Centralized Reward System and Defensive Normalization}
-The reward function is the primary driver of agent behavior, transforming tactical events into learning signals. To ensure consistency and numerical stability, the framework employs a centralized \texttt{UnifiedRewardShaper} that consolidates all reward logic.
+The reward function drives agent behavior by transforming tactical events into learning signals. A centralized \texttt{UnifiedRewardShaper} consolidates all reward logic to ensure consistency and numerical stability.
 
 \paragraph{Potential-Based Reward Shaping.}
-The framework employs Potential-Based Reward Shaping (PBRS) as its primary mechanism for providing dense learning signals. Rather than assigning additive rewards for individual events (material capture, positional advance, curiosity), all intermediate shaping is unified into a single potential function $\Phi(s)$ that measures game progress. The shaping reward for each transition is defined as:
+Potential-Based Reward Shaping (PBRS) provides the primary mechanism for dense learning signals. All intermediate shaping is unified into a single potential function $\Phi(s)$ that measures game progress rather than assigning additive rewards for individual events. The shaping reward for each transition is:
 
 \begin{equation}
 F(s, a, s') = \gamma \cdot \Phi(s') - \Phi(s)
 \end{equation}
 
-\noindent This formulation, heavily utilized in Potential-Based Reward Shaping \cite{PBRSModern2022} and extended to intrinsic motivation settings by Potential-Based Intrinsic Motivation (AAMAS, 2024), guarantees optimal policy invariance: the same optimal policy is recovered regardless of the choice of $\Phi$, while convergence speed improves when $\Phi$ approximates the true value function. Crucially, stationary behavior ($s' \approx s$) yields $F \approx 0$, eliminating the reward-farming failure mode observed in additive shaping schemes.
+\noindent This formulation, used in Potential-Based Reward Shaping \cite{PBRSModern2022} and extended to intrinsic motivation settings by Potential-Based Intrinsic Motivation (AAMAS, 2024), guarantees optimal policy invariance: the same optimal policy is recovered regardless of the choice of $\Phi$, while convergence speed improves when $\Phi$ approximates the true value function. Stationary behavior ($s' \approx s$) yields $F \approx 0$, eliminating the reward-farming failure mode observed in additive shaping schemes.
 
 The potential function $\Phi(s)$ combines four normalized components:
 \begin{equation}
@@ -246,60 +240,60 @@ Terminal outcomes are set to $+1.0$ (flag capture win), $+0.5$ (depletion win), 
 The support range $[V_{min}, V_{max}] = [-10, 10]$ with 51 atoms yields a resolution of $\delta_z = 0.4$ per atom. Terminal outcomes span 2--3 atoms. The PBRS signal is bounded by the potential function range and the discount factor, producing per-step shaping in the order of $\pm 0.1$, which remains atom-visible without overwhelming terminal signals.
 
 \paragraph{Anti-Stagnation Mechanisms.}
-Three mechanisms prevent the agent from converging to passive, non-progressing policies. First, a per-piece oscillation detector tracks position histories and applies escalating penalties ($-0.02$ per oscillation) when a piece repeatedly returns to previously visited squares (A$\rightarrow$B$\rightarrow$A patterns). Second, a move diversity tracker monitors a 20-move lookback window; if fewer than 3 unique source-destination pairs appear, a $-0.05$ penalty discourages repetitive shuffling. Third, a near-immobility penalty of $-0.1$ triggers when fewer than 5 legal moves remain, directing the agent away from self-boxing positions. A constant combat-initiation bonus of $+0.02$ is maintained outside the PBRS framework to universally encourage engagement over passivity.
+Three mechanisms prevent the agent from converging to passive, non-progressing policies. A per-piece oscillation detector tracks position histories and applies escalating penalties ($-0.02$ per oscillation) when a piece repeatedly returns to previously visited squares (A$\rightarrow$B$\rightarrow$A patterns). A move diversity tracker monitors a 20-move lookback window and applies a $-0.05$ penalty when fewer than 3 unique source-destination pairs appear, discouraging repetitive shuffling. A near-immobility penalty of $-0.1$ triggers when fewer than 5 legal moves remain, directing the agent away from self-boxing positions. A constant combat-initiation bonus of $+0.02$ is maintained outside the PBRS framework to encourage engagement over passivity.
 
 \paragraph{Experience Replay Optimization.}
-Standard uniform sampling from the replay buffer treats all transitions equally, which is sample-inefficient when important learning events (e.g., flag captures, high-value combat) occur infrequently. Prioritized Experience Replay (PER) addresses this by sampling transitions with probability proportional to their temporal-difference (TD) error magnitude:
+Uniform sampling from the replay buffer treats all transitions equally. This is sample-inefficient when important learning events (flag captures, high-value combat) occur rarely. Prioritized Experience Replay (PER) corrects this by sampling transitions with probability proportional to their temporal-difference (TD) error magnitude:
 
 \begin{equation}
 P(i) = \frac{p_i^\alpha}{\sum_k p_k^\alpha}, \quad p_i = |\delta_i| + \epsilon
 \end{equation}
 
-\noindent where $\delta_i$ is the TD-error for transition $i$, $\alpha \in [0,1]$ controls the degree of prioritization (with $\alpha = 0.6$ used in this implementation), and $\epsilon = 10^{-6}$ prevents zero probability. To correct the bias introduced by non-uniform sampling, importance sampling weights are applied:
+\noindent where $\delta_i$ is the TD-error for transition $i$, $\alpha \in [0,1]$ controls the degree of prioritization ($\alpha = 0.6$ in this implementation), and $\epsilon = 10^{-6}$ prevents zero probability. Importance sampling weights correct the bias from non-uniform sampling:
 
 \begin{equation}
 w_i = \left(\frac{1}{N \cdot P(i)}\right)^\beta
 \end{equation}
 
-\noindent where $\beta$ is annealed from 0.4 to 1.0 over training to gradually enforce unbiased updates. The implementation uses a sum-tree data structure for $O(\log N)$ sampling complexity. PER increases sample efficiency by focusing learning on transitions where the current value function is least accurate.
+\noindent where $\beta$ is annealed from 0.4 to 1.0 over training to gradually enforce unbiased updates. A sum-tree data structure provides $O(\log N)$ sampling complexity. PER focuses learning on transitions where the current value function is least accurate.
 
 \paragraph{Full-State Serialization.}
-To ensure mathematical consistency during continuous training sessions, the framework utilizes a full-state serialization mechanism. Unlike standard weight saving, this approach archives the complete agent state, including network weights, optimizer parameters, and the internal states of all replay buffers. For main checkpoints, the system generates compressed \texttt{.tar.gz} archives containing the serialized PyTorch tensors. This prevents the "forgetting" effect associated with empty buffers upon restart and ensures that gradient updates remain continuous across sessions. Conversely, league and deployment models utilize a stripped \texttt{.pt} format, which excludes training-specific overhead to optimize for inference speed and security.
+A full-state serialization mechanism ensures mathematical consistency during continuous training sessions. Unlike standard weight saving, this approach archives the complete agent state: network weights, optimizer parameters, and the internal states of all replay buffers. For main checkpoints, the system generates compressed \texttt{.tar.gz} archives containing the serialized PyTorch tensors. This prevents the ``forgetting'' effect that occurs when buffers start empty upon restart and ensures gradient updates remain continuous across sessions. League and deployment models use a stripped \texttt{.pt} format that excludes training-specific overhead for faster inference and smaller file size.
 
 \paragraph{Advantage Filtering.}
-In standard deep reinforcement learning, the experience replay buffer stores past transitions (state, action, reward, next state) and samples them uniformly during training. However, not all experiences are equally valuable for learning. A routine move that shuffles a piece sideways provides less learning signal than a decisive capture that changes the game trajectory. Building upon Prioritized Experience Replay, the framework implements advantage filtering inspired by the Ataraxos system for imperfect-information games.
+The experience replay buffer samples past transitions uniformly during training, but not all experiences carry equal learning value. A routine sideways piece shuffle provides less signal than a decisive capture that changes the game trajectory. Building on Prioritized Experience Replay, the framework implements advantage filtering inspired by the Ataraxos system for imperfect-information games.
 
-A routine move where a piece shuffles sideways doesn't show much about how to play, but a capture can change the whole game. Transitions where the network makes big errors show parts of the game the agent doesn't understand yet. These high-error moments are where the model can learn the most. Our system focuses on these by sampling from the buffer and picking out the moves with the largest errors to train on. This helps the agent learn from the most important parts of the game without costing more computing time.
+Transitions with large estimation errors indicate parts of the game the agent does not yet understand. These high-error moments carry the most learning potential. The system samples from the buffer and selects transitions with the largest errors for training, concentrating learning on the most informative game states without increasing computational cost.
 
-A common problem in multi-agent games is strategy cycling, where the agent jumps between different approaches without finding a stable solution. For example, an agent might learn to be aggressive, then shift to being defensive when it loses, then go back to being aggressive. This slows down training and makes it hard to find a truly good strategy.
+A common problem in multi-agent games is strategy cycling, where the agent alternates between approaches without settling on a stable solution. An agent might learn to play aggressively, shift to defense after losses, then revert to aggression. This oscillation slows training and prevents convergence to a strong strategy.
 
-To address this problem, the loss function incorporates two additional regularization terms based on Kullback-Leibler (KL) divergence. KL divergence measures how different two probability distributions are from each other. The first regularization term, called the magnet term, measures the difference between the agent's current action probabilities and a uniform distribution where all actions are equally likely. This term encourages exploration by penalizing policies that become too confident in specific actions. The second term, called the target anchor, measures the difference between the current policy and the more stable target network policy. This term provides stability by preventing the policy from changing too rapidly.
+Two KL divergence regularization terms address this problem. The first, called the magnet term, measures the difference between the agent's current action probabilities and a uniform distribution. It encourages exploration by penalizing policies that concentrate too heavily on specific actions. The second, called the target anchor, measures the difference between the current policy and the more stable target network policy. It provides stability by preventing rapid policy changes.
 
-The key innovation is that these two terms have opposing schedules that change over training. The magnet coefficient starts at $\alpha_0 = 0.1$ and decays to $0.001$ following a quadratic curve, meaning exploration is strongly encouraged early in training when the agent knows little about the game. The target anchor coefficient starts at $\beta_0 = 0.001$ and grows to $0.1$, meaning stability becomes increasingly important as the agent develops a competent policy. This schedule ensures that the agent explores aggressively during initial learning phases and gradually transitions to stable exploitation as training progresses.
+These two terms follow opposing schedules. The magnet coefficient starts at $\alpha_0 = 0.1$ and decays to $0.001$ following a quadratic curve, encouraging strong exploration early when the agent knows little. The target anchor coefficient starts at $\beta_0 = 0.001$ and grows to $0.1$, increasing the importance of stability as the agent develops competence. The agent explores aggressively in initial phases and gradually transitions to stable exploitation.
 
 \paragraph{Multi-Step Returns.}
-The standard one-step TD target $r_t + \gamma V(s_{t+1})$ can exhibit high variance and slow credit assignment for sparse rewards. Multi-step returns extend the bootstrapping horizon to $n$ steps:
+The standard one-step TD target $r_t + \gamma V(s_{t+1})$ exhibits high variance and slow credit assignment for sparse rewards. Multi-step returns extend the bootstrapping horizon to $n$ steps:
 
 \begin{equation}
 G_t^{(n)} = \sum_{k=0}^{n-1} \gamma^k r_{t+k} + \gamma^n Q(s_{t+n}, a^*)
 \end{equation}
 
-\noindent where $a^* = \arg\max_a Q(s_{t+n}, a)$ under Double Q-learning. With $n=5$ and $\gamma = 0.995$, the effective discount for the bootstrapped value is $\gamma^5 \approx 0.975$. This deeper horizon was selected to improve credit assignment in Stratego games lasting 200--500 moves, where sparse terminal rewards must propagate across hundreds of decisions. The 5-step return provides a meaningful balance between reduced bias from longer direct reward accumulation and controlled variance from the bootstrapped tail.
+\noindent where $a^* = \arg\max_a Q(s_{t+n}, a)$ under Double Q-learning. With $n=5$ and $\gamma = 0.995$, the effective discount for the bootstrapped value is $\gamma^5 \approx 0.975$. This horizon improves credit assignment in Stratego games lasting 200 to 500 moves, where sparse terminal rewards must propagate across hundreds of decisions. The 5-step return balances reduced bias from longer direct reward accumulation against controlled variance from the bootstrapped tail.
 
 \paragraph{Episode-Level Replay via Trajectory Segment Sampling.}
-While $n$-step returns extend credit assignment over a fixed window, they cannot capture longer-horizon strategic patterns such as multi-move flanking maneuvers or gradual positional improvements that unfold over dozens of transitions. Flat experience replay compounds this limitation by sampling individual transitions independently, discarding the temporal structure of the episodes from which they originated.
+$n$-step returns extend credit assignment over a fixed window but cannot capture longer-horizon strategic patterns such as multi-move flanking maneuvers or gradual positional improvements that unfold over dozens of transitions. Flat experience replay compounds this limitation by sampling transitions independently, discarding the temporal structure of the source episodes.
 
-To address this, the framework employs a dual-buffer replay architecture inspired by recurrent trajectory storage mechanisms~\cite{wang2026history, 2503_14555v1}. An \texttt{EpisodicReplayBuffer} operates alongside the existing Prioritized Experience Replay buffer as a shadow storage. During data collection, every transition is stored in both buffers: the PER buffer indexes transitions individually by TD-error priority, while the episode buffer groups transitions by episode and retains episode-level metadata (game outcome, cumulative reward, episode length).
+A dual-buffer replay architecture, inspired by recurrent trajectory storage mechanisms~\cite{wang2026history, 2503_14555v1}, addresses this. An \texttt{EpisodicReplayBuffer} operates alongside the Prioritized Experience Replay buffer as shadow storage. Every transition is stored in both buffers: the PER buffer indexes transitions individually by TD-error priority, while the episode buffer groups transitions by episode and retains episode-level metadata (game outcome, cumulative reward, episode length).
 
-During each training step, the minibatch of $B = 512$ transitions is composed from both sources using a mixing ratio $\alpha$:
+During each training step, the minibatch of $B = 512$ transitions is composed from both sources with a mixing ratio $\alpha$:
 
 \begin{equation}
 \mathcal{B} = \underbrace{\mathcal{B}_{\text{PER}}}_{\lfloor (1-\alpha) \cdot B \rfloor} \cup \underbrace{\mathcal{B}_{\text{episode}}}_{B - \lfloor (1-\alpha) \cdot B \rfloor}
 \end{equation}
 
-\noindent where $\alpha = 0.25$ allocates 25\% of the batch to episode segment samples. Episode segments are sampled in two stages: first, an episode is selected with probability proportional to $|\text{outcome}|$, biasing toward decisive games (wins and losses) over draws. Second, a contiguous window of $L = 16$ transitions is uniformly sampled from within the selected episode. The final transition in each segment serves as the training tuple, with its reward accumulated across the segment length.
+\noindent where $\alpha = 0.25$ allocates 25\% of the batch to episode segment samples. Episode segments are sampled in two stages. An episode is selected with probability proportional to $|\text{outcome}|$, biasing toward decisive games over draws. A contiguous window of $L = 16$ transitions is then uniformly sampled from within the selected episode. The final transition in each segment serves as the training tuple, with its reward accumulated across the segment length.
 
-The episode buffer stores up to 500 complete episodes. When capacity is reached, the oldest episodes are evicted in FIFO order. This dual-buffer approach can be disabled without modifying the training loop by setting the mixing ratio to zero, in which case the system reverts to standard PER sampling.
+The episode buffer stores up to 500 complete episodes. When capacity is reached, the oldest episodes are evicted in FIFO order. Setting the mixing ratio to zero disables the dual-buffer approach and reverts to standard PER sampling.
 
 \paragraph{Learning Rate Scheduling.}
 Convergence can be accelerated through adaptive learning rate control. A step decay schedule reduces the learning rate by factor $\eta = 0.9$ every 5,000 episodes:
@@ -311,10 +305,10 @@ Convergence can be accelerated through adaptive learning rate control. A step de
 \noindent where $\alpha_0 = 10^{-4}$ is the initial learning rate and $e$ is the episode count. This schedule enables aggressive early learning while maintaining stability as the policy approaches convergence.
 
 \subsection{Action Space Reduction via Heuristic Filtering}
-The full action space in Stratego consists of 400 discrete actions, encoding each starting position on the $10 \times 10$ board paired with four cardinal directions. However, many of these actions are either illegal (moving off-board or into lakes) or strategically irrelevant at any given game state. Presenting all 400 outputs to the network, even with invalid action masking, introduces noise into the learning process as the network must learn to distinguish between many low-value alternatives.
+The full action space in Stratego consists of 400 discrete actions, encoding each starting position on the $10 \times 10$ board paired with four cardinal directions. Many of these actions are illegal (moving off-board or into lakes) or strategically irrelevant at any given state. Presenting all 400 outputs to the network, even with invalid action masking, introduces noise as the network must distinguish between many low-value alternatives.
 
 \paragraph{Heuristic Move Scoring.}
-To address this, a heuristic pre-filter scores all legal moves and selects the top-$k$ candidates (where $k=100$ by default) for consideration. The scoring function assigns points based on several criteria.
+A heuristic pre-filter scores all legal moves and selects the top-$k$ candidates ($k=100$ by default) for consideration. The scoring function assigns points based on the criteria listed in Table \ref{tab:heuristic_scoring}.
 
 \begin{table}[h]
 \centering
@@ -334,7 +328,7 @@ Scout distance ($>1$ square) & $+2/\text{sq}$ & Long-range reconnaissance value 
 \end{table}
 
 \paragraph{Action Masking Integration.}
-Rather than modifying the network architecture, the filtering is implemented through action masking at inference time. The network retains its 400-dimensional output, preserving consistent action semantics throughout training. For each decision:
+Filtering is implemented through action masking at inference time rather than modifying the network architecture. The network retains its 400-dimensional output, preserving consistent action semantics throughout training. For each decision:
 
 \begin{enumerate}
     \item All legal moves are scored using the heuristic function.
@@ -344,19 +338,19 @@ Rather than modifying the network architecture, the filtering is implemented thr
     \item The mask is added to the Q-value output before argmax selection.
 \end{enumerate}
 
-This approach ensures that attack moves and forward advances are always available for selection, while low-value shuffling moves are pruned. The fixed output dimensionality prevents the representational instability that would occur if the network had to learn different action encodings across game states.
+Attack moves and forward advances are always available for selection, while low-value shuffling moves are pruned. The fixed output dimensionality prevents the representational instability that would occur if the network learned different action encodings across game states.
 
 
 
 \subsection{Test-Time Search}
 
-While the trained Q-network provides a strong action-selection policy via single-pass inference, tactical performance in partially observable environments is enhanced through a formal \textit{Expectamax} search, originally proposed by Michie \cite{novikov2024analysis} and recently analyzed in the context of complex game environments by Novikov and Yanovskyi \cite{novikov2024analysis}. This algorithm extends standard minimax by incorporating stochasticity through "Chance Nodes," representing the hidden identity of opponent pieces.
+The trained Q-network provides a strong action-selection policy through single-pass inference. Tactical performance in partially observable environments improves with a formal \textit{Expectamax} search, originally proposed by Michie \cite{novikov2024analysis} and recently analyzed in complex game environments by Novikov and Yanovskyi \cite{novikov2024analysis}. This algorithm extends standard minimax by incorporating stochasticity through ``Chance Nodes'' that represent the hidden identity of opponent pieces.
 
-The search refinement process utilizes the piece-identity probabilities generated by the AAREN history aggregator to calculate the expected utility of potential moves. For a given state $s$ and a set of legal moves $\mathcal{A}(s)$, the refined value $V^*(a_i)$ is computed as follows:
+The search refinement uses the piece-identity probabilities generated by the AAREN history aggregator to calculate expected utility of potential moves. For a given state $s$ and a set of legal moves $\mathcal{A}(s)$, the refined value $V^*(a_i)$ is computed as follows:
 
 \begin{enumerate}
     \item \textbf{Max Node evaluation.} The agent evaluates each candidate move $a_i$ using its positional prior $Q_{dqn}(s, a_i)$.
-    \item \textbf{Chance Node summation.} If $a_i$ results in an attack on position $j$, the system treats the identity of the target piece as a chance node. The expected combat utility $\mathbb{E}[U_{combat}]$ is computed by summing the utility of all possible outcomes, weighted by their probabilities:
+    \item \textbf{Chance Node summation.} If $a_i$ results in an attack on position $j$, the identity of the target piece is treated as a chance node. The expected combat utility $\mathbb{E}[U_{combat}]$ sums the utility of all possible outcomes, weighted by their probabilities:
     \begin{equation}
         \mathbb{E}[U_{combat}] = \sum_{r \in \mathcal{R}} P(\text{rank}_j = r | \mathcal{H}) \cdot \text{Utility}(rank_{attacker}, r)
     \end{equation}
@@ -367,11 +361,11 @@ The search refinement process utilizes the piece-identity probabilities generate
     \end{equation}
 \end{enumerate}
 
-This formal Expectamax logic ensures that the agent avoids "hallucinations" regarding successful attacks on hidden pieces. Specifically, it prevents the model from committing high-value pieces to squares with significant probabilities of containing Bombs or superior ranks, even if the raw Q-network is optimistic about the board position. The exact summation over rank probabilities ensures that the agent's risk assessment is mathematically rigorous and grounded in observed opponent behavior.
+The Expectamax logic prevents the agent from committing high-value pieces to squares with significant probabilities of containing Bombs or superior ranks, even when the raw Q-network is optimistic about the board position. The exact summation over rank probabilities ensures that risk assessment is mathematically grounded in observed opponent behavior.
 
 \subsection{Deployment}
-Upon completion of the training and validation cycles, the best-performing MARQ model weights will be saved and finalized for deployment. Deploy the trained model into the Stratego game environment described in Section 2 of the methodology.
-The deployed system will function as the complete application used during the user testing phase. It will be configured to run locally on the single device designated for the experimental procedures. In this production mode, the model's exploratory functions will be deactivated for a more measured approach from the agent, always selecting the action with the highest predicted Q-value. This ensures that all human participants compete against the identical, optimized version of the MARQ framework, providing a consistent baseline for the quantitative and qualitative evaluations.
+The best-performing MARQ model weights are saved and finalized for deployment after the training and validation cycles. The trained model is deployed into the Stratego game environment described in Section 2 of the methodology.
+The deployed system functions as the complete application used during user testing. It runs locally on the single device designated for the experimental procedures. In production mode, exploratory functions are deactivated, and the model always selects the action with the highest predicted Q-value. All human participants compete against the same optimized version of the MARQ framework, providing a consistent baseline for quantitative and qualitative evaluations.
 
 \begin{figure}[H]
     \centering
@@ -380,11 +374,11 @@ The deployed system will function as the complete application used during the us
     \label{fig:Sequence Diagram}
 \end{figure}
 
-In the figure above, the player starts the game and the loop begins until either the player wins by capturing the opponent's flag or loses if the agent captures the player's flag. The agent receives the current board state and updates the AAREN module, which produces learned embeddings encoding implicit piece identity inference from observed action history. The DQN then evaluates Q-values for all legal actions given this embedding-enhanced state representation and selects the action with the highest expected value.
+In the figure above, the player starts the game. The loop continues until either the player captures the opponent's flag or the agent captures the player's flag. The agent receives the current board state and updates the AAREN module, which produces learned embeddings encoding implicit piece identity inference from observed action history. The DQN evaluates Q-values for all legal actions given this embedding-enhanced state representation and selects the action with the highest expected value.
 
 
 \section{Game Environment Development}
-The game environment used in this project is a digital version of Stratego, a two-player board game of incomplete information. This version was developed using Python and Pygame, featuring a GUI with blue and red color schemes, an image-based piece system, a battle popup that displays the combat of the player and enemy pieces, and a history panel.
+The game environment is a digital version of Stratego, a two-player board game of incomplete information. It was developed in Python and Pygame. The GUI features blue and red color schemes, an image-based piece system, a battle popup that displays the combat of the player and enemy pieces, and a history panel.
 \begin{figure}[H]
     \centering
     \includegraphics[width=1\textwidth]{figures/StrategoWithMARQ_GameStart.png}
@@ -393,7 +387,7 @@ The game environment used in this project is a digital version of Stratego, a tw
 \end{figure}
 
 \subsection{Asset Design}
-The game assets were designed in pixel art style, with each piece represented by a unique image. The pieces are designed to be easily distinguishable, with clear visual cues indicating their rank and special abilities. The assets for the game pieces were created in pixilart.
+The game assets use pixel art, with each piece represented by a unique image. The pieces are designed to be easily distinguishable, with clear visual cues indicating rank and special abilities. The assets were created in pixilart.
 \begin{figure}[H]
     \centering
     \includegraphics[width=.7\textwidth]{figures/StrategoPieces.png}
@@ -402,29 +396,29 @@ The game assets were designed in pixel art style, with each piece represented by
 \end{figure}
 
 \section{AI-Driven Guidance and Evaluation Interface}
-To evaluate the MARQ framework's utility as a strategic training tool, a specialized guidance interface was developed. This interface exposes the agent's internal state evaluation and probabilistic beliefs to the human player in real-time, facilitating an "AI-guided" gameplay experience.
+A specialized guidance interface evaluates the MARQ framework's utility as a strategic training tool. The interface exposes the agent's internal state evaluation and probabilistic beliefs to the human player in real-time, enabling an ``AI-guided'' gameplay experience.
 
 \subsection{Quantitative State Evaluation}
-The system provides a real-time assessment of the board's strategic value using the expected value of the C51 distributional output. For the current board state $s$, the state evaluation $V(s)$ is derived from the support vector $\mathbf{z}$ and the predicted probabilities $\mathbf{P}(s, a)$ for the optimal action $a^*$:
+The system provides a real-time assessment of strategic board value using the expected value of the C51 distributional output. For the current board state $s$, the state evaluation $V(s)$ is derived from the support vector $\mathbf{z}$ and the predicted probabilities $\mathbf{P}(s, a)$ for the optimal action $a^*$:
 \begin{equation}
     V(s) = \sum_{i=1}^{51} P(s, a^*, z_i) \cdot z_i
 \end{equation}
-This scalar value, ranging from $-10$ to $+10$, is visualized via an evaluation bar, providing the user with immediate feedback on the tactical consequences of their moves.
+This scalar value, ranging from $-10$ to $+10$, is visualized via an evaluation bar. It gives the user immediate feedback on the tactical consequences of their moves.
 
 \subsection{Bayesian-like Belief Visualization}
-The framework leverages the AAREN history aggregator to assist users in managing hidden information. By exposing the latent identity probabilities $P(\text{rank}_j = r | \mathcal{H})$ for enemy pieces, the interface allows players to visualize the agent's "belief" regarding unrevealed units. These probabilities change dynamically as pieces move, reflecting the system's ability to perform behavioral inference.
+The AAREN history aggregator assists users in managing hidden information. The interface displays the latent identity probabilities $P(\text{rank}_j = r | \mathcal{H})$ for enemy pieces, letting players visualize the agent's belief about unrevealed units. These probabilities change dynamically as pieces move, reflecting the system's behavioral inference capabilities.
 
 \subsection{Heuristic-Augmented Move Recommendation}
-Users can request strategic suggests derived from the Expectamax-refined DQN policy. Unlike a simple greedy assistant, this recommendation system accounts for piece-identity uncertainty by favoring moves with the highest expected utility under the current belief state. This feature serves as a pedagogical signal, aligning human tactical selection with the agent's trained strategic policy.
+Users can request strategic suggestions derived from the Expectamax-refined DQN policy. This recommendation system accounts for piece-identity uncertainty by favoring moves with the highest expected utility under the current belief state. The feature serves as a pedagogical signal, aligning human tactical selection with the agent's trained strategic policy.
 
 \section{Evaluation}
 
-A comprehensive evaluation approach combining quantitative and qualitative methods will be used to assess the MARQ framework's performance and the user experience.
+A comprehensive evaluation approach combining quantitative and qualitative methods assesses the MARQ framework's performance and the user experience.
 
 \paragraph{Quantitative Analysis.}
-The quantitative assessment of the model's performance tracks several key metrics to gauge learning progress and strategic capability. Win rate percentage measures the proportion of games won against human participants. Average game length, computed as the mean number of moves per game, indicates decision efficiency. Decision-making speed records the average time taken by the agent to select an action. Training stability is assessed through loss curves showing the progression of distributional and value losses over training episodes. To evaluate the synchronized learning environment, a two-tailed paired t-test will determine if there is a statistically significant difference in gameplay metrics between a player's first and last games, assessing whether human players improve against the AI. The results from Likert-scale questions will be analyzed using a weighted mean to derive a quantitative score for each dimension of user acceptance.
+The quantitative assessment tracks several metrics to gauge learning progress and strategic capability. Win rate percentage measures the proportion of games won against human participants. Average game length, computed as the mean number of moves per game, indicates decision efficiency. Decision-making speed records the average time the agent takes to select an action. Training stability is assessed through loss curves showing the progression of distributional and value losses over training episodes. A two-tailed paired t-test determines whether gameplay metrics differ significantly between a player's first and last games, assessing whether human players improve against the AI. Likert-scale responses are analyzed using a weighted mean to produce a quantitative score for each dimension of user acceptance.
 
 \paragraph{Qualitative Analysis.}
-To assess end-user opinion on usability, a usability testing session will gather participant feedback through an evaluation form evaluating three key dimensions. Performance assessment examines the agent's speed, consistency, and perceived strategic competence. Usability evaluation considers the ease of use, intuitiveness of the interface, and overall user experience. Relevance gauges the AI's value as a strategic training tool and its potential for helping players learn Stratego.
+A usability testing session gathers participant feedback through an evaluation form covering three dimensions. Performance assessment examines the agent's speed, consistency, and perceived strategic competence. Usability evaluation considers ease of use, interface intuitiveness, and overall user experience. Relevance gauges the AI's value as a strategic training tool and its potential for helping players learn Stratego.
 
-Developing the MARQ framework is a process where each version represents an improvement over the last. Appendix B shows the initial results from 1,000 episodes. During this early stage, the agent is still exploring and trying to find the best strategies. The early win rates show many draws as the pieces just move back and forth. With Noisy Networks, the agent learns how much to explore on its own, which helps it adapt better as training continues.
+Developing the MARQ framework is iterative. Each version represents an improvement over the last. Appendix B shows the initial results from 1,000 episodes. During this early stage, the agent is still exploring strategies. The early win rates show many draws as pieces move without decisive engagement. With Noisy Networks, the agent learns how much to explore on its own, adapting better as training continues.
