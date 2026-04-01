@@ -19,3 +19,23 @@ debug_log.txt
 **/debug_log.txt
 # Ignore PyTorch model files
 *.pt
+paths.txt
+profiling_log.txt
+thesis_comparison_writeup.txt
+Latex/sp.aux
+Latex/sp.blg
+Latex/sp.fdb_latexmk
+Latex/sp.fls
+Latex/sp.lof
+Latex/sp.log
+Latex/sp.lot
+Latex/sp.out
+Latex/sp.pdf
+Latex/sp.synctex.gz
+Latex/sp.toc
+Latex/chapters/AppendixA.aux
+Latex/chapters/AppendixB.aux
+Latex/sp.toc
+Latex/chapters/AppendixA.aux
+Latex/chapters/AppendixB.aux
+

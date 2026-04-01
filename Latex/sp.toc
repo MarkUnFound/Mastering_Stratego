@@ -128,15 +128,26 @@
 \contentsline {paragraph}{Qualitative Analysis.}{61}{section*.65}%
 \contentsline {chapter}{\numberline {5}Results and Discussion}{63}{chapter.5}%
 \contentsline {section}{\numberline {5.1}Training Progress and Convergence}{63}{section.5.1}%
-\contentsline {section}{\numberline {5.2}Phase 1: Acquisition of Tactical Foundations}{63}{section.5.2}%
+\contentsline {section}{\numberline {5.2}Phase 1: Acquisition of Tactical Foundations}{64}{section.5.2}%
 \contentsline {section}{\numberline {5.3}Phase 2: Transition to Partial Observability}{64}{section.5.3}%
 \contentsline {section}{\numberline {5.4}Inference Accuracy and Representation}{64}{section.5.4}%
 \contentsline {section}{\numberline {5.5}Stalemate and Decisiveness Analysis}{65}{section.5.5}%
-\contentsline {chapter}{\numberline {A}Gantt Chart}{66}{appendix.A}%
-\contentsline {chapter}{\numberline {B}System UI and Training}{69}{appendix.B}%
-\contentsline {section}{\numberline {B.1}Interpretability Dashboard and Decision Metrics}{75}{section.B.1}%
-\contentsline {section}{\numberline {B.2}Discussion on Training Progress and Model Behavior}{77}{section.B.2}%
-\contentsline {subsection}{\numberline {B.2.1}Behavioral Evolution}{77}{subsection.B.2.1}%
-\contentsline {subsection}{\numberline {B.2.2}Implicit Belief and AAREN Performance}{77}{subsection.B.2.2}%
-\contentsline {subsection}{\numberline {B.2.3}Impact of Reward Overhaul}{78}{subsection.B.2.3}%
-\contentsline {section}{\numberline {B.3}AI Transparency, Inclusion, and Originality of Intent}{78}{section.B.3}%
+\contentsline {section}{\numberline {5.6}Comparative Architecture Analysis}{65}{section.5.6}%
+\contentsline {subsection}{\numberline {5.6.1}Win Rate and Decisiveness}{65}{subsection.5.6.1}%
+\contentsline {subsection}{\numberline {5.6.2}Loss-Performance Coupling}{66}{subsection.5.6.2}%
+\contentsline {subsection}{\numberline {5.6.3}Sample Efficiency and Compute Trade-off}{67}{subsection.5.6.3}%
+\contentsline {subsection}{\numberline {5.6.4}Attention versus Recurrence in Hidden Information Inference}{67}{subsection.5.6.4}%
+\contentsline {subsection}{\numberline {5.6.5}Extended Training at 75,000 Episodes}{67}{subsection.5.6.5}%
+\contentsline {subsection}{\numberline {5.6.6}Synthesis}{69}{subsection.5.6.6}%
+\contentsline {chapter}{\numberline {6}Contributions and Recommendations}{70}{chapter.6}%
+\contentsline {section}{\numberline {6.1}Summary of Contributions}{70}{section.6.1}%
+\contentsline {section}{\numberline {6.2}Recommendations}{70}{section.6.2}%
+\contentsline {chapter}{\numberline {A}Gantt Chart}{72}{appendix.A}%
+\contentsline {chapter}{\numberline {B}System UI and Training}{75}{appendix.B}%
+\contentsline {section}{\numberline {B.1}Interpretability Dashboard and Decision Metrics}{81}{section.B.1}%
+\contentsline {section}{\numberline {B.2}Discussion on Training Progress and Model Behavior}{83}{section.B.2}%
+\contentsline {subsection}{\numberline {B.2.1}Behavioral Evolution}{83}{subsection.B.2.1}%
+\contentsline {subsection}{\numberline {B.2.2}Implicit Belief and AAREN Performance}{83}{subsection.B.2.2}%
+\contentsline {subsection}{\numberline {B.2.3}Impact of Reward Overhaul}{84}{subsection.B.2.3}%
+\contentsline {section}{\numberline {B.3}Architecture Comparison Training Charts}{85}{section.B.3}%
+\contentsline {section}{\numberline {B.4}AI Transparency, Inclusion, and Originality of Intent}{92}{section.B.4}%

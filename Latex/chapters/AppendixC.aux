@@ -1,0 +1,66 @@
+\relax 
+\providecommand\hyper@newdestlabel[2]{}
+\@writefile{toc}{\contentsline {chapter}{\numberline {C}Architecture Comparison Training Charts}{83}{appendix.C}\protected@file@percent }
+\@writefile{lof}{\addvspace {10\p@ }}
+\@writefile{lot}{\addvspace {10\p@ }}
+\newlabel{app:comparison_charts}{{C}{83}{Architecture Comparison Training Charts}{appendix.C}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {C.1}Vanilla DQN with LSTM (15,302 Episodes)}{84}{section.C.1}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {C.1}{\ignorespaces DQN+LSTM training progress at 15,302 episodes. The top panel shows episode rewards with cumulative averages. The middle panel shows cumulative wins and running win rate, where Agent 1 win rate stabilized near 25\%. The bottom panel shows policy loss convergence.}}{84}{figure.caption.83}\protected@file@percent }
+\newlabel{fig:lstm15k_progress}{{C.1}{84}{DQN+LSTM training progress at 15,302 episodes. The top panel shows episode rewards with cumulative averages. The middle panel shows cumulative wins and running win rate, where Agent 1 win rate stabilized near 25\%. The bottom panel shows policy loss convergence}{figure.caption.83}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {C.2}{\ignorespaces DQN+LSTM additional metrics at 15,302 episodes. Average episode length remained near 1,345 steps. The 100-episode running win rate oscillated between 20\% and 30\% with no upward trend. Q-values showed unstable oscillation. NoisyNet entropy was fixed at zero, indicating no learned exploration.}}{85}{figure.caption.84}\protected@file@percent }
+\newlabel{fig:lstm15k_metrics}{{C.2}{85}{DQN+LSTM additional metrics at 15,302 episodes. Average episode length remained near 1,345 steps. The 100-episode running win rate oscillated between 20\% and 30\% with no upward trend. Q-values showed unstable oscillation. NoisyNet entropy was fixed at zero, indicating no learned exploration}{figure.caption.84}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {C.2}Vanilla DQN with LSTM (37,213 Episodes, Corrupted JSON)}{86}{section.C.2}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {C.3}{\ignorespaces DQN+LSTM training progress at 37,213 episodes. The cumulative win rate for Agent 1 plateaued near 22\%, while Agent 2 stabilized around 40\%. Cumulative rewards exhibited a negative drift in later episodes. The JSON training history for this run was corrupted during storage; these charts represent the sole surviving record of the training dynamics.}}{86}{figure.caption.85}\protected@file@percent }
+\newlabel{fig:lstm37k_progress}{{C.3}{86}{DQN+LSTM training progress at 37,213 episodes. The cumulative win rate for Agent 1 plateaued near 22\%, while Agent 2 stabilized around 40\%. Cumulative rewards exhibited a negative drift in later episodes. The JSON training history for this run was corrupted during storage; these charts represent the sole surviving record of the training dynamics}{figure.caption.85}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {C.4}{\ignorespaces DQN+LSTM additional metrics at 37,213 episodes. The 100-episode win rate remained between 15\% and 30\% across the full run. Q-values exhibited a late-training upward divergence reaching 1.2, which is inconsistent with the flat win rate and suggests Q-value overestimation. NoisyNet entropy remained at zero.}}{87}{figure.caption.86}\protected@file@percent }
+\newlabel{fig:lstm37k_metrics}{{C.4}{87}{DQN+LSTM additional metrics at 37,213 episodes. The 100-episode win rate remained between 15\% and 30\% across the full run. Q-values exhibited a late-training upward divergence reaching 1.2, which is inconsistent with the flat win rate and suggests Q-value overestimation. NoisyNet entropy remained at zero}{figure.caption.86}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {C.3}Rainbow DQN with AAREN (9,778 Episodes, Phase 4)}{88}{section.C.3}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {C.5}{\ignorespaces Rainbow DQN+AAREN training progress at 9,778 episodes in Phase 4 league play. Agent 1 win rate reached approximately 50\%, and the cumulative win trend showed steady upward movement through the entirety of training. The policy loss operated in the distributional (C51) range of 3.5--4.0.}}{88}{figure.caption.87}\protected@file@percent }
+\newlabel{fig:rdqn9k_progress}{{C.5}{88}{Rainbow DQN+AAREN training progress at 9,778 episodes in Phase 4 league play. Agent 1 win rate reached approximately 50\%, and the cumulative win trend showed steady upward movement through the entirety of training. The policy loss operated in the distributional (C51) range of 3.5--4.0}{figure.caption.87}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {C.6}{\ignorespaces Rainbow DQN+AAREN additional metrics at 9,778 episodes. The 100-episode win rate reached 40--60\% in the final episodes. Average Q-values grew continuously from 0.2 to 1.8, in contrast to the LSTM's oscillating pattern. NoisyNet entropy (sigma) rose from 0.034 to 0.049, indicating active learned exploration throughout training.}}{89}{figure.caption.88}\protected@file@percent }
+\newlabel{fig:rdqn9k_metrics}{{C.6}{89}{Rainbow DQN+AAREN additional metrics at 9,778 episodes. The 100-episode win rate reached 40--60\% in the final episodes. Average Q-values grew continuously from 0.2 to 1.8, in contrast to the LSTM's oscillating pattern. NoisyNet entropy (sigma) rose from 0.034 to 0.049, indicating active learned exploration throughout training}{figure.caption.88}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {C.7}{\ignorespaces AAREN end-to-end training metrics at 9,778 episodes. The top panel shows gradient norms on a logarithmic scale, confirming consistent gradient flow throughout training. The bottom panel shows embedding standard deviation (diversity) and prediction accuracy, with accuracy stabilizing near 24\% and embedding diversity averaging 2.0.}}{90}{figure.caption.89}\protected@file@percent }
+\newlabel{fig:rdqn9k_aaren}{{C.7}{90}{AAREN end-to-end training metrics at 9,778 episodes. The top panel shows gradient norms on a logarithmic scale, confirming consistent gradient flow throughout training. The bottom panel shows embedding standard deviation (diversity) and prediction accuracy, with accuracy stabilizing near 24\% and embedding diversity averaging 2.0}{figure.caption.89}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {C.4}Rainbow DQN with AAREN (75,047 Episodes, Phase 2)}{91}{section.C.4}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {C.8}{\ignorespaces Rainbow DQN+AAREN training progress at 75,047 episodes in Phase 2 partial observability. This separate training lineage remained in Phase 2 against heuristic opponents. The distributional loss shows a clear downward trend from 3.89 to 2.84 across the full run, unlike the LSTM's flat or inflating loss trajectory. The win rate reached 12\% against smart heuristic opponents.}}{91}{figure.caption.90}\protected@file@percent }
+\newlabel{fig:rdqn75k_progress}{{C.8}{91}{Rainbow DQN+AAREN training progress at 75,047 episodes in Phase 2 partial observability. This separate training lineage remained in Phase 2 against heuristic opponents. The distributional loss shows a clear downward trend from 3.89 to 2.84 across the full run, unlike the LSTM's flat or inflating loss trajectory. The win rate reached 12\% against smart heuristic opponents}{figure.caption.90}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {C.9}{\ignorespaces Rainbow DQN+AAREN additional metrics at 75,047 episodes. Q-values grew from near zero to 1.84, nearly five times the LSTM's terminal value. Episode lengths stabilized near 378 steps, significantly shorter than the LSTM's 1,345, reflecting more decisive gameplay. NoisyNet entropy continued to increase throughout training.}}{92}{figure.caption.91}\protected@file@percent }
+\newlabel{fig:rdqn75k_metrics}{{C.9}{92}{Rainbow DQN+AAREN additional metrics at 75,047 episodes. Q-values grew from near zero to 1.84, nearly five times the LSTM's terminal value. Episode lengths stabilized near 378 steps, significantly shorter than the LSTM's 1,345, reflecting more decisive gameplay. NoisyNet entropy continued to increase throughout training}{figure.caption.91}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {C.10}{\ignorespaces AAREN end-to-end training metrics at 75,047 episodes. The embedding diversity and prediction accuracy remained stable over the extended training horizon, with accuracy near 21\% and embedding standard deviation around 2.4. Gradient norms remained consistent, confirming that the attention mechanism did not experience vanishing or exploding gradient problems over long training.}}{93}{figure.caption.92}\protected@file@percent }
+\newlabel{fig:rdqn75k_aaren}{{C.10}{93}{AAREN end-to-end training metrics at 75,047 episodes. The embedding diversity and prediction accuracy remained stable over the extended training horizon, with accuracy near 21\% and embedding standard deviation around 2.4. Gradient norms remained consistent, confirming that the attention mechanism did not experience vanishing or exploding gradient problems over long training}{figure.caption.92}{}}
+\@setckpt{chapters/AppendixC}{
+\setcounter{page}{94}
+\setcounter{equation}{0}
+\setcounter{enumi}{4}
+\setcounter{enumii}{0}
+\setcounter{enumiii}{0}
+\setcounter{enumiv}{0}
+\setcounter{footnote}{0}
+\setcounter{mpfootnote}{0}
+\setcounter{part}{0}
+\setcounter{chapter}{3}
+\setcounter{section}{4}
+\setcounter{subsection}{0}
+\setcounter{subsubsection}{0}
+\setcounter{paragraph}{0}
+\setcounter{subparagraph}{0}
+\setcounter{figure}{10}
+\setcounter{table}{0}
+\setcounter{section@level}{1}
+\setcounter{Item}{15}
+\setcounter{Hfootnote}{0}
+\setcounter{bookmark@seq@number}{109}
+\setcounter{parentequation}{0}
+\setcounter{float@type}{16}
+\setcounter{caption@flags}{2}
+\setcounter{continuedfloat}{0}
+\setcounter{subfigure}{0}
+\setcounter{subtable}{0}
+\setcounter{algorithm}{1}
+\setcounter{ALC@unique}{21}
+\setcounter{ALC@line}{21}
+\setcounter{ALC@rem}{0}
+\setcounter{ALC@depth}{0}
+\setcounter{lstnumber}{1}
+\setcounter{lstlisting}{0}
+}

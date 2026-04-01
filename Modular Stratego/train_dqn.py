@@ -322,6 +322,50 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
             'starting_player': starting_player
         }
     
+    # Cache to avoid redundant disk loads when league selects the same opponent
+    _last_league_path = [None]  # Mutable container for nonlocal access
+    
+    # Epoch-Based Opponent Cycling state
+    from training_config import OPPONENT_CYCLE_INTERVAL
+    _opponent_cycle_types = [None]  # Sorted list of opponent types for deterministic cycling
+    _opponent_cycle_epoch = [-1]    # Current epoch index (tracks when to log transitions)
+    
+    # Lagged self-play cache: stores path of last checkpoint used as "self" opponent.
+    # Updated at epoch boundaries to periodically refresh the lag target.
+    _self_lag_path = [None]         # Mutable container for nonlocal access
+    
+    def _get_epoch_opponent_type(episode_count):
+        """
+        Determine the opponent type for the current epoch block.
+        All lanes use the same type for OPPONENT_CYCLE_INTERVAL episodes.
+        """
+        if not (curriculum and CURRICULUM_ENABLED):
+            return None  # Fall back to legacy random selection
+        
+        opponent_dist = curriculum.get_opponent_distribution()
+        types = sorted(opponent_dist.keys())  # Deterministic order
+        
+        if not types:
+            return "self"
+        
+        # Cache the type list for logging
+        _opponent_cycle_types[0] = types
+        
+        # Determine epoch index and cycle through types
+        epoch_idx = episode_count // OPPONENT_CYCLE_INTERVAL
+        type_idx = epoch_idx % len(types)
+        selected_type = types[type_idx]
+        
+        # Log on epoch transitions
+        if epoch_idx != _opponent_cycle_epoch[0]:
+            _opponent_cycle_epoch[0] = epoch_idx
+            remaining = OPPONENT_CYCLE_INTERVAL - (episode_count % OPPONENT_CYCLE_INTERVAL)
+            print(f"[CYCLE] Opponent epoch {epoch_idx}: '{selected_type}' for next {remaining} episodes (types: {types})")
+            # Invalidate lagged self-play path so a fresh checkpoint is selected each epoch
+            _self_lag_path[0] = None
+        
+        return selected_type
+
     def select_opponent_for_lane(lane_idx):
         """Select opponent type for a lane based on curriculum or opponent pool."""
         # nonlocal use_full_obs, agent2 # No longer needed as we return
@@ -333,14 +377,10 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
         current_opponent = agent2
         
         if curriculum and CURRICULUM_ENABLED:
-            opponent_dist = curriculum.get_opponent_distribution()
-            r = random.random()
-            cumulative = 0.0
-            for op_type, prob in opponent_dist.items():
-                cumulative += prob
-                if r < cumulative:
-                    opponent_type = op_type
-                    break
+            # Epoch-based cycling: deterministic opponent type per block
+            opponent_type = _get_epoch_opponent_type(completed_episodes)
+            if opponent_type is None:
+                opponent_type = "self"  # Fallback
             
             # Configure opponent based on type
             if opponent_type == "true_random":
@@ -361,29 +401,51 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
             elif opponent_type == "league":
                 path = league_manager.get_opponent()
                 if path:
-                    # Load league agent (shared agent2 weights)
-                    agent2.load_model(path)
+                    # Only reload if a different checkpoint was selected
+                    if path != _last_league_path[0]:
+                        agent2.load_model(path)
+                        _last_league_path[0] = path
                     current_opponent = agent2
                     opponent_uses_history = True
                 else:
                     opponent_type = "self"
                     agent2.q_network.load_state_dict(agent1.q_network.state_dict())
                     agent2.target_network.load_state_dict(agent1.target_network.state_dict())
+                    _last_league_path[0] = None  # Invalidate cache
                     current_opponent = agent2
                     opponent_uses_history = True
             elif opponent_type == "exploiters":
                 current_opponent = get_random_exploiter(device, player_id=-1)
                 opponent_uses_history = False
-            else:  # self_500, self
-                agent2.q_network.load_state_dict(agent1.q_network.state_dict())
-                agent2.target_network.load_state_dict(agent1.target_network.state_dict())
+            else:  # self_500, self — use LAGGED league checkpoint to break Nash equilibrium
+                # FIX: Instead of copying live agent1 weights (which causes symmetric
+                # co-adaptation where both agents improve at the same rate and cancel
+                # each other out), load a randomly selected historical checkpoint.
+                # This gives agent1 an asymmetric, non-co-adapting target to exploit.
+                import os
+                lag_path = league_manager.get_opponent()  # Random historical checkpoint
+                if lag_path:
+                    # Only reload if epoch changed (avoid redundant disk I/O mid-epoch)
+                    if lag_path != _self_lag_path[0]:
+                        agent2.load_model(lag_path)
+                        _self_lag_path[0] = lag_path
+                        _last_league_path[0] = None  # Invalidate league cache (different file)
+                        print(f"[SELF-LAG] Loaded lagged opponent: {os.path.basename(lag_path)}")
+                else:
+                    # No league checkpoints yet — fall back to live copy (early training only)
+                    agent2.q_network.load_state_dict(agent1.q_network.state_dict())
+                    agent2.target_network.load_state_dict(agent1.target_network.state_dict())
+                    _self_lag_path[0] = None
+                    _last_league_path[0] = None  # Invalidate cache
                 current_opponent = agent2
                 opponent_uses_history = True
         else:
             # Legacy mode: use opponent pool
             opponent_type, opponent_data = opponent_pool.select_opponent()
             if opponent_type == "league":
-                agent2.load_model(opponent_data)
+                if opponent_data != _last_league_path[0]:
+                    agent2.load_model(opponent_data)
+                    _last_league_path[0] = opponent_data
                 current_opponent = agent2
                 opponent_uses_history = True
             elif opponent_type == "random":
@@ -395,6 +457,7 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
             else:
                 agent2.q_network.load_state_dict(agent1.q_network.state_dict())
                 agent2.target_network.load_state_dict(agent1.target_network.state_dict())
+                _last_league_path[0] = None  # Invalidate cache
                 current_opponent = agent2
                 opponent_uses_history = True
         
@@ -487,7 +550,8 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
             p2_indices = [i for i in range(num_envs) if lane_current_player[i] == -1]
             
             import time
-            profiling = {"p1_act": 0.0, "p2_act": 0.0, "env_step": 0.0, "replay": 0.0}
+            profiling = {"p1_act": 0.0, "p2_act": 0.0, "env_step": 0.0, "reward": 0.0, "aaren": 0.0, "replay": 0.0, "other": 0.0}
+            t_start = time.perf_counter()
             
             # P1 batch action
             t0 = time.perf_counter()
@@ -509,7 +573,6 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
             # P2 batch action
             t1 = time.perf_counter()
             if p2_indices:
-                # Group P2 by opponent for batched inference
                 opponent_groups = {}
                 for i in p2_indices:
                     opp = lane_current_opponents[i]
@@ -523,8 +586,6 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                 
                 for opp_id, group in opponent_groups.items():
                     opp = group['opponent']
-                    # Use temperature when opponents act_batch supports it.
-                    # drqn_agent.py act_batch supports temperature. Other opponents ignore kwargs.
                     p2_actions = opp.act_batch(
                         group['states'], group['moves'], group['game_states'],
                         env_indices=group['indices'], full_observability=use_full_obs,
@@ -543,10 +604,11 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
             p1_step_count = len(p1_indices)
             global_step += p1_step_count
             
-            # --- PROCESS RESULTS PER LANE ---
-            reset_commands = {}  # Lane index -> reset placements (for lanes that finished)
+            t_reward_aaren = time.perf_counter()
             
-            # Batch lists for Agent 1 memory
+            # --- PROCESS RESULTS PER LANE ---
+            reset_commands = {}
+            
             batch_states = []
             batch_actions = []
             batch_rewards = []
@@ -554,10 +616,9 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
             batch_dones = []
             batch_game_states = []
             batch_next_game_states = []
-            batch_infos = []  # Track infos for battle detection in PER
-            batch_active_mask = [] # Fix missing initialization for Agent 1
+            batch_infos = []
+            batch_active_mask = []
 
-            # Batch lists for Agent 2 memory
             batch_states_p2 = []
             batch_actions_p2 = []
             batch_rewards_p2 = []
@@ -572,23 +633,17 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                 lane_step_counts[i] += 1
                 current_player = lane_current_player[i]
                 
-                # --- AGENT 1 (P1) LOGIC ---
+                tr = time.perf_counter()
                 if current_player == 1:
-                    # Agent 1 Just Acted - Unified Reward Shaper handles all components
                     done_bool = dones[i].item() if hasattr(dones[i], 'item') else dones[i]
                     reward = lane_dist_rewards[i](
-                        previous_state=lane_game_states[i],
-                        action=actions[i],
-                        current_state=next_states[i],
-                        done=done_bool,
-                        winner=infos[i].get('winner'),
-                        info=infos[i]
+                        previous_state=lane_game_states[i], action=actions[i],
+                        current_state=next_states[i], done=done_bool,
+                        winner=infos[i].get('winner'), info=infos[i]
                     )
-                    
                     lane_episode_rewards_p1[i] += reward
                     
                     if done_bool:
-                        # Game ended on P1's turn
                         batch_states.append(lane_game_states[i].board)
                         batch_actions.append(actions[i])
                         batch_rewards.append(reward)
@@ -597,47 +652,25 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                         batch_active_mask.append(True)
                         batch_game_states.append(lane_game_states[i])
                         batch_next_game_states.append(next_states[i])
-                        batch_infos.append(infos[i])  # For PER battle detection
-                        
-                        lane_pending_transitions[i] = None # Clear
+                        batch_infos.append(infos[i])
+                        lane_pending_transitions[i] = None
                     else:
-                        # Game continues -> P2's turn
-                        # Store as PENDING. Wait for P2's response.
                         lane_pending_transitions[i] = {
-                            'state': lane_game_states[i].board,
-                            'action': actions[i],
-                            'reward': reward,
-                            'game_state': lane_game_states[i]
+                            'state': lane_game_states[i].board, 'action': actions[i],
+                            'reward': reward, 'game_state': lane_game_states[i]
                         }
-                
-                # --- AGENT 2 (P2) LOGIC ---
                 else:
-                    # Agent 2 Just Acted
                     done_bool = dones[i].item() if hasattr(dones[i], 'item') else dones[i]
-                    
-                    # Track reward for P2 visualization (using the same Unified Shaper)
                     p2_reward = lane_p2_shapers[i](
-                        previous_state=lane_game_states[i],
-                        action=actions[i],
-                        current_state=next_states[i],
-                        done=done_bool,
-                        winner=infos[i].get('winner'),
-                        info=infos[i]
+                        previous_state=lane_game_states[i], action=actions[i],
+                        current_state=next_states[i], done=done_bool,
+                        winner=infos[i].get('winner'), info=infos[i]
                     )
                     lane_episode_rewards_p2[i] += p2_reward 
                     
-                    # Check for P1 Pending Transition
                     if lane_pending_transitions[i]:
                         pending = lane_pending_transitions[i]
-                        
-                        # FIX #5: P1's reward is ONLY from P1's own action.
-                        # No double-counting — we do NOT re-evaluate the shaper on P2's action.
-                        # The TD target will naturally capture P2's impact via the next_state
-                        # (which is the board state AFTER P2 acted).
-                        
-                        # Complete the transition
                         done_bool = dones[i].item() if hasattr(dones[i], 'item') else dones[i]
-                        
                         batch_states.append(pending['state'])
                         batch_actions.append(pending['action'])
                         batch_rewards.append(pending['reward'])
@@ -646,12 +679,10 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                         batch_active_mask.append(True)
                         batch_game_states.append(pending['game_state'])
                         batch_next_game_states.append(next_states[i])
-                        batch_infos.append(infos[i])  # For PER battle detection
-                        
-                        lane_pending_transitions[i] = None # Clear pending
+                        batch_infos.append(infos[i])
+                        lane_pending_transitions[i] = None
                     
                     if done_bool:
-                        # Game ended on P2's turn
                         if lane_current_opponents[i] is agent2:
                             batch_states_p2.append(lane_game_states[i].board)
                             batch_actions_p2.append(actions[i])
@@ -662,24 +693,17 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                             batch_game_states_p2.append(lane_game_states[i])
                             batch_next_game_states_p2.append(next_states[i])
                             batch_infos_p2.append(infos[i])
-                        
-                        lane_pending_transitions_p2[i] = None # Clear
+                        lane_pending_transitions_p2[i] = None
                     else:
-                        # Game continues -> P1's turn
-                        # Store as PENDING. Wait for P1's response.
                         if lane_current_opponents[i] is agent2:
                             lane_pending_transitions_p2[i] = {
-                                'state': lane_game_states[i].board,
-                                'action': actions[i],
-                                'reward': p2_reward,
-                                'game_state': lane_game_states[i]
+                                'state': lane_game_states[i].board, 'action': actions[i],
+                                'reward': p2_reward, 'game_state': lane_game_states[i]
                             }
                 
-                # Check for P2 Pending Transition if P1 just acted
                 if current_player == 1 and lane_pending_transitions_p2[i]:
                     pending_p2 = lane_pending_transitions_p2[i]
                     done_bool = dones[i].item() if hasattr(dones[i], 'item') else dones[i]
-                    
                     if lane_current_opponents[i] is agent2:
                         batch_states_p2.append(pending_p2['state'])
                         batch_actions_p2.append(pending_p2['action'])
@@ -690,10 +714,10 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                         batch_game_states_p2.append(pending_p2['game_state'])
                         batch_next_game_states_p2.append(next_states[i])
                         batch_infos_p2.append(infos[i])
-                    
-                    lane_pending_transitions_p2[i] = None # Clear pending
-                        
-                # Update AAREN history
+                    lane_pending_transitions_p2[i] = None
+                profiling["reward"] += time.perf_counter() - tr
+                
+                ta = time.perf_counter()
                 done_bool = dones[i].item() if hasattr(dones[i], 'item') else dones[i]
                 if not done_bool:
                     if current_player == 1 and lane_opponent_uses_history[i]:
@@ -701,8 +725,6 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                     elif current_player == -1 and not use_full_obs:
                         agent1.update_history_batch([actions[i]], [lane_game_states[i]], acting_player=-1)
                 
-                # Feed reveal data to AAREN for supervised training
-                # When battles occur, the environment returns revealed piece types
                 if infos[i].get('revealed_in_step'):
                     from training_config import AAREN_USE_REVEAL_DATA
                     for pos, piece_type in infos[i]['revealed_in_step']:
@@ -718,47 +740,33 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                                 pos, piece_type, game_phase=game_phase, turn_count=lane_step_counts[i],
                                 collect_training_data=AAREN_USE_REVEAL_DATA
                             )
+                profiling["aaren"] += time.perf_counter() - ta
                 
-                # Check for Game End
                 if done_bool:
                     winner = infos[i].get('winner', 0)
-                    
-                    # Calculate average loss for this specific episode
                     if lane_episode_loss_count_p1[i] > 0:
                         avg_loss = lane_episode_loss_sum_p1[i] / lane_episode_loss_count_p1[i]
                     else:
-                        avg_loss = 0.0 # No training happened during this episode (e.g. very short)
-                    
+                        avg_loss = 0.0
                     metrics['avg_loss_p1_history'].append(avg_loss)
                     
-                    # Metrics
                     if winner == 1:
                         metrics['wins_p1'] += 1
-                        # Track win type
                         win_type = infos[i].get('win_type', 'unknown')
-                        if win_type == 'flag_capture':
-                            metrics['wins_by_flag'] = metrics.get('wins_by_flag', 0) + 1
-                        elif win_type == 'no_moves':
-                            metrics['wins_by_depletion'] = metrics.get('wins_by_depletion', 0) + 1
+                        if win_type == 'flag_capture': metrics['wins_by_flag'] = metrics.get('wins_by_flag', 0) + 1
+                        elif win_type == 'no_moves': metrics['wins_by_depletion'] = metrics.get('wins_by_depletion', 0) + 1
                     elif winner == -1:
                         metrics['wins_p2'] += 1
-                        # Track loss type (how P1 lost = how P2 won)
                         win_type = infos[i].get('win_type', 'unknown')
-                        if win_type == 'flag_capture':
-                            metrics['losses_by_flag'] = metrics.get('losses_by_flag', 0) + 1
-                        elif win_type == 'no_moves':
-                            metrics['losses_by_depletion'] = metrics.get('losses_by_depletion', 0) + 1
+                        if win_type == 'flag_capture': metrics['losses_by_flag'] = metrics.get('losses_by_flag', 0) + 1
+                        elif win_type == 'no_moves': metrics['losses_by_depletion'] = metrics.get('losses_by_depletion', 0) + 1
                     else:
                         metrics['draws'] += 1
-                        # Track draw type
-                        win_type = infos[i].get('win_type', 'timeout')
                         metrics['draws_by_timeout'] = metrics.get('draws_by_timeout', 0) + 1
                     
                     metrics['rewards_p1'].append(lane_episode_rewards_p1[i])
                     metrics['rewards_p2'].append(lane_episode_rewards_p2[i])
                     metrics['lengths'].append(lane_step_counts[i])
-                    
-                    # Removed old sliding window loss code
                     
                     metrics['wins_p1_history'].append(metrics['wins_p1'])
                     metrics['wins_p2_history'].append(metrics['wins_p2'])
@@ -772,169 +780,71 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                     else:
                         metrics['phase_history'].append(1)
                     
-                    # Piece tracker
-                    if piece_tracker is not None:
-                        try:
-                            board = lane_game_states[i].board if hasattr(lane_game_states[i], 'board') else lane_game_states[i]
-                            surviving_p1 = {}
-                            surviving_p2 = {}
-                            for r in range(10):
-                                for c in range(10):
-                                    val = board[r, c].item() if hasattr(board[r, c], 'item') else board[r, c]
-                                    if val > 0 and val <= 11:
-                                        surviving_p1[val] = surviving_p1.get(val, 0) + 1
-                                    elif val < 0 and val >= -11:
-                                        surviving_p2[abs(val)] = surviving_p2.get(abs(val), 0) + 1
-                            piece_tracker.record_game_end(winner, surviving_p1, surviving_p2)
-                        except Exception:
-                            pass
-                    
-                    # Update Curriculum
                     if curriculum and CURRICULUM_ENABLED:
-                        curriculum.update_metrics({
-                            'winner': winner,
-                            'opponent_type': lane_opponent_types[i],
-                            'pbs_accuracy': agent1.history.avg_accuracy if agent1.history and hasattr(agent1.history, 'avg_accuracy') else 0.0
-                        })
+                        curriculum.update_metrics({'winner': winner, 'opponent_type': lane_opponent_types[i], 'pbs_accuracy': agent1.history.avg_accuracy if agent1.history and hasattr(agent1.history, 'avg_accuracy') else 0.0})
                     
-                    # --- GRANULAR METRICS (Per Episode) ---
-                    # PBS evaluator metrics removed — AAREN replaced PBS evaluator
                     metrics['pbs_eval1_losses'].append(0.0)
                     metrics['pbs_eval1_buffer_sizes'].append(0)
                     metrics['pbs_eval1_accuracy'].append(0.0)
                     
-                    # AAREN metrics (legacy + end-to-end)
                     if agent1.history:
-                        # Legacy metric keys kept for backward compatibility
                         metrics['aaren_loss'].append(agent1.history.get_avg_loss() if hasattr(agent1.history, 'get_avg_loss') else 0.0)
                         metrics['aaren_accuracy'].append(agent1.history.get_accuracy() if hasattr(agent1.history, 'get_accuracy') else 0.0)
                         metrics['aaren_buffer_size'].append(agent1.history.get_buffer_size() if hasattr(agent1.history, 'get_buffer_size') else 0)
-                        
-                        # End-to-end training metrics (gradient norms captured during replay)
                         aaren_grad = agent1.get_aaren_grad_norm() if hasattr(agent1, 'get_aaren_grad_norm') else 0.0
                         dqn_grad = agent1.get_dqn_grad_norm() if hasattr(agent1, 'get_dqn_grad_norm') else 0.0
                         embedding_stats = agent1.get_aaren_embedding_stats() if hasattr(agent1, 'get_aaren_embedding_stats') else {'std': 0.0}
-                        
-                        metrics['aaren_grad_norm'] = metrics.get('aaren_grad_norm', [])
-                        metrics['aaren_grad_norm'].append(aaren_grad)
-                        metrics['dqn_grad_norm'] = metrics.get('dqn_grad_norm', [])
-                        metrics['dqn_grad_norm'].append(dqn_grad)
-                        metrics['aaren_embedding_std'] = metrics.get('aaren_embedding_std', [])
-                        metrics['aaren_embedding_std'].append(embedding_stats.get('std', 0.0))
+                        metrics['aaren_grad_norm'] = metrics.get('aaren_grad_norm', []); metrics['aaren_grad_norm'].append(aaren_grad)
+                        metrics['dqn_grad_norm'] = metrics.get('dqn_grad_norm', []); metrics['dqn_grad_norm'].append(dqn_grad)
+                        metrics['aaren_embedding_std'] = metrics.get('aaren_embedding_std', []); metrics['aaren_embedding_std'].append(embedding_stats.get('std', 0.0))
                     
-                    # Q-value and entropy metrics
                     avg_q = agent1.get_average_q() if hasattr(agent1, 'get_average_q') else 0.0
-                    if avg_q == 0.0 and hasattr(agent1, 'memory') and len(agent1.memory) > agent1.batch_size:
-                         tqdm.write(f"[WARN] Avg Q-Value is 0.0. Memory: {len(agent1.memory)}")
                     metrics['avg_q_values_p1'].append(avg_q)
-                    
-                    
                     metrics['avg_entropy_p1'].append(agent1.get_exploration_entropy() if hasattr(agent1, 'get_exploration_entropy') else 0.0)
-                    
-                    # Track exact step when episode ended (for plotting alignment)
                     metrics.get('episode_end_steps', []).append(global_step)
                     
                     completed_episodes += 1
                     pbar.update(1)
                     
-                    # --- PBT METRICS REPORTING ---
-                    # Report metrics to supervisor for PBT exploitation decisions
                     if pbt_reporter is not None:
-                        # Calculate recent win rate
                         recent_wins = sum(1 for r in metrics['rewards_p1'][-100:] if r > 0)
                         recent_win_rate = recent_wins / min(100, len(metrics['rewards_p1'])) if metrics['rewards_p1'] else 0.0
-                        
-                        # Get recent average loss
                         recent_loss = np.mean(metrics['losses_p1'][-100:]) if metrics['losses_p1'] else 0.0
-                        
-                        pbt_reporter.report(
-                            episode=completed_episodes,
-                            reward=lane_episode_rewards_p1[i],
-                            win=1 if winner == 1 else 0,
-                            win_rate=recent_win_rate,
-                            avg_loss=recent_loss
-                        )
+                        pbt_reporter.report(episode=completed_episodes, reward=lane_episode_rewards_p1[i], win=1 if winner == 1 else 0, win_rate=recent_win_rate, avg_loss=recent_loss)
                     
+                    to_reset = time.perf_counter()
                     reset_data = reset_lane(i)
-                    reset_commands[i] = {'p1_placement': reset_data['p1_placement'], 
-                                       'p2_placement': reset_data['p2_placement']}
-                    
-                    # Update Opponent
+                    reset_commands[i] = {'p1_placement': reset_data['p1_placement'], 'p2_placement': reset_data['p2_placement']}
                     lane_opponent_types[i] = reset_data['opp_type']
                     lane_opponent_uses_history[i] = reset_data['opp_uses_history']
                     lane_current_opponents[i] = reset_data['opp']
                     
-                    # Reset Lane State
                     lane_episode_rewards_p1[i] = 0.0
                     lane_episode_rewards_p2[i] = 0.0
-                    lane_episode_loss_sum_p1[i] = 0.0 # Reset loss sum
-                    lane_episode_loss_count_p1[i] = 0 # Reset loss count
+                    lane_episode_loss_sum_p1[i] = 0.0
+                    lane_episode_loss_count_p1[i] = 0
                     lane_step_counts[i] = 0
-                    lane_current_player[i] = reset_data.get('starting_player', 1)  # Random starting player
+                    lane_current_player[i] = reset_data.get('starting_player', 1)
                     lane_dist_rewards[i].reset()
                     lane_p2_shapers[i].reset()
                     lane_pending_transitions[i] = None
                     lane_pending_transitions_p2[i] = None
                     
-                    if agent1.history_instances and i < len(agent1.history_instances):
-                        agent1.history_instances[i].reset()
-                    if lane_opponent_uses_history[i] and agent2.history_instances and i < len(agent2.history_instances):
-                        agent2.history_instances[i].reset()
+                    if agent1.history_instances and i < len(agent1.history_instances): agent1.history_instances[i].reset()
+                    if lane_opponent_uses_history[i] and agent2.history_instances and i < len(agent2.history_instances): agent2.history_instances[i].reset()
                     
-                    # Start new episode tracking for episode replay buffer
-                    if hasattr(agent1, 'episode_replay_enabled') and agent1.episode_replay_enabled and agent1.episode_memory is not None:
-                        agent1.episode_memory.start_episode(i)
-                    if hasattr(agent2, 'episode_replay_enabled') and agent2.episode_replay_enabled and agent2.episode_memory is not None:
-                        agent2.episode_memory.start_episode(i)
+                    if hasattr(agent1, 'episode_replay_enabled') and agent1.episode_replay_enabled and agent1.episode_memory is not None: agent1.episode_memory.start_episode(i)
+                    if hasattr(agent2, 'episode_replay_enabled') and agent2.episode_replay_enabled and agent2.episode_memory is not None: agent2.episode_memory.start_episode(i)
                 else:
-                    # Continue Game
                     lane_current_player[i] *= -1
                     lane_game_states[i] = next_states[i]
                     lane_valid_moves[i] = next_valid_moves[i]
-                    lane_game_states[i] = next_states[i]
-                    lane_valid_moves[i] = next_valid_moves[i]
             
-            # --- GRANULAR METRIC COLLECTION (Every Episode) ---
-            # Record these if Agent 1 just finished a game (passed via done_bool check above)
-            # Note: We collect these as global averages from the agent *at this moment*.
-            # Since we have multiple lanes, we can record this whenever *any* lane finishes, 
-            # or just once per completed_episodes increment.
+            if batch_states: agent1.remember_batch(batch_states, batch_actions, batch_rewards, batch_next_states, batch_dones, batch_active_mask, batch_game_states, batch_next_game_states, infos=batch_infos)
+            if batch_states_p2: agent2.remember_batch(batch_states_p2, batch_actions_p2, batch_rewards_p2, batch_next_states_p2, batch_dones_p2, batch_active_mask_p2, batch_game_states_p2, batch_next_game_states_p2, infos=batch_infos_p2)
             
-            # To match "every episode point plot", we record whenever `completed_episodes` increments.
-            # This logic is best placed inside the "if done_bool" block above, but that block runs for EACH lane.
-            # We need to be careful not to record 8 times for 8 lanes finishing simultaneously.
-            # Ideally, we append to `metrics` lists exactly when we increment `completed_episodes`.
-            if batch_states:
-                 agent1.remember_batch(
-                    batch_states,
-                    batch_actions,
-                    batch_rewards,
-                    batch_next_states,
-                    batch_dones,
-                    batch_active_mask,
-                    batch_game_states,
-                    batch_next_game_states,
-                    infos=batch_infos  # Pass infos for PER battle detection
-                )
-            
-            if batch_states_p2:
-                agent2.remember_batch(
-                    batch_states_p2,
-                    batch_actions_p2,
-                    batch_rewards_p2,
-                    batch_next_states_p2,
-                    batch_dones_p2,
-                    batch_active_mask_p2,
-                    batch_game_states_p2,
-                    batch_next_game_states_p2,
-                    infos=batch_infos_p2
-                )
-            
-            # --- APPLY RESETS ---
             if reset_commands:
-                for lane_i, placements in reset_commands.items():
-                    parallel_env.remotes[lane_i].send(('reset', placements))
-                
+                for lane_i, placements in reset_commands.items(): parallel_env.remotes[lane_i].send(('reset', placements))
                 for lane_i in reset_commands.keys():
                     result = parallel_env.remotes[lane_i].recv()
                     new_state, _, _, _, new_valid_moves = result
@@ -942,32 +852,23 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                     lane_valid_moves[lane_i] = new_valid_moves
                     lane_current_player[lane_i] = 1
             
-            # --- TRAINING STEP ---
             t3 = time.perf_counter()
-            # Use threshold check instead of modulo to avoid skipping updates when step_count > 1
             if global_step - last_replay_step >= REPLAY_UPDATE_INTERVAL:
                 loss1 = agent1.replay(episode=completed_episodes)
                 last_replay_step = global_step
                 
-                # Active Agent 2 MARL learning only in Phase 4+ (League Training) 
-                # Optimization: We offset Agent 2's training step by half the interval
-                # so that both networks aren't doing heavy backprop in the same exact loop iteration.
-                
                 if loss1:
                     metrics['losses_p1'].append(loss1)
-                    metrics['loss_steps_p1'].append(global_step)  # Track step for proper plotting
+                    metrics['loss_steps_p1'].append(global_step)
                     
             if curriculum and curriculum.current_phase.value >= 4:
-                # Agent 2 updates slightly offset from Agent 1 to smooth CPU/GPU load spikes
                 if global_step - getattr(agent2, 'last_replay_step_offset', 0) >= REPLAY_UPDATE_INTERVAL:
-                    # Initialize offset tracker on first run
                     if not hasattr(agent2, 'last_replay_step_offset') or agent2.last_replay_step_offset == 0:
                         agent2.last_replay_step_offset = global_step + (REPLAY_UPDATE_INTERVAL // 2)
                         loss2 = None
                     else:
                         loss2 = agent2.replay(episode=completed_episodes)
                         agent2.last_replay_step_offset = global_step
-                        
                         if loss2 and 'losses_p2' not in metrics:
                             metrics['losses_p2'] = []
                             metrics['loss_steps_p2'] = []
@@ -976,17 +877,17 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                             metrics['loss_steps_p2'].append(global_step)
             
             if global_step - last_replay_step == 0 and 'loss1' in locals() and loss1:
-                # Accumulate loss for all active lanes (since replay updates are global but apply to active policy)
-                # We interpret "episode loss" as the average loss *during the lifetime of that episode*.
-                # Since training happens globally every N steps, we add this loss to all currently active episodes.
                 for i in range(num_envs):
-                    if not dones[i]: # Only if episode is active
+                    if not dones[i]:
                         lane_episode_loss_sum_p1[i] += loss1
                         lane_episode_loss_count_p1[i] += 1
             
-            # --- PERIODIC CUDA CLEANUP ---
             profiling["replay"] = time.perf_counter() - t3
-            # Removed aggressive empty_cache as it causes allocator sync and slowdown.
+            profiling["other"] = time.perf_counter() - t_start - profiling["p1_act"] - profiling["p2_act"] - profiling["env_step"] - profiling["reward"] - profiling["aaren"] - profiling["replay"]
+            if global_step % 10 == 0:
+                with open("profiling_log.txt", "a") as f:
+                    f.write(f"DEBUG STEP {global_step}: P1={profiling['p1_act']:.4f} P2={profiling['p2_act']:.4f} Env={profiling['env_step']:.4f} Rwd={profiling['reward']:.4f} AAREN={profiling['aaren']:.4f} Rep={profiling['replay']:.4f} Ot={profiling['other']:.4f} Total={(time.perf_counter()-t_start):.4f}\n")
+
             
             # --- TARGET NETWORK UPDATE ---
             # Use threshold check to prevent double updates or skips
@@ -1125,6 +1026,7 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                     f"S={global_step/1000:<5.1f}k "
                     f"[P1:{profiling['p1_act']:.2f} P2:{profiling['p2_act']:.2f} Env:{profiling['env_step']:.2f} Rep:{profiling['replay']:.2f}]"
                 )
+                tqdm.write(f"DEBUG PROFILING: P1={profiling['p1_act']:.4f} P2={profiling['p2_act']:.4f} Env={profiling['env_step']:.4f} Rep={profiling['replay']:.4f}")
                 pbar.set_postfix_str(postfix_str, refresh=False)
             
     except KeyboardInterrupt:

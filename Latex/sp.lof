@@ -14,20 +14,29 @@
 \contentsline {figure}{\numberline {4.7}{\ignorespaces Game Start}}{59}{figure.caption.62}%
 \contentsline {figure}{\numberline {4.8}{\ignorespaces Stratego Pieces}}{60}{figure.caption.63}%
 \addvspace {10\p@ }
-\contentsline {figure}{\numberline {5.1}{\ignorespaces Training metrics at episode 34,000. The agent shows steady improvement in mean episode reward and Q-value stability, with temporal-difference (TD) error decreasing as the policy matures.}}{64}{figure.caption.66}%
+\contentsline {figure}{\numberline {5.1}{\ignorespaces Training metrics at episode 34,000. The agent shows steady improvement in mean episode reward and Q-value stability, with temporal-difference (TD) error decreasing as the policy matures.}}{63}{figure.caption.66}%
 \addvspace {10\p@ }
-\contentsline {figure}{\numberline {A.1}{\ignorespaces Timeline: August 1 - September 5}}{67}{figure.caption.67}%
-\contentsline {figure}{\numberline {A.2}{\ignorespaces Timeline: September 11 - November 30}}{68}{figure.caption.68}%
-\contentsline {figure}{\numberline {A.3}{\ignorespaces Timeline: October 27 - January 27}}{68}{figure.caption.69}%
-\contentsline {figure}{\numberline {A.4}{\ignorespaces Timeline: December 1 - February 14}}{68}{figure.caption.70}%
-\contentsline {figure}{\numberline {A.5}{\ignorespaces Timeline: February 15 - May 4}}{68}{figure.caption.71}%
 \addvspace {10\p@ }
-\contentsline {figure}{\numberline {B.1}{\ignorespaces Game Menu}}{70}{figure.caption.72}%
-\contentsline {figure}{\numberline {B.2}{\ignorespaces Setup Phase}}{70}{figure.caption.73}%
-\contentsline {figure}{\numberline {B.3}{\ignorespaces Game Start}}{71}{figure.caption.74}%
-\contentsline {figure}{\numberline {B.4}{\ignorespaces Battle and History}}{71}{figure.caption.75}%
-\contentsline {figure}{\numberline {B.5}{\ignorespaces Victory Screen}}{72}{figure.caption.76}%
-\contentsline {figure}{\numberline {B.6}{\ignorespaces Training Progress: Episode 10,000}}{73}{figure.caption.77}%
-\contentsline {figure}{\numberline {B.7}{\ignorespaces Training Progress: Episode 20,000}}{74}{figure.caption.78}%
-\contentsline {figure}{\numberline {B.8}{\ignorespaces Training Progress: Episode 34,000}}{75}{figure.caption.79}%
-\contentsline {figure}{\numberline {B.9}{\ignorespaces Interpretability Dashboard snapshots showing real-time agent reasoning.}}{76}{figure.caption.80}%
+\contentsline {figure}{\numberline {A.1}{\ignorespaces Timeline: August 1 - September 5}}{73}{figure.caption.69}%
+\contentsline {figure}{\numberline {A.2}{\ignorespaces Timeline: September 11 - November 30}}{74}{figure.caption.70}%
+\contentsline {figure}{\numberline {A.3}{\ignorespaces Timeline: October 27 - January 27}}{74}{figure.caption.71}%
+\contentsline {figure}{\numberline {A.4}{\ignorespaces Timeline: December 1 - February 14}}{74}{figure.caption.72}%
+\contentsline {figure}{\numberline {A.5}{\ignorespaces Timeline: February 15 - May 4}}{74}{figure.caption.73}%
+\addvspace {10\p@ }
+\contentsline {figure}{\numberline {B.1}{\ignorespaces Game Menu}}{76}{figure.caption.74}%
+\contentsline {figure}{\numberline {B.2}{\ignorespaces Setup Phase}}{76}{figure.caption.75}%
+\contentsline {figure}{\numberline {B.3}{\ignorespaces Game Start}}{77}{figure.caption.76}%
+\contentsline {figure}{\numberline {B.4}{\ignorespaces Battle and History}}{77}{figure.caption.77}%
+\contentsline {figure}{\numberline {B.5}{\ignorespaces Victory Screen}}{78}{figure.caption.78}%
+\contentsline {figure}{\numberline {B.6}{\ignorespaces Training Progress: Episode 10,000}}{79}{figure.caption.79}%
+\contentsline {figure}{\numberline {B.7}{\ignorespaces Training Progress: Episode 20,000}}{80}{figure.caption.80}%
+\contentsline {figure}{\numberline {B.8}{\ignorespaces Training Progress: Episode 34,000}}{81}{figure.caption.81}%
+\contentsline {figure}{\numberline {B.9}{\ignorespaces Interpretability Dashboard snapshots showing real-time agent reasoning.}}{82}{figure.caption.82}%
+\contentsline {figure}{\numberline {B.10}{\ignorespaces DQN+LSTM Training Progress at 15,302 Episodes}}{85}{figure.caption.83}%
+\contentsline {figure}{\numberline {B.11}{\ignorespaces DQN+LSTM Additional Metrics at 15,302 Episodes}}{86}{figure.caption.84}%
+\contentsline {figure}{\numberline {B.12}{\ignorespaces Rainbow DQN+AAREN Training Progress at 9,778 Episodes}}{87}{figure.caption.85}%
+\contentsline {figure}{\numberline {B.13}{\ignorespaces Rainbow DQN+AAREN Additional Metrics at 9,778 Episodes}}{88}{figure.caption.86}%
+\contentsline {figure}{\numberline {B.14}{\ignorespaces AAREN End-to-End Training Metrics at 9,778 Episodes}}{89}{figure.caption.87}%
+\contentsline {figure}{\numberline {B.15}{\ignorespaces Rainbow DQN+AAREN Extended Training Progress at 75,047 Episodes}}{90}{figure.caption.88}%
+\contentsline {figure}{\numberline {B.16}{\ignorespaces Rainbow DQN+AAREN Extended Additional Metrics at 75,047 Episodes}}{91}{figure.caption.89}%
+\contentsline {figure}{\numberline {B.17}{\ignorespaces AAREN End-to-End Training Metrics at 75,047 Episodes}}{92}{figure.caption.90}%

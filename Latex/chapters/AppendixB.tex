@@ -122,6 +122,66 @@ The Attention-as-a-Recurrent-Neural-Network (AAREN) has effectively learned to m
 
 \subsection{Impact of Reward Overhaul}
 The rescaling of rewards to $\pm 1.0$ for terminal states and the tightening of the C51 support to $[-10, +10]$ significantly improved the resolution of the distributional Q-values. Early training runs used a larger range which led to "clumping" of values, making it difficult for the agent to distinguish between marginally better moves. The current architecture allows for 0.4-unit resolution per atom, enabling the agent to better evaluate subtle positional advantages and territorial control rewards.
+
+\section{Architecture Comparison Training Charts}
+\label{app:comparison_charts}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.9\textwidth,height=0.7\textheight,keepaspectratio]{figures/Comparison/lstm15k_training_progress.png}
+    \caption{DQN+LSTM Training Progress at 15,302 Episodes}
+    \label{fig:lstm15k_progress}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.9\textwidth,height=0.7\textheight,keepaspectratio]{figures/Comparison/lstm15k_additional_metrics.png}
+    \caption{DQN+LSTM Additional Metrics at 15,302 Episodes}
+    \label{fig:lstm15k_metrics}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.9\textwidth,height=0.7\textheight,keepaspectratio]{figures/Comparison/rdqn9k_training_progress.png}
+    \caption{Rainbow DQN+AAREN Training Progress at 9,778 Episodes}
+    \label{fig:rdqn9k_progress}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.9\textwidth,height=0.7\textheight,keepaspectratio]{figures/Comparison/rdqn9k_additional_metrics.png}
+    \caption{Rainbow DQN+AAREN Additional Metrics at 9,778 Episodes}
+    \label{fig:rdqn9k_metrics}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.9\textwidth,height=0.7\textheight,keepaspectratio]{figures/Comparison/rdqn9k_aaren_progress.png}
+    \caption{AAREN End-to-End Training Metrics at 9,778 Episodes}
+    \label{fig:rdqn9k_aaren}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.9\textwidth,height=0.7\textheight,keepaspectratio]{figures/Comparison/rdqn75k_training_progress.png}
+    \caption{Rainbow DQN+AAREN Extended Training Progress at 75,047 Episodes}
+    \label{fig:rdqn75k_progress}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.9\textwidth,height=0.7\textheight,keepaspectratio]{figures/Comparison/rdqn75k_additional_metrics.png}
+    \caption{Rainbow DQN+AAREN Extended Additional Metrics at 75,047 Episodes}
+    \label{fig:rdqn75k_metrics}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.9\textwidth,height=0.7\textheight,keepaspectratio]{figures/Comparison/rdqn75k_aaren_progress.png}
+    \caption{AAREN End-to-End Training Metrics at 75,047 Episodes}
+    \label{fig:rdqn75k_aaren}
+\end{figure}
+
 \section{AI Transparency, Inclusion, and Originality of Intent}
 
 The development of the MARQ framework for Stratego was governed by intentionality and human-led architectural design. While large language models and generative AI have become ubiquitous in modern software development, their role in this research was strictly limited to tasks such as grammatical refinement, high-level brainstorming, and code debugging for modules and networking. Every core component of the MARQ system, including the AAREN history aggregator and the ResNet-based policy heads, was researched, evaluated, and implemented with the intent of mastering imperfect information games in the Stratego domain.

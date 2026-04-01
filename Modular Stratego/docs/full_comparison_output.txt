@@ -1,0 +1,306 @@
+============================================================
+Loading datasets...
+============================================================
+
+Analyzing training histories...
+Analyzing curricula...
+
+============================================================
+LSTM 15k TRAINING METRICS
+============================================================
+aaren_acc_last100: 17.79
+aaren_acc_late: 17.74
+aaren_acc_mean: 16.66
+aaren_embed_late: 0.1705
+aaren_embed_mean: 0.1587
+avg_steps_per_episode: 673.5
+draw_rate: 50.04
+draws: 7657
+draws_timeout: 7657
+entropy_late: 0.0
+entropy_mean: 0.0
+episodes_per_win: 4.0
+flag_capture_pct: 18.79
+global_step: 10306433
+grad_late: nan
+grad_max: 0.0507
+grad_mean: nan
+label: DQN+LSTM (15k)
+len_early: 1341.7
+len_late: 1350.4
+len_max: 1500
+len_mean: 1345.4
+len_min: 48
+len_std: 247.6
+loss_early: 0.001721
+loss_last100: 0.000145
+loss_late: 0.000149
+loss_mean: 0.000287
+loss_rate: 24.99
+loss_wr_corr: 0.0507
+losses_depletion: 3090
+losses_flag: 734
+periodic_wr: [28.0, ..., 29.0] (len=30)
+periodic_wr_first: 28.0
+periodic_wr_last: 29.0
+periodic_wr_mean: 25.27
+periodic_wr_std: 3.84
+q_late: 0.1786
+q_max: 0.8882
+q_mean: 0.3268
+q_std: 0.1444
+reward_early: 0.0801
+reward_last100: 0.0743
+reward_late: 0.0805
+reward_mean: 0.0814
+reward_std: 0.1535
+steps_per_win: 2697.3
+timeout_rate: 50.04
+total_episodes: 15302
+total_losses: 3824
+win_rate: 24.97
+wins_depletion: 3103
+wins_flag: 718
+wins_p1: 3821
+wins_p2: 3824
+wr_early_500: 26.86
+wr_late_500: 27.21
+wr_peak_500: 66.67
+wr_trend: [np.float64(25.29), np.float64(25.43), np.float64(25.45), np.float64(24.69), np.float64(25.1), np.float64(24.08), np.float64(25.96), np.float64(24.77), np.float64(24.1), np.float64(25.33), np.float64(26.3)]
+
+============================================================
+LSTM 37k TRAINING METRICS (corrupted, chart-derived)
+============================================================
+  Error: Corrupted (null bytes)
+  Known from charts:
+    Total Episodes: 37,213 (from chart header)
+    Total Steps: 22,353,317 (from chart header)
+    Avg Steps/Episode: ~600.9
+    Win Rate (Agent 1): ~22% plateau (from cumulative wins chart)
+    Win Rate (Agent 2): ~40% (from cumulative wins chart)
+    Policy Loss: ~0.005-0.015 range, rising trend in late stages
+    Phase: P4 League
+
+============================================================
+RDQN+AAREN 9.5k TRAINING METRICS
+============================================================
+aaren_acc_last100: 24.29
+aaren_acc_late: 24.23
+aaren_acc_mean: 22.67
+aaren_embed_late: 1.8879
+aaren_embed_mean: 1.9754
+avg_steps_per_episode: 528.7
+draw_rate: 6.69
+draws: 654
+draws_timeout: 654
+entropy_late: 0.049211
+entropy_mean: 0.04204
+episodes_per_win: 2.0
+flag_capture_pct: 8.88
+global_step: 5169892
+grad_late: inf
+grad_max: inf
+grad_mean: inf
+label: Rainbow+AAREN (9.5k)
+len_early: 1001.9
+len_late: 1111.9
+len_max: 1500
+len_mean: 1055.4
+len_min: 64
+len_std: 258.9
+loss_early: 3.835437
+loss_last100: 3.771637
+loss_late: 3.785348
+loss_mean: 3.829258
+loss_rate: 43.43
+loss_wr_corr: -0.7867
+losses_depletion: 3533
+losses_flag: 714
+periodic_wr: [43.0, 40.0, 36.0, 47.0, 41.0, 40.0, 48.0, 48.0, 51.0, 52.0, 52.0, 59.0, 46.0, 54.0, 58.0, 51.0, 56.0, 52.0, 43.0]
+periodic_wr_first: 43.0
+periodic_wr_last: 43.0
+periodic_wr_mean: 48.26
+periodic_wr_std: 6.33
+q_late: 0.8397
+q_max: 1.8084
+q_mean: 0.696
+q_std: 0.3031
+reward_early: -13.9879
+reward_last100: -19.3962
+reward_late: -19.6464
+reward_mean: -18.9532
+reward_std: 10.7577
+steps_per_win: 1060.1
+timeout_rate: 6.69
+total_episodes: 9778
+total_losses: 4247
+win_rate: 49.88
+wins_depletion: 4444
+wins_flag: 433
+wins_p1: 4877
+wins_p2: 4247
+wr_early_500: 52.99
+wr_late_500: 51.96
+wr_peak_500: 100.0
+wr_trend: [np.float64(48.93), np.float64(41.14), np.float64(46.24), np.float64(47.59), np.float64(51.6), np.float64(52.03), np.float64(51.4), np.float64(54.6), np.float64(54.89), np.float64(52.64), np.float64(47.88)]
+
+============================================================
+RDQN+AAREN 75k TRAINING METRICS
+============================================================
+aaren_acc_last100: 20.82
+aaren_acc_late: 20.78
+aaren_acc_mean: 20.11
+aaren_embed_late: 2.3869
+aaren_embed_mean: 2.1275
+avg_steps_per_episode: 189.2
+draw_rate: 75.39
+draws: 56581
+draws_timeout: 56581
+entropy_late: 0.064927
+entropy_mean: 0.052995
+episodes_per_win: 7.93
+flag_capture_pct: 99.96
+global_step: 14198412
+grad_late: inf
+grad_max: inf
+grad_mean: nan
+label: Rainbow+AAREN (75k)
+len_early: 386.8
+len_late: 387.5
+len_max: 400
+len_mean: 377.6
+len_min: 23
+len_std: 51.7
+loss_early: 3.885216
+loss_last100: 2.746505
+loss_late: 2.841566
+loss_mean: 3.328847
+loss_rate: 11.99
+loss_wr_corr: -0.5489
+losses_depletion: 8999
+losses_flag: 0
+periodic_wr: [0.0, ..., 0.0] (len=150)
+periodic_wr_first: 0.0
+periodic_wr_last: 0.0
+periodic_wr_mean: 12.53
+periodic_wr_std: 8.0
+q_late: 1.8429
+q_max: 4.2318
+q_mean: 0.8511
+q_std: 0.535
+reward_early: -1.7809
+reward_last100: -10.4753
+reward_late: -5.5062
+reward_mean: -2.0564
+reward_std: 3.1737
+steps_per_win: 1499.8
+timeout_rate: 75.39
+total_episodes: 75047
+total_losses: 8999
+win_rate: 12.61
+wins_depletion: 4
+wins_flag: 9463
+wins_p1: 9467
+wins_p2: 8999
+wr_early_500: 2.43
+wr_late_500: 0.07
+wr_peak_500: 100.0
+wr_trend: [np.float64(3.95), np.float64(5.6), np.float64(6.43), np.float64(8.85), np.float64(14.68), np.float64(18.24), np.float64(23.53), np.float64(19.14), np.float64(17.66), np.float64(8.19), np.float64(0.0)]
+
+============================================================
+CURRICULUM SUMMARIES
+============================================================
+
+--- LSTM-15k ---
+current_phase: 4
+label: DQN+LSTM (15k)
+p4_dr: 50.04
+p4_draws: 7657
+p4_games: 15302
+p4_league_games: 7053
+p4_league_wr: 25.01
+p4_losses: 3824
+p4_self_games: 8249
+p4_self_wr: 24.94
+p4_wins: 3821
+p4_wr: 24.97
+total_episodes: 15302
+
+--- LSTM-37k ---
+error: Corrupted (null bytes)
+label: DQN+LSTM (37k)
+
+--- RDQN-9.5k ---
+current_phase: 4
+label: Rainbow+AAREN (9.5k)
+p4_dr: 6.69
+p4_draws: 654
+p4_games: 9778
+p4_league_games: 4407
+p4_league_wr: 50.53
+p4_losses: 4247
+p4_self_games: 5371
+p4_self_wr: 49.34
+p4_wins: 4877
+p4_wr: 49.88
+total_episodes: 9778
+
+--- RDQN-75k ---
+current_phase: 2
+label: Rainbow+AAREN (75k)
+p1_dr: 97.79
+p1_draws: 5134
+p1_games: 5250
+p1_heuristic_games: 1310
+p1_heuristic_wr: 1.37
+p1_losses: 35
+p1_random_games: 2687
+p1_random_wr: 1.9
+p1_smart_heuristic_games: 1253
+p1_smart_heuristic_wr: 0.96
+p1_wins: 81
+p1_wr: 1.54
+p2_dr: 77.02
+p2_draws: 62999
+p2_frozen_heuristic_games: 43331
+p2_frozen_heuristic_wr: 11.59
+p2_games: 81797
+p2_heuristic_games: 3
+p2_heuristic_wr: 0.0
+p2_losses: 9262
+p2_random_games: 1
+p2_random_wr: 0.0
+p2_smart_heuristic_games: 38462
+p2_smart_heuristic_wr: 11.74
+p2_wins: 9536
+p2_wr: 11.66
+total_episodes: 87047
+
+============================================================
+COMPARATIVE TABLE (for LaTeX)
+============================================================
+Metric                         DQN+LSTM 15k           DQN+LSTM 37k (chart)   Rainbow+AAREN 9.5k     Rainbow+AAREN 75k     
+----------------------------------------------------------------------------------------------------------------------
+Total Episodes                               15,302               37,213                9,778               75,047
+Global Steps                             10,306,433           22,353,317            5,169,892           14,198,412
+Avg Steps/Episode                             673.5                600.9                528.7                189.2
+Win Rate (%)                                24.9700              22.0000              49.8800              12.6100
+Loss Rate (%)                               24.9900                  N/A              43.4300              11.9900
+Draw Rate (%)                               50.0400                  ~50               6.6900              75.3900
+Steps per Win                               2,697.3                ~2700              1,060.1              1,499.8
+Episodes per Win                             4.0000                  N/A               2.0000               7.9300
+Flag Capture %                              18.7900                  N/A               8.8800              99.9600
+Rolling WR (last 500)                       27.2100                  N/A              51.9600               0.0700
+WR Peak (500-window)                        66.6700                  N/A             100.0000             100.0000
+Mean Reward                                  0.0814                  N/A             -18.9532              -2.0564
+Late Reward                                  0.0805                  N/A             -19.6464              -5.5062
+Loss-WinRate Corr.                           0.0507               0.0507              -0.7867              -0.5489
+Q-Value Mean                                 0.3268                ~0.35               0.6960               0.8511
+Q-Value Late                                 0.1786                  N/A               0.8397               1.8429
+Episode Length Mean                         1,345.4                 ~600              1,055.4                377.6
+Episode Length Late                         1,350.4                  N/A              1,111.9                387.5
+AAREN Accuracy Late %                       17.7400           N/A (LSTM)              24.2300              20.7800
+Entropy Mean                                 0.0000                  N/A               0.0420               0.0530
+
+
+Done! Use these metrics for LaTeX integration.

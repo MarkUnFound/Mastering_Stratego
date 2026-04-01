@@ -1,0 +1,84 @@
+LSTMDQN
+  rewards_p1: list of len 15302
+  rewards_p2: list of len 15302
+  wins_p1: int = 3821
+  wins_p2: int = 3824
+  draws: int = 7657
+  wins_p1_history: list of len 15302
+  wins_p2_history: list of len 15302
+  lengths: list of len 15302
+  losses_p1: list of len 1288002
+  loss_steps_p1: list of len 1288002
+  avg_loss_p1_history: list of len 15302
+  losses_p2: list of len 1288000
+  loss_steps_p2: list of len 1288000
+  avg_loss_p2_history: list of len 0
+  wins_by_flag: int = 718
+  wins_by_depletion: int = 3103
+  wins_by_flag_history: list of len 15302
+  wins_by_depletion_history: list of len 15302
+  losses_by_flag: int = 734
+  losses_by_depletion: int = 3090
+  losses_by_flag_history: list of len 15302
+  losses_by_depletion_history: list of len 15302
+  pbs_eval1_losses: list of len 15302
+  pbs_eval1_buffer_sizes: list of len 15302
+  pbs_eval1_accuracy: list of len 15302
+  aaren_loss: list of len 15302
+  aaren_accuracy: list of len 15302
+  aaren_buffer_size: list of len 15302
+  aaren_grad_norm: list of len 15302
+  dqn_grad_norm: list of len 15302
+  aaren_embedding_std: list of len 15302
+  avg_q_values_p1: list of len 15302
+  avg_entropy_p1: list of len 15302
+  win_rate_100: list of len 30
+  phase_history: list of len 15302
+  pbs_accuracy: list of len 0
+  episode_end_steps: list of len 15302
+  global_step: int = 10306433
+  last_plot_episode: int = 15000
+  last_save_episode: int = 15000
+  draws_by_timeout: int = 7657
+Rainbow DQN
+  rewards_p1: list of len 8000
+  rewards_p2: list of len 8000
+  wins_p1: int = 3939
+  wins_p2: int = 3569
+  draws: int = 492
+  wins_p1_history: list of len 8000
+  wins_p2_history: list of len 8000
+  lengths: list of len 8000
+  losses_p1: list of len 574878
+  loss_steps_p1: list of len 574878
+  avg_loss_p1_history: list of len 8000
+  losses_p2: list of len 574808
+  loss_steps_p2: list of len 574808
+  avg_loss_p2_history: list of len 0
+  wins_by_flag: int = 397
+  wins_by_depletion: int = 3542
+  wins_by_flag_history: list of len 8000
+  wins_by_depletion_history: list of len 8000
+  losses_by_flag: int = 587
+  losses_by_depletion: int = 2982
+  losses_by_flag_history: list of len 8000
+  losses_by_depletion_history: list of len 8000
+  pbs_eval1_losses: list of len 8000
+  pbs_eval1_buffer_sizes: list of len 8000
+  pbs_eval1_accuracy: list of len 8000
+  aaren_loss: list of len 8000
+  aaren_accuracy: list of len 8000
+  aaren_buffer_size: list of len 8000
+  aaren_grad_norm: list of len 8000
+  dqn_grad_norm: list of len 8000
+  aaren_embedding_std: list of len 8000
+  avg_q_values_p1: list of len 8000
+  avg_entropy_p1: list of len 8000
+  win_rate_100: list of len 16
+  phase_history: list of len 8000
+  pbs_accuracy: list of len 0
+  episode_end_steps: list of len 8000
+  global_step: int = 4184398
+  last_plot_episode: int = 8000
+  last_save_episode: int = 8000
+  draws_by_timeout: int = 492

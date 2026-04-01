@@ -548,6 +548,46 @@ class RainbowAgent:
         features[14] = (board == 0).float()
         
         return features
+
+    def get_batch_board_only_representation(self, states):
+        """
+        Vectorized 15-channel board feature extraction for a batch of states.
+        Avoids the massive CPU overhead of looping 15 channels per state.
+        """
+        from game_state import GameState
+        boards = []
+        for s in states:
+            if isinstance(s, GameState):
+                boards.append(s.board)
+            else:
+                boards.append(s)
+                
+        if isinstance(boards[0], np.ndarray):
+            boards = torch.from_numpy(np.stack(boards)).to(self.device).float()
+        else:
+            if boards[0].dim() == 2:
+                boards = torch.stack(boards).to(self.device).float()
+            else:
+                boards = torch.cat([b.unsqueeze(0) if b.dim() == 2 else b for b in boards]).to(self.device).float()
+            
+        batch_size = boards.size(0)
+        features = torch.zeros((batch_size, 15, 10, 10), device=self.device)
+        
+        from board import LAKE_SQUARE, HIDDEN_PIECE
+        
+        if self.player_id == 1:
+            for i in range(1, 13):
+                features[:, i-1] = (boards == i).float()
+            features[:, 12] = (((boards < 0) & (boards > LAKE_SQUARE)) | (boards == HIDDEN_PIECE)).float()
+        else:
+            for i in range(1, 13):
+                features[:, i-1] = (boards == -i).float()
+            features[:, 12] = ((boards > 0) | (boards == HIDDEN_PIECE)).float()
+            
+        features[:, 13] = (boards == LAKE_SQUARE).float()
+        features[:, 14] = (boards == 0).float()
+        
+        return features
         
     def remember(self, state, action, reward, next_state, done):
         """Store experience in replay buffer with automated augmentation"""
@@ -646,16 +686,17 @@ class RainbowAgent:
             next_game_states: List of next GameState objects
             infos: List of info dicts from environment (contains revealed_in_step for battle detection)
         """
-        # Compute 15-channel board-only tensors (no AAREN — reconstructed at replay time)
-        state_tensors = []
-        next_state_tensors = []
+        if len(states) == 0:
+            return
+            
+        # Fast vectorized feature extraction
+        state_tensors = self.get_batch_board_only_representation(states)
+        next_state_tensors = self.get_batch_board_only_representation(next_states)
+        
         history_snapshots = []
         next_history_snapshots = []
         
         for i in range(len(states)):
-            state_tensors.append(self.get_board_only_representation(states[i]))
-            next_state_tensors.append(self.get_board_only_representation(next_states[i]))
-            
             # Only snapshot active envs (snapshots are now just tensor copies — fast)
             if active_mask[i]:
                 if self.history_instances and i < len(self.history_instances):
@@ -669,9 +710,6 @@ class RainbowAgent:
             
             history_snapshots.append(snap)
             next_history_snapshots.append(snap)  # Same snapshot (update happens after remember)
-        
-        state_tensors = torch.stack(state_tensors)
-        next_state_tensors = torch.stack(next_state_tensors)
         
         # Add to memory for active environments only
         for i in range(len(states)):
@@ -1220,16 +1258,26 @@ class RainbowAgent:
              tqdm.write("[WARN] Warning: NaN detected in rewards batch. Skipping update.")
              return None
         
+        # --- PRE-COMPUTE NETWORK PASSES ---
+        # Ensure we compute network passes ONLY ONCE for states and next_states.
+        # This fixes a severe 2x GPU bottleneck where the advantage filter would
+        # throw away computed tensors and re-run ResNet sequentially.
+        with torch.amp.autocast('cuda', enabled=self.amp_enabled):
+            current_log_probs = self.q_network(states)
+            with torch.no_grad():
+                next_log_probs_online = self.q_network(next_states)
+                next_log_probs_target = self.target_network(next_states)
+
         # --- ATARAXOS ADVANTAGE FILTERING ---
         # Filter to top 25% by N-step TD error magnitude
         if self.advantage_filtering and states.size(0) > batch_size:
             with torch.no_grad():
                 # V(s) from online network (max Q-value)
-                current_probs = self.q_network(states).exp()
+                current_probs = current_log_probs.exp()
                 current_v = (current_probs * self.support).sum(dim=2).max(dim=1)[0]
                 
                 # V(s') from target network
-                next_probs = self.target_network(next_states).exp()
+                next_probs = next_log_probs_target.exp()
                 next_v = (next_probs * self.support).sum(dim=2).max(dim=1)[0]
                 
                 # N-step TD error: |r + γ^n V(s') - V(s)|
@@ -1245,6 +1293,12 @@ class RainbowAgent:
                 rewards = rewards[top_k_indices]
                 next_states = next_states[top_k_indices]
                 dones = dones[top_k_indices]
+                
+                # Apply filter efficiently to pre-computed tensors!
+                current_log_probs = current_log_probs[top_k_indices]
+                next_log_probs_online = next_log_probs_online[top_k_indices]
+                next_log_probs_target = next_log_probs_target[top_k_indices]
+                
                 if weights is not None:
                     weights = weights[top_k_indices]
                 if indices is not None:
@@ -1257,17 +1311,12 @@ class RainbowAgent:
 
         # --- Distributional RL Target Calculation ---
         with torch.no_grad():
-            # 1. Select best action in next state (Double DQN)
-            # Use Online Network to select action
-            with torch.amp.autocast('cuda', enabled=self.amp_enabled):
-                next_log_probs_online = self.q_network(next_states)
+            # 1. Select best action in next state (Double DQN) using cached tensor
             next_probs_online = next_log_probs_online.exp()
             next_q_values_online = (next_probs_online * self.support).sum(dim=2)
             next_actions = next_q_values_online.argmax(dim=1) # (batch)
             
-            # 2. Get distribution of best action from Target Network
-            with torch.amp.autocast('cuda', enabled=self.amp_enabled):
-                next_log_probs_target = self.target_network(next_states)
+            # 2. Get distribution of best action from Target Network using cached tensor
             next_probs_target = next_log_probs_target.exp()
             
             # Gather distribution for the selected actions
@@ -1305,9 +1354,7 @@ class RainbowAgent:
             m.view(-1).scatter_add_(0, (u + offset).view(-1), (next_action_probs * (b - l.float())).view(-1))
             
         # --- Calculate Loss ---
-        # Get current log probabilities
-        with torch.amp.autocast('cuda', enabled=self.amp_enabled):
-            current_log_probs = self.q_network(states)
+        # Current log probabilities are already computed and filtered in current_log_probs
         
         # Gather log probs for the actions taken
         # actions: (batch) -> (batch, 1, atoms)
@@ -1477,11 +1524,12 @@ class RainbowAgent:
             load_robustly(self.q_network, checkpoint['q_network_state_dict'])
             load_robustly(self.target_network, checkpoint['target_network_state_dict'])
             
-            try:
-                self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-            except Exception as opt_err:
-                # Common when switching between single-env and multi-env (optimizer param count changes)
-                print(f"[WARN] Failed to load optimizer state (architecture/env mismatch): {opt_err}")
+            if 'optimizer_state_dict' in checkpoint and self.optimizer is not None:
+                try:
+                    self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+                except Exception as opt_err:
+                    # Common when switching between single-env and multi-env (optimizer param count changes)
+                    print(f"[WARN] Failed to load optimizer state (architecture/env mismatch): {opt_err}")
                 
             self.step_count = checkpoint.get('step_count', 0)
             

@@ -5,21 +5,21 @@ Configuration settings for DQN training.
 # =============================================================================
 # HARDWARE & TRAINING SCALE CONFIGURATION (Fixed)
 # =============================================================================
-NUM_LANES = 4             # Reduced to 8 (Safe for 6GB VRAM)
+NUM_LANES = 8             # Reduced to 8 (Safe for 6GB VRAM)
 NUM_ENVS = NUM_LANES      # LEGACY alias - always equals NUM_LANES (kept for compatibility)
-BATCH_SIZE = 256         # Reduced to 256 (Safe for 6GB VRAM)
-GAMMA = 0.995           # Discount factor - HIGH for long-term flag capture planning
+BATCH_SIZE = 128         # Reduced to 256 (Safe for 6GB VRAM)
+GAMMA = 0.999           # Discount factor - EXTREMELY HIGH for 1500-step long-term flag capture planning in Phase 4
 MEMORY_SIZE = 75000      # 200k on GPU (~2.2GB) to leave room for model and batches
 LEARNING_RATE = 0.00003    # Reduced from 0.0001 for stable distributional RL
 NUM_EPISODES = 1000000    # Effectively infinite - train until manually stopped
 SAVE_INTERVAL = 1000       # Save model/export agent every N episodes
 PLOT_INTERVAL = 500       # Save metrics plots every N episodes
 EVAL_INTERVAL = 500       # Evaluate agent every N episodes
-REPLAY_UPDATE_INTERVAL = 2    # Train every 2 steps (balances data diversity vs update frequency)
+REPLAY_UPDATE_INTERVAL = 8    # Train every 8 steps (balances data diversity vs update frequency)
 TARGET_UPDATE_INTERVAL = 2000   # Faster target updates for Phase 1 learning (was 5000)
 MARL_TARGET_UPDATE_INTERVAL = 5000   # Smoothing for Phase 4 MARL
 REWARD_SCALE = 1.0        # Scaling factor for reward calculations
-MARL_REWARD_SCALE = 0.5   # Dampening factor for pure MARL (Phase 4)
+MARL_REWARD_SCALE = 1.0   # Full terminal reward scale — dampening was killing signal contrast
 
 # =============================================================================
 # EXPLORATION SETTINGS (Noisy Networks Only - True Rainbow DQN)
@@ -133,6 +133,12 @@ OPPONENT_RANDOM_PROB = 0.85     # 85% random agent (easy to beat)
 OPPONENT_GREEDY_PROB = 0.15     # 15% heuristic agent (learning pressure)
 OPPONENT_SELF_PROB = 0.0        # 0% self-play (disabled for now)
 
+# Epoch-Based Opponent Cycling (Variance Reduction)
+# Instead of randomly sampling opponent type every episode, lock all lanes
+# to the same opponent type for OPPONENT_CYCLE_INTERVAL episodes, then rotate.
+# This reduces reward variance and gives stable learning signal per block.
+OPPONENT_CYCLE_INTERVAL = 50    # Episodes per opponent type block
+
 # =============================================================================
 # CURRICULUM LEARNING SETTINGS
 # =============================================================================
@@ -178,9 +184,9 @@ REF_POLICY_UPDATE_INTERVAL = 50000  # Update reference network every N steps
 # ENTROPY REGULARIZATION SETTINGS (Bluffing/Mixed Strategies)
 # =============================================================================
 # Encourages stochastic policies to avoid being exploited
-ENTROPY_REG_ENABLED = False      # Disabled for Phase 1 to favor exploitation vs random opponents
-ENTROPY_COEFF_START = 0.1        # Initial entropy coefficient (used when re-enabled)
-ENTROPY_COEFF_END = 0.01         # Final entropy coefficient (decays over training)
+ENTROPY_REG_ENABLED = True       # Re-enabled for Phase 4 to prevent policy collapse
+ENTROPY_COEFF_START = 0.01       # Small coefficient (keep exploration without chaos)
+ENTROPY_COEFF_END = 0.001        # Final entropy coefficient (decays over training)
 ENTROPY_ANNEAL_EPISODES = 50000  # Episodes to anneal entropy coefficient
 
 # =============================================================================
