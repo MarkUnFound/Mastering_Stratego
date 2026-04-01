@@ -1,0 +1,33 @@
+\section{Comparative Performance Analysis: LSTM vs. Rainbow AAREN}
+
+To determine the efficacy of the architectural transition from a Vanilla DQN with LSTM to the Rainbow DQN with AAREN (Attention-Augmented Reasoning), a comprehensive data mining analysis was performed across historical training records. This analysis specifically addresses whether the significant increase in computational requirements—characterized by an 11-fold increase in model size (from 39\,MB to 433\,MB per checkpoint)—is justified by improved performance in the Stratego domain.
+
+The comparison focused on two primary metrics: win rate stability and decision-making decisiveness (reflected in draw rates and game outcomes). Data was extracted from a 15,302-episode baseline LSTM run and the current 8,000-episode Rainbow AAREN training session.
+
+\subsection{Win Rate and Decisiveness}
+
+The most significant performance improvement observed is the transition from a passive, draw-heavy policy to a strategic, offensive agent. The Vanilla DQN with LSTM achieved an overall win rate of 24.97\% after 15,302 episodes, with a staggering 50.04\% draw rate (primarily due to tactical timeouts). In contrast, the Rainbow DQN with AAREN achieved a 49.24\% win rate within only 8,000 episodes, reducing the draw rate to a mere 6.15\% (Table \ref{tab:arch_comparison}).
+
+\begin{table}[htbp]
+\centering
+\caption{Comparative metrics between LSTM-based and AAREN-based architectures.}
+\label{tab:arch_comparison}
+\begin{tabular}{lll}
+\hline
+Metric & Vanilla DQN + LSTM & Rainbow DQN + AAREN \\ \hline
+Total Episodes & 15,302 & 8,000 \\
+Overall Win Rate & 24.97\% & 49.24\% \\
+Overall Draw Rate & 50.04\% & 6.15\% \\
+Avg. Steps/Episode & 673.5 & 523.0 \\
+Steps per Win & 2,697 & 1,062 \\
+Model Size (per agent) & $\sim$39\,MB & $\sim$433\,MB \\ \hline
+\end{tabular}
+\end{table}
+
+The reduction in average steps per episode (from 673.5 to 523.0) and the decrease in steps per win by a factor of 2.5 indicates that the Rainbow AAREN architecture is significantly more sample-efficient. This efficiency is attributed to the distributional (C51) Q-learning, which explicitly models value uncertainty in the imperfect-information environment, and the attention mechanism, which allows for global board reasoning compared to the sequential limitations of the LSTM.
+
+\subsection{Architectural Scalability and Imperfect Information}
+
+While the LSTM architecture was observed to plateau at a 22\% win rate in extended 37,213-episode runs (corroborated by prior research logs), the Rainbow DQN with AAREN demonstrates continuous improvement through Phase 4 of the curriculum. The loss-winrate correlation for the Rainbow model (-0.7469) indicates a much stronger coupling between policy optimization and game success than the LSTM model (0.0507), which suffered from performance decoupling in later stages.
+
+The attention-driven piece identity inference (AAREN) achieved an accuracy of 23.99\% in later episodes, outperforming the LSTM's implicit representation ceiling. Although the "side-model" architecture remains an advisory system rather than an embedded engine, the transition to a heavier, attention-based distributional agent is empirically justified by the near-doubling of the win rate and the resolution of the chronic "passive draw" bottleneck.

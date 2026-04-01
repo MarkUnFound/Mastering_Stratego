@@ -1,17 +1,19 @@
 \addvspace {10\p@ }
 \addvspace {10\p@ }
 \addvspace {10\p@ }
-\contentsline {table}{\numberline {3.1}{\ignorespaces Key Symbols and Descriptions from the MARQ Framework}}{20}{table.caption.8}%
+\contentsline {table}{\numberline {3.1}{\ignorespaces Key symbols and descriptions.}}{20}{table.caption.8}%
 \addvspace {10\p@ }
-\contentsline {table}{\numberline {4.1}{\ignorespaces Strategic ability bonuses for pieces with special capabilities.}}{43}{table.caption.31}%
-\contentsline {table}{\numberline {4.2}{\ignorespaces Computed piece values with associated combat and survival metrics.}}{44}{table.caption.33}%
-\contentsline {table}{\numberline {4.3}{\ignorespaces State representation input channels for the Rainbow DQN.}}{48}{table.caption.43}%
-\contentsline {table}{\numberline {4.4}{\ignorespaces Heuristic scoring criteria for move filtering.}}{55}{table.caption.59}%
+\contentsline {table}{\numberline {4.1}{\ignorespaces Computed piece values with combat and survival metrics.}}{41}{table.caption.29}%
+\contentsline {table}{\numberline {4.2}{\ignorespaces Strategic ability bonuses for special-capability pieces.}}{41}{table.caption.31}%
+\contentsline {table}{\numberline {4.3}{\ignorespaces State representation input channels.}}{45}{table.caption.39}%
+\contentsline {table}{\numberline {4.4}{\ignorespaces Heuristic scoring criteria.}}{47}{table.caption.45}%
 \addvspace {10\p@ }
-\contentsline {table}{\numberline {5.1}{\ignorespaces Vanilla DQN Performance Summary after 37,213 Episodes of Phase~4 League Training.}}{63}{table.caption.66}%
-\contentsline {table}{\numberline {5.2}{\ignorespaces Comparison of the dual-model and unified architectural pipelines.}}{68}{table.caption.75}%
-\contentsline {table}{\numberline {5.3}{\ignorespaces Mapping of MARQ title components to empirical evidence from the Vanilla DQN baseline.}}{73}{table.caption.76}%
-\contentsline {table}{\numberline {5.4}{\ignorespaces Mapping of observed limitations to theoretical causes and proposed MARQ components.}}{75}{table.caption.77}%
+\contentsline {table}{\numberline {5.1}{\ignorespaces Normal DQN performance after 37,213 episodes of self-play training.}}{54}{table.caption.52}%
+\contentsline {table}{\numberline {5.2}{\ignorespaces Dual-model versus unified architectural pipelines.}}{58}{table.caption.61}%
+\contentsline {table}{\numberline {5.3}{\ignorespaces Self-play performance comparison between Vanilla DQN with LSTM and Rainbow DQN with AAREN.}}{61}{table.caption.62}%
+\contentsline {table}{\numberline {5.4}{\ignorespaces Rainbow DQN with AAREN extended training (75k episodes) against heuristic opponents.}}{63}{table.caption.69}%
+\contentsline {table}{\numberline {5.5}{\ignorespaces MARQ title components mapped to normal DQN failure modes and Rainbow DQN validation.}}{64}{table.caption.72}%
+\contentsline {table}{\numberline {5.6}{\ignorespaces Observed limitations mapped to theoretical causes, MARQ components, and validation status.}}{65}{table.caption.73}%
 \addvspace {10\p@ }
 \addvspace {10\p@ }
 \addvspace {10\p@ }

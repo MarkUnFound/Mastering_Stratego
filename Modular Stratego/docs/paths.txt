@@ -1,0 +1,11 @@
+c:\Users\Mark Lawrence Quibot\repo\Research\History\2\training_history.json
+c:\Users\Mark Lawrence Quibot\repo\Research\History\3\training_history.json
+c:\Users\Mark Lawrence Quibot\repo\Research\History\DQN2\training_history.json
+c:\Users\Mark Lawrence Quibot\repo\Research\History\DQN3\training_history.json
+c:\Users\Mark Lawrence Quibot\repo\Research\History\DQN4\training_history.json
+c:\Users\Mark Lawrence Quibot\repo\Research\History\DQNclassic\training_history.json
+c:\Users\Mark Lawrence Quibot\repo\Research\History\dqn_models\training_history.json
+c:\Users\Mark Lawrence Quibot\repo\Research\History\LSTMDQN RUN\training_history.json
+c:\Users\Mark Lawrence Quibot\repo\Research\History\rainbow_models_backup\training_history.json
+c:\Users\Mark Lawrence Quibot\repo\Research\Modular Stratego\dqn_models\training_history.json
+c:\Users\Mark Lawrence Quibot\repo\Research\Modular Stratego\network\dqn_models\training_history.json
