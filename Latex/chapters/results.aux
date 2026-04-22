@@ -8,77 +8,81 @@
 \newlabel{tab:vanilla_performance}{{5.1}{54}{Normal DQN performance after 37,213 episodes of self-play training}{table.caption.52}{}}
 \newlabel{finding:1}{{5.1}{54}{Finding 1: Win Rate Plateau}{section*.53}{}}
 \@writefile{toc}{\contentsline {paragraph}{Finding 1: Win Rate Plateau.}{54}{section*.53}\protected@file@percent }
-\newlabel{finding:2}{{5.1}{55}{Finding 2: Loss--Performance Decoupling}{section*.54}{}}
-\@writefile{toc}{\contentsline {paragraph}{Finding 2: Loss--Performance Decoupling.}{55}{section*.54}\protected@file@percent }
-\newlabel{finding:3}{{5.1}{55}{Finding 3: Q-Value Overestimation}{section*.55}{}}
-\@writefile{toc}{\contentsline {paragraph}{Finding 3: Q-Value Overestimation.}{55}{section*.55}\protected@file@percent }
-\newlabel{finding:4}{{5.1}{55}{Finding 4: LSTM Prediction Accuracy Ceiling}{section*.56}{}}
-\@writefile{toc}{\contentsline {paragraph}{Finding 4: LSTM Prediction Accuracy Ceiling.}{55}{section*.56}\protected@file@percent }
-\newlabel{finding:5}{{5.1}{55}{Finding 5: Opponent-Specific Performance Asymmetry}{section*.57}{}}
-\@writefile{toc}{\contentsline {paragraph}{Finding 5: Opponent-Specific Performance Asymmetry.}{55}{section*.57}\protected@file@percent }
-\newlabel{finding:6}{{5.1}{55}{Finding 6: Draw Dominance}{section*.58}{}}
-\@writefile{toc}{\contentsline {paragraph}{Finding 6: Draw Dominance.}{55}{section*.58}\protected@file@percent }
-\@writefile{lof}{\contentsline {figure}{\numberline {5.1}{\ignorespaces Training diagnostics at episode 37,000.}}{55}{figure.caption.59}\protected@file@percent }
-\newlabel{fig:training_diagnostics_37k}{{5.1}{55}{Training diagnostics at episode 37,000}{figure.caption.59}{}}
-\@writefile{lof}{\contentsline {figure}{\numberline {5.2}{\ignorespaces AAREN/LSTM training metrics at episode 37,000.}}{56}{figure.caption.60}\protected@file@percent }
-\newlabel{fig:aaren_diagnostics_37k}{{5.2}{56}{AAREN/LSTM training metrics at episode 37,000}{figure.caption.60}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {5.2}Behavioral Patterns from Training Logs}{56}{section.5.2}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {5.2.1}Passive Shuffling Convergence}{56}{subsection.5.2.1}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {5.2.2}Opponent-Specific Adaptation Failure}{56}{subsection.5.2.2}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {5.2.3}Loss-Reward Divergence}{56}{subsection.5.2.3}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {5.2.4}LSTM Accuracy as an Information Barrier}{57}{subsection.5.2.4}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {5.3}Draw Dominance and Learning Signal Quality}{57}{section.5.3}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {5.4}Architectural Comparison: Unified versus Dual-Model Pipeline}{57}{section.5.4}\protected@file@percent }
-\@writefile{lot}{\contentsline {table}{\numberline {5.2}{\ignorespaces Dual-model versus unified architectural pipelines.}}{58}{table.caption.61}\protected@file@percent }
-\newlabel{tab:architecture_comparison}{{5.2}{58}{Dual-model versus unified architectural pipelines}{table.caption.61}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {5.5}Architectural Bottleneck Analysis}{58}{section.5.5}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {5.5.1}Q-Value Overestimation}{58}{subsection.5.5.1}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {5.1}{\ignorespaces Cumulative win count and win rate over 37,213 episodes. The win rate plateaus early and remains flat, indicating policy stagnation.}}{55}{figure.caption.54}\protected@file@percent }
+\newlabel{fig:cumulative_winrate}{{5.1}{55}{Cumulative win count and win rate over 37,213 episodes. The win rate plateaus early and remains flat, indicating policy stagnation}{figure.caption.54}{}}
+\newlabel{finding:2}{{5.1}{55}{Finding 2: Loss--Performance Decoupling}{section*.55}{}}
+\@writefile{toc}{\contentsline {paragraph}{Finding 2: Loss--Performance Decoupling.}{55}{section*.55}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {5.2}{\ignorespaces Policy loss (TD error) drops near zero and stays flat, decoupling from the stagnant win rate.}}{55}{figure.caption.56}\protected@file@percent }
+\newlabel{fig:policy_loss}{{5.2}{55}{Policy loss (TD error) drops near zero and stays flat, decoupling from the stagnant win rate}{figure.caption.56}{}}
+\newlabel{finding:3}{{5.1}{55}{Finding 3: Q-Value Overestimation}{section*.57}{}}
+\@writefile{toc}{\contentsline {paragraph}{Finding 3: Q-Value Overestimation.}{55}{section*.57}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {5.3}{\ignorespaces Average Q-values climb significantly throughout training without any corresponding improvement in win rate.}}{56}{figure.caption.58}\protected@file@percent }
+\newlabel{fig:q_value}{{5.3}{56}{Average Q-values climb significantly throughout training without any corresponding improvement in win rate}{figure.caption.58}{}}
+\newlabel{finding:4}{{5.1}{57}{Finding 4: LSTM Prediction Accuracy Ceiling}{section*.59}{}}
+\@writefile{toc}{\contentsline {paragraph}{Finding 4: LSTM Prediction Accuracy Ceiling.}{57}{section*.59}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {5.4}{\ignorespaces Piece-identity prediction accuracy flattens near 20\% early in training, forming an information barrier.}}{57}{figure.caption.60}\protected@file@percent }
+\newlabel{fig:prediction_accuracy}{{5.4}{57}{Piece-identity prediction accuracy flattens near 20\% early in training, forming an information barrier}{figure.caption.60}{}}
+\newlabel{finding:5}{{5.1}{57}{Finding 5: Opponent-Specific Performance Asymmetry}{section*.61}{}}
+\@writefile{toc}{\contentsline {paragraph}{Finding 5: Opponent-Specific Performance Asymmetry.}{57}{section*.61}\protected@file@percent }
+\newlabel{finding:6}{{5.1}{57}{Finding 6: Draw Dominance}{section*.62}{}}
+\@writefile{toc}{\contentsline {paragraph}{Finding 6: Draw Dominance.}{57}{section*.62}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {5.2}Behavioral Patterns from Training Logs}{57}{section.5.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.2.1}Passive Shuffling Convergence}{57}{subsection.5.2.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.2.2}Opponent-Specific Adaptation Failure}{58}{subsection.5.2.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.2.3}Loss-Reward Divergence}{58}{subsection.5.2.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.2.4}LSTM Accuracy as an Information Barrier}{59}{subsection.5.2.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {5.3}Draw Dominance and Learning Signal Quality}{59}{section.5.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {5.4}Architectural Comparison: Unified versus Dual-Model Pipeline}{59}{section.5.4}\protected@file@percent }
 \citation{RainbowJMLR2021}
+\@writefile{lot}{\contentsline {table}{\numberline {5.2}{\ignorespaces Dual-model versus unified architectural pipelines.}}{60}{table.caption.63}\protected@file@percent }
+\newlabel{tab:architecture_comparison}{{5.2}{60}{Dual-model versus unified architectural pipelines}{table.caption.63}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {5.5}Architectural Bottleneck Analysis}{60}{section.5.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.5.1}Q-Value Overestimation}{60}{subsection.5.5.1}\protected@file@percent }
 \citation{RainbowJMLR2021}
 \citation{RainbowJMLR2021}
 \citation{RainbowJMLR2021}
 \citation{Aaren}
-\@writefile{toc}{\contentsline {subsection}{\numberline {5.5.2}Scalar Value Collapse}{59}{subsection.5.5.2}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {5.5.3}LSTM Information Bottleneck}{59}{subsection.5.5.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.5.2}Scalar Value Collapse}{61}{subsection.5.5.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.5.3}LSTM Information Bottleneck}{61}{subsection.5.5.3}\protected@file@percent }
 \citation{perolat2022stratego}
 \citation{RainbowJMLR2021}
 \citation{RainbowJMLR2021}
-\@writefile{toc}{\contentsline {subsection}{\numberline {5.5.4}Exploration Collapse}{60}{subsection.5.5.4}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {5.5.5}Sparse Reward Propagation}{60}{subsection.5.5.5}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {5.6}Empirical Validation: Rainbow DQN with AAREN}{61}{section.5.6}\protected@file@percent }
-\@writefile{lot}{\contentsline {table}{\numberline {5.3}{\ignorespaces Self-play performance comparison between Vanilla DQN with LSTM and Rainbow DQN with AAREN.}}{61}{table.caption.62}\protected@file@percent }
-\newlabel{tab:arch_comparison}{{5.3}{61}{Self-play performance comparison between Vanilla DQN with LSTM and Rainbow DQN with AAREN}{table.caption.62}{}}
-\newlabel{finding:7}{{5.6}{61}{Finding 7: Win Rate Doubles}{section*.63}{}}
-\@writefile{toc}{\contentsline {paragraph}{Finding 7: Win Rate Doubles.}{61}{section*.63}\protected@file@percent }
-\newlabel{finding:8}{{5.6}{61}{Finding 8: Draw Elimination}{section*.64}{}}
-\@writefile{toc}{\contentsline {paragraph}{Finding 8: Draw Elimination.}{61}{section*.64}\protected@file@percent }
-\newlabel{finding:9}{{5.6}{62}{Finding 9: Loss--Performance Coupling Restored}{section*.65}{}}
-\@writefile{toc}{\contentsline {paragraph}{Finding 9: Loss--Performance Coupling Restored.}{62}{section*.65}\protected@file@percent }
-\newlabel{finding:10}{{5.6}{62}{Finding 10: Sample Efficiency}{section*.66}{}}
-\@writefile{toc}{\contentsline {paragraph}{Finding 10: Sample Efficiency.}{62}{section*.66}\protected@file@percent }
-\newlabel{finding:11}{{5.6}{62}{Finding 11: AAREN Exceeds LSTM Accuracy}{section*.67}{}}
-\@writefile{toc}{\contentsline {paragraph}{Finding 11: AAREN Exceeds LSTM Accuracy.}{62}{section*.67}\protected@file@percent }
-\newlabel{finding:12}{{5.6}{62}{Finding 12: Learned Exploration Active}{section*.68}{}}
-\@writefile{toc}{\contentsline {paragraph}{Finding 12: Learned Exploration Active.}{62}{section*.68}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {5.6.1}Extended Training at 75,000 Episodes}{62}{subsection.5.6.1}\protected@file@percent }
-\@writefile{lot}{\contentsline {table}{\numberline {5.4}{\ignorespaces Rainbow DQN with AAREN extended training (75k episodes) against heuristic opponents.}}{63}{table.caption.69}\protected@file@percent }
-\newlabel{tab:rdqn75k}{{5.4}{63}{Rainbow DQN with AAREN extended training (75k episodes) against heuristic opponents}{table.caption.69}{}}
-\newlabel{finding:13}{{5.6.1}{63}{Finding 13: Loss Convergence Over Long Horizons}{section*.70}{}}
-\@writefile{toc}{\contentsline {paragraph}{Finding 13: Loss Convergence Over Long Horizons.}{63}{section*.70}\protected@file@percent }
-\newlabel{finding:14}{{5.6.1}{63}{Finding 14: Flag Pursuit Behavior}{section*.71}{}}
-\@writefile{toc}{\contentsline {paragraph}{Finding 14: Flag Pursuit Behavior.}{63}{section*.71}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.5.4}Exploration Collapse}{62}{subsection.5.5.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.5.5}Sparse Reward Propagation}{62}{subsection.5.5.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {5.6}Empirical Validation: Rainbow DQN with AAREN}{63}{section.5.6}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {5.3}{\ignorespaces Self-play performance comparison between Vanilla DQN with LSTM and Rainbow DQN with AAREN.}}{63}{table.caption.64}\protected@file@percent }
+\newlabel{tab:arch_comparison}{{5.3}{63}{Self-play performance comparison between Vanilla DQN with LSTM and Rainbow DQN with AAREN}{table.caption.64}{}}
+\newlabel{finding:7}{{5.6}{63}{Finding 7: Win Rate Doubles}{section*.65}{}}
+\@writefile{toc}{\contentsline {paragraph}{Finding 7: Win Rate Doubles.}{63}{section*.65}\protected@file@percent }
+\newlabel{finding:8}{{5.6}{63}{Finding 8: Draw Elimination}{section*.66}{}}
+\@writefile{toc}{\contentsline {paragraph}{Finding 8: Draw Elimination.}{63}{section*.66}\protected@file@percent }
+\newlabel{finding:9}{{5.6}{64}{Finding 9: Loss--Performance Coupling Restored}{section*.67}{}}
+\@writefile{toc}{\contentsline {paragraph}{Finding 9: Loss--Performance Coupling Restored.}{64}{section*.67}\protected@file@percent }
+\newlabel{finding:10}{{5.6}{64}{Finding 10: Sample Efficiency}{section*.68}{}}
+\@writefile{toc}{\contentsline {paragraph}{Finding 10: Sample Efficiency.}{64}{section*.68}\protected@file@percent }
+\newlabel{finding:11}{{5.6}{65}{Finding 11: AAREN Exceeds LSTM Accuracy}{section*.69}{}}
+\@writefile{toc}{\contentsline {paragraph}{Finding 11: AAREN Exceeds LSTM Accuracy.}{65}{section*.69}\protected@file@percent }
+\newlabel{finding:12}{{5.6}{65}{Finding 12: Learned Exploration Active}{section*.70}{}}
+\@writefile{toc}{\contentsline {paragraph}{Finding 12: Learned Exploration Active.}{65}{section*.70}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.6.1}Extended Training at 75,000 Episodes}{65}{subsection.5.6.1}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {5.4}{\ignorespaces Rainbow DQN with AAREN extended training (75k episodes) against heuristic opponents.}}{65}{table.caption.71}\protected@file@percent }
+\newlabel{tab:rdqn75k}{{5.4}{65}{Rainbow DQN with AAREN extended training (75k episodes) against heuristic opponents}{table.caption.71}{}}
+\newlabel{finding:13}{{5.6.1}{65}{Finding 13: Loss Convergence Over Long Horizons}{section*.72}{}}
+\@writefile{toc}{\contentsline {paragraph}{Finding 13: Loss Convergence Over Long Horizons.}{65}{section*.72}\protected@file@percent }
+\newlabel{finding:14}{{5.6.1}{66}{Finding 14: Flag Pursuit Behavior}{section*.73}{}}
+\@writefile{toc}{\contentsline {paragraph}{Finding 14: Flag Pursuit Behavior.}{66}{section*.73}\protected@file@percent }
 \citation{perolat2022stratego}
 \citation{Ataraxos2025}
-\@writefile{toc}{\contentsline {section}{\numberline {5.7}Evidence for Architectural Necessity}{64}{section.5.7}\protected@file@percent }
-\@writefile{lot}{\contentsline {table}{\numberline {5.5}{\ignorespaces MARQ title components mapped to normal DQN failure modes and Rainbow DQN validation.}}{64}{table.caption.72}\protected@file@percent }
-\newlabel{tab:title_evidence}{{5.5}{64}{MARQ title components mapped to normal DQN failure modes and Rainbow DQN validation}{table.caption.72}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {5.8}Supporting Evidence from Related Work}{64}{section.5.8}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {5.7}Evidence for Architectural Necessity}{67}{section.5.7}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {5.5}{\ignorespaces MARQ title components mapped to normal DQN failure modes and Rainbow DQN validation.}}{67}{table.caption.74}\protected@file@percent }
+\newlabel{tab:title_evidence}{{5.5}{67}{MARQ title components mapped to normal DQN failure modes and Rainbow DQN validation}{table.caption.74}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {5.8}Supporting Evidence from Related Work}{67}{section.5.8}\protected@file@percent }
 \citation{RainbowJMLR2021}
-\@writefile{toc}{\contentsline {section}{\numberline {5.9}Implications for MARQ}{65}{section.5.9}\protected@file@percent }
-\@writefile{lot}{\contentsline {table}{\numberline {5.6}{\ignorespaces Observed limitations mapped to theoretical causes, MARQ components, and validation status.}}{65}{table.caption.73}\protected@file@percent }
-\newlabel{tab:limitation_mapping}{{5.6}{65}{Observed limitations mapped to theoretical causes, MARQ components, and validation status}{table.caption.73}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {5.9}Implications for MARQ}{68}{section.5.9}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {5.6}{\ignorespaces Observed limitations mapped to theoretical causes, MARQ components, and validation status.}}{68}{table.caption.75}\protected@file@percent }
+\newlabel{tab:limitation_mapping}{{5.6}{68}{Observed limitations mapped to theoretical causes, MARQ components, and validation status}{table.caption.75}{}}
 \@setckpt{chapters/results}{
-\setcounter{page}{66}
+\setcounter{page}{69}
 \setcounter{equation}{7}
 \setcounter{enumi}{3}
 \setcounter{enumii}{0}
@@ -93,7 +97,7 @@
 \setcounter{subsubsection}{0}
 \setcounter{paragraph}{0}
 \setcounter{subparagraph}{0}
-\setcounter{figure}{2}
+\setcounter{figure}{4}
 \setcounter{table}{6}
 \setcounter{section@level}{1}
 \setcounter{Item}{11}

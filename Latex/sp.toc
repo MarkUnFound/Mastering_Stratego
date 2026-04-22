@@ -110,51 +110,52 @@
 \contentsline {chapter}{\numberline {5}Results and Discussion}{54}{chapter.5}%
 \contentsline {section}{\numberline {5.1}Normal DQN Performance Ceiling}{54}{section.5.1}%
 \contentsline {paragraph}{Finding 1: Win Rate Plateau.}{54}{section*.53}%
-\contentsline {paragraph}{Finding 2: Loss--Performance Decoupling.}{55}{section*.54}%
-\contentsline {paragraph}{Finding 3: Q-Value Overestimation.}{55}{section*.55}%
-\contentsline {paragraph}{Finding 4: LSTM Prediction Accuracy Ceiling.}{55}{section*.56}%
-\contentsline {paragraph}{Finding 5: Opponent-Specific Performance Asymmetry.}{55}{section*.57}%
-\contentsline {paragraph}{Finding 6: Draw Dominance.}{55}{section*.58}%
-\contentsline {section}{\numberline {5.2}Behavioral Patterns from Training Logs}{56}{section.5.2}%
-\contentsline {subsection}{\numberline {5.2.1}Passive Shuffling Convergence}{56}{subsection.5.2.1}%
-\contentsline {subsection}{\numberline {5.2.2}Opponent-Specific Adaptation Failure}{56}{subsection.5.2.2}%
-\contentsline {subsection}{\numberline {5.2.3}Loss-Reward Divergence}{56}{subsection.5.2.3}%
-\contentsline {subsection}{\numberline {5.2.4}LSTM Accuracy as an Information Barrier}{57}{subsection.5.2.4}%
-\contentsline {section}{\numberline {5.3}Draw Dominance and Learning Signal Quality}{57}{section.5.3}%
-\contentsline {section}{\numberline {5.4}Architectural Comparison: Unified versus Dual-Model Pipeline}{57}{section.5.4}%
-\contentsline {section}{\numberline {5.5}Architectural Bottleneck Analysis}{58}{section.5.5}%
-\contentsline {subsection}{\numberline {5.5.1}Q-Value Overestimation}{58}{subsection.5.5.1}%
-\contentsline {subsection}{\numberline {5.5.2}Scalar Value Collapse}{59}{subsection.5.5.2}%
-\contentsline {subsection}{\numberline {5.5.3}LSTM Information Bottleneck}{59}{subsection.5.5.3}%
-\contentsline {subsection}{\numberline {5.5.4}Exploration Collapse}{60}{subsection.5.5.4}%
-\contentsline {subsection}{\numberline {5.5.5}Sparse Reward Propagation}{60}{subsection.5.5.5}%
-\contentsline {section}{\numberline {5.6}Empirical Validation: Rainbow DQN with AAREN}{61}{section.5.6}%
-\contentsline {paragraph}{Finding 7: Win Rate Doubles.}{61}{section*.63}%
-\contentsline {paragraph}{Finding 8: Draw Elimination.}{61}{section*.64}%
-\contentsline {paragraph}{Finding 9: Loss--Performance Coupling Restored.}{62}{section*.65}%
-\contentsline {paragraph}{Finding 10: Sample Efficiency.}{62}{section*.66}%
-\contentsline {paragraph}{Finding 11: AAREN Exceeds LSTM Accuracy.}{62}{section*.67}%
-\contentsline {paragraph}{Finding 12: Learned Exploration Active.}{62}{section*.68}%
-\contentsline {subsection}{\numberline {5.6.1}Extended Training at 75,000 Episodes}{62}{subsection.5.6.1}%
-\contentsline {paragraph}{Finding 13: Loss Convergence Over Long Horizons.}{63}{section*.70}%
-\contentsline {paragraph}{Finding 14: Flag Pursuit Behavior.}{63}{section*.71}%
-\contentsline {section}{\numberline {5.7}Evidence for Architectural Necessity}{64}{section.5.7}%
-\contentsline {section}{\numberline {5.8}Supporting Evidence from Related Work}{64}{section.5.8}%
-\contentsline {section}{\numberline {5.9}Implications for MARQ}{65}{section.5.9}%
-\contentsline {chapter}{\numberline {6}Conclusion and Recommendations}{66}{chapter.6}%
-\contentsline {section}{\numberline {6.1}Recommended Architectural Enhancements}{66}{section.6.1}%
-\contentsline {subsection}{\numberline {6.1.1}Value Estimation}{66}{subsection.6.1.1}%
-\contentsline {subsection}{\numberline {6.1.2}LSTM to AAREN Transition}{66}{subsection.6.1.2}%
-\contentsline {subsection}{\numberline {6.1.3}Exploration Recovery}{67}{subsection.6.1.3}%
-\contentsline {subsection}{\numberline {6.1.4}Long-Range Credit Assignment}{67}{subsection.6.1.4}%
-\contentsline {section}{\numberline {6.2}Computer Science Contributions}{68}{section.6.2}%
-\contentsline {subsection}{\numberline {6.2.1}Five-Phase Curriculum Design}{68}{subsection.6.2.1}%
-\contentsline {subsection}{\numberline {6.2.2}Gradient Bridge for Replay Compatibility}{68}{subsection.6.2.2}%
-\contentsline {subsection}{\numberline {6.2.3}Expectamax Search Integration}{68}{subsection.6.2.3}%
-\contentsline {subsection}{\numberline {6.2.4}Potential-Based Reward Shaping with Phase Annealing}{68}{subsection.6.2.4}%
-\contentsline {section}{\numberline {6.3}Limitations and Future Work}{69}{section.6.3}%
-\contentsline {chapter}{\numberline {A}Gantt Chart}{70}{appendix.A}%
-\contentsline {chapter}{\numberline {B}System UI and Training}{73}{appendix.B}%
-\contentsline {section}{\numberline {B.1}Interpretability Dashboard}{80}{section.B.1}%
-\contentsline {section}{\numberline {B.2}Architecture Comparison Training Charts}{82}{section.B.2}%
-\contentsline {section}{\numberline {B.3}AI Transparency, Inclusion, and Originality of Intent}{89}{section.B.3}%
+\contentsline {paragraph}{Finding 2: Loss--Performance Decoupling.}{55}{section*.55}%
+\contentsline {paragraph}{Finding 3: Q-Value Overestimation.}{55}{section*.57}%
+\contentsline {paragraph}{Finding 4: LSTM Prediction Accuracy Ceiling.}{57}{section*.59}%
+\contentsline {paragraph}{Finding 5: Opponent-Specific Performance Asymmetry.}{57}{section*.61}%
+\contentsline {paragraph}{Finding 6: Draw Dominance.}{57}{section*.62}%
+\contentsline {section}{\numberline {5.2}Behavioral Patterns from Training Logs}{57}{section.5.2}%
+\contentsline {subsection}{\numberline {5.2.1}Passive Shuffling Convergence}{57}{subsection.5.2.1}%
+\contentsline {subsection}{\numberline {5.2.2}Opponent-Specific Adaptation Failure}{58}{subsection.5.2.2}%
+\contentsline {subsection}{\numberline {5.2.3}Loss-Reward Divergence}{58}{subsection.5.2.3}%
+\contentsline {subsection}{\numberline {5.2.4}LSTM Accuracy as an Information Barrier}{59}{subsection.5.2.4}%
+\contentsline {section}{\numberline {5.3}Draw Dominance and Learning Signal Quality}{59}{section.5.3}%
+\contentsline {section}{\numberline {5.4}Architectural Comparison: Unified versus Dual-Model Pipeline}{59}{section.5.4}%
+\contentsline {section}{\numberline {5.5}Architectural Bottleneck Analysis}{60}{section.5.5}%
+\contentsline {subsection}{\numberline {5.5.1}Q-Value Overestimation}{60}{subsection.5.5.1}%
+\contentsline {subsection}{\numberline {5.5.2}Scalar Value Collapse}{61}{subsection.5.5.2}%
+\contentsline {subsection}{\numberline {5.5.3}LSTM Information Bottleneck}{61}{subsection.5.5.3}%
+\contentsline {subsection}{\numberline {5.5.4}Exploration Collapse}{62}{subsection.5.5.4}%
+\contentsline {subsection}{\numberline {5.5.5}Sparse Reward Propagation}{62}{subsection.5.5.5}%
+\contentsline {section}{\numberline {5.6}Empirical Validation: Rainbow DQN with AAREN}{63}{section.5.6}%
+\contentsline {paragraph}{Finding 7: Win Rate Doubles.}{63}{section*.65}%
+\contentsline {paragraph}{Finding 8: Draw Elimination.}{63}{section*.66}%
+\contentsline {paragraph}{Finding 9: Loss--Performance Coupling Restored.}{64}{section*.67}%
+\contentsline {paragraph}{Finding 10: Sample Efficiency.}{64}{section*.68}%
+\contentsline {paragraph}{Finding 11: AAREN Exceeds LSTM Accuracy.}{65}{section*.69}%
+\contentsline {paragraph}{Finding 12: Learned Exploration Active.}{65}{section*.70}%
+\contentsline {subsection}{\numberline {5.6.1}Extended Training at 75,000 Episodes}{65}{subsection.5.6.1}%
+\contentsline {paragraph}{Finding 13: Loss Convergence Over Long Horizons.}{65}{section*.72}%
+\contentsline {paragraph}{Finding 14: Flag Pursuit Behavior.}{66}{section*.73}%
+\contentsline {section}{\numberline {5.7}Evidence for Architectural Necessity}{67}{section.5.7}%
+\contentsline {section}{\numberline {5.8}Supporting Evidence from Related Work}{67}{section.5.8}%
+\contentsline {section}{\numberline {5.9}Implications for MARQ}{68}{section.5.9}%
+\contentsline {chapter}{\numberline {6}Conclusion and Recommendations}{69}{chapter.6}%
+\contentsline {section}{\numberline {6.1}Conclusion}{69}{section.6.1}%
+\contentsline {section}{\numberline {6.2}Recommended Architectural Enhancements}{70}{section.6.2}%
+\contentsline {subsection}{\numberline {6.2.1}Value Estimation}{70}{subsection.6.2.1}%
+\contentsline {subsection}{\numberline {6.2.2}LSTM to AAREN Transition}{71}{subsection.6.2.2}%
+\contentsline {subsection}{\numberline {6.2.3}Exploration Recovery}{71}{subsection.6.2.3}%
+\contentsline {subsection}{\numberline {6.2.4}Long-Range Credit Assignment}{72}{subsection.6.2.4}%
+\contentsline {section}{\numberline {6.3}Computer Science Contributions}{72}{section.6.3}%
+\contentsline {subsection}{\numberline {6.3.1}Five-Phase Curriculum Design}{72}{subsection.6.3.1}%
+\contentsline {subsection}{\numberline {6.3.2}Gradient Bridge for Replay Compatibility}{72}{subsection.6.3.2}%
+\contentsline {subsection}{\numberline {6.3.3}Expectamax Search Integration}{72}{subsection.6.3.3}%
+\contentsline {subsection}{\numberline {6.3.4}Potential-Based Reward Shaping with Phase Annealing}{73}{subsection.6.3.4}%
+\contentsline {section}{\numberline {6.4}Limitations and Future Work}{73}{section.6.4}%
+\contentsline {chapter}{\numberline {A}Gantt Chart}{75}{appendix.A}%
+\contentsline {chapter}{\numberline {B}System UI and Training}{78}{appendix.B}%
+\contentsline {section}{\numberline {B.1}Interpretability Dashboard}{85}{section.B.1}%
+\contentsline {section}{\numberline {B.2}Architecture Comparison Training Charts}{87}{section.B.2}%
+\contentsline {section}{\numberline {B.3}AI Transparency, Inclusion, and Originality of Intent}{94}{section.B.3}%

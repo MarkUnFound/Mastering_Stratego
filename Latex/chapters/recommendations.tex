@@ -2,6 +2,16 @@
 \chapter{Conclusion and Recommendations}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+\section{Conclusion}
+
+The experiments presented in this thesis set out to determine whether the performance ceiling of a normal DQN agent in Stratego arises from insufficient training or from structural properties of the architecture itself. The evidence supports the latter interpretation. Across 37,213 episodes of curriculum training, the normal DQN exhibited a stable 22\% win rate, monotonically decreasing TD loss with no corresponding performance gain, Q-value overestimation, piece prediction accuracy frozen near 20\%, and a 38.5\% draw rate driven by passive piece shuffling. These observations are not independent failures. They form a coherent pattern: scalar value collapse prevents the agent from distinguishing aggressive high-variance moves from passive low-variance alternatives, exploration decay eliminates the mechanism for discovering new strategies, and the LSTM information bottleneck denies the agent the opponent model needed to evaluate combat outcomes.
+
+The Rainbow DQN with AAREN addressed each of these bottlenecks through targeted architectural changes. C51 distributional value estimation replaced scalar Q-learning and restored the coupling between training loss and gameplay performance ($r = -0.787$ versus $0.051$). Noisy Networks replaced frozen $\epsilon$-greedy exploration with adaptive, state-dependent noise that continued expanding coverage throughout training. AAREN replaced the LSTM history encoder and raised piece-identity inference accuracy from 17.74\% to 24.23\%. Multi-step returns shortened the effective bootstrap depth for sparse terminal rewards. The combined effect was a win rate of 49.88\% at 9,778 episodes, achieved on roughly half the environment steps consumed by the normal DQN, and a draw rate reduction from 50.04\% to 6.69\%.
+
+The transition from draw-dominated outcomes to decisive games represents the most consequential behavioral shift observed in the data. The normal DQN converged on a policy that minimized short-term risk at the cost of long-term winning probability. The Rainbow agent, equipped with a distributional value head capable of representing multi-modal outcome distributions, learned to distinguish between moves that produce safe draws and moves that carry higher variance but lead to flag captures. The extended 75,047-episode training run confirmed that this aggressive posture matures into purposeful strategy: the agent achieved a 99.96\% flag capture ratio among wins, with average episode length dropping to 378 steps. The agent did not merely learn to fight; it learned to identify and pursue the opponent flag.
+
+These results establish that the MARQ architecture is not a speculative assembly of techniques. Each component resolves a verified failure mode of the baseline, and the empirical gains are consistent with the theoretical predictions derived from distributional RL, attention-based sequence modeling, and learned exploration. The sections that follow detail the specific enhancements and their individual contributions, the broader contributions to reinforcement learning methodology, and the limitations that remain for future investigation.
+
 \section{Recommended Architectural Enhancements}
 
 \subsection{Value Estimation}
@@ -29,7 +39,7 @@ Single-step TD learning attenuates terminal rewards by $\gamma^{200} \approx 0.1
 
 \section{Computer Science Contributions}
 
-The contributions below belong to reinforcement learning systems engineering, not to Stratego specifically. Stratego is the test domain. The techniques themselves are architecture-agnostic.
+The contributions below belong to reinforcement learning systems engineering and are not specific to Stratego. Stratego serves as the test domain, but the techniques themselves are architecture-agnostic and transfer to other partially observable or adversarial settings.
 
 \subsection{Five-Phase Curriculum Design}
 
@@ -50,7 +60,7 @@ PBRS guarantees policy invariance while providing dense signals during early tra
 
 \section{Limitations and Future Work}
 
-Several limitations remain.
+The validation presented in this thesis was bounded by the training infrastructure, opponent diversity, and compute budget available during the research period. The following limitations qualify the conclusions drawn above and identify directions where additional work is needed.
 
 The Rainbow DQN with AAREN demonstrated strong empirical improvements over the normal DQN baseline, but the validation was conducted against heuristic and self-play opponents within the MARQ curriculum. Performance against human opponents is assessed through a separate participant study and may reveal additional gaps in strategic reasoning that automated training does not expose.
 

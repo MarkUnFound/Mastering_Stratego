@@ -24,19 +24,47 @@ The multi-phase curriculum concluded with 37,213 episodes of self-play training.
     \end{tabular}
 \end{table}
 
-Six empirical findings emerge from the training data. Each points to a distinct architectural limitation.
+Six empirical findings emerge from the training data, each pointing to a distinct architectural limitation.
 
 \paragraph{Finding 1: Win Rate Plateau.}\label{finding:1}
 Agent~1's cumulative win rate settled near 22\% within 2,000 episodes. It never improved over the next 35,000. The 100-episode rolling average swung between 15\% and 30\% with no upward trend. The policy stalled.
 
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.85\textwidth]{figures/Results/cropped/cumulative_wins_winrate.png}
+    \caption{Cumulative win count and win rate over 37,213 episodes. The win rate plateaus early and remains flat, indicating policy stagnation.}
+    \label{fig:cumulative_winrate}
+\end{figure}
+
 \paragraph{Finding 2: Loss--Performance Decoupling.}\label{finding:2}
 The TD error fell monotonically to roughly 0.001. The win rate did not follow. The network learned to predict the value of passive, draw-seeking play accurately. It did not discover better strategies.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.85\textwidth]{figures/Results/cropped/policy_loss.png}
+    \caption{Policy loss (TD error) drops near zero and stays flat, decoupling from the stagnant win rate.}
+    \label{fig:policy_loss}
+\end{figure}
 
 \paragraph{Finding 3: Q-Value Overestimation.}\label{finding:3}
 Average Q-values climbed from 0.2 to 1.2. Win rates did not move. Rising value estimates without corresponding performance gains point to systematic overestimation bias.
 
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.85\textwidth]{figures/Results/cropped/q_value.png}
+    \caption{Average Q-values climb significantly throughout training without any corresponding improvement in win rate.}
+    \label{fig:q_value}
+\end{figure}
+
 \paragraph{Finding 4: LSTM Prediction Accuracy Ceiling.}\label{finding:4}
 The LSTM piece-identity module plateaued at 18--22\% accuracy, a 2.2--2.6$\times$ gain over the 8.3\% random baseline but far short of reliable tactical inference. The curve flattened after episode 5,000 and never recovered.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.85\textwidth]{figures/Results/cropped/prediction_accuracy.png}
+    \caption{Piece-identity prediction accuracy flattens near 20\% early in training, forming an information barrier.}
+    \label{fig:prediction_accuracy}
+\end{figure}
 
 \paragraph{Finding 5: Opponent-Specific Performance Asymmetry.}\label{finding:5}
 Performance varied sharply by opponent. Win rate against the greedy heuristic was 15.2\%; in self-play it reached 24.8\%. The policy fit its own behavioral distribution and could not generalize.
@@ -44,34 +72,10 @@ Performance varied sharply by opponent. Win rate against the greedy heuristic wa
 \paragraph{Finding 6: Draw Dominance.}\label{finding:6}
 Draws accounted for 38.5\% of outcomes, far above the 22.2\% win rate. The agent shuffled pieces passively and avoided uncertain engagements. It minimized short-term losses at the expense of long-term winning probability.
 
-\begin{figure}[htbp]
-    \centering
-    \begin{subfigure}[b]{0.48\textwidth}
-        \centering
-        \includegraphics[width=\textwidth,height=0.25\textheight,keepaspectratio]{figures/Results/training_progress_episode_37000.png}
-        \caption{Reward convergence and win rate trajectory.}
-    \end{subfigure}
-    \hfill
-    \begin{subfigure}[b]{0.48\textwidth}
-        \centering
-        \includegraphics[width=\textwidth,height=0.25\textheight,keepaspectratio]{figures/Results/additional_metrics_episode_37000.png}
-        \caption{Q-value, episode length, and exploration metrics.}
-    \end{subfigure}
-    \caption{Training diagnostics at episode 37,000.}
-    \label{fig:training_diagnostics_37k}
-\end{figure}
 
-\begin{figure}[htbp]
-    \centering
-    \includegraphics[width=0.65\textwidth,height=0.3\textheight,keepaspectratio]{figures/Results/aaren_progress_episode_37000.png}
-    \caption{AAREN/LSTM training metrics at episode 37,000.}
-    \label{fig:aaren_diagnostics_37k}
-\end{figure}
 
 
 \section{Behavioral Patterns from Training Logs}
-
-The 37,213-episode logs reveal four recurring patterns behind the normal DQN's limitations.
 
 \subsection{Passive Shuffling Convergence}
 
@@ -79,7 +83,13 @@ The agent grew increasingly conservative. Average episode length rose throughout
 
 \subsection{Opponent-Specific Adaptation Failure}
 
-Table~\ref{tab:vanilla_performance} shows the agent overfitting to its own play style. The greedy heuristic attacks the nearest piece regardless of rank uncertainty, exploiting passive shuffling. In self-play, both agents adopt similar caution, inflating the apparent win rate through symmetric outcomes. Fixed $\epsilon$-greedy decay provides no mechanism for adapting exploration to novel opponent behavior.
+Table~\ref{tab:vanilla_performance} shows the agent overfitting to its own play style, with performance varying sharply across opponent types. The greedy heuristic produced the lowest win rate (15.2\%) because its rank-agnostic attack pattern directly punishes passive shuffling. The heuristic always attacks the nearest piece, forcing repeated engagements that the agent's risk-averse policy is designed to avoid. When forced into combat, the agent lacks the piece-identity inference needed to choose favorable matchups, so each engagement is approximately a coin flip weighted by the opponent's rank distribution. The result is a consistent loss rate that the agent cannot escape through further passivity.
+
+Self-play produced the highest win rate (24.8\%), but this figure is misleading. Both agents share the same weights and therefore the same behavioral tendencies. When two equally cautious policies face each other, games resolve through symmetric attrition rather than strategic superiority. The apparent 24.8\% win rate reflects the probability that stochastic tiebreakers favor one copy over another, not genuine tactical competence. The high draw rate in self-play (36.8\%) confirms that most games end in mutual passivity.
+
+Random opponents produced a 24.3\% win rate, nearly identical to self-play despite being the weakest opponent class. A random policy does not exploit the agent's weaknesses, but it also provides no consistent pattern for the agent to learn from. Transitions generated against random play carry high variance and low signal, contributing gradient noise without driving policy improvement. The similar win rates against random and self-play opponents indicate that the agent has not learned to exploit weak play, further evidence of policy stagnation.
+
+League opponents (24.7\%) are historical snapshots of the agent itself. Because the agent's policy plateaued early (Finding~1), these snapshots are nearly indistinguishable from the current policy. The league therefore provides minimal strategic diversity. A league of stagnant policies cannot force adaptation. Fixed $\epsilon$-greedy decay compounds this problem by providing no mechanism for adapting exploration to novel opponent behavior.
 
 \subsection{Loss-Reward Divergence}
 
@@ -185,9 +195,9 @@ No sequential compression, no information decay. The network can attend to any p
 
 \subsection{Exploration Collapse}
 
-The Noisy Net sigma stayed at zero throughout training (Figure~\ref{fig:training_diagnostics_37k}). The $\epsilon$-greedy schedule decayed from 1.0 to 0.01 and then stopped adapting. After that, the agent explored uniformly at 1\% regardless of game state.
+The normal DQN relies on a hard-coded $\epsilon$-greedy exploration schedule that decays from 1.0 down to 0.01. Once it hits this floor, the schedule stops adapting. From that point on, the agent explores uniformly at a flat 1\% rate regardless of the game state or its confidence in the current Q-values.
 
-Stratego has over $10^{535}$ states \cite{perolat2022stratego}. Uniform random exploration at 1\% will almost never stumble on improved strategies. Noisy Networks \cite{RainbowJMLR2021} make exploration learnable: per-weight noise parameters $\sigma_w$ let the agent concentrate uncertainty where the value function is least reliable.
+Stratego has over $10^{535}$ possible states \cite{perolat2022stratego}. A uniform random exploration rate of 1\% is a blunt mechanism that will almost never stumble on the complex sequences of moves required to discover optimal strategies. The agent becomes trapped in local optima because its exploration policy cannot recognize which parts of the state space require further investigation. This limitation necessitates a mechanism like Noisy Networks \cite{RainbowJMLR2021}, which replaces hard-coded randomness with learnable parameters that concentrate exploration where the value function is most uncertain.
 
 \subsection{Sparse Reward Propagation}
 
@@ -238,6 +248,8 @@ The Rainbow agent achieved a 49.88\% win rate at 9,778 episodes. The normal DQN 
 \paragraph{Finding 8: Draw Elimination.}\label{finding:8}
 The normal DQN drew 50.04\% of its games. The Rainbow agent drew 6.69\%. It lost more games outright (43.43\% versus 24.99\%), but it produced definitive outcomes. An agent that draws half of its games has learned to avoid playing, not to play. \hyperref[finding:6]{Finding~6} (Draw Dominance) attributed this to scalar value collapse. The C51 distributional head resolved it.
 
+The relationship between the low draw rate and the high loss rate warrants careful interpretation. At first glance, a 43.43\% loss rate alongside a 6.69\% draw rate could suggest that the Rainbow agent is taking excessive risks rather than learning stable strategies. Three observations argue against this reading. First, the training data comes from self-play, where every game produces exactly one winner and one loser (or a draw). A 49.88\% win rate and a 43.43\% loss rate sum to 93.31\% decisive outcomes. In a zero-sum self-play setting, a high decisive-outcome rate means the agent has learned to force resolutions rather than stall. The losses belong to the copy of the agent that happened to be on the weaker side of a particular game, not to a systematically reckless policy. Second, the steps-per-win metric (1,060 versus 2,697 for the normal DQN) indicates that wins are achieved through efficient, targeted play rather than through drawn-out attrition. An agent that takes reckless risks would show longer, more chaotic games, not shorter ones. Third, the loss--performance coupling coefficient ($r = -0.787$, \hyperref[finding:9]{Finding~9}) demonstrates that the agent's losses are informative: as the distributional loss decreases, the win rate increases. The losses the agent incurs during training generate gradient signals that drive subsequent improvement, unlike the uninformative draws that dominated the normal DQN's training. The 75k extended run (\hyperref[finding:14]{Finding~14}) provides further evidence that this aggressive posture matures into directed strategy: the agent achieved a 99.96\% flag capture ratio among wins, indicating that extended training channels initial aggression into purposeful flag pursuit rather than indiscriminate combat.
+
 \paragraph{Finding 9: Loss--Performance Coupling Restored.}\label{finding:9}
 The correlation coefficient between windowed policy loss and win rate was 0.051 for the normal DQN and $-$0.787 for the Rainbow agent. As the distributional loss decreased, the win rate increased. \hyperref[finding:2]{Finding~2} (Loss--Performance Decoupling) identified that the scalar DQN loss converged without improving play. The C51 objective reversed this: the loss curve became a reliable proxy for gameplay improvement.
 
@@ -281,6 +293,7 @@ The distributional loss fell from 3.89 to 2.84 across 75,000 episodes, a clear d
 \paragraph{Finding 14: Flag Pursuit Behavior.}\label{finding:14}
 The average episode length in the 75k run settled near 378 steps, compared to 1,345 for the normal DQN and 1,055 for the Rainbow self-play run. The shorter episodes indicate that the agent learned to end games faster. Average Q-values grew from near zero to 1.84, nearly five times the terminal normal DQN Q-value. This growth occurred alongside a 99.96\% flag capture ratio among wins. The Rainbow agent almost exclusively won by identifying and capturing the opponent flag rather than by attrition. The normal DQN won by flag capture only 18.79\% of the time, relying instead on piece depletion. As training progressed, the agent shifted from passive survival toward purposeful flag pursuit, and the declining episode length reflects this shift. The attention mechanism enables this targeted strategic objective by allowing the agent to reason about the global board state and isolate the flag's probable location.
 
+The 75k run also reveals an opponent-conditional effect. The win rate against heuristic opponents remained at 11.66\% across 75,047 episodes, far below the 49.88\% achieved in self-play at 9,778 episodes. This gap does not indicate that the Rainbow architecture fails against heuristics. Rather, it reflects the difference in what the agent can learn from each opponent class. Heuristic opponents follow fixed evaluation functions that do not adapt, so the agent cannot exploit predictable weaknesses in the way it can against a co-evolving self-play partner. The heuristic's consistent tactical play also denies the AAREN module the behavioral variation it needs to refine piece-identity inference. Against a self-play opponent whose policy improves alongside the agent, each game presents a different strategic landscape, driving both the policy and the belief model to generalize. The contrast confirms that opponent diversity is not incidental to training quality but is itself a factor in convergence speed and ceiling.
 
 \section{Evidence for Architectural Necessity}
 
@@ -305,7 +318,7 @@ Each component in the thesis title maps to a specific failure mode observed in t
     \end{tabular}
 \end{table}
 
-These findings converge on one conclusion: the full MARQ architecture is justified. Each component targets a distinct, verified bottleneck. Draw dominance (\hyperref[finding:6]{Finding~6}) is a compound effect, and the empirical data confirms that the combined architectural response eliminated it (\hyperref[finding:8]{Finding~8}).
+These findings converge on one conclusion: the full MARQ architecture is justified. Each component targets a distinct, verified bottleneck. Draw dominance (\hyperref[finding:6]{Finding~6}) is a compound effect arising from the interaction of scalar value collapse, exploration death, and sparse reward propagation. No single enhancement can resolve it in isolation because each contributing failure mode persists independently. The empirical data confirms that the combined architectural response eliminated it (\hyperref[finding:8]{Finding~8}), reducing the draw rate from 50.04\% to 6.69\% while simultaneously doubling the win rate and restoring loss--performance coupling.
 
 
 \section{Supporting Evidence from Related Work}
