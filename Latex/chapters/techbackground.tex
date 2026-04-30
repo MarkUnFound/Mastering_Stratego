@@ -35,7 +35,7 @@ The MARQ framework is a Multi-Agent Rainbow Deep Q-Networks system that trains a
 
 The central problem is reasoning about hidden information without enumerating every possible state. The number of possible game states exceeds $10^{535}$, and initial setups reach $10^{66}$ per player \cite{perolat2022stratego}. MARQ handles this scale through implicit belief representations, probabilistic reasoning, and pattern recognition. Deep reinforcement learning estimates values. Attention mechanisms process game history. Mixed strategies prevent exploitation. The system keeps all of these computations fast enough to run in real time.
 
-The architecture connects these components in a pipeline. The AAREN module takes raw game positions and move sequences, then produces learned embeddings that encode opponent piece identity inferences. These embeddings form the base for all subsequent reasoning. A league-based training method trains and evaluates MARQ agents simultaneously.
+The architecture connects these components in a pipeline. The AAREN module takes raw game positions and move sequences and produces learned embeddings that encode opponent piece identity inferences. These embeddings are the input for all subsequent reasoning. A league-based training method trains and evaluates MARQ agents simultaneously.
 
 
 
@@ -77,7 +77,7 @@ The architecture connects these components in a pipeline. The AAREN module takes
 
 \section{MARQ Policy Definition}
 
-Policy optimization in reinforcement learning improves an agent's strategy to maximize total reward \cite{DRLImperfectInfo2023}. Games with hidden information and multiple players demand policies that perform well against fixed opponents while also handling uncertainty and shifting strategies from other agents. MARQ connects belief state reasoning with value-based decisions to meet these demands.
+Policy optimization in reinforcement learning improves an agent's strategy to maximize total reward \cite{DRLImperfectInfo2023}. Games with hidden information and multiple players require policies that perform well against fixed opponents and also handle uncertainty and shifting strategies from other agents. MARQ combines belief state reasoning with value-based decisions for this purpose.
 
 Policy learning in MARQ serves two goals. The first is winning games through tactical choices. The second is improving the quality of the embeddings that the AAREN module produces. The two objectives reinforce each other: better embeddings sharpen decision-making, and good decisions reveal opponent information that in turn refines the embeddings.
 
@@ -93,7 +93,7 @@ MARQ addresses this by using implicit belief representations $\mathcal{B}_t$ rat
 \pi_i(a|I_i, \mathcal{B}_t) = P(\text{action} = a \mid \text{information set } I_i, \text{implicit belief } \mathcal{B}_t)
 \end{equation}
 
-The policy learns to weight actions based on their expected value across the inferred distribution of opponent configurations rather than optimizing for a single specific setup. Playing well requires this kind of reasoning about hidden states.
+The policy learns to weight actions based on their expected value across the inferred distribution of opponent configurations rather than optimizing for a single specific setup.
 
 \subsection{Implicit Representation Optimization}
 
@@ -161,7 +161,7 @@ D_{KL}(\Phi \hat{\mathcal{T}} Z_{\theta'} || Z_\theta)
 where $\Phi$ is the projection operator that maps the Bellman update onto the fixed support atoms.
 
 \paragraph{Noisy Networks for Exploration.}
-Noisy Linear layers inject learned noise into the network weights. The agent maintains an unpredictable strategy without a separate exploration schedule, and the network itself optimizes the degree of exploration required for each state.
+Noisy Linear layers inject learned noise into the network weights. The agent produces an unpredictable strategy without a separate exploration schedule, and the noise parameters are optimized during training for each state.
 
 \begin{equation}
 y = (\mu_w + \sigma_w \odot \epsilon_w)x + (\mu_b + \sigma_b \odot \epsilon_b)
@@ -471,10 +471,10 @@ As $T$ approaches zero, the selection becomes deterministically greedy. When $T$
 
 \section{Generalizability}
 
-The MARQ framework provides mathematical stability in adversarial settings and applicability to real-world domains beyond gaming. This section presents the convergence guarantees of the training methodology and the potential for transferring learned representations to non-gaming environments.
+This section presents the convergence properties of the MARQ training methodology. The bounds below describe the theoretical behavior of the system under the assumptions stated.
 
 \subsection{Mathematical Convergence Properties}
-MARQ provides theoretical guarantees for convergence and performance under specific conditions.
+The following bounds hold under standard reinforcement learning assumptions.
 
 \subsubsection{Incremental Learning Bounds}
 The algorithm bounds value function estimation error as follows:
@@ -497,19 +497,7 @@ The league training methodology converges to $\epsilon$-Nash equilibria under st
 \end{equation}
 for some $\epsilon > 0$ depending on the exploration parameters and opponent diversity. Hierarchical best-response maintenance, main-pool promotion thresholds, and diversity-driven exploration drive this convergence.
 
-\subsection{Applied Generalizability}
-The MARQ framework was developed for Stratego, but its architecture applies to broader problems involving partial observability and adversarial decision-making.
-
-\subsubsection{Inference in Degraded Environments}
-The occlusion-based curriculum combined with AAREN history aggregation provides a method for training agents to operate in degraded environments. In autonomous drone applications, sensors may fail or be obstructed by smoke or weather. MARQ's ability to maintain an implicit belief state allows continued navigation and objective completion despite sensor loss.
-
-\subsubsection{Signal Intelligence and Pattern Discovery}
-In adversarial signal environments such as electronic warfare, implicit representation learning can discover latent identities in high-dimensional signal data. The network treats signal history as an action sequence and learns to categorize threats without explicit labeling of every transmission.
-
-\subsubsection{Industrial Automation and Predictive Maintenance}
-MARQ's architecture can integrate sparse sensor readings over time to predict hidden anomalies or maintenance needs in complex manufacturing pipelines. This enables proactive adjustments before system failure occurs.
-
-These convergence properties and the transferability of the learned embeddings support confidence in the framework's ability to handle high-stakes gameplay and transition to practical applications.
+The experimental results in Chapter 5 are consistent with these bounds. The Rainbow agent's loss continued to decrease over 75,000 episodes (Finding 13), and the win rate in self-play reached 49.88\% (Finding 7), though the system was not run long enough to test convergence to approximate Nash equilibrium.
 
 %\section{AI Transparency, Inclusion, and Originality of Intent}
 

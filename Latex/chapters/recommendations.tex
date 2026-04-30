@@ -10,7 +10,7 @@ The Rainbow DQN with AAREN addressed each of these bottlenecks through targeted 
 
 The transition from draw-dominated outcomes to decisive games represents the most consequential behavioral shift observed in the data. The normal DQN converged on a policy that minimized short-term risk at the cost of long-term winning probability. The Rainbow agent, equipped with a distributional value head capable of representing multi-modal outcome distributions, learned to distinguish between moves that produce safe draws and moves that carry higher variance but lead to flag captures. The extended 75,047-episode training run confirmed that this aggressive posture matures into purposeful strategy: the agent achieved a 99.96\% flag capture ratio among wins, with average episode length dropping to 378 steps. The agent did not merely learn to fight; it learned to identify and pursue the opponent flag.
 
-These results establish that the MARQ architecture is not a speculative assembly of techniques. Each component resolves a verified failure mode of the baseline, and the empirical gains are consistent with the theoretical predictions derived from distributional RL, attention-based sequence modeling, and learned exploration. The sections that follow detail the specific enhancements and their individual contributions, the broader contributions to reinforcement learning methodology, and the limitations that remain for future investigation.
+These results establish that the MARQ architecture is not a speculative assembly of techniques. Each component addresses a specific failure mode of the baseline, and the empirical gains match the theoretical predictions from distributional RL, attention-based sequence modeling, and learned exploration. The following sections present the individual component contributions, the broader contributions to reinforcement learning methodology, and the remaining limitations.
 
 \section{Recommended Architectural Enhancements}
 
@@ -22,7 +22,7 @@ The empirical results confirm this design. The correlation coefficient between l
 
 \subsection{LSTM to AAREN Transition}
 
-The LSTM prediction accuracy ceiling of approximately 18 to 22\% was the most direct evidence for the AAREN module's necessity. The LSTM-based history encoder offers principled advantages over a full DRQN architecture in replay compatibility, per-position granularity, and gradient isolation. The sequential information bottleneck inherent in any recurrent encoder, however, limits representational capacity over long game horizons. AAREN preserves all structural advantages of the separated encoder design while replacing the recurrent computation with attention-based history aggregation. This substitution addresses the compression bottleneck without modifying the replay buffer infrastructure or the DQN backbone.
+The LSTM prediction accuracy ceiling of approximately 18 to 22\% was the most direct evidence for the AAREN module's necessity. The LSTM-based history encoder has concrete advantages over a full DRQN architecture in replay compatibility, per-position granularity, and gradient isolation. The sequential information bottleneck inherent in any recurrent encoder, however, limits representational capacity over long game horizons. AAREN preserves all structural advantages of the separated encoder design while replacing the recurrent computation with attention-based history aggregation. This substitution addresses the compression bottleneck without modifying the replay buffer infrastructure or the DQN backbone.
 
 The empirical data validates this transition. AAREN achieved 24.23\% piece identity inference accuracy compared to 17.74\% for the LSTM, a 6.5 percentage point improvement. The separated encoder design itself contributes to the field. Independent hidden states for each of the 100 board positions produce a spatially structured $(64, 10, 10)$ embedding tensor that preserves piece-level temporal information. A monolithic DRQN hidden state would conflate action histories across all 40 opponent pieces into a single vector, losing spatial specificity. The per-position design also maintains full compatibility with standard experience replay by storing compact embedding snapshots alongside 15-channel board tensors, avoiding the sequence burn-in cost required by full DRQN architectures.
 
@@ -39,7 +39,7 @@ Single-step TD learning attenuates terminal rewards by $\gamma^{200} \approx 0.1
 
 \section{Computer Science Contributions}
 
-The contributions below belong to reinforcement learning systems engineering and are not specific to Stratego. Stratego serves as the test domain, but the techniques themselves are architecture-agnostic and transfer to other partially observable or adversarial settings.
+The contributions below are contributions to reinforcement learning systems engineering. Stratego is the test domain, but the techniques are not domain-specific and apply to other partially observable or adversarial settings.
 
 \subsection{Five-Phase Curriculum Design}
 
@@ -47,7 +47,7 @@ The curriculum transitions agents from full to partial observability in stages. 
 
 \subsection{Gradient Bridge for Replay Compatibility}
 
-Hybrid architectures face a tension between replay accuracy and speed. Reconstructing full LSTM sequences at replay time gives correct gradients but costs 4$\times$ throughput. Detaching snapshot embeddings keeps throughput but kills the gradient path. The gradient bridge resolves this: it adds a differentiable epsilon-scaled zero-vector ($\epsilon \cdot W_{proj}(\mathbf{0})$) to stored embeddings. Gradients flow through to the encoder. Throughput stays high. The technique works for any recurrent-encoder-plus-replay-buffer architecture.
+Hybrid architectures face a tension between replay accuracy and speed. Reconstructing full LSTM sequences at replay time gives correct gradients but costs 4$\times$ throughput. Detaching snapshot embeddings keeps throughput but kills the gradient path. The gradient bridge adds a differentiable epsilon-scaled zero-vector ($\epsilon \cdot W_{proj}(\mathbf{0})$) to stored embeddings, restoring the gradient path while keeping throughput high. The technique applies to any recurrent-encoder-plus-replay-buffer architecture.
 
 \subsection{Expectamax Search Integration}
 

@@ -1,0 +1,62 @@
+This is BibTeX, Version 0.99d
+Capacity: max_strings=200000, hash_size=200000, hash_prime=170003
+The top-level auxiliary file: sptex.aux
+Reallocating 'name_of_file' (item size: 1) to 26 items.
+A level-1 auxiliary file: chapters/introduction.aux
+Reallocating 'name_of_file' (item size: 1) to 20 items.
+A level-1 auxiliary file: chapters/review.aux
+Reallocating 'name_of_file' (item size: 1) to 28 items.
+A level-1 auxiliary file: chapters/techbackground.aux
+Reallocating 'name_of_file' (item size: 1) to 25 items.
+A level-1 auxiliary file: chapters/methodology.aux
+Reallocating 'name_of_file' (item size: 1) to 21 items.
+A level-1 auxiliary file: chapters/results.aux
+Reallocating 'name_of_file' (item size: 1) to 29 items.
+A level-1 auxiliary file: chapters/recommendations.aux
+Reallocating 'name_of_file' (item size: 1) to 4 items.
+The style file: acm.bst
+Reallocating 'name_of_file' (item size: 1) to 11 items.
+Database file #1: references.bib
+Warning--can't use both volume and number fields in li2024opponent
+You've used 54 entries,
+            2253 wiz_defined-function locations,
+            859 strings with 15637 characters,
+and the built_in function-call counts, 19927 in all, are:
+= -- 1845
+> -- 1153
+< -- 0
++ -- 476
+- -- 416
+* -- 1613
+:= -- 3255
+add.period$ -- 163
+call.type$ -- 54
+change.case$ -- 366
+chr.to.int$ -- 0
+cite$ -- 55
+duplicate$ -- 686
+empty$ -- 1480
+format.name$ -- 416
+if$ -- 4100
+int.to.chr$ -- 0
+int.to.str$ -- 54
+missing$ -- 49
+newline$ -- 272
+num.names$ -- 112
+pop$ -- 390
+preamble$ -- 1
+purify$ -- 312
+quote$ -- 0
+skip$ -- 467
+stack$ -- 0
+substring$ -- 1007
+swap$ -- 208
+text.length$ -- 0
+text.prefix$ -- 0
+top$ -- 0
+type$ -- 214
+warning$ -- 1
+while$ -- 166
+width$ -- 56
+write$ -- 540
+(There was 1 warning)
