@@ -1,21 +1,12 @@
 \chapter{Methodology}
-This chapter describes how the MARQ framework was tested for its ability to play games with hidden information. A competitive system was built and then evaluated on win-rate against human players and adaptability across different games. The following sections detail each step.
+This chapter presents the development and evaluation of the MARQ framework, covering the system architecture, training procedure, and the metrics used to compare agent performance against heuristic and self-play baselines.
 
 \section{Project Planning}
-This research followed a plan covering participant selection and experimental setup. A rapid prototyping method guided the design and construction of the MARQ framework. Development ran from September 2025 to February 2026 and included building the game environment and training the agent. User testing took place in March 2026. Data analysis followed in April 2026.
+This research followed a rapid prototyping method for the design and construction of the MARQ framework. Development ran from September 2025 to February 2026 and covered building the game environment and training the agent. Algorithmic evaluation and ablation testing ran from March to April 2026.
 
-\subsection{Community Introduction to Stratego}
-Participants were first introduced to Stratego because none of them knew the rules or strategies. Stratego is a niche game, and experienced players were difficult to recruit for testing. Teaching everyone the game from scratch meant that both the humans and the AI started from the same baseline, producing a fairer comparison.
-
-Twenty participants were selected based on their availability and experience with strategy games. The selection criteria targeted people from different backgrounds who enjoyed strategic thinking but had no prior Stratego experience. This ensured they had the cognitive skills needed to play well while starting fresh with the specific game, maintaining a consistent starting point for the study.
-
-\subsection{Experimental Procedures}
-One-on-one matches between human participants and the MARQ framework will be conducted on-site using a single device. Each participant will receive a checklist outlining the procedures for interacting with the game to ensure consistency.
-
-Each session will last one hour, during which participants must complete at least two games against the MARQ framework. Additional games may be played if time permits. The recorded statistics will include the winner, total game duration, total moves per player, and the number and type of remaining pieces for both players. Immediately after the session, each participant will complete an evaluation form providing open-ended feedback on their experience.
 
 \section{System Development}
-System development consists of two components: the game environment and the MARQ framework. The game environment serves as the interface for human players and the world in which the trained agent operates. The MARQ framework provides the trained agent that competes against human players.
+System development consists of two components: the game environment and the MARQ framework. The game environment provides the simulation in which agents operate and train. The MARQ framework produces the trained agent whose performance is evaluated against heuristic baselines and through self-play.
 
 \begin{figure}[htbp]
     \centering
@@ -25,7 +16,7 @@ System development consists of two components: the game environment and the MARQ
 \end{figure}
 
 \subsection{Piece Value Computation}
-The reward function requires a quantitative assessment of piece value to guide learning. This section presents an analytical method for computing piece values based on probability theory, providing a deterministic alternative to empirical estimation through gameplay simulation.
+The reward function requires a quantitative assessment of piece value to guide learning. This section presents an analytical method for computing piece values based on probability theory, as a deterministic alternative to simulation-based estimation.
 
 \subsubsection{Combat Dominance Score}
 The Combat Dominance Score (CDS) represents the probability that a given piece type defeats a uniformly random opponent piece. Let $\mathcal{P}$ denote the set of all piece types and $n_i$ the count of piece type $i$ in standard Stratego. The CDS for piece $p$ is defined below.
@@ -102,7 +93,7 @@ The Scout receives a mobility bonus of 1.0 due to its ability to move multiple s
 These values inform the material reward component of the reward shaping function described in subsequent sections.
 
 \subsection{Using AAREN to Remember Game History}
-The primary challenge in Stratego involves decision-making under partial observability. Rather than utilizing explicit piece counts, the framework uses the same architectural approach as DeepNash \cite{perolat2022stratego}. The Attention-as-a-Recurrent-Neural-Network (AAREN) module aggregates history and generates embeddings derived from opponent maneuvers to facilitate piece identity inference.
+The primary challenge in Stratego involves decision-making under partial observability. Instead of using explicit piece counts, the framework uses the same architectural approach as DeepNash \cite{perolat2022stratego}. The Attention-as-a-Recurrent-Neural-Network (AAREN) module aggregates history and generates embeddings derived from opponent maneuvers to facilitate piece identity inference.
 
 To address the ``sparse death'' problem, where a lack of observation history produces uninformative zero tensors, a learnable default embedding is used. This default gives the network a consistent initialization and keeps training stable during initial game states.
 
@@ -119,7 +110,7 @@ For each observed opponent action, AAREN extracts a 24-dimensional feature vecto
     \label{fig:training_architecture}
 \end{figure}
 
-Training the MARQ agent is computationally intensive. The large state-action space and the need for accurate belief state representations over extended game horizons drive this cost.
+Training the MARQ agent is computationally intensive due to the large state-action space and the need for accurate belief state representations over extended game horizons.
 
 \paragraph{Rainbow DQN Architecture.}
 The MARQ system uses a Rainbow DQN framework with several architectural enhancements. Categorical DQN (C51) handles value distribution estimation. Noisy Networks drive exploration. A Dueling Network architecture decouples state values from action advantages. The noisy layers introduce state-dependent stochasticity, removing the need for manual epsilon-greedy scheduling.
@@ -141,7 +132,7 @@ The Q-network features a ResNet backbone for spatial feature extraction. An init
     \label{fig:resnet_backbone}
 \end{figure}
 
-A spatial self-attention layer follows the ResNet backbone. It captures relationships between pieces across the full board, even at long range. This layer feeds into the dueling heads, enabling the agent to develop strategies that depend on board-wide interactions.
+A spatial self-attention layer follows the ResNet backbone. It captures relationships between pieces across the full board, even at long range. This layer feeds into the dueling heads, allowing the network to weight distant piece relationships in value estimation.
 
 \begin{figure}[htbp]
     \centering
@@ -256,8 +247,7 @@ The search refinement uses the piece-identity probabilities generated by the AAR
 The Expectamax logic prevents the agent from committing high-value pieces to squares with high probabilities of containing Bombs or superior ranks, even when the raw Q-network output is optimistic about the board position. The exact summation over rank probabilities grounds the risk assessment in observed opponent behavior.
 
 \subsection{Deployment}
-The best-performing MARQ model weights are saved and finalized for deployment after the training and validation cycles. The trained model is deployed into the Stratego game environment described in Section 2 of the methodology.
-The deployed system functions as the complete application used during user testing. It runs locally on the single device designated for the experimental procedures. In production mode, exploratory functions are deactivated, and the model always selects the action with the highest predicted Q-value. All human participants compete against the same optimized version of the MARQ framework, providing a consistent baseline for quantitative and qualitative evaluations.
+The best-performing MARQ model weights are saved after training and validation. During evaluation, exploratory noise is deactivated, and the model selects the action with the highest predicted Q-value. Each evaluation run uses the same checkpoint to maintain consistency across test conditions.
 
 \begin{figure}[H]
     \centering
@@ -266,32 +256,13 @@ The deployed system functions as the complete application used during user testi
     \label{fig:sequence_diagram}
 \end{figure}
 
-In the figure above, the player starts the game. The loop continues until either the player captures the opponent's flag or the agent captures the player's flag. The agent receives the current board state and updates the AAREN module, which produces learned embeddings encoding implicit piece identity inference from observed action history. The DQN evaluates Q-values for all legal actions given this embedding-enhanced state representation and selects the action with the highest expected value.
+The game loop runs until one agent captures the opposing flag. On each turn, the active agent receives the current board state and updates the AAREN module, which produces learned embeddings from observed action history. The DQN evaluates Q-values for all legal actions given this embedding-enhanced state representation and selects the action with the highest expected value.
 
 
-\section{Game Environment Development}
-The game environment is a digital version of Stratego, a two-player board game of incomplete information. It was developed in Python and Pygame. The GUI features blue and red color schemes, an image-based piece system, a battle popup that displays the combat of the player and enemy pieces, and a history panel.
-\begin{figure}[H]
-    \centering
-    \includegraphics[width=1\textwidth]{figures/StrategoWithMARQ_GameStart.png}
-    \caption{Game start screen.}
-    \label{fig:game_start}
-\end{figure}
-
-\subsection{Asset Design}
-The game assets use pixel art, with each piece represented by a unique image. The pieces are designed to be easily distinguishable, with clear visual cues indicating rank and special abilities. The assets were created in pixilart.
-\begin{figure}[H]
-    \centering
-    \includegraphics[width=.7\textwidth]{figures/StrategoPieces.png}
-    \caption{Stratego piece assets.}
-    \label{fig:stratego_pieces}
-\end{figure}
+\section{Game Environment}
+The game environment is a digital implementation of Stratego developed in Python and Pygame. It manages the board state, enforces game rules, handles combat resolution, and provides the observation interface for agent perception. All agent-vs-agent experiments in this study use this environment.
 
 \subsection{Evaluation}
-\paragraph{Quantitative Analysis.}
-The quantitative assessment tracks several metrics to gauge learning progress and strategic capability. Win rate percentage measures the proportion of games won against human participants. Average game length, computed as the mean number of moves per game, indicates decision efficiency. Decision-making speed records the average time the agent takes to select an action. Training stability is assessed through loss curves showing the progression of distributional and value losses over training episodes. A two-tailed paired t-test determines whether gameplay metrics differ significantly between a player's first and last games, assessing whether human players improve against the AI. Likert-scale responses are analyzed using a weighted mean to produce a quantitative score for each dimension of user acceptance.
-
-\paragraph{Qualitative Analysis.}
-A usability testing session gathers participant feedback through an evaluation form covering three dimensions. Performance assessment examines the agent's speed, consistency, and perceived strategic competence. Usability evaluation considers ease of use, interface intuitiveness, and overall user experience. Relevance gauges the AI's value as a strategic training tool and its potential for helping players learn Stratego.
+The evaluation tracks learning progress and agent performance through agent-vs-agent testing. Win rate measures the proportion of decisive games won against each opponent tier. Average game length, computed as the mean number of moves per game, indicates decision efficiency. Training stability is assessed through loss curves showing the progression of distributional and value losses over episodes. Ablation comparisons between the Rainbow DQN agent and a standard DQN baseline isolate the contribution of each architectural component. Statistical significance is determined through paired comparisons across evaluation windows.
 
 Developing the MARQ framework is iterative. Each version represents an improvement over the last. Appendix B shows the initial results from 1,000 episodes. During this early stage, the agent is still exploring strategies. The early win rates show many draws as pieces move without decisive engagement. With Noisy Networks, the agent learns how much to explore on its own, adapting better as training continues.

@@ -33,7 +33,7 @@ Perolat et al. \cite{perolat2022stratego} established the permutation for game s
 
 The MARQ framework is a Multi-Agent Rainbow Deep Q-Networks system that trains agents through self-play and deep reinforcement learning \cite{AlphaStratego}. Agents learn by competing against many different opponents, including their own previous versions and exploratory variants, within a league-based self-play system.
 
-The central problem is reasoning about hidden information without enumerating every possible state. The number of possible game states exceeds $10^{535}$, and initial setups reach $10^{66}$ per player \cite{perolat2022stratego}. MARQ handles this scale through implicit belief representations, probabilistic reasoning, and pattern recognition. Deep reinforcement learning estimates values. Attention mechanisms process game history. Mixed strategies prevent exploitation. The system keeps all of these computations fast enough to run in real time.
+The central problem is reasoning about hidden information without enumerating every possible state. The number of possible game states exceeds $10^{535}$, and initial setups reach $10^{66}$ per player \cite{perolat2022stratego}. MARQ handles this scale through implicit belief representations, probabilistic reasoning, and pattern recognition. Deep reinforcement learning estimates values while attention mechanisms process game history and mixed strategies prevent exploitation, all within real-time computational constraints.
 
 The architecture connects these components in a pipeline. The AAREN module takes raw game positions and move sequences and produces learned embeddings that encode opponent piece identity inferences. These embeddings are the input for all subsequent reasoning. A league-based training method trains and evaluates MARQ agents simultaneously.
 
@@ -77,13 +77,13 @@ The architecture connects these components in a pipeline. The AAREN module takes
 
 \section{MARQ Policy Definition}
 
-Policy optimization in reinforcement learning improves an agent's strategy to maximize total reward \cite{DRLImperfectInfo2023}. Games with hidden information and multiple players require policies that perform well against fixed opponents and also handle uncertainty and shifting strategies from other agents. MARQ combines belief state reasoning with value-based decisions for this purpose.
+Policy optimization in reinforcement learning improves an agent's strategy to maximize total reward \cite{DRLImperfectInfo2023}. Games with hidden information and multiple players require policies that perform well against fixed opponents and also handle uncertainty and shifting strategies from other agents. MARQ combines belief state reasoning with value-based decisions.
 
 Policy learning in MARQ serves two goals. The first is winning games through tactical choices. The second is improving the quality of the embeddings that the AAREN module produces. The two objectives reinforce each other: better embeddings sharpen decision-making, and good decisions reveal opponent information that in turn refines the embeddings.
 
 \subsection{Core Policy Framework}
 
-A policy in the MARQ framework, denoted $\pi_i(a|I_i)$, defines a probability distribution over actions for agent $i$ conditioned on its current information set $I_i$. In perfect information games, policies operate on complete game states. MARQ policies do not have that luxury. They reason under uncertainty about the true state of the environment. The information set $I_i$ contains all observations available to the agent: visible board positions, revealed piece identities, and the history of observed movements and combat outcomes.
+A policy in the MARQ framework, denoted $\pi_i(a|I_i)$, defines a probability distribution over actions for agent $i$ conditioned on its current information set $I_i$. In perfect information games, policies operate on complete game states. MARQ policies operate under uncertainty about the true state of the environment. The information set $I_i$ contains all observations available to the agent: visible board positions, revealed piece identities, and the history of observed movements and combat outcomes.
 
 The core difficulty is that agents must act without knowing the opponent's private information. In Stratego, this means the rank and position of every unrevealed opponent piece remain unknown. The policy must incorporate estimates of the opponent's pieces into its decision process and select actions that perform well across many possible hidden states.
 
@@ -97,7 +97,7 @@ The policy learns to weight actions based on their expected value across the inf
 
 \subsection{Implicit Representation Optimization}
 
-The quality of the implicit belief representation directly affects decision quality. Inaccurate inferences produce poorly calibrated action values. MARQ therefore treats representation accuracy as an auxiliary training objective and uses revealed piece identities as supervised labels for embedding refinement.
+Inaccurate belief representations produce poorly calibrated action values. MARQ therefore treats representation accuracy as an auxiliary training objective and uses revealed piece identities as supervised labels for embedding refinement.
 
 When combat reveals the piece identities, the system calculates the prediction error using Kullback-Leibler (KL) divergence.
 
@@ -208,7 +208,7 @@ where $t$ is the current episode, $T$ is the total training duration, and $p=2$ 
 
 \section{AAREN and Learned Embedding System}
 
-The AAREN module (Attention as Recurrent Neural Network) \cite{Aaren} serves as the memory and history system within MARQ. It does not maintain simple counts of piece identities. Instead, it produces learned embeddings from opponent moves, and the agent interprets these embeddings through training. AAREN handles long sequences in Stratego. It retains details over hundreds of moves while avoiding the gradient problems that degrade older models such as LSTMs. An attention mechanism lets AAREN look back across the full sequence of moves at once \cite{Aaren}.
+The AAREN module (Attention as Recurrent Neural Network) \cite{Aaren} serves as the memory and history system within MARQ. It does not maintain simple counts of piece identities. Instead, it produces learned embeddings from opponent moves that encode piece identity inferences. AAREN handles long sequences in Stratego. It retains details over hundreds of moves while avoiding the gradient problems that degrade older models such as LSTMs. An attention mechanism lets AAREN look back across the full sequence of moves at once \cite{Aaren}.
 
 \subsection{Recurrent Attention Computation}
 AAREN implements an attention-based recurrent computation that maintains a state triplet $(a_t, c_t, m_t)$ across the observation sequence. Traditional recurrent neural networks suffer from vanishing gradients over long sequences. AAREN avoids this entirely. It provides direct access to the full history through attention weights while maintaining $O(1)$ inference complexity per timestep.
@@ -315,7 +315,7 @@ This prevents the agent from cycling through the same strategies repeatedly. It 
 
 \subsection{Strategy Mixing for Exploitation Resistance}
 
-Deterministic strategies in extensive-form imperfect information games are inherently suboptimal \cite{perolat2022stratego, MARLGametheoretic}. An adversary who knows a deterministic policy reduces the game to a perfect information setting, eliminating the strategic uncertainty that defines games like Stratego. MARQ counters this through two complementary mechanisms.
+Deterministic strategies in extensive-form imperfect information games are inherently suboptimal \cite{perolat2022stratego, MARLGametheoretic}. An adversary who knows a deterministic policy reduces the game to a perfect information setting, eliminating the strategic uncertainty that defines games like Stratego. MARQ counters this at two levels.
 
 At the action selection level, Noisy Linear layers inject learned, state-dependent noise into the policy. The network learns the appropriate degree of randomization for each game state rather than relying on fixed exploration schedules such as $\epsilon$-greedy.
 
@@ -366,7 +366,7 @@ V(s_{leaf}) \approx Q_{DRQN}(s_{leaf}, a_{best})
 
 \section{Game Environment and State Management}
 
-The Stratego environment provides the foundation for agent training and evaluation. It manages the complex dynamics of imperfect information.
+The Stratego environment handles board state management, action validation, and observation filtering for agent training and evaluation.
 
 \subsection{Information Set Management}
 The environment maintains distinct representations for each information context:
@@ -406,7 +406,7 @@ Strategic features include positional value maps, piece interaction potentials, 
 
 \section{MARQ Move Selection and Decision-Making}
 
-The MARQ framework's architectural components converge in the real-time move selection process. Algorithm \ref{alg:marq_decision} details this procedure, which integrates learned positional priors with tactical search to optimize behavior in adversarial environments.
+The move selection process integrates the MARQ components at inference time. Algorithm \ref{alg:marq_decision} details this procedure, which integrates learned positional priors with tactical search to optimize behavior in adversarial environments.
 
 \begin{algorithm}
 \caption{MARQ: Decision-making and Move Selection}
@@ -445,7 +445,7 @@ The decision process begins with the AAREN module's recurrent attention system. 
 After updating the history, the system extracts softmax probability distributions for hidden pieces. These piece-identity predictions are generated for every square on the board. They represent the agent's current belief about the hidden ranks of unrevealed opponent pieces.
 
 \subsection{Information Set Tensorization}
-The visible board state and the learned AAREN embeddings are concatenated to form a high-dimensional information set representation. In the current implementation, this produces a 79-channel input tensor (15 physical board features + 64 history embedding channels), which encapsulates both the physical layout and the inferred hidden context.
+The visible board state and the learned AAREN embeddings are concatenated to form a high-dimensional information set representation. In the current implementation, this produces a 79-channel input tensor (15 physical board features + 64 history embedding channels), covering both the physical layout and the inferred hidden context.
 
 \subsection{Value Distribution Estimation}
 The Rainbow DQN's convolutional backbone and C51 distributional head process the 79-channel tensor. This step estimates the $Q$-value distribution over 51 atoms for all possible actions. The distribution captures the multi-modal uncertainty inherent in the state.
@@ -467,7 +467,7 @@ Rigid, exploitable behavior loops must be avoided during self-play and evaluatio
 \begin{equation}
 \pi(a_i) = \frac{\exp\left(V_{final}(a_i) / T\right)}{\sum_{a \in \mathcal{A}} \exp\left(V_{final}(a) / T\right)}
 \end{equation}
-As $T$ approaches zero, the selection becomes deterministically greedy. When $T$ increases, near-optimal actions receive proportionally higher selection probabilities, injecting controlled variance. This stochasticity serves two purposes: it generates a diverse and unpredictable curriculum roster during league training, and it prevents tactical stagnation within recurring positional maneuvers.
+As $T$ approaches zero, the selection becomes deterministically greedy. When $T$ increases, near-optimal actions receive proportionally higher selection probabilities, injecting controlled variance. This stochasticity generates a diverse curriculum roster during league training and prevents repetitive play patterns.
 
 \section{Generalizability}
 
@@ -495,7 +495,7 @@ The league training methodology converges to $\epsilon$-Nash equilibria under st
 \begin{equation}
 \lim_{T \to \infty} \| \pi_T - \pi^* \| \leq \epsilon
 \end{equation}
-for some $\epsilon > 0$ depending on the exploration parameters and opponent diversity. Hierarchical best-response maintenance, main-pool promotion thresholds, and diversity-driven exploration drive this convergence.
+for some $\epsilon > 0$ depending on the exploration parameters and opponent diversity. The convergence depends on the diversity of the opponent pool and the promotion thresholds that control which agents enter the main pool.
 
 The experimental results in Chapter 5 are consistent with these bounds. The Rainbow agent's loss continued to decrease over 75,000 episodes (Finding 13), and the win rate in self-play reached 49.88\% (Finding 7), though the system was not run long enough to test convergence to approximate Nash equilibrium.
 

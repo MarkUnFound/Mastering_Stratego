@@ -10,7 +10,7 @@ The Rainbow DQN with AAREN addressed each of these bottlenecks through targeted 
 
 The transition from draw-dominated outcomes to decisive games represents the most consequential behavioral shift observed in the data. The normal DQN converged on a policy that minimized short-term risk at the cost of long-term winning probability. The Rainbow agent, equipped with a distributional value head capable of representing multi-modal outcome distributions, learned to distinguish between moves that produce safe draws and moves that carry higher variance but lead to flag captures. The extended 75,047-episode training run confirmed that this aggressive posture matures into purposeful strategy: the agent achieved a 99.96\% flag capture ratio among wins, with average episode length dropping to 378 steps. The agent did not merely learn to fight; it learned to identify and pursue the opponent flag.
 
-These results establish that the MARQ architecture is not a speculative assembly of techniques. Each component addresses a specific failure mode of the baseline, and the empirical gains match the theoretical predictions from distributional RL, attention-based sequence modeling, and learned exploration. The following sections present the individual component contributions, the broader contributions to reinforcement learning methodology, and the remaining limitations.
+These results connect each architectural component to a measured improvement over the baseline. Each component addresses a specific failure mode of the baseline, and the empirical gains match the theoretical predictions from distributional RL, attention-based sequence modeling, and learned exploration. The following sections present the individual component contributions, the broader contributions to reinforcement learning methodology, and the remaining limitations.
 
 \section{Recommended Architectural Enhancements}
 
@@ -39,11 +39,11 @@ Single-step TD learning attenuates terminal rewards by $\gamma^{200} \approx 0.1
 
 \section{Computer Science Contributions}
 
-The contributions below are contributions to reinforcement learning systems engineering. Stratego is the test domain, but the techniques are not domain-specific and apply to other partially observable or adversarial settings.
+The following contributions apply to reinforcement learning systems beyond the Stratego domain. Stratego is the test domain, but the techniques are not domain-specific and apply to other partially observable or adversarial settings.
 
 \subsection{Five-Phase Curriculum Design}
 
-The curriculum transitions agents from full to partial observability in stages. Observability drops progressively while opponent difficulty rises and reward shaping decays. This solves the cold-start problem: agents do not need to learn basic mechanics and hidden-information reasoning at the same time. The structure applies wherever partial observability can be introduced gradually.
+The curriculum transitions agents from full to partial observability in stages. Observability drops progressively while opponent difficulty rises and reward shaping decays. This mitigates the cold-start problem: agents do not need to learn basic mechanics and hidden-information reasoning at the same time. The structure applies wherever partial observability can be introduced gradually.
 
 \subsection{Gradient Bridge for Replay Compatibility}
 
@@ -62,7 +62,7 @@ PBRS guarantees policy invariance while providing dense signals during early tra
 
 The validation presented in this thesis was bounded by the training infrastructure, opponent diversity, and compute budget available during the research period. The following limitations qualify the conclusions drawn above and identify directions where additional work is needed.
 
-The Rainbow DQN with AAREN demonstrated strong empirical improvements over the normal DQN baseline, but the validation was conducted against heuristic and self-play opponents within the MARQ curriculum. Performance against human opponents is assessed through a separate participant study and may reveal additional gaps in strategic reasoning that automated training does not expose.
+The Rainbow DQN with AAREN demonstrated strong empirical improvements over the normal DQN baseline, but the validation was conducted against heuristic and self-play opponents within the MARQ curriculum. Performance against opponents beyond the current heuristic and self-play pool may reveal gaps in strategic reasoning that the existing evaluation does not expose.
 
 Combining C51, Noisy Nets, Dueling Networks, AAREN, and $n$-step returns in a multi-agent self-play loop introduces interaction effects that single-component theory does not predict. The extended 75k training run remained in the partial observability phase against heuristic opponents for its entire duration, suggesting that curriculum promotion thresholds require further tuning for long-horizon training stability.
 

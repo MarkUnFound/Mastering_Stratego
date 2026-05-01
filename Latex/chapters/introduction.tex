@@ -23,7 +23,7 @@ This study is guided by three main research questions:
 \section{Objectives}
 The main objective of this study is to develop and evaluate a Multi-Agent Reinforcement Learning system with Deep Q-Networks for Stratego, where agents must operate under hidden state variables. The specific objectives are:
 \begin{itemize}
-    \item Finding ideal algorithms to be implemented in perfecting Stratego.
+    \item Identify and evaluate reinforcement learning algorithms for competitive play in Stratego.
     \item Design and implement a game environment for Stratego
     \item Build and implement a training model using Multi-Agent Reinforcement Learning with Deep Q-Networks and AAREN.
     \item Train and optimize the AI agent to respond to varying game states, hidden information, and opposing strategies.
@@ -31,7 +31,7 @@ The main objective of this study is to develop and evaluate a Multi-Agent Reinfo
 
 \section{Scope and Limitation}
 
-The study is limited to the development of an AI agent for imperfect information games, Stratego being the test environment. The scope includes the design and implementation of Stratego as a game environment, the development of a training framework using Multi-Agent Reinforcement Learning (MARL) with Deep Q-Networks (DQN) using AAREN, and the training and optimization of the AI agent to adapt to differences in game states. The evaluation of the agent's performance would primarily be on Stratego's environment. The trainings are limited to the personal devices of the researchers and would not rely on cloud-based computing resources. Since the AI is going to learn alongside the community the player and AI head-to-head will be analyzed mostly qualitative. The goal will be achieving the same human critical thinking in the model.
+The study is limited to the development of an AI agent for imperfect information games, with Stratego as the test environment. The scope includes the design and implementation of Stratego as a game environment, the development of a training framework using Multi-Agent Reinforcement Learning (MARL) with Deep Q-Networks (DQN) and AAREN, and the training and optimization of the AI agent to adapt to varying game states. Agent performance is evaluated through agent-vs-agent testing and ablation analysis within the Stratego environment. Training is limited to the personal devices of the researchers and does not rely on cloud-based computing resources.
 
 \section{Significance of the Study}
 Current imperfect information game systems either require large computational resources or use model-free approaches with limited strategic depth. The MARQ framework contributes a specific combination of techniques: implicit opponent modeling through AAREN-generated embeddings, distributional value estimation via C51, and learned exploration via Noisy Networks. The experimental results show that this combination resolved the scalar value collapse and exploration death observed in a standard DQN baseline, producing an agent that wins 49.88\% of self-play games compared to 22\% for the baseline. The five-phase curriculum and gradient bridge technique apply to other partially observable or adversarial domains that use recurrent encoders with experience replay.
