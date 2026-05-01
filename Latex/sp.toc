@@ -10,152 +10,142 @@
 \contentsline {section}{\numberline {2.1}Artificial Intelligence in Imperfect Information Games}{7}{section.2.1}%
 \contentsline {subsection}{\numberline {2.1.1}Student of Games}{8}{subsection.2.1.1}%
 \contentsline {subsection}{\numberline {2.1.2}Deep Q-Networks and Dueling Architectures}{8}{subsection.2.1.2}%
-\contentsline {subsection}{\numberline {2.1.3}Multi-Agent Reinforcement Learning}{9}{subsection.2.1.3}%
+\contentsline {subsection}{\numberline {2.1.3}Multi-Agent Reinforcement Learning}{8}{subsection.2.1.3}%
 \contentsline {subsection}{\numberline {2.1.4}Counterfactual Regret Minimization}{9}{subsection.2.1.4}%
-\contentsline {subsection}{\numberline {2.1.5}Opponent Modeling in Imperfect-Information Games}{10}{subsection.2.1.5}%
+\contentsline {subsection}{\numberline {2.1.5}Opponent Modeling in Imperfect-Information Games}{9}{subsection.2.1.5}%
 \contentsline {section}{\numberline {2.2}RNN}{10}{section.2.2}%
 \contentsline {subsection}{\numberline {2.2.1}History Aggregation and State Representation Learning}{10}{subsection.2.2.1}%
 \contentsline {subsection}{\numberline {2.2.2}LSTM}{11}{subsection.2.2.2}%
 \contentsline {subsection}{\numberline {2.2.3}Aaren}{11}{subsection.2.2.3}%
 \contentsline {subsection}{\numberline {2.2.4}Residual Networks and Self-Attention in Board Games}{11}{subsection.2.2.4}%
 \contentsline {section}{\numberline {2.3}Stratego}{12}{section.2.3}%
-\contentsline {subsection}{\numberline {2.3.1}Deep Reinforcement Learning in Stratego}{13}{subsection.2.3.1}%
-\contentsline {section}{\numberline {2.4}Board Games in Community Building}{14}{section.2.4}%
-\contentsline {section}{\numberline {2.5}Other Applications}{14}{section.2.5}%
-\contentsline {section}{\numberline {2.6}Application to Other Game Environments}{15}{section.2.6}%
-\contentsline {chapter}{\numberline {3}Theoretical Frameworks}{17}{chapter.3}%
-\contentsline {section}{\numberline {3.1}Stratego Game Domain}{17}{section.3.1}%
-\contentsline {section}{\numberline {3.2}MARQ Framework Overview}{18}{section.3.2}%
-\contentsline {section}{\numberline {3.3}MARQ Policy Definition}{19}{section.3.3}%
-\contentsline {subsection}{\numberline {3.3.1}Core Policy Framework}{21}{subsection.3.3.1}%
-\contentsline {subsection}{\numberline {3.3.2}Implicit Representation Optimization}{21}{subsection.3.3.2}%
-\contentsline {section}{\numberline {3.4}Deep Q-Network Architecture}{23}{section.3.4}%
-\contentsline {subsection}{\numberline {3.4.1}Rainbow DQN Components}{23}{subsection.3.4.1}%
-\contentsline {paragraph}{Distributional RL (Categorical DQN).}{23}{section*.9}%
-\contentsline {paragraph}{Noisy Networks for Exploration.}{23}{section*.10}%
-\contentsline {paragraph}{Dueling Network Architecture.}{24}{section*.11}%
-\contentsline {subsection}{\numberline {3.4.2}Training Stability via Regularization}{24}{subsection.3.4.2}%
-\contentsline {paragraph}{Advantage Filtering for Sample Efficiency.}{24}{section*.12}%
-\contentsline {paragraph}{Dynamic Damping with Power-Law Annealing.}{24}{section*.13}%
-\contentsline {section}{\numberline {3.5}AAREN and Learned Embedding System}{25}{section.3.5}%
-\contentsline {subsection}{\numberline {3.5.1}Recurrent Attention Computation}{25}{subsection.3.5.1}%
-\contentsline {subsection}{\numberline {3.5.2}Piece Type Inference}{26}{subsection.3.5.2}%
-\contentsline {subsection}{\numberline {3.5.3}Embedding Updates on Piece Revelation}{27}{subsection.3.5.3}%
-\contentsline {subsection}{\numberline {3.5.4}Hindsight-Aided Belief Refinement}{27}{subsection.3.5.4}%
-\contentsline {paragraph}{Information Gain Reward.}{27}{section*.14}%
-\contentsline {paragraph}{Sinkhorn Constraint Normalization.}{28}{section*.15}%
-\contentsline {section}{\numberline {3.6}Multi-Agent Learning and Strategy Mixing}{28}{section.3.6}%
-\contentsline {subsection}{\numberline {3.6.1}League-Based Training Architecture}{28}{subsection.3.6.1}%
-\contentsline {subsection}{\numberline {3.6.2}Strategy Mixing for Exploitation Resistance}{29}{subsection.3.6.2}%
-\contentsline {subsection}{\numberline {3.6.3}Multi-Dimensional Reward Structure}{29}{subsection.3.6.3}%
-\contentsline {section}{\numberline {3.7}Specialized Agent Architectures}{30}{section.3.7}%
-\contentsline {subsection}{\numberline {3.7.1}Setup Agent via Distributional RL}{30}{subsection.3.7.1}%
-\contentsline {subsection}{\numberline {3.7.2}Information Set Monte Carlo Tree Search (IS-MCTS)}{30}{subsection.3.7.2}%
-\contentsline {section}{\numberline {3.8}Game Environment and State Management}{31}{section.3.8}%
-\contentsline {subsection}{\numberline {3.8.1}Information Set Management}{31}{subsection.3.8.1}%
-\contentsline {subsection}{\numberline {3.8.2}Temporal State Evolution}{31}{subsection.3.8.2}%
-\contentsline {subsection}{\numberline {3.8.3}Valid Action Filtering}{31}{subsection.3.8.3}%
-\contentsline {subsection}{\numberline {3.8.4}Piece Setup and Initialization}{31}{subsection.3.8.4}%
-\contentsline {section}{\numberline {3.9}MARQ Move Selection and Decision-Making}{32}{section.3.9}%
-\contentsline {subsection}{\numberline {3.9.1}Historical Context Update}{32}{subsection.3.9.1}%
-\contentsline {subsection}{\numberline {3.9.2}Probabilistic Belief Extraction}{33}{subsection.3.9.2}%
-\contentsline {subsection}{\numberline {3.9.3}Information Set Tensorization}{33}{subsection.3.9.3}%
-\contentsline {subsection}{\numberline {3.9.4}Value Distribution Estimation}{33}{subsection.3.9.4}%
-\contentsline {subsection}{\numberline {3.9.5}Action-Space Filtering}{33}{subsection.3.9.5}%
-\contentsline {subsection}{\numberline {3.9.6}Expectamax Search and Tactical Summation}{33}{subsection.3.9.6}%
-\contentsline {subsection}{\numberline {3.9.7}Stochastic Action Selection (Temperature Scaling)}{34}{subsection.3.9.7}%
-\contentsline {section}{\numberline {3.10}Generalizability}{34}{section.3.10}%
-\contentsline {subsection}{\numberline {3.10.1}Mathematical Convergence Properties}{34}{subsection.3.10.1}%
-\contentsline {subsubsection}{Incremental Learning Bounds}{34}{section*.16}%
-\contentsline {subsubsection}{Implicit Representation Accuracy Bounds}{35}{section*.17}%
-\contentsline {subsubsection}{Strategy Convergence in Self-Play}{35}{section*.18}%
-\contentsline {subsection}{\numberline {3.10.2}Applied Generalizability}{35}{subsection.3.10.2}%
-\contentsline {subsubsection}{Inference in Degraded Environments}{35}{section*.19}%
-\contentsline {subsubsection}{Signal Intelligence and Pattern Discovery}{35}{section*.20}%
-\contentsline {subsubsection}{Industrial Automation and Predictive Maintenance}{36}{section*.21}%
-\contentsline {section}{\numberline {3.11}Algorithmic Evolution and Architecture Ablations}{36}{section.3.11}%
-\contentsline {paragraph}{Value Optimization and Exploration.}{36}{section*.22}%
-\contentsline {paragraph}{History and Memory Representation.}{36}{section*.23}%
-\contentsline {paragraph}{Architectural Refinements.}{37}{section*.24}%
-\contentsline {paragraph}{Strategic Initialization and Efficiency.}{37}{section*.25}%
-\contentsline {chapter}{\numberline {4}Methodology}{38}{chapter.4}%
-\contentsline {section}{\numberline {4.1}Project Planning}{38}{section.4.1}%
-\contentsline {subsection}{\numberline {4.1.1}Community Introduction to Stratego}{38}{subsection.4.1.1}%
-\contentsline {subsection}{\numberline {4.1.2}Experimental Procedures}{39}{subsection.4.1.2}%
-\contentsline {section}{\numberline {4.2}System Development}{39}{section.4.2}%
-\contentsline {subsection}{\numberline {4.2.1}Piece Value Computation}{40}{subsection.4.2.1}%
-\contentsline {subsubsection}{Combat Dominance Score}{40}{section*.27}%
-\contentsline {subsubsection}{Survival Rate}{40}{section*.28}%
-\contentsline {subsubsection}{Auxiliary Value Components}{40}{section*.30}%
-\contentsline {subsection}{\numberline {4.2.2}Using AAREN to Remember Game History}{41}{subsection.4.2.2}%
-\contentsline {paragraph}{Action Feature Extraction.}{42}{section*.32}%
-\contentsline {section}{\numberline {4.3}Model Training}{42}{section.4.3}%
-\contentsline {paragraph}{Rainbow DQN Architecture.}{42}{section*.34}%
-\contentsline {paragraph}{Network Structure.}{43}{section*.36}%
-\contentsline {paragraph}{Training Hyperparameters.}{44}{section*.40}%
-\contentsline {paragraph}{Computational Optimizations.}{45}{section*.41}%
-\contentsline {paragraph}{Multi-Phase Curriculum.}{46}{section*.42}%
-\contentsline {subsection}{\numberline {4.3.1}Centralized Reward System and Defensive Normalization}{46}{subsection.4.3.1}%
-\contentsline {paragraph}{Potential-Based Reward Shaping.}{47}{section*.43}%
-\contentsline {subsection}{\numberline {4.3.2}Action Space Reduction via Heuristic Filtering}{47}{subsection.4.3.2}%
-\contentsline {paragraph}{Heuristic Move Scoring.}{47}{section*.44}%
-\contentsline {paragraph}{Action Masking Integration.}{47}{section*.46}%
-\contentsline {subsection}{\numberline {4.3.3}Test-Time Search}{48}{subsection.4.3.3}%
-\contentsline {subsection}{\numberline {4.3.4}Deployment}{49}{subsection.4.3.4}%
-\contentsline {section}{\numberline {4.4}Game Environment Development}{51}{section.4.4}%
-\contentsline {subsection}{\numberline {4.4.1}Asset Design}{51}{subsection.4.4.1}%
-\contentsline {subsection}{\numberline {4.4.2}Evaluation}{52}{subsection.4.4.2}%
-\contentsline {paragraph}{Quantitative Analysis.}{52}{section*.50}%
-\contentsline {paragraph}{Qualitative Analysis.}{52}{section*.51}%
-\contentsline {chapter}{\numberline {5}Results and Discussion}{54}{chapter.5}%
-\contentsline {section}{\numberline {5.1}Normal DQN Performance Ceiling}{54}{section.5.1}%
-\contentsline {paragraph}{Finding 1: Win Rate Plateau.}{54}{section*.53}%
-\contentsline {paragraph}{Finding 2: Loss--Performance Decoupling.}{55}{section*.55}%
-\contentsline {paragraph}{Finding 3: Q-Value Overestimation.}{55}{section*.57}%
-\contentsline {paragraph}{Finding 4: LSTM Prediction Accuracy Ceiling.}{57}{section*.59}%
-\contentsline {paragraph}{Finding 5: Opponent-Specific Performance Asymmetry.}{57}{section*.61}%
-\contentsline {paragraph}{Finding 6: Draw Dominance.}{57}{section*.62}%
-\contentsline {section}{\numberline {5.2}Behavioral Patterns from Training Logs}{57}{section.5.2}%
-\contentsline {subsection}{\numberline {5.2.1}Passive Shuffling Convergence}{57}{subsection.5.2.1}%
-\contentsline {subsection}{\numberline {5.2.2}Opponent-Specific Adaptation Failure}{58}{subsection.5.2.2}%
-\contentsline {subsection}{\numberline {5.2.3}Loss-Reward Divergence}{58}{subsection.5.2.3}%
-\contentsline {subsection}{\numberline {5.2.4}LSTM Accuracy as an Information Barrier}{59}{subsection.5.2.4}%
-\contentsline {section}{\numberline {5.3}Draw Dominance and Learning Signal Quality}{59}{section.5.3}%
-\contentsline {section}{\numberline {5.4}Architectural Comparison: Unified versus Dual-Model Pipeline}{59}{section.5.4}%
-\contentsline {section}{\numberline {5.5}Architectural Bottleneck Analysis}{60}{section.5.5}%
-\contentsline {subsection}{\numberline {5.5.1}Q-Value Overestimation}{60}{subsection.5.5.1}%
-\contentsline {subsection}{\numberline {5.5.2}Scalar Value Collapse}{61}{subsection.5.5.2}%
-\contentsline {subsection}{\numberline {5.5.3}LSTM Information Bottleneck}{61}{subsection.5.5.3}%
-\contentsline {subsection}{\numberline {5.5.4}Exploration Collapse}{62}{subsection.5.5.4}%
-\contentsline {subsection}{\numberline {5.5.5}Sparse Reward Propagation}{62}{subsection.5.5.5}%
-\contentsline {section}{\numberline {5.6}Empirical Validation: Rainbow DQN with AAREN}{63}{section.5.6}%
-\contentsline {paragraph}{Finding 7: Win Rate Doubles.}{63}{section*.65}%
-\contentsline {paragraph}{Finding 8: Draw Elimination.}{63}{section*.66}%
-\contentsline {paragraph}{Finding 9: Loss--Performance Coupling Restored.}{64}{section*.67}%
-\contentsline {paragraph}{Finding 10: Sample Efficiency.}{64}{section*.68}%
-\contentsline {paragraph}{Finding 11: AAREN Exceeds LSTM Accuracy.}{65}{section*.69}%
-\contentsline {paragraph}{Finding 12: Learned Exploration Active.}{65}{section*.70}%
-\contentsline {subsection}{\numberline {5.6.1}Extended Training at 75,000 Episodes}{65}{subsection.5.6.1}%
-\contentsline {paragraph}{Finding 13: Loss Convergence Over Long Horizons.}{65}{section*.72}%
-\contentsline {paragraph}{Finding 14: Flag Pursuit Behavior.}{66}{section*.73}%
-\contentsline {section}{\numberline {5.7}Evidence for Architectural Necessity}{67}{section.5.7}%
-\contentsline {section}{\numberline {5.8}Supporting Evidence from Related Work}{67}{section.5.8}%
-\contentsline {section}{\numberline {5.9}Implications for MARQ}{68}{section.5.9}%
-\contentsline {chapter}{\numberline {6}Conclusion and Recommendations}{69}{chapter.6}%
-\contentsline {section}{\numberline {6.1}Conclusion}{69}{section.6.1}%
-\contentsline {section}{\numberline {6.2}Recommended Architectural Enhancements}{70}{section.6.2}%
-\contentsline {subsection}{\numberline {6.2.1}Value Estimation}{70}{subsection.6.2.1}%
-\contentsline {subsection}{\numberline {6.2.2}LSTM to AAREN Transition}{71}{subsection.6.2.2}%
-\contentsline {subsection}{\numberline {6.2.3}Exploration Recovery}{71}{subsection.6.2.3}%
-\contentsline {subsection}{\numberline {6.2.4}Long-Range Credit Assignment}{72}{subsection.6.2.4}%
-\contentsline {section}{\numberline {6.3}Computer Science Contributions}{72}{section.6.3}%
-\contentsline {subsection}{\numberline {6.3.1}Five-Phase Curriculum Design}{72}{subsection.6.3.1}%
-\contentsline {subsection}{\numberline {6.3.2}Gradient Bridge for Replay Compatibility}{72}{subsection.6.3.2}%
-\contentsline {subsection}{\numberline {6.3.3}Expectamax Search Integration}{72}{subsection.6.3.3}%
-\contentsline {subsection}{\numberline {6.3.4}Potential-Based Reward Shaping with Phase Annealing}{73}{subsection.6.3.4}%
-\contentsline {section}{\numberline {6.4}Limitations and Future Work}{73}{section.6.4}%
-\contentsline {chapter}{\numberline {A}Gantt Chart}{75}{appendix.A}%
-\contentsline {chapter}{\numberline {B}System UI and Training}{78}{appendix.B}%
-\contentsline {section}{\numberline {B.1}Interpretability Dashboard}{85}{section.B.1}%
-\contentsline {section}{\numberline {B.2}Architecture Comparison Training Charts}{87}{section.B.2}%
-\contentsline {section}{\numberline {B.3}AI Transparency, Inclusion, and Originality of Intent}{94}{section.B.3}%
+\contentsline {subsection}{\numberline {2.3.1}Deep Reinforcement Learning in Stratego}{12}{subsection.2.3.1}%
+\contentsline {section}{\numberline {2.4}Other Applications}{13}{section.2.4}%
+\contentsline {section}{\numberline {2.5}Application to Other Game Environments}{14}{section.2.5}%
+\contentsline {chapter}{\numberline {3}Theoretical Frameworks}{15}{chapter.3}%
+\contentsline {section}{\numberline {3.1}Stratego Game Domain}{15}{section.3.1}%
+\contentsline {section}{\numberline {3.2}MARQ Framework Overview}{16}{section.3.2}%
+\contentsline {section}{\numberline {3.3}MARQ Policy Definition}{17}{section.3.3}%
+\contentsline {subsection}{\numberline {3.3.1}Core Policy Framework}{17}{subsection.3.3.1}%
+\contentsline {subsection}{\numberline {3.3.2}Implicit Representation Optimization}{19}{subsection.3.3.2}%
+\contentsline {section}{\numberline {3.4}Deep Q-Network Architecture}{20}{section.3.4}%
+\contentsline {subsection}{\numberline {3.4.1}Rainbow DQN Components}{21}{subsection.3.4.1}%
+\contentsline {paragraph}{Distributional RL (Categorical DQN).}{21}{section*.9}%
+\contentsline {paragraph}{Noisy Networks for Exploration.}{21}{section*.10}%
+\contentsline {paragraph}{Dueling Network Architecture.}{21}{section*.11}%
+\contentsline {subsection}{\numberline {3.4.2}Training Stability via Regularization}{22}{subsection.3.4.2}%
+\contentsline {paragraph}{Advantage Filtering for Sample Efficiency.}{22}{section*.12}%
+\contentsline {paragraph}{Dynamic Damping with Power-Law Annealing.}{22}{section*.13}%
+\contentsline {section}{\numberline {3.5}AAREN and Learned Embedding System}{22}{section.3.5}%
+\contentsline {subsection}{\numberline {3.5.1}Recurrent Attention Computation}{23}{subsection.3.5.1}%
+\contentsline {subsection}{\numberline {3.5.2}Piece Type Inference}{24}{subsection.3.5.2}%
+\contentsline {subsection}{\numberline {3.5.3}Embedding Updates on Piece Revelation}{24}{subsection.3.5.3}%
+\contentsline {subsection}{\numberline {3.5.4}Hindsight-Aided Belief Refinement}{25}{subsection.3.5.4}%
+\contentsline {paragraph}{Information Gain Reward.}{25}{section*.14}%
+\contentsline {paragraph}{Sinkhorn Constraint Normalization.}{25}{section*.15}%
+\contentsline {section}{\numberline {3.6}Multi-Agent Learning and Strategy Mixing}{26}{section.3.6}%
+\contentsline {subsection}{\numberline {3.6.1}League-Based Training Architecture}{26}{subsection.3.6.1}%
+\contentsline {subsection}{\numberline {3.6.2}Strategy Mixing for Exploitation Resistance}{26}{subsection.3.6.2}%
+\contentsline {subsection}{\numberline {3.6.3}Multi-Dimensional Reward Structure}{26}{subsection.3.6.3}%
+\contentsline {section}{\numberline {3.7}Specialized Agent Architectures}{27}{section.3.7}%
+\contentsline {subsection}{\numberline {3.7.1}Setup Agent via Distributional RL}{27}{subsection.3.7.1}%
+\contentsline {subsection}{\numberline {3.7.2}Information Set Monte Carlo Tree Search (IS-MCTS)}{28}{subsection.3.7.2}%
+\contentsline {section}{\numberline {3.8}Game Environment and State Management}{28}{section.3.8}%
+\contentsline {subsection}{\numberline {3.8.1}Information Set Management}{28}{subsection.3.8.1}%
+\contentsline {subsection}{\numberline {3.8.2}Temporal State Evolution}{28}{subsection.3.8.2}%
+\contentsline {subsection}{\numberline {3.8.3}Valid Action Filtering}{29}{subsection.3.8.3}%
+\contentsline {subsection}{\numberline {3.8.4}Piece Setup and Initialization}{29}{subsection.3.8.4}%
+\contentsline {section}{\numberline {3.9}MARQ Move Selection and Decision-Making}{29}{section.3.9}%
+\contentsline {subsection}{\numberline {3.9.1}Historical Context Update}{29}{subsection.3.9.1}%
+\contentsline {subsection}{\numberline {3.9.2}Probabilistic Belief Extraction}{31}{subsection.3.9.2}%
+\contentsline {subsection}{\numberline {3.9.3}Information Set Tensorization}{31}{subsection.3.9.3}%
+\contentsline {subsection}{\numberline {3.9.4}Value Distribution Estimation}{31}{subsection.3.9.4}%
+\contentsline {subsection}{\numberline {3.9.5}Action-Space Filtering}{31}{subsection.3.9.5}%
+\contentsline {subsection}{\numberline {3.9.6}Expectamax Search and Tactical Summation}{31}{subsection.3.9.6}%
+\contentsline {subsection}{\numberline {3.9.7}Stochastic Action Selection (Temperature Scaling)}{32}{subsection.3.9.7}%
+\contentsline {section}{\numberline {3.10}Generalizability}{32}{section.3.10}%
+\contentsline {subsection}{\numberline {3.10.1}Mathematical Convergence Properties}{32}{subsection.3.10.1}%
+\contentsline {subsubsection}{Incremental Learning Bounds}{32}{section*.16}%
+\contentsline {subsubsection}{Implicit Representation Accuracy Bounds}{33}{section*.17}%
+\contentsline {subsubsection}{Strategy Convergence in Self-Play}{33}{section*.18}%
+\contentsline {section}{\numberline {3.11}Algorithmic Evolution and Architecture Ablations}{33}{section.3.11}%
+\contentsline {paragraph}{Value Optimization and Exploration.}{33}{section*.19}%
+\contentsline {paragraph}{History and Memory Representation.}{34}{section*.20}%
+\contentsline {paragraph}{Architectural Refinements.}{34}{section*.21}%
+\contentsline {paragraph}{Strategic Initialization and Efficiency.}{34}{section*.22}%
+\contentsline {chapter}{\numberline {4}Methodology}{35}{chapter.4}%
+\contentsline {section}{\numberline {4.1}Project Planning}{35}{section.4.1}%
+\contentsline {section}{\numberline {4.2}System Development}{35}{section.4.2}%
+\contentsline {subsection}{\numberline {4.2.1}Piece Value Computation}{36}{subsection.4.2.1}%
+\contentsline {subsubsection}{Combat Dominance Score}{36}{section*.24}%
+\contentsline {subsubsection}{Survival Rate}{36}{section*.25}%
+\contentsline {subsubsection}{Auxiliary Value Components}{37}{section*.27}%
+\contentsline {subsection}{\numberline {4.2.2}Using AAREN to Remember Game History}{38}{subsection.4.2.2}%
+\contentsline {paragraph}{Action Feature Extraction.}{38}{section*.29}%
+\contentsline {section}{\numberline {4.3}Model Training}{38}{section.4.3}%
+\contentsline {paragraph}{Rainbow DQN Architecture.}{38}{section*.31}%
+\contentsline {paragraph}{Network Structure.}{38}{section*.33}%
+\contentsline {paragraph}{Training Hyperparameters.}{41}{section*.37}%
+\contentsline {paragraph}{Computational Optimizations.}{42}{section*.38}%
+\contentsline {paragraph}{Multi-Phase Curriculum.}{42}{section*.39}%
+\contentsline {subsection}{\numberline {4.3.1}Centralized Reward System and Defensive Normalization}{43}{subsection.4.3.1}%
+\contentsline {paragraph}{Potential-Based Reward Shaping.}{43}{section*.40}%
+\contentsline {subsection}{\numberline {4.3.2}Action Space Reduction via Heuristic Filtering}{43}{subsection.4.3.2}%
+\contentsline {paragraph}{Heuristic Move Scoring.}{43}{section*.41}%
+\contentsline {paragraph}{Action Masking Integration.}{44}{section*.43}%
+\contentsline {subsection}{\numberline {4.3.3}Test-Time Search}{44}{subsection.4.3.3}%
+\contentsline {subsection}{\numberline {4.3.4}Deployment}{45}{subsection.4.3.4}%
+\contentsline {section}{\numberline {4.4}Game Environment}{47}{section.4.4}%
+\contentsline {subsection}{\numberline {4.4.1}Evaluation}{47}{subsection.4.4.1}%
+\contentsline {chapter}{\numberline {5}Results and Discussion}{48}{chapter.5}%
+\contentsline {section}{\numberline {5.1}Normal DQN Performance Ceiling}{48}{section.5.1}%
+\contentsline {subsection}{\numberline {5.1.1}Win Rate Plateau}{48}{subsection.5.1.1}%
+\contentsline {subsection}{\numberline {5.1.2}Loss--Performance Decoupling}{49}{subsection.5.1.2}%
+\contentsline {subsection}{\numberline {5.1.3}Q-Value Overestimation}{50}{subsection.5.1.3}%
+\contentsline {subsection}{\numberline {5.1.4}LSTM Prediction Accuracy Ceiling}{50}{subsection.5.1.4}%
+\contentsline {subsection}{\numberline {5.1.5}Opponent-Specific Performance Asymmetry}{50}{subsection.5.1.5}%
+\contentsline {subsection}{\numberline {5.1.6}Draw Dominance}{51}{subsection.5.1.6}%
+\contentsline {section}{\numberline {5.2}Behavioral Patterns from Training Logs}{51}{section.5.2}%
+\contentsline {subsection}{\numberline {5.2.1}Passive Shuffling Convergence}{51}{subsection.5.2.1}%
+\contentsline {subsection}{\numberline {5.2.2}Opponent-Specific Adaptation Failure}{51}{subsection.5.2.2}%
+\contentsline {subsection}{\numberline {5.2.3}Loss-Reward Divergence}{52}{subsection.5.2.3}%
+\contentsline {subsection}{\numberline {5.2.4}LSTM Accuracy as an Information Barrier}{52}{subsection.5.2.4}%
+\contentsline {section}{\numberline {5.3}Draw Dominance and Learning Signal Quality}{53}{section.5.3}%
+\contentsline {section}{\numberline {5.4}Architectural Comparison: Unified versus Dual-Model Pipeline}{53}{section.5.4}%
+\contentsline {section}{\numberline {5.5}Architectural Bottleneck Analysis}{54}{section.5.5}%
+\contentsline {subsection}{\numberline {5.5.1}Q-Value Overestimation}{54}{subsection.5.5.1}%
+\contentsline {subsection}{\numberline {5.5.2}Scalar Value Collapse}{55}{subsection.5.5.2}%
+\contentsline {subsection}{\numberline {5.5.3}LSTM Information Bottleneck}{55}{subsection.5.5.3}%
+\contentsline {subsection}{\numberline {5.5.4}Exploration Collapse}{56}{subsection.5.5.4}%
+\contentsline {subsection}{\numberline {5.5.5}Sparse Reward Propagation}{56}{subsection.5.5.5}%
+\contentsline {section}{\numberline {5.6}Empirical Validation: Rainbow DQN with AAREN}{57}{section.5.6}%
+\contentsline {subsection}{\numberline {5.6.1}Win Rate Doubles}{57}{subsection.5.6.1}%
+\contentsline {subsection}{\numberline {5.6.2}Draw Elimination}{57}{subsection.5.6.2}%
+\contentsline {subsection}{\numberline {5.6.3}Loss--Performance Coupling Restored}{58}{subsection.5.6.3}%
+\contentsline {subsection}{\numberline {5.6.4}Sample Efficiency}{58}{subsection.5.6.4}%
+\contentsline {subsection}{\numberline {5.6.5}AAREN Exceeds LSTM Accuracy}{59}{subsection.5.6.5}%
+\contentsline {subsection}{\numberline {5.6.6}Learned Exploration Active}{59}{subsection.5.6.6}%
+\contentsline {subsection}{\numberline {5.6.7}Extended Training at 75,000 Episodes}{59}{subsection.5.6.7}%
+\contentsline {subsubsection}{Loss Convergence Over Long Horizons}{60}{section*.53}%
+\contentsline {subsubsection}{Flag Pursuit Behavior}{60}{section*.54}%
+\contentsline {section}{\numberline {5.7}Evidence for Architectural Necessity}{61}{section.5.7}%
+\contentsline {section}{\numberline {5.8}Supporting Evidence from Related Work}{62}{section.5.8}%
+\contentsline {section}{\numberline {5.9}Implications for MARQ}{62}{section.5.9}%
+\contentsline {chapter}{\numberline {6}Conclusion and Recommendations}{64}{chapter.6}%
+\contentsline {section}{\numberline {6.1}Conclusion}{64}{section.6.1}%
+\contentsline {section}{\numberline {6.2}Recommended Architectural Enhancements}{65}{section.6.2}%
+\contentsline {subsection}{\numberline {6.2.1}Value Estimation}{65}{subsection.6.2.1}%
+\contentsline {subsection}{\numberline {6.2.2}LSTM to AAREN Transition}{66}{subsection.6.2.2}%
+\contentsline {subsection}{\numberline {6.2.3}Exploration Recovery}{66}{subsection.6.2.3}%
+\contentsline {subsection}{\numberline {6.2.4}Long-Range Credit Assignment}{67}{subsection.6.2.4}%
+\contentsline {section}{\numberline {6.3}Computer Science Contributions}{67}{section.6.3}%
+\contentsline {subsection}{\numberline {6.3.1}Five-Phase Curriculum Design}{67}{subsection.6.3.1}%
+\contentsline {subsection}{\numberline {6.3.2}Gradient Bridge for Replay Compatibility}{67}{subsection.6.3.2}%
+\contentsline {subsection}{\numberline {6.3.3}Expectamax Search Integration}{67}{subsection.6.3.3}%
+\contentsline {subsection}{\numberline {6.3.4}Potential-Based Reward Shaping with Phase Annealing}{68}{subsection.6.3.4}%
+\contentsline {section}{\numberline {6.4}Limitations and Future Work}{68}{section.6.4}%
+\contentsline {chapter}{\numberline {A}Gantt Chart}{70}{appendix.A}%
+\contentsline {chapter}{\numberline {B}System UI and Training}{73}{appendix.B}%
+\contentsline {section}{\numberline {B.1}Interpretability Dashboard}{80}{section.B.1}%
+\contentsline {section}{\numberline {B.2}Architecture Comparison Training Charts}{82}{section.B.2}%
+\contentsline {section}{\numberline {B.3}AI Transparency, Inclusion, and Originality of Intent}{89}{section.B.3}%

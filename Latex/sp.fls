@@ -471,20 +471,6 @@ INPUT .\figures\Game diagram.png
 INPUT .\figures\Game diagram.png
 INPUT .\figures\Game diagram.png
 INPUT .\figures\Game diagram.png
-INPUT .\figures\StrategoWithMARQ_GameStart.png
-INPUT .\figures\StrategoWithMARQ_GameStart.png
-INPUT .\figures\StrategoWithMARQ_GameStart.png
-INPUT .\figures\StrategoWithMARQ_GameStart.png
-INPUT .\figures\StrategoWithMARQ_GameStart.png
-INPUT .\figures\StrategoWithMARQ_GameStart.png
-INPUT .\figures\StrategoWithMARQ_GameStart.png
-INPUT .\figures\StrategoPieces.png
-INPUT .\figures\StrategoPieces.png
-INPUT .\figures\StrategoPieces.png
-INPUT .\figures\StrategoPieces.png
-INPUT .\figures\StrategoPieces.png
-INPUT .\figures\StrategoPieces.png
-INPUT .\figures\StrategoPieces.png
 INPUT .\chapters\results.tex
 INPUT .\chapters\results.tex
 OUTPUT chapters\results.aux
@@ -593,6 +579,9 @@ INPUT .\figures\StrategoWithMARQ_SETUP.png
 INPUT .\figures\StrategoWithMARQ_SETUP.png
 INPUT .\figures\StrategoWithMARQ_SETUP.png
 INPUT .\figures\StrategoWithMARQ_SETUP.png
+INPUT .\figures\StrategoWithMARQ_GameStart.png
+INPUT .\figures\StrategoWithMARQ_GameStart.png
+INPUT .\figures\StrategoWithMARQ_GameStart.png
 INPUT .\figures\StrategoWithMARQ_GameStart.png
 INPUT .\figures\StrategoWithMARQ_GameStart.png
 INPUT .\figures\StrategoWithMARQ_GameStart.png

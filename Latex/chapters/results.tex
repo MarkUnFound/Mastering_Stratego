@@ -26,7 +26,7 @@ The multi-phase curriculum concluded with 37,213 episodes of self-play training.
 
 The training data contains six findings, each linked to an architectural limitation.
 
-\paragraph{Finding 1: Win Rate Plateau.}\label{finding:1}
+\subsection{Win Rate Plateau}\label{finding:1}
 Agent~1's cumulative win rate settled near 22\% within 2,000 episodes. It never improved over the next 35,000. The 100-episode rolling average swung between 15\% and 30\% with no upward trend. The policy stalled.
 
 \begin{figure}[htbp]
@@ -36,7 +36,7 @@ Agent~1's cumulative win rate settled near 22\% within 2,000 episodes. It never 
     \label{fig:cumulative_winrate}
 \end{figure}
 
-\paragraph{Finding 2: Loss--Performance Decoupling.}\label{finding:2}
+\subsection{Loss--Performance Decoupling}\label{finding:2}
 The TD error fell monotonically to roughly 0.001. The win rate did not follow. The network learned to predict the value of passive, draw-seeking play accurately. It did not discover better strategies.
 
 \begin{figure}[htbp]
@@ -46,7 +46,7 @@ The TD error fell monotonically to roughly 0.001. The win rate did not follow. T
     \label{fig:policy_loss}
 \end{figure}
 
-\paragraph{Finding 3: Q-Value Overestimation.}\label{finding:3}
+\subsection{Q-Value Overestimation}\label{finding:3}
 Average Q-values climbed from 0.2 to 1.2. Win rates did not move. Rising value estimates without corresponding performance gains point to systematic overestimation bias.
 
 \begin{figure}[htbp]
@@ -56,7 +56,7 @@ Average Q-values climbed from 0.2 to 1.2. Win rates did not move. Rising value e
     \label{fig:q_value}
 \end{figure}
 
-\paragraph{Finding 4: LSTM Prediction Accuracy Ceiling.}\label{finding:4}
+\subsection{LSTM Prediction Accuracy Ceiling}\label{finding:4}
 The LSTM piece-identity module plateaued at 18--22\% accuracy, a 2.2--2.6$\times$ gain over the 8.3\% random baseline but far short of reliable tactical inference. The curve flattened after episode 5,000 and never recovered.
 
 \begin{figure}[htbp]
@@ -66,10 +66,10 @@ The LSTM piece-identity module plateaued at 18--22\% accuracy, a 2.2--2.6$\times
     \label{fig:prediction_accuracy}
 \end{figure}
 
-\paragraph{Finding 5: Opponent-Specific Performance Asymmetry.}\label{finding:5}
+\subsection{Opponent-Specific Performance Asymmetry}\label{finding:5}
 Performance varied sharply by opponent. Win rate against the greedy heuristic was 15.2\%; in self-play it reached 24.8\%. The policy fit its own behavioral distribution and could not generalize.
 
-\paragraph{Finding 6: Draw Dominance.}\label{finding:6}
+\subsection{Draw Dominance}\label{finding:6}
 Draws accounted for 38.5\% of outcomes, far above the 22.2\% win rate. The agent shuffled pieces passively and avoided uncertain engagements. It minimized short-term losses at the expense of long-term winning probability.
 
 
@@ -242,25 +242,25 @@ Model Size (per ckpt)  & $\sim$39\,MB & $\sim$433\,MB \\
 \end{tabular}
 \end{table}
 
-\paragraph{Finding 7: Win Rate Doubles.}\label{finding:7}
-The Rainbow agent achieved a 49.88\% win rate at 9,778 episodes. The normal DQN reached 24.97\% at 15,302 episodes despite consuming twice the total environment steps. The Rainbow agent trained on roughly half the data and nearly doubled the win rate. \hyperref[finding:1]{Finding~1} (Win Rate Plateau) predicted an architectural ceiling. The Rainbow architecture broke through it.
+\subsection{Win Rate Doubles}\label{finding:7}
+The Rainbow agent achieved a 49.88\% win rate at 9,778 episodes. The normal DQN reached 24.97\% at 15,302 episodes despite consuming twice the total environment steps. The Rainbow agent trained on roughly half the data and nearly doubled the win rate. Section~\ref{finding:1} (Win Rate Plateau) predicted an architectural ceiling. The Rainbow architecture broke through it.
 
-\paragraph{Finding 8: Draw Elimination.}\label{finding:8}
-The normal DQN drew 50.04\% of its games. The Rainbow agent drew 6.69\%. It lost more games outright (43.43\% versus 24.99\%), but it produced definitive outcomes. An agent that draws half of its games has learned to avoid playing, not to play. \hyperref[finding:6]{Finding~6} (Draw Dominance) attributed this to scalar value collapse. The C51 distributional head resolved it.
+\subsection{Draw Elimination}\label{finding:8}
+The normal DQN drew 50.04\% of its games. The Rainbow agent drew 6.69\%. It lost more games outright (43.43\% versus 24.99\%), but it produced definitive outcomes. An agent that draws half of its games has learned to avoid playing, not to play. Section~\ref{finding:6} (Draw Dominance) attributed this to scalar value collapse. The C51 distributional head resolved it.
 
-At first glance, a 43.43\% loss rate alongside a 6.69\% draw rate could suggest that the Rainbow agent is taking excessive risks rather than learning stable strategies. Three observations argue against this reading. First, the training data comes from self-play, where every game produces exactly one winner and one loser (or a draw). A 49.88\% win rate and a 43.43\% loss rate sum to 93.31\% decisive outcomes. In a zero-sum self-play setting, a high decisive-outcome rate means the agent has learned to force resolutions rather than stall. The losses belong to the copy of the agent that happened to be on the weaker side of a particular game, not to a systematically reckless policy. Second, the steps-per-win metric (1,060 versus 2,697 for the normal DQN) indicates that wins are achieved through efficient, targeted play rather than through drawn-out attrition. An agent that takes reckless risks would show longer, more chaotic games, not shorter ones. Third, the loss--performance coupling coefficient ($r = -0.787$, \hyperref[finding:9]{Finding~9}) demonstrates that the agent's losses are informative: as the distributional loss decreases, the win rate increases. The losses the agent incurs during training generate gradient signals that drive subsequent improvement, unlike the uninformative draws that dominated the normal DQN's training. The 75k extended run (\hyperref[finding:14]{Finding~14}) provides further evidence that this aggressive posture matures into directed strategy: the agent achieved a 99.96\% flag capture ratio among wins, indicating that extended training channels initial aggression into purposeful flag pursuit rather than indiscriminate combat.
+At first glance, a 43.43\% loss rate alongside a 6.69\% draw rate could suggest that the Rainbow agent is taking excessive risks rather than learning stable strategies. Three observations argue against this reading. First, the training data comes from self-play, where every game produces exactly one winner and one loser (or a draw). A 49.88\% win rate and a 43.43\% loss rate sum to 93.31\% decisive outcomes. In a zero-sum self-play setting, a high decisive-outcome rate means the agent has learned to force resolutions rather than stall. The losses belong to the copy of the agent that happened to be on the weaker side of a particular game, not to a systematically reckless policy. Second, the steps-per-win metric (1,060 versus 2,697 for the normal DQN) indicates that wins are achieved through efficient, targeted play rather than through drawn-out attrition. An agent that takes reckless risks would show longer, more chaotic games, not shorter ones. Third, the loss--performance coupling coefficient ($r = -0.787$, Section~\ref{finding:9}) demonstrates that the agent's losses are informative: as the distributional loss decreases, the win rate increases. The losses the agent incurs during training generate gradient signals that drive subsequent improvement, unlike the uninformative draws that dominated the normal DQN's training. The 75k extended run (Section~\ref{finding:14}) provides further evidence that this aggressive posture matures into directed strategy: the agent achieved a 99.96\% flag capture ratio among wins, indicating that extended training channels initial aggression into purposeful flag pursuit rather than indiscriminate combat.
 
-\paragraph{Finding 9: Loss--Performance Coupling Restored.}\label{finding:9}
-The correlation coefficient between windowed policy loss and win rate was 0.051 for the normal DQN and $-$0.787 for the Rainbow agent. As the distributional loss decreased, the win rate increased. \hyperref[finding:2]{Finding~2} (Loss--Performance Decoupling) identified that the scalar DQN loss converged without improving play. The C51 objective reversed this: the loss curve became a reliable proxy for gameplay improvement.
+\subsection{Loss--Performance Coupling Restored}\label{finding:9}
+The correlation coefficient between windowed policy loss and win rate was 0.051 for the normal DQN and $-$0.787 for the Rainbow agent. As the distributional loss decreased, the win rate increased. Section~\ref{finding:2} (Loss--Performance Decoupling) identified that the scalar DQN loss converged without improving play. The C51 objective reversed this: the loss curve became a reliable proxy for gameplay improvement.
 
-\paragraph{Finding 10: Sample Efficiency.}\label{finding:10}
+\subsection{Sample Efficiency}\label{finding:10}
 The Rainbow agent required 1,060 environment steps per win compared to 2,697 for the normal DQN. At the episode level, the Rainbow agent won once every 2.0 episodes while the normal DQN won once every 4.0. The Rainbow model consumed 5.17 million total steps; the normal DQN consumed 10.31 million. Higher win rate on half the data.
 
-\paragraph{Finding 11: AAREN Exceeds LSTM Accuracy.}\label{finding:11}
-The AAREN module achieved 24.23\% piece identity inference accuracy, compared to 17.74\% for the LSTM-based PBS module. The 6.5 percentage point gap confirms that attention-based history aggregation outperforms recurrent compression for this task. \hyperref[finding:4]{Finding~4} (LSTM Accuracy Ceiling) predicted this limitation. The LSTM Q-values settled near 0.18 in late training. The Rainbow Q-values reached 0.84 by episode 9,500, indicating that the distributional representation maintains higher resolution across the value space.
+\subsection{AAREN Exceeds LSTM Accuracy}\label{finding:11}
+The AAREN module achieved 24.23\% piece identity inference accuracy, compared to 17.74\% for the LSTM-based PBS module. The 6.5 percentage point gap confirms that attention-based history aggregation outperforms recurrent compression for this task. Section~\ref{finding:4} (LSTM Accuracy Ceiling) predicted this limitation. The LSTM Q-values settled near 0.18 in late training. The Rainbow Q-values reached 0.84 by episode 9,500, indicating that the distributional representation maintains higher resolution across the value space.
 
-\paragraph{Finding 12: Learned Exploration Active.}\label{finding:12}
-The NoisyNet entropy rose steadily from 0.034 to 0.049 throughout Rainbow training, demonstrating that the learned exploration noise continued to expand its coverage. The normal DQN recorded a fixed entropy of zero (\hyperref[finding:5]{Finding~5}, Exploration Collapse). Noisy Networks replaced frozen $\epsilon$-greedy decay with adaptive, state-dependent exploration.
+\subsection{Learned Exploration Active}\label{finding:12}
+The NoisyNet entropy rose steadily from 0.034 to 0.049 throughout Rainbow training, demonstrating that the learned exploration noise continued to expand its coverage. The normal DQN recorded a fixed entropy of zero (Section~\ref{finding:5}, Exploration Collapse). Noisy Networks replaced frozen $\epsilon$-greedy decay with adaptive, state-dependent exploration.
 
 \subsection{Extended Training at 75,000 Episodes}
 
@@ -287,10 +287,10 @@ Avg Episode Length      & 378 \\
 \end{tabular}
 \end{table}
 
-\paragraph{Finding 13: Loss Convergence Over Long Horizons.}\label{finding:13}
-The distributional loss fell from 3.89 to 2.84 across 75,000 episodes, a clear downward trajectory that reinforces \hyperref[finding:9]{Finding~9}. The normal DQN showed no comparable long-term loss reduction; its loss either plateaued or inflated in late training. The near-zero correlation between the normal DQN's loss and win rate meant that additional training offered diminishing returns. The Rainbow architecture continued to extract value from each training episode, with the falling loss accompanied by a gradual increase in win rate across the second half of the run. Extended training works for the Rainbow agent because its loss function tracks a meaningful learning signal.
+\subsubsection{Loss Convergence Over Long Horizons}\label{finding:13}
+The distributional loss fell from 3.89 to 2.84 across 75,000 episodes, a clear downward trajectory that reinforces Section~\ref{finding:9}. The normal DQN showed no comparable long-term loss reduction; its loss either plateaued or inflated in late training. The near-zero correlation between the normal DQN's loss and win rate meant that additional training offered diminishing returns. The Rainbow architecture continued to extract value from each training episode, with the falling loss accompanied by a gradual increase in win rate across the second half of the run. Extended training works for the Rainbow agent because its loss function tracks a meaningful learning signal.
 
-\paragraph{Finding 14: Flag Pursuit Behavior.}\label{finding:14}
+\subsubsection{Flag Pursuit Behavior}\label{finding:14}
 The average episode length in the 75k run settled near 378 steps, compared to 1,345 for the normal DQN and 1,055 for the Rainbow self-play run. The shorter episodes indicate that the agent learned to end games faster. Average Q-values grew from near zero to 1.84, nearly five times the terminal normal DQN Q-value. This growth occurred alongside a 99.96\% flag capture ratio among wins. The Rainbow agent almost exclusively won by identifying and capturing the opponent flag rather than by attrition. The normal DQN won by flag capture only 18.79\% of the time, relying instead on piece depletion. As training progressed, the agent shifted from passive survival toward purposeful flag pursuit, and the declining episode length reflects this shift. The attention mechanism enables this targeted strategic objective by allowing the agent to reason about the global board state and isolate the flag's probable location.
 
 The 75k run also reveals an opponent-conditional effect. The win rate against heuristic opponents remained at 11.66\% across 75,047 episodes, far below the 49.88\% achieved in self-play at 9,778 episodes. This gap does not indicate that the Rainbow architecture fails against heuristics. Rather, it reflects the difference in what the agent can learn from each opponent class. Heuristic opponents follow fixed evaluation functions that do not adapt, so the agent cannot exploit predictable weaknesses in the way it can against a co-evolving self-play partner. The heuristic's consistent tactical play also denies the AAREN module the behavioral variation it needs to refine piece-identity inference. Against a self-play opponent whose policy improves alongside the agent, each game presents a different strategic landscape, driving both the policy and the belief model to generalize. The contrast shows that opponent diversity directly affects both convergence speed and the performance ceiling.
@@ -307,18 +307,18 @@ Each component in the thesis title maps to a specific failure mode observed in t
         \hline
         \textbf{Title Component} & \textbf{Observed Failure Mode} & \textbf{Empirical Evidence} \\
         \hline
-        Multi-Agent & Symmetric MARL Nash lock-in & P1 and P2 win rates converged to near-identical 25.1\% and 24.9\% in the normal DQN. The Rainbow agent broke this symmetry with a 49.88\% win rate in self-play (\hyperref[finding:7]{Finding~7}). \\
+        Multi-Agent & Symmetric MARL Nash lock-in & P1 and P2 win rates converged to near-identical 25.1\% and 24.9\% in the normal DQN. The Rainbow agent broke this symmetry with a 49.88\% win rate in self-play (Section~\ref{finding:7}). \\
         \hline
-        Rainbow DQN & Q-value overestimation, scalar value collapse, exploration death, sparse reward propagation & Loss--performance coupling restored ($r = -0.787$, \hyperref[finding:9]{Finding~9}). Draw rate dropped from 50\% to 6.69\% (\hyperref[finding:8]{Finding~8}). NoisyNet entropy rose throughout training (\hyperref[finding:12]{Finding~12}). \\
+        Rainbow DQN & Q-value overestimation, scalar value collapse, exploration death, sparse reward propagation & Loss--performance coupling restored ($r = -0.787$, Section~\ref{finding:9}). Draw rate dropped from 50\% to 6.69\% (Section~\ref{finding:8}). NoisyNet entropy rose throughout training (Section~\ref{finding:12}). \\
         \hline
-        AAREN & Sequential information bottleneck & AAREN accuracy 24.23\% versus LSTM's 17.74\% (\hyperref[finding:11]{Finding~11}). Q-value resolution improved from 0.18 to 0.84, enabling finer action discrimination. \\
+        AAREN & Sequential information bottleneck & AAREN accuracy 24.23\% versus LSTM's 17.74\% (Section~\ref{finding:11}). Q-value resolution improved from 0.18 to 0.84, enabling finer action discrimination. \\
         \hline
-        Imperfect Information & Risk-averse draw-seeking policy & The 38.5\% draw rate (\hyperref[finding:6]{Finding~6}) dropped to 6.69\% (\hyperref[finding:8]{Finding~8}). Flag capture ratio rose to 99.96\% over 75k episodes (\hyperref[finding:14]{Finding~14}), confirming the agent learned targeted flag pursuit under uncertainty. \\
+        Imperfect Information & Risk-averse draw-seeking policy & The 38.5\% draw rate (Section~\ref{finding:6}) dropped to 6.69\% (Section~\ref{finding:8}). Flag capture ratio rose to 99.96\% over 75k episodes (Section~\ref{finding:14}), confirming the agent learned targeted flag pursuit under uncertainty. \\
         \hline
     \end{tabular}
 \end{table}
 
-The combined findings support the full MARQ architecture. Each component targets a distinct, verified bottleneck. Draw dominance (\hyperref[finding:6]{Finding~6}) is a compound effect arising from the interaction of scalar value collapse, exploration death, and sparse reward propagation. No single enhancement can resolve it in isolation because each contributing failure mode persists independently. The empirical data confirms that the combined architectural response eliminated it (\hyperref[finding:8]{Finding~8}), reducing the draw rate from 50.04\% to 6.69\% while simultaneously doubling the win rate and restoring loss--performance coupling.
+The combined findings support the full MARQ architecture. Each component targets a distinct, verified bottleneck. Draw dominance (Section~\ref{finding:6}) is a compound effect arising from the interaction of scalar value collapse, exploration death, and sparse reward propagation. No single enhancement can resolve it in isolation because each contributing failure mode persists independently. The empirical data confirms that the combined architectural response eliminated it (Section~\ref{finding:8}), reducing the draw rate from 50.04\% to 6.69\% while simultaneously doubling the win rate and restoring loss--performance coupling.
 
 
 \section{Supporting Evidence from Related Work}
@@ -342,17 +342,17 @@ The performance ceiling stems from identifiable architectural properties of the 
         \hline
         \textbf{Finding} & \textbf{Theoretical Cause} & \textbf{MARQ Component} & \textbf{Status} \\
         \hline
-        Q-Value Overestimation & Maximization Bias & Double DQN / Dueling & Validated (\hyperref[finding:7]{F7}) \\
+        Q-Value Overestimation & Maximization Bias & Double DQN / Dueling & Validated (Sec.~\ref{finding:7}) \\
         \hline
-        Loss--Perf. Decoupling & Scalar Value Collapse & C51 Distributional RL & Validated (\hyperref[finding:9]{F9}) \\
+        Loss--Perf. Decoupling & Scalar Value Collapse & C51 Distributional RL & Validated (Sec.~\ref{finding:9}) \\
         \hline
-        LSTM Accuracy Ceiling & Sequential Bottleneck & AAREN Attention & Validated (\hyperref[finding:11]{F11}) \\
+        LSTM Accuracy Ceiling & Sequential Bottleneck & AAREN Attention & Validated (Sec.~\ref{finding:11}) \\
         \hline
-        Exploration Collapse & Fixed $\epsilon$-greedy & Noisy Networks & Validated (\hyperref[finding:12]{F12}) \\
+        Exploration Collapse & Fixed $\epsilon$-greedy & Noisy Networks & Validated (Sec.~\ref{finding:12}) \\
         \hline
-        Reward Propagation & 1-step Bootstrapping & $n$-step Returns & Validated (\hyperref[finding:10]{F10}) \\
+        Reward Propagation & 1-step Bootstrapping & $n$-step Returns & Validated (Sec.~\ref{finding:10}) \\
         \hline
-        Draw Dominance & Compound Effect & Full MARQ Pipeline & Validated (\hyperref[finding:8]{F8}) \\
+        Draw Dominance & Compound Effect & Full MARQ Pipeline & Validated (Sec.~\ref{finding:8}) \\
         \hline
     \end{tabular}
 \end{table}
