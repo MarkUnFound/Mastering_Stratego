@@ -6,40 +6,40 @@
 \contentsline {figure}{\numberline {3.2}{\ignorespaces Stratego Game board.}}{17}{figure.caption.7}%
 \addvspace {10\p@ }
 \contentsline {figure}{\numberline {4.1}{\ignorespaces MARQ framework architecture.}}{31}{figure.caption.16}%
-\contentsline {figure}{\numberline {4.2}{\ignorespaces MARQ training architecture.}}{34}{figure.caption.23}%
+\contentsline {figure}{\numberline {4.2}{\ignorespaces MARQ training architecture.}}{33}{figure.caption.23}%
 \contentsline {figure}{\numberline {4.3}{\ignorespaces Dueling network heads.}}{34}{figure.caption.25}%
-\contentsline {figure}{\numberline {4.4}{\ignorespaces ResNet backbone.}}{35}{figure.caption.27}%
+\contentsline {figure}{\numberline {4.4}{\ignorespaces ResNet backbone.}}{34}{figure.caption.27}%
 \contentsline {figure}{\numberline {4.5}{\ignorespaces 79-channel input representation.}}{35}{figure.caption.28}%
-\contentsline {figure}{\numberline {4.6}{\ignorespaces Game sequence diagram.}}{41}{figure.caption.37}%
+\contentsline {figure}{\numberline {4.6}{\ignorespaces Game sequence diagram.}}{39}{figure.caption.33}%
 \addvspace {10\p@ }
-\contentsline {figure}{\numberline {5.1}{\ignorespaces Cumulative win count and win rate over 37,213 episodes. The win rate plateaus early and remains flat, indicating policy stagnation.}}{44}{figure.caption.39}%
-\contentsline {figure}{\numberline {5.2}{\ignorespaces Policy loss (TD error) drops near zero and stays flat, decoupling from the stagnant win rate.}}{44}{figure.caption.40}%
-\contentsline {figure}{\numberline {5.3}{\ignorespaces Average Q-values climb significantly throughout training without any corresponding improvement in win rate.}}{45}{figure.caption.41}%
-\contentsline {figure}{\numberline {5.4}{\ignorespaces Piece-identity prediction accuracy flattens near 20\% early in training, forming an information barrier.}}{46}{figure.caption.42}%
+\contentsline {figure}{\numberline {5.1}{\ignorespaces Cumulative win count and win rate over 37,213 episodes. The win rate plateaus early and remains flat, indicating policy stagnation.}}{42}{figure.caption.35}%
+\contentsline {figure}{\numberline {5.2}{\ignorespaces Policy loss (TD error).}}{42}{figure.caption.36}%
+\contentsline {figure}{\numberline {5.3}{\ignorespaces Average Q-values climb.}}{43}{figure.caption.37}%
+\contentsline {figure}{\numberline {5.4}{\ignorespaces Piece-identity prediction accuracy.}}{44}{figure.caption.38}%
 \addvspace {10\p@ }
 \addvspace {10\p@ }
-\contentsline {figure}{\numberline {A.1}{\ignorespaces Timeline: August 1 - September 5}}{66}{figure.caption.50}%
-\contentsline {figure}{\numberline {A.2}{\ignorespaces Timeline: September 11 - November 30}}{67}{figure.caption.51}%
-\contentsline {figure}{\numberline {A.3}{\ignorespaces Timeline: October 27 - January 27}}{67}{figure.caption.52}%
-\contentsline {figure}{\numberline {A.4}{\ignorespaces Timeline: December 1 - February 14}}{67}{figure.caption.53}%
-\contentsline {figure}{\numberline {A.5}{\ignorespaces Timeline: February 15 - May 4}}{67}{figure.caption.54}%
+\contentsline {figure}{\numberline {A.1}{\ignorespaces Timeline: August 1 - September 5}}{64}{figure.caption.46}%
+\contentsline {figure}{\numberline {A.2}{\ignorespaces Timeline: September 11 - November 30}}{65}{figure.caption.47}%
+\contentsline {figure}{\numberline {A.3}{\ignorespaces Timeline: October 27 - January 27}}{65}{figure.caption.48}%
+\contentsline {figure}{\numberline {A.4}{\ignorespaces Timeline: December 1 - February 14}}{65}{figure.caption.49}%
+\contentsline {figure}{\numberline {A.5}{\ignorespaces Timeline: February 15 - May 4}}{65}{figure.caption.50}%
 \addvspace {10\p@ }
-\contentsline {figure}{\numberline {B.1}{\ignorespaces Game Menu}}{69}{figure.caption.55}%
-\contentsline {figure}{\numberline {B.2}{\ignorespaces Game Rules and Instructions}}{69}{figure.caption.56}%
-\contentsline {figure}{\numberline {B.3}{\ignorespaces Setup Phase}}{70}{figure.caption.57}%
-\contentsline {figure}{\numberline {B.4}{\ignorespaces Game Start}}{70}{figure.caption.58}%
-\contentsline {figure}{\numberline {B.5}{\ignorespaces Change image of pieces to numbers}}{71}{figure.caption.59}%
-\contentsline {figure}{\numberline {B.6}{\ignorespaces Battle and History}}{71}{figure.caption.60}%
-\contentsline {figure}{\numberline {B.7}{\ignorespaces Victory Screen}}{72}{figure.caption.61}%
-\contentsline {figure}{\numberline {B.8}{\ignorespaces Training Progress: Episode 10,000}}{73}{figure.caption.62}%
-\contentsline {figure}{\numberline {B.9}{\ignorespaces Training Progress: Episode 20,000}}{74}{figure.caption.63}%
-\contentsline {figure}{\numberline {B.10}{\ignorespaces Training Progress: Episode 34,000}}{75}{figure.caption.64}%
-\contentsline {figure}{\numberline {B.11}{\ignorespaces Interpretability dashboard snapshots.}}{76}{figure.caption.65}%
-\contentsline {figure}{\numberline {B.12}{\ignorespaces DQN+LSTM Training Progress at 15,302 Episodes}}{77}{figure.caption.66}%
-\contentsline {figure}{\numberline {B.13}{\ignorespaces DQN+LSTM Additional Metrics at 15,302 Episodes}}{78}{figure.caption.67}%
-\contentsline {figure}{\numberline {B.14}{\ignorespaces Rainbow DQN+AAREN Training Progress at 9,778 Episodes}}{79}{figure.caption.68}%
-\contentsline {figure}{\numberline {B.15}{\ignorespaces Rainbow DQN+AAREN Additional Metrics at 9,778 Episodes}}{80}{figure.caption.69}%
-\contentsline {figure}{\numberline {B.16}{\ignorespaces AAREN End-to-End Training Metrics at 9,778 Episodes}}{81}{figure.caption.70}%
-\contentsline {figure}{\numberline {B.17}{\ignorespaces Rainbow DQN+AAREN Extended Training Progress at 75,047 Episodes}}{82}{figure.caption.71}%
-\contentsline {figure}{\numberline {B.18}{\ignorespaces Rainbow DQN+AAREN Extended Additional Metrics at 75,047 Episodes}}{83}{figure.caption.72}%
-\contentsline {figure}{\numberline {B.19}{\ignorespaces AAREN End-to-End Training Metrics at 75,047 Episodes}}{84}{figure.caption.73}%
+\contentsline {figure}{\numberline {B.1}{\ignorespaces Game Menu}}{67}{figure.caption.51}%
+\contentsline {figure}{\numberline {B.2}{\ignorespaces Game Rules and Instructions}}{67}{figure.caption.52}%
+\contentsline {figure}{\numberline {B.3}{\ignorespaces Setup Phase}}{68}{figure.caption.53}%
+\contentsline {figure}{\numberline {B.4}{\ignorespaces Game Start}}{68}{figure.caption.54}%
+\contentsline {figure}{\numberline {B.5}{\ignorespaces Change image of pieces to numbers}}{69}{figure.caption.55}%
+\contentsline {figure}{\numberline {B.6}{\ignorespaces Battle and History}}{69}{figure.caption.56}%
+\contentsline {figure}{\numberline {B.7}{\ignorespaces Victory Screen}}{70}{figure.caption.57}%
+\contentsline {figure}{\numberline {B.8}{\ignorespaces Training Progress: Episode 10,000}}{71}{figure.caption.58}%
+\contentsline {figure}{\numberline {B.9}{\ignorespaces Training Progress: Episode 20,000}}{72}{figure.caption.59}%
+\contentsline {figure}{\numberline {B.10}{\ignorespaces Training Progress: Episode 34,000}}{73}{figure.caption.60}%
+\contentsline {figure}{\numberline {B.11}{\ignorespaces Interpretability dashboard snapshots.}}{74}{figure.caption.61}%
+\contentsline {figure}{\numberline {B.12}{\ignorespaces DQN+LSTM Training Progress at 15,302 Episodes}}{75}{figure.caption.62}%
+\contentsline {figure}{\numberline {B.13}{\ignorespaces DQN+LSTM Additional Metrics at 15,302 Episodes}}{76}{figure.caption.63}%
+\contentsline {figure}{\numberline {B.14}{\ignorespaces Rainbow DQN+AAREN Training Progress at 9,778 Episodes}}{77}{figure.caption.64}%
+\contentsline {figure}{\numberline {B.15}{\ignorespaces Rainbow DQN+AAREN Additional Metrics at 9,778 Episodes}}{78}{figure.caption.65}%
+\contentsline {figure}{\numberline {B.16}{\ignorespaces AAREN End-to-End Training Metrics at 9,778 Episodes}}{79}{figure.caption.66}%
+\contentsline {figure}{\numberline {B.17}{\ignorespaces Rainbow DQN+AAREN Extended Training Progress at 75,047 Episodes}}{80}{figure.caption.67}%
+\contentsline {figure}{\numberline {B.18}{\ignorespaces Rainbow DQN+AAREN Extended Additional Metrics at 75,047 Episodes}}{81}{figure.caption.68}%
+\contentsline {figure}{\numberline {B.19}{\ignorespaces AAREN End-to-End Training Metrics at 75,047 Episodes}}{82}{figure.caption.69}%

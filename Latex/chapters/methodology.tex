@@ -103,7 +103,7 @@ For each step observed opponent action, AAREN extracts a 24-dimensional feature 
 Training the MARQ agent is computationally intensive due to the large state-action space and the need for accurate belief state representations over extended game horizons.
 
 \paragraph{Rainbow DQN Architecture.}
-The MARQ system uses a Rainbow DQN framework from the implementation of Rainbow DQN paper \cite{RainbowDQN}. Categorical DQN (C51) handles value distribution estimation. Noisy Networks drive exploration. A Dueling Network architecture decouples state values from action advantages. The noisy layers introduce state-dependent stochasticity, removing the need for manual epsilon-greedy scheduling.
+The MARQ system uses a Rainbow DQN framework from the implementation of Rainbow DQN paper \cite{RainbowJMLR2021}. Categorical DQN (C51) \cite{DistributionalRL2023} handles value distribution estimation. Noisy Networks \cite{Yang2023Exploration} drive exploration. A Dueling Network architecture \cite{Dueling2022} decouples state values from action advantages. The noisy layers introduce state-dependent stochasticity, removing the need for manual epsilon-greedy scheduling.
 
 \begin{figure}[htbp]
     \centering

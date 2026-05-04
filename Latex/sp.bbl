@@ -38,6 +38,12 @@
 \newblock In {\em Advanced Maui Optical and Space Surveillance Technologies
   Conference (AMOS)\/} (2022), AMOS Technologies.
 
+\bibitem{C51}
+{\sc Bellemare, M.~G., Dabney, W., and Munos, R.}
+\newblock A distributional perspective on reinforcement learning.
+\newblock In {\em International Conference on Machine Learning\/} (2017), PMLR,
+  pp.~449--458.
+
 \bibitem{DistributionalRL2023}
 {\sc Bellemare, M.~G., Dabney, W., and Rowland, M.}
 \newblock {\em Distributional Reinforcement Learning}.
@@ -115,6 +121,13 @@
 \newblock Attention as an rnn.
 \newblock {\em arXiv preprint arXiv:2405.13956\/} (2024).
 
+\bibitem{NoisyNetworks}
+{\sc Fortunato, M., Azar, M.~G., Piot, B., Menick, J., Osband, I., Graves, A.,
+  Mnih, V., Munos, R., Hassabis, D., Pietquin, O., et~al.}
+\newblock Noisy networks for exploration.
+\newblock In {\em International Conference on Learning Representations\/}
+  (2018).
+
 \bibitem{boardgamehk}
 {\sc Harrington, J.}
 \newblock Let's meetup? board game communities in hong kong.
@@ -177,6 +190,12 @@
   combinatorial action space.
 \newblock In {\em Proceedings of the Thirtieth International Joint Conference
   on Artificial Intelligence (IJCAI-21)\/} (2021), IJCAI, pp.~3663--3669.
+
+\bibitem{Dueling2022}
+{\sc Li, X., and Zhang, Y.}
+\newblock A survey of deep reinforcement learning algorithms for dueling
+  network architectures.
+\newblock {\em Artificial Intelligence Review 55\/} (2022), 3153--3170.
 
 \bibitem{2509_03682v1}
 {\sc Li, Z., Ji, Q., Ling, X., and Liu, Q.}
@@ -274,6 +293,13 @@
 \newblock Regularization for strategy exploration in empirical game-theoretic
   analysis, 2023.
 
+\bibitem{DuelingNetwork}
+{\sc Wang, Z., Schaul, T., Hessel, M., Hasselt, H., Lanctot, M., and
+  De~Freitas, N.}
+\newblock Dueling network architectures for deep reinforcement learning.
+\newblock In {\em International conference on machine learning\/} (2016), PMLR,
+  pp.~1995--2003.
+
 \bibitem{Cicero}
 {\sc Wongkamjan, W., Gu, F., Wang, Y., Hermjakob, U., May, J., Stewart, B.,
   Kummerfeld, J., Peskoff, D., and Boyd-Graber, J.}
@@ -301,6 +327,14 @@
 \newblock Dynamic discounted counterfactual regret minimization.
 \newblock In {\em The Twelfth International Conference on Learning
   Representations\/} (2024).
+
+\bibitem{Yang2023Exploration}
+{\sc Yang, T., Tang, H., Bai, C., Liu, J., Hao, J., Meng, Z., Liu, P., and
+  Wang, Z.}
+\newblock Exploration in deep reinforcement learning: From single-agent to
+  multiagent domain.
+\newblock {\em IEEE Transactions on Neural Networks and Learning Systems 34},
+  10 (2023), 7065--7086.
 
 \bibitem{zakharenkov2021deep}
 {\sc Zakharenkov, A., and Makarov, I.}

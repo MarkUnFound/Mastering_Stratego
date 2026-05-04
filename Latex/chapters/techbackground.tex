@@ -147,7 +147,7 @@ A standard replay buffer stores experience. Transitions $(\mathcal{B}_t, a_t, r_
 The implementation uses the standards of the Rainbow DQN architecture \cite{RainbowJMLR2021}.
 
 \paragraph{Distributional RL (Categorical DQN).}
-The Categorical DQN (C51) models the value distribution directly. It captures the inherent uncertainty of the game by approximating the distribution with 51 atoms spanning the range from $V_{min}$ to $V_{max}$.
+The Categorical DQN (C51) \cite{DistributionalRL2023} models the value distribution directly. It captures the uncertainty of the game by approximating the distribution with 51 atoms spanning the range from $V_{min}$ to $V_{max}$.
 
 \begin{equation}
 Z_\theta(s, a) = \sum_{i=1}^{N} p_i(s, a) \delta_{z_i}
@@ -159,14 +159,14 @@ D_{KL}(\Phi \hat{\mathcal{T}} Z_{\theta'} || Z_\theta)
 where $\Phi$ is the projection operator that maps the Bellman update onto the fixed support atoms.
 
 \paragraph{Noisy Networks for Exploration.}
-Noisy Linear layers adds a learned noise into the end of the network layers. This creates an unpredictable strategy without a fixed exploration variable, and the noise parameters are tuned during training for each state.
+Noisy Linear layers \cite{Yang2023Exploration} adds a learned noise into the end of the network layers. This creates an unpredictable strategy without a fixed exploration variable, and the noise parameters are tuned during training for each state.
 
 \begin{equation}
 y = (\mu_w + \sigma_w \odot \epsilon_w)x + (\mu_b + \sigma_b \odot \epsilon_b)
 \end{equation}
 
 \paragraph{Dueling Network Architecture.}
-Compared to a single network in deep Q-networks, the dueling architecture branches to 2 streams for state value estimation $V(s)$ and advantage estimation $A(s, a)$:
+Compared to a single network in deep Q-networks, the dueling architecture \cite{Dueling2022} branches to 2 streams for state value estimation $V(s)$ and advantage estimation $A(s, a)$:
 \begin{equation}
 Q(s, a; \theta, \alpha, \beta) = V(s; \theta, \beta) + \left( A(s, a; \theta, \alpha) - \frac{1}{|\mathcal{A}|} \sum_{a'} A(s, a'; \theta, \alpha) \right)
 \end{equation}
@@ -341,8 +341,6 @@ The final selection step depends on whether the agent is in training mode and wh
 \section{Generalizability}
 
 \subsection{Mathematical Convergence Properties}
-The following bounds hold under standard reinforcement learning assumptions.
-
 \subsubsection{Incremental Learning Bounds}
 The algorithm bounds value function estimation error as follows:
 \begin{equation}
