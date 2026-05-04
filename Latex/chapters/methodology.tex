@@ -65,7 +65,7 @@ Flag$^{\ddagger}$ & 0.1 & --- & --- \\
 \subsubsection{Auxiliary Value Components}
 
 
-Certain pieces possess capabilities that extend beyond their combat rank. Table \ref{tab:strategic_bonus} enumerates these bonuses.
+Certain pieces have capabilities that other than their combat rank. Table \ref{tab:strategic_bonus} enumerates these bonuses.
 
 \begin{table}[h]
 \centering
@@ -75,7 +75,7 @@ Certain pieces possess capabilities that extend beyond their combat rank. Table 
 \hline
 \textbf{Piece} & \textbf{Bonus} & \textbf{Description} \\
 \hline
-Miner & 2.0 & Sole piece capable of removing Bombs \\
+Miner & 2.0 & Capable of removing Bombs \\
 Spy & 1.5 & Defeats Marshal when initiating attack \\
 Scout & 1.0 & Multi-square movement capability \\
 Marshal & 0.5 & Highest combat rank \\
@@ -83,22 +83,12 @@ Marshal & 0.5 & Highest combat rank \\
 \end{tabular}
 \end{table}
 
-The Scout receives a mobility bonus of 1.0 due to its ability to move multiple squares per turn; all other movable pieces receive a base mobility of 0.5. Immovable pieces (Flag, Bomb) receive 0. The scarcity of each piece type influences its strategic importance. The scarcity factor is computed using logarithmic scaling.
 
-\begin{equation}
-\text{SF}(p) = \log\left(\frac{\max_{i \in \mathcal{P}} n_i}{n_p}\right) + 1
-\end{equation}
-
-
-These values inform the material reward component of the reward shaping function described in subsequent sections.
-
-\subsection{Using AAREN to Remember Game History}
-The primary challenge in Stratego involves decision-making under partial observability. Instead of using explicit piece counts, the framework uses the same architectural approach as DeepNash \cite{perolat2022stratego}. The Attention-as-a-Recurrent-Neural-Network (AAREN) module aggregates history and generates embeddings derived from opponent maneuvers to facilitate piece identity inference.
-
-To address the ``sparse death'' problem, where a lack of observation history produces uninformative zero tensors, a learnable default embedding is used. This default gives the network a consistent initialization and keeps training stable during initial game states.
+\subsection{AAREN and Game History}
+The challenge in Stratego is the partial observability. The framework uses the same architectural approach as DeepNash. In deepnash the technique used was a U-Net Convolutional Torso with Residual Blocks and Skip-Connections \cite{perolat2022stratego}. The Attention-as-a-Recurrent-Neural-Network (AAREN) module aggregates history and generates embeddings which then is passed to the CNN and Resnet.
 
 \paragraph{Action Feature Extraction.}
-For each observed opponent action, AAREN extracts a 24-dimensional feature vector encoding movement features, position features, behavioral indicators, and temporal features.
+For each step observed opponent action, AAREN extracts a 24-dimensional feature vector encoding movement features, position features, behavioral indicators, and temporal features.
 
 
 \section{Model Training}
@@ -113,7 +103,7 @@ For each observed opponent action, AAREN extracts a 24-dimensional feature vecto
 Training the MARQ agent is computationally intensive due to the large state-action space and the need for accurate belief state representations over extended game horizons.
 
 \paragraph{Rainbow DQN Architecture.}
-The MARQ system uses a Rainbow DQN framework with several architectural enhancements. Categorical DQN (C51) handles value distribution estimation. Noisy Networks drive exploration. A Dueling Network architecture decouples state values from action advantages. The noisy layers introduce state-dependent stochasticity, removing the need for manual epsilon-greedy scheduling.
+The MARQ system uses a Rainbow DQN framework from the implementation of Rainbow DQN paper \cite{RainbowDQN}. Categorical DQN (C51) handles value distribution estimation. Noisy Networks drive exploration. A Dueling Network architecture decouples state values from action advantages. The noisy layers introduce state-dependent stochasticity, removing the need for manual epsilon-greedy scheduling.
 
 \begin{figure}[htbp]
     \centering
@@ -163,8 +153,7 @@ The 79-channel state representation is partitioned into two functional sets, as 
 \end{tabular}
 \end{table}
 
-The board feature channels provide deterministic knowledge of the agent's own piece positions and observed enemy locations. The AAREN embedding channels encode learned representations of hidden enemy piece identities based on observed behavior. These embeddings are dense learned vectors that the network interprets through end-to-end training, not explicit probability distributions. The AAREN embedding channels are populated in all training phases; the agent always receives embeddings from the history aggregator rather than ground truth one-hot encodings. The board feature channels carry different levels of enemy information depending on the observability setting. During full observability (Phase 1), the board tensor reveals all enemy piece identities, providing a strong signal in the piece-specific board channels. During partial observability phases, unrevealed enemy pieces appear only as a ``hidden piece'' presence marker (affecting Channel 12, the enemy mask), and the agent must rely on AAREN embeddings to infer their true identities. An earlier version suffered from a bug where the hidden piece marker was filtered out of Channel 12, blinding the network to the presence of enemy pieces. Correcting this restores spatial awareness while shifting the burden of identity inference to the AAREN module. The AAREN module uses 24-dimensional action feature vectors, 64 hidden units, and 3 layers to process action histories and output embedding vectors.
-
+The board feature channels provide deterministic knowledge of the agent's own piece positions and observed enemy locations. The AAREN embedding channels encode learned representations of hidden enemy piece identities based on observed behavior. These embeddings are dense learned vectors that the network interprets through end-to-end training, not explicit probability distributions. The AAREN embedding channels are populated in all training phases; the agent always receives embeddings from the history aggregator rather than ground truth one-hot encodings. The board feature channels carry different levels of enemy information depending on the observability setting. During full observability (Phase 1), the board tensor reveals all enemy piece identities, providing a strong signal in the piece-specific board channels. During partial observability phases, unrevealed enemy pieces appear only as a ``hidden piece'' presence marker (affecting Channel 12, the enemy mask), and the agent must rely on AAREN embeddings to infer their true identities. An earlier version suffered from a bug where the hidden piece marker was filtered out of Channel 12, blinding the network to the presence of enemy pieces. 
 \paragraph{Training Hyperparameters.}
 The training configuration specifies a learning rate $\alpha = 3 \times 10^{-5}$ with AdamW optimizer and weight decay $\lambda = 0.01$, and a discount factor $\gamma = 0.995$ to capture long-term strategic consequences. A batch size of 512 transitions and a replay buffer capacity of 150,000 transitions with prioritized sampling are used. Soft target network updates ($\tau = 0.001$) occur every 5,000 steps. Model updates run every 2 steps across 8 parallel lanes with 5-step returns for deeper credit assignment in long-horizon games. The AAREN history aggregator retains up to 50 actions per position in its training buffer to preserve early-game movement patterns across 200 to 500 move games. Turn normalization is aligned with the maximum game length of 1,000 turns. Horizontal flip augmentation exploits the game's symmetry to improve sample efficiency. Training proceeds for 35,000+ episodes with checkpoints saved every 1,000 episodes.
 
@@ -181,48 +170,6 @@ Phase 1 runs for 5,000 to 10,000 episodes against a progressively challenging op
 Phase 2 (Partial Observability) disables full observability and requires reliance on AAREN-generated embeddings for 5,000 to 10,000 episodes. The opponent distribution allocates 40\% to frozen heuristic agents and 60\% to the strategic heuristic. Phase advancement requires embedding-based inference accuracy $\geq$75\% and an overall win rate $\geq$60\% relative to decisive games.
 
 Phase 3 (Self-Play) trains against a mixture of delayed agent copies (60\%) and strategic heuristic opponents (40\%) for 5,000 to 15,000 episodes to discover novel strategies while preventing policy collapse. Phase 4 (League Training) activates the full opponent distribution with 40\% historical league agents, 30\% strategic heuristic, 20\% greedy agents, and 10\% self-play. This phase also activates independent parallel-learning (MARL) for Agent 2, transitioning the opponent from a fixed policy pool to a continuously updating student agent. Phase 5 (Scenario Drills) introduces specialized board configurations every 1,000 episodes for targeted skill training.
-
-\subsection{Centralized Reward System and Defensive Normalization}
-The reward function drives agent behavior by transforming tactical events into learning signals. A centralized UnifiedRewardShaper consolidates all reward logic to ensure consistency and numerical stability.
-
-\paragraph{Potential-Based Reward Shaping.}
-PBRS provides the primary mechanism for dense learning signals. All intermediate shaping is unified into a single potential function $\Phi(s)$ that measures game progress rather than assigning additive rewards for individual events.
-\subsection{Action Space Reduction via Heuristic Filtering}
-The full action space in Stratego consists of 400 discrete actions, encoding each starting position on the $10 \times 10$ board paired with four cardinal directions. Many of these actions are illegal (moving off-board or into lakes) or strategically irrelevant at any given state. Presenting all 400 outputs to the network, even with invalid action masking, introduces noise as the network must distinguish between many low-value alternatives.
-
-\paragraph{Heuristic Move Scoring.}
-A heuristic pre-filter scores all legal moves and selects the top-$k$ candidates ($k=100$ by default) for consideration. The scoring function assigns points based on the criteria listed in Table \ref{tab:heuristic_scoring}.
-
-\begin{table}[h]
-\centering
-\caption{Heuristic scoring criteria.}
-\label{tab:heuristic_scoring}
-\begin{tabular}{lcp{7cm}}
-\hline
-\textbf{Criterion} & \textbf{Score} & \textbf{Rationale} \\
-\hline
-Attack (target is enemy) & $+100$ & Captures are always strategically relevant \\
-Forward advancement & $+5/\text{row}$ & Territorial progress toward enemy base \\
-Center control (cols 3--6) & $+10$ & Central positioning provides flexibility \\
-Retreat & $-20$ & Backward movement is generally defensive \\
-Scout distance ($>1$ square) & $+2/\text{sq}$ & Long-range reconnaissance value \\
-\hline
-\end{tabular}
-\end{table}
-
-\paragraph{Action Masking Integration.}
-Filtering is implemented through action masking at inference time rather than modifying the network architecture. The network retains its 400-dimensional output, preserving consistent action semantics throughout training. For each decision:
-
-\begin{enumerate}
-    \item All legal moves are scored using the heuristic function.
-    \item Moves above a threshold (score $> 50$) are unconditionally included.
-    \item The remaining positions are filled from the next highest-scoring moves until 100 actions are selected.
-    \item A binary mask is constructed where selected actions receive weight 0 and excluded actions receive $-\infty$.
-    \item The mask is added to the Q-value output before argmax selection.
-\end{enumerate}
-
-Attack moves and forward advances are always available for selection, while low-value shuffling moves are pruned. The fixed output dimensionality prevents the representational instability that would occur if the network learned different action encodings across game states.
-
 
 
 \subsection{Test-Time Search}

@@ -344,8 +344,8 @@ OUTPUT chapters\techbackground.aux
 INPUT .\chapters\techbackground.tex
 INPUT .\chapters\techbackground.tex
 INPUT chapters\techbackground.tex
-INPUT C:\Users\quibo\AppData\Local\Programs\MiKTeX\fonts\tfm\public\cm\cmti10.tfm
 INPUT C:\Users\quibo\AppData\Local\Programs\MiKTeX\fonts\tfm\public\cm\cmr8.tfm
+INPUT C:\Users\quibo\AppData\Local\Programs\MiKTeX\fonts\tfm\public\cm\cmti10.tfm
 INPUT .\chapters\methodology.tex
 INPUT .\chapters\methodology.tex
 OUTPUT chapters\methodology.aux

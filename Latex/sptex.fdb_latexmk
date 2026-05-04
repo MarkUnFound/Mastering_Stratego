@@ -1,25 +1,25 @@
 # Fdb version 4
-["bibtex sptex"] 1777652442.66174 "sptex.aux" "sptex.bbl" "sptex" 1777652445.17967 0
+["bibtex sptex"] 1777813810.3263 "sptex.aux" "sptex.bbl" "sptex" 1777813812.87687 0
   "./references.bib" 1774496931 27423 03daec1aed856289e006a864faa6a482 ""
   "C:/Users/quibo/AppData/Local/Programs/MiKTeX/bibtex/bst/bibtex/acm.bst" 1291864147 21064 c61a48664f3c347ce7f73c1a6a530506 ""
-  "chapters/introduction.aux" 1777652444 2215 c195b597daa721f118d47b14e0310c9a "pdflatex"
-  "chapters/methodology.aux" 1777652444 6541 6698ec8d98971a9f68b635fa5ada8d0e "pdflatex"
-  "chapters/recommendations.aux" 1777652444 2823 d9bb38ea7ce8e5f330b5215914257e76 "pdflatex"
-  "chapters/results.aux" 1777652444 10695 48e2dbb3e1bbc97eb31fa462356a1d38 "pdflatex"
-  "chapters/review.aux" 1777652444 4423 f3ca18468752df08b4f712bb82adb2c6 "pdflatex"
-  "chapters/techbackground.aux" 1777652444 9317 55b5e74b4baccd80e9e4b8f910d74a8b "pdflatex"
-  "sptex.aux" 1777652444 1880 152d5646bc24ededec1d68c1f6c8756e "pdflatex"
+  "chapters/introduction.aux" 1777813811 2215 c195b597daa721f118d47b14e0310c9a "pdflatex"
+  "chapters/methodology.aux" 1777813811 6527 f756ac19ac4cb50a88e5af738590aac1 "pdflatex"
+  "chapters/recommendations.aux" 1777813812 2823 f550272d8e6bebef779d98e4e196925d "pdflatex"
+  "chapters/results.aux" 1777813811 10755 851bfe8bdf5310c348bf9723726292d4 "pdflatex"
+  "chapters/review.aux" 1777813811 4423 f3ca18468752df08b4f712bb82adb2c6 "pdflatex"
+  "chapters/techbackground.aux" 1777813811 7021 7eebe3f8e5a09ccb509f56e638af926b "pdflatex"
+  "sptex.aux" 1777813812 1880 cad9eb98d5855c4a7edc84e04a2c730d "pdflatex"
   (generated)
   "sptex.bbl"
   "sptex.blg"
   (rewritten before read)
-["makeindex sptex.idx"] 1777564472.36007 "sptex.idx" "sptex.ind" "sptex" 1777652445.17926 0
-  "sptex.idx" 1777652443 0 d41d8cd98f00b204e9800998ecf8427e "pdflatex"
+["makeindex sptex.idx"] 1777564472.36007 "sptex.idx" "sptex.ind" "sptex" 1777813812.87649 0
+  "sptex.idx" 1777813811 0 d41d8cd98f00b204e9800998ecf8427e "pdflatex"
   (generated)
   "sptex.ilg"
   "sptex.ind"
   (rewritten before read)
-["pdflatex"] 1777652443.01788 "c:/Users/quibo/Repo/Research/Latex/sptex.tex" "sptex.pdf" "sptex" 1777652445.18176 0
+["pdflatex"] 1777813810.72609 "c:/Users/quibo/Repo/Research/Latex/sptex.tex" "sptex.pdf" "sptex" 1777813812.8789 0
   "C:/Users/quibo/AppData/Local/MiKTeX/fonts/map/pdftex/pdftex.map" 1771332835 80909 eab91d9745dd2edfd62a31d53cd5fe15 ""
   "C:/Users/quibo/AppData/Local/MiKTeX/miktex/data/le/pdftex/pdflatex.fmt" 1764929583 24225087 a8fa786d20eff44259a89543408dc3e4 ""
   "C:/Users/quibo/AppData/Local/Programs/MiKTeX/fonts/tfm/jknappen/ec/tcrm0500.tfm" 993062506 1452 d4e3b17acac08070a568f62f3c020c49 ""
@@ -216,23 +216,23 @@
   "C:/Users/quibo/AppData/Local/Programs/MiKTeX/tex/latex/url/url.sty" 1388490452 12796 8edb7d69a20b857904dd0ea757c14ec9 ""
   "C:/Users/quibo/AppData/Local/Programs/MiKTeX/tex/latex/xcolor/xcolor.sty" 1700127522 55487 80a65caedd3722f4c20a14a69e785d8f ""
   "c:/Users/quibo/Repo/Research/Latex/sptex.tex" 1777562400 6238 38c47c62e8d9aba09fdcd53dcc8138f9 ""
-  "chapters/introduction.aux" 1777652444 2215 c195b597daa721f118d47b14e0310c9a "pdflatex"
+  "chapters/introduction.aux" 1777813811 2215 c195b597daa721f118d47b14e0310c9a "pdflatex"
   "chapters/introduction.tex" 1777652149 9707 35461d92b8bf665762d8c09df16a242a ""
-  "chapters/methodology.aux" 1777652444 6541 6698ec8d98971a9f68b635fa5ada8d0e "pdflatex"
-  "chapters/methodology.tex" 1777651791 22081 09ca50b94afa3a4a978907120e7b64b4 ""
-  "chapters/recommendations.aux" 1777652444 2823 d9bb38ea7ce8e5f330b5215914257e76 "pdflatex"
-  "chapters/recommendations.tex" 1777565825 11445 7107f88f428bd5dfa4384d1f717e3c4b ""
-  "chapters/results.aux" 1777652444 10695 48e2dbb3e1bbc97eb31fa462356a1d38 "pdflatex"
-  "chapters/results.tex" 1777565797 31935 e211e9a497507bd93bdc1192a3c1cef4 ""
-  "chapters/review.aux" 1777652444 4423 f3ca18468752df08b4f712bb82adb2c6 "pdflatex"
+  "chapters/methodology.aux" 1777813811 6527 f756ac19ac4cb50a88e5af738590aac1 "pdflatex"
+  "chapters/methodology.tex" 1777813804 21354 c2b95111f5a640f0c13813a9394be7fd ""
+  "chapters/recommendations.aux" 1777813812 2823 f550272d8e6bebef779d98e4e196925d "pdflatex"
+  "chapters/recommendations.tex" 1777652927 11438 fd4ec44a61091accf56d40c653b12a94 ""
+  "chapters/results.aux" 1777813811 10755 851bfe8bdf5310c348bf9723726292d4 "pdflatex"
+  "chapters/results.tex" 1777660490 31416 6789a3c015646b7289fe2a953bb87e59 ""
+  "chapters/review.aux" 1777813811 4423 f3ca18468752df08b4f712bb82adb2c6 "pdflatex"
   "chapters/review.tex" 1777652132 17459 d0378311211a6573ada2ae7a21cb4bb6 ""
-  "chapters/techbackground.aux" 1777652444 9317 55b5e74b4baccd80e9e4b8f910d74a8b "pdflatex"
-  "chapters/techbackground.tex" 1777565764 40375 9e1ca36efe3d3e5eea32a3e218b5e5cc ""
+  "chapters/techbackground.aux" 1777813811 7021 7eebe3f8e5a09ccb509f56e638af926b "pdflatex"
+  "chapters/techbackground.tex" 1777813804 29716 9151271e257ab371dc88931c43532080 ""
   "etd.cls" 1764895362 27490 6817e0614a353b6f071780303926ed76 ""
-  "sptex.aux" 1777652444 1880 152d5646bc24ededec1d68c1f6c8756e "pdflatex"
-  "sptex.bbl" 1777652442 14130 4ec382282f05be9c12db5d81ae0734cd "bibtex sptex"
+  "sptex.aux" 1777813812 1880 cad9eb98d5855c4a7edc84e04a2c730d "pdflatex"
+  "sptex.bbl" 1777813810 14130 4ec382282f05be9c12db5d81ae0734cd "bibtex sptex"
   "sptex.ind" 1777564472 0 d41d8cd98f00b204e9800998ecf8427e "makeindex sptex.idx"
-  "sptex.out" 1777652444 22211 46113ebc832ca5ae9802662bd479f1f3 "pdflatex"
+  "sptex.out" 1777813812 22113 45ef684bf0aae1dedb30f5c61c1e9857 "pdflatex"
   "sptex.tex" 1777562400 6238 38c47c62e8d9aba09fdcd53dcc8138f9 ""
   (generated)
   "chapters/introduction.aux"

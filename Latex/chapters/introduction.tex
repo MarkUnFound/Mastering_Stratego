@@ -1,13 +1,24 @@
+\documentclass{article}
+\usepackage{graphicx} % Required for inserting images
+
+\title{chapter 1 and 2}
+\author{James Gabriel P. Mabagos}
+\date{May 2026}
+
+\begin{document}
+
+\maketitle
+
 \chapter{Introduction}
 \section{Project Context}
 Games have long served as benchmarks for measuring Artificial Intelligence (AI) progress \cite{StudeGame}. Many real-world problems, from military tactics to multiplayer games, require intelligent decision-making in environments where all information is not available. A common example is the ``fog of war'' mechanic found in many multiplayer games \cite{FogofWar}, where the game environment is not fully revealed to any single player, placing these games in the category of imperfect information games \cite{DRLImperfectInfo2023}. In such games, players must develop strategies without full knowledge of the game's environmental state \cite{FogofWar}. Determining the optimal strategy under these conditions remains a standing challenge for Artificial Intelligence \cite{li2024opponent}.
 
-This study focuses on mastering imperfect information games through Multi-Agent Reinforcement Learning (MARL) with Deep Q-Networks (DQN). In MARL, multiple agents learn and adapt in the same environment, making each decision based on its own observations and rewards \cite{2509_03682v1}. With DQN, the agents use deep neural networks to approximate the Q-function that maps state-action pairs to expected reward. This study introduces the MARQ (Multi-Agent Rainbow Deep Q-Networks) framework, an extension of the DQN architecture with Rainbow enhancements: distributional value estimation (C51) and noisy exploration networks \cite{RainbowJMLR2021}. An AAREN (Attention as Recurrent Neural Network) module \cite{Aaren} processes extended observation sequences and produces learned embeddings for implicit inference of hidden opponent pieces through end-to-end training. League-based self-play training \cite{perolat2022stratego} exposes agents to diverse historical opponents, preventing strategy cycling. Stratego is a natural test domain for this architecture: agents compete against each other and must develop strategies through repeated experience while reasoning under uncertainty about the opponent's setup and the environment's hidden state.
+This study focuses on mastering imperfect information games using Multi-Agent Reinforcement Learning (MARL) with Deep Q-Networks (DQN). In MARL, multiple agents learn and adapt in the same environment, making each decision based on its own observations and rewards \cite{2509_03682v1}. With DQN, the agents use deep neural networks to approximate the Q-function that maps state-action pairs to expected reward. This study introduces the MARQ (Multi-Agent Rainbow Deep Q-Networks) framework, an extension of the DQN architecture with Rainbow enhancements: distributional value estimation (C51) and noisy exploration networks \cite{RainbowJMLR2021}. An AAREN (Attention as Recurrent Neural Network) module \cite{Aaren} processes extended observation sequences and produces learned embeddings for implicit inference of hidden opponent pieces through end-to-end training. League-based self-play training \cite{perolat2022stratego} introduces agents to different historical opponents to prevent similar strategies. Stratego is a good example of a test environment for our framework, agents compete against each other and must develop strategies through repetition of experience while reasoning under uncertainty about the enemy's setup and the environments hidden states.
 
 
 
 \section{Purpose and Description}
-This research evaluates whether Multi-Agent Reinforcement Learning (MARL) with Deep Q-Networks (DQN) can produce agents that play imperfect information games at a competitive level. The board game Stratego serves as the test domain because it combines hidden piece identities, a large state space ($\approx 10^{535}$), and long game horizons. Existing analytical tools for Stratego offer limited support for the deeper tactical reasoning that competitive play demands.
+This research evaluates whether Multi-Agent Reinforcement Learning (MARL) with Deep Q-Networks (DQN) can produce agents that can play imperfect information games at a competitive level. The board game Stratego serves as the test domain because it combines hidden piece identities, a large state space ($\approx 10^{535}$), and long game horizons. Existing analytical tools for Stratego have little to no support for the deeper tactical reasoning that we want to achieve. 
 
 The MARQ framework was developed to test whether targeted architectural changes, specifically distributional value estimation, attention-based history encoding, and learned exploration, can overcome the performance ceiling observed in a standard DQN baseline. The experimental results, detailed in later chapters, show that these changes doubled the win rate and reduced the draw rate from 50\% to under 7\%.
 \subsection{Research Questions}
@@ -21,7 +32,7 @@ This study is guided by three main research questions:
 \end{enumerate}
 
 \section{Objectives}
-The main objective of this study is to develop and evaluate a Multi-Agent Reinforcement Learning system with Deep Q-Networks for Stratego, where agents must operate under hidden state variables. The specific objectives are:
+The main objective of this study is to develop and evaluate the MARQ framework for Stratego, where agents must operate under hidden state variables. The specific objectives are:
 \begin{itemize}
     \item Identify and evaluate reinforcement learning algorithms for competitive play in Stratego.
     \item Design and implement a game environment for Stratego
@@ -85,4 +96,3 @@ A machine learning paradigm where agents learn optimal strategies through trial-
 
 \noindent\textbf{Stratego} \\
 A two-player strategy board game characterized by hidden information and asymmetric piece abilities, where the objective is to capture the opponent's flag or render them immobile. \\[6pt]
-
