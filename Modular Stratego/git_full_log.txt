@@ -1,0 +1,952 @@
+commit be6dd02e3cdb429c7224d62d837cefdabb5de4bc
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Thu Apr 2 02:50:22 2026 +0800
+
+    docs: add comparative performance analysis and appendix for system UI and training visualizations
+
+commit ace980c03434c416338f6a4d405de83e42f5dd4d
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Thu Apr 2 02:09:58 2026 +0800
+
+    feat: implement Rainbow DQN agent with C51 distributional RL and AAREN history aggregation for Stratego
+
+commit 1a89e308f5ba7506d5b442667e50a5be21fcc0f2
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Fri Mar 27 11:32:32 2026 +0800
+
+    feat: Add RDQN curriculum state and training reward history data files.
+
+commit 0205e4b9543331d3e1e73ad86e63aa137f41809d
+Author: MarkUnFound <mlquibot@gbox.adnu.edu.ph>
+Date:   Thu Mar 26 14:55:11 2026 +0800
+
+    feat: Add initial drafts for results, technical background, methodology, recommendations, and Appendix B chapters.
+
+commit 8b122db16d0027d93705b980e4d2cc5fd9f42354
+Author: MarkUnFound <mlquibot@gbox.adnu.edu.ph>
+Date:   Thu Mar 26 12:50:05 2026 +0800
+
+    feat: Add new LaTeX chapters for technical background and methodology, along with their generated compilation artifacts.
+
+commit 262a5d35717edad9129fe973e70018763fee7519
+Author: MarkUnFound <mlquibot@gbox.adnu.edu.ph>
+Date:   Thu Mar 26 12:24:49 2026 +0800
+
+    feat: Add initial content for theoretical background, methodology, recommendations, and results chapters.
+
+commit b67fc09cebc68f24e5d07904e03f428692225fd0
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Wed Mar 25 23:14:29 2026 +0800
+
+    feat: add initial LaTeX document structure, chapters, and research notes
+
+commit a0720d71e22ae7d4042985a1124bc390eca294df
+Author: gabmabagos <138811641+gabmabagos@users.noreply.github.com>
+Date:   Wed Mar 25 22:24:28 2026 +0800
+
+    Feature added : Historical Data
+
+commit 9f3439529e56bd55e3f373cbb23c2d2b7ec9a3ad
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Wed Mar 25 21:58:15 2026 +0800
+
+    Add LaTeX build artifacts (`.fls`, `.ilg`) and a `git status` output file.
+
+commit 03ae85f012d3a698b02e943143c56a9669345e3e
+Merge: c21d54e fb008ed
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Wed Mar 25 21:57:54 2026 +0800
+
+    Merge branch 'DQN-noAAREN' of https://github.com/MarkUnFound/Research into DQN-noAAREN
+    
+    # Conflicts:
+    #       Latex/chapters/AppendixB.aux
+    #       Latex/misc/vita.aux
+    #       Latex/sp.aux
+    #       Latex/sp.fdb_latexmk
+    #       Latex/sp.lof
+    #       Latex/sp.log
+    #       Latex/sp.pdf
+    #       Latex/sp.synctex.gz
+    #       Latex/sp.toc
+
+commit c863b74339c2a979d46c6e95e2b95a6521316e51
+Author: MarkUnFound <mlquibot@gbox.adnu.edu.ph>
+Date:   Wed Mar 25 21:52:04 2026 +0800
+
+    feat: Add initial LaTeX document `sp.tex` with `techbackground` and `methodology` chapters, including compilation outputs.
+
+commit c21d54e93a971f31c53a960cc715dc62810e4b1c
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Wed Mar 25 21:27:28 2026 +0800
+
+    feat: Add initial research project structure including LaTeX document, analysis scripts, and result figures.
+
+commit fb008edc1a0d873b07b96b06d034266f003480c3
+Author: gabmabagos <138811641+gabmabagos@users.noreply.github.com>
+Date:   Tue Mar 17 00:59:21 2026 +0800
+
+    Added recommendations
+    
+    Fixed the game as per the recommendations and changed some of the images in appendix b
+
+commit dbb946627f98a755b83d612819be7c67926b2f71
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Sat Mar 14 03:05:40 2026 +0800
+
+    feat: Implement DRQN agent, training pipeline, curriculum learning, and league play with comprehensive configuration settings.
+
+commit 60f00ce460e296aa0c8091bed557740688dd0855
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Tue Mar 10 05:22:34 2026 +0800
+
+    Final update on DQN modification.
+
+commit af6705d12d3777119687796c2b2e3eb4b894133a
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Sat Mar 7 05:08:08 2026 +0800
+
+    feat: Implement DRQN agent, add comprehensive training configuration, and create agent status documentation.
+
+commit 002e9d677c008da7facf9befad60d5861dc96235
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Sat Mar 7 00:04:50 2026 +0800
+
+    feat: Implement a complete Rainbow DQN agent and training pipeline for Modular Stratego, including network architectures, replay memory, visualizers, and curriculum learning state.
+
+commit e12bbe7107199e6e8b00f4b2668c573c5840aa9f
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Fri Mar 6 19:41:54 2026 +0800
+
+    feat: Introduce a new modular Stratego game implementation with DQN bot logic and visualizers, and remove various research artifacts.
+
+commit 596a1e17e8c0fe4796c71571e1010d7cb2a36b25
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Tue Mar 3 09:56:22 2026 +0800
+
+    feat: Implement a Rainbow DQN training system for Stratego, featuring curriculum learning, league play, and diverse opponent strategies.
+
+commit 11572d9390343f4b77cf624b8c37969431a04633
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Tue Mar 3 00:56:05 2026 +0800
+
+    feat: Initialize modular Stratego DQN project structure, training script, and update gitignore for visualizers.
+
+commit 83479230c2c045c7f3507fdb16bb0fa5d9f8fd08
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Tue Mar 3 00:37:57 2026 +0800
+
+    docs: Update AGENTS_STATUS.md with large file fix, include Latex build artifacts
+
+commit fc3b30c768019575a28244615a97a3ca66237b18
+Merge: 513adf1 1883302
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Tue Mar 3 00:36:14 2026 +0800
+
+    Merge OptimizationPhase into main
+
+commit 1883302adaaf5ce7f4699d02672da02c6bc00085
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Tue Mar 3 00:23:37 2026 +0800
+
+    feat: Implement modular Stratego game environment, DQN/DRQN agent training infrastructure, and research documentation.
+
+commit 90dc1a3b657a63082268bb6984587d92f2b64a3d
+Merge: 9cf466a 04ab94d
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Mon Feb 23 01:37:36 2026 +0800
+
+    Merge UpdateMemory into OptimizationPhase (Latex files only)
+
+commit 04ab94de4da117f5a43d32fcdb215d0310d42d25
+Author: gabmabagos <138811641+gabmabagos@users.noreply.github.com>
+Date:   Mon Feb 23 01:23:41 2026 +0800
+
+    latex update
+    
+    short fixes
+
+commit 9cf466a76584c184bab59129369ebce933b0de3e
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Sun Feb 22 13:31:16 2026 +0800
+
+    feat: Introduce Modular Stratego project with core Python modules, architectural diagrams, and LaTeX documentation structure."
+
+commit d0ea0f7f539ae57cc09f147b83a431a9ccd85c58
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Thu Feb 19 21:00:05 2026 +0800
+
+    feat: Implement Expectimax-style test-time search, add verification tests, integrate into the GUI, and update project status documentation.
+
+commit 26b5c75141d7088688330625f019077d234f6fed
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Thu Feb 19 20:57:42 2026 +0800
+
+    docs: Update LaTeX chapters and code logic, excluding large model binaries
+
+commit 19c429f3b45843be923cdd651c72fb79c88c804f
+Author: gabmabagos <138811641+gabmabagos@users.noreply.github.com>
+Date:   Wed Feb 18 23:44:46 2026 +0800
+
+    Latex edit
+    
+    Added a new section and subsection for game environment development in methodology and fixed other images
+
+commit 40cc2c98fd9ab12adf10082f3bb661fd8c8801b7
+Author: gabmabagos <138811641+gabmabagos@users.noreply.github.com>
+Date:   Tue Feb 17 21:02:02 2026 +0800
+
+    stratego ui changes
+    
+    created pop-up for each battle
+
+commit 7954cef2a625ee290f643566f288154d570846bc
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Tue Feb 17 10:41:12 2026 +0800
+
+    feat: Implement modular Stratego project with DRQN agent, environment, and dashboard, alongside comprehensive LaTeX documentation and updated architecture for the MARQ Framework.
+
+commit 733e23572a7fba008f7a9829b664010f469b2e3a
+Author: gabmabagos <138811641+gabmabagos@users.noreply.github.com>
+Date:   Sun Feb 15 23:21:52 2026 +0800
+
+    added training results
+
+commit 485a37760710d7bf97b9125cb7e16796d77e82c7
+Merge: c60957b a2764c2
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Sun Feb 15 23:12:27 2026 +0800
+
+    Merge branch 'UpdateMemory' of https://github.com/MarkUnFound/Research into UpdateMemory
+
+commit c60957b8d11e50214c818384b1301dd59d853028
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Sun Feb 15 23:11:46 2026 +0800
+
+    bug fix
+
+commit a2764c22916a8962785330acb4e80371ecbcd8f0
+Author: gabmabagos <138811641+gabmabagos@users.noreply.github.com>
+Date:   Sun Feb 15 23:11:29 2026 +0800
+
+    update stratego ui
+
+commit 884675a8989c3e7953da7a49a1ace6a09a643cf8
+Author: gabmabagos <138811641+gabmabagos@users.noreply.github.com>
+Date:   Sun Feb 15 22:57:59 2026 +0800
+
+    new stratego ui
+
+commit a75ba7717ea5feb1e2a78c58823f561d9015b454
+Merge: 9d03d45 80982ff
+Author: gabmabagos <138811641+gabmabagos@users.noreply.github.com>
+Date:   Sun Feb 15 22:57:06 2026 +0800
+
+    Merge branch 'Multi-laneTraining' of https://github.com/MarkUnFound/Research into Multi-laneTraining
+
+commit 9d03d45395b7dfc44ae9fc1abb295f5ed4aa31b2
+Author: gabmabagos <138811641+gabmabagos@users.noreply.github.com>
+Date:   Sun Feb 15 22:39:38 2026 +0800
+
+    new stratego ui
+
+commit 5db791c836f1f0fd6adbd7339d48edb37f23c866
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Sun Feb 15 22:36:26 2026 +0800
+
+    Update and Bug fix
+
+commit 78fa4d5c42d95ece41e1cb787258c35074a19080
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Sun Feb 15 03:09:22 2026 +0800
+
+    feat: Implement DRQN agent for Stratego incorporating AAREN for history aggregation and a distributional reward system, alongside training infrastructure and methodology documentation.
+
+commit 4e8d5b28366381a9b5615369f92188c197e1702a
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Sat Feb 14 01:22:41 2026 +0800
+
+    feat: Implement DQN bot logic for Stratego GUI, add training infrastructure, and establish initial LaTeX research documentation.
+
+commit d67b5f05728a9a3b393e0dabfba98f83c5ef8875
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Thu Feb 12 23:39:38 2026 +0800
+
+    feat: Implement a DRQN agent with Rainbow DQN features, AAREN history aggregation, and supporting training and analysis tools.
+
+commit 2792cbc81ab5930b6e3bc3a72db4b88f09d8c4ff
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Fri Feb 6 21:40:24 2026 +0800
+
+    feat: Implement Double DQN with AAREN for Stratego, including training infrastructure, environment, models, and diagnostics.
+
+commit f178f5327387d6ff75d4463fbf68f3b495915ffb
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Wed Jan 28 00:49:42 2026 +0800
+
+    feat: Establish DRQN training framework with comprehensive configuration, advanced RL techniques, and academic documentation.
+
+commit a44925f1c0a8ec87286ac5dabdb76c5a0cd027c9
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Sun Jan 25 01:33:02 2026 +0800
+
+    feat: Add DRQN agent, environment, prioritized replay, and PBT training framework with metrics logging.
+
+commit 80982ff55c69f40f4fa0ceb31ea00efb618f7e54
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Fri Jan 16 10:58:46 2026 +0800
+
+    feat: Add PBT supervisor and DQN training script, along with generated LaTeX documentation.
+
+commit e89e2b4d8a4058ce3984d867a6be79d83711f85c
+Author: MarkUnFound <mlquibot@gbox.adnu.edu.ph>
+Date:   Fri Jan 16 09:03:00 2026 +0800
+
+    feat: Implement Population-Based Training (PBT) for DQN agents with new worker, supervisor, and visualizer components, and update methodology and technical background LaTeX documentation.
+
+commit d51e9b9eefdc53929a38a44e862cf2d1fcfac83e
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Fri Jan 16 08:21:17 2026 +0800
+
+    feat: Implement DRQN agent, distributional reward module, and a comprehensive training configuration for advanced Rainbow DQN with curriculum learning and Ataraxos optimizations.
+
+commit f8df1ebfd712d59876baf9b0e1a918f1ed25adfd
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Thu Jan 15 12:03:29 2026 +0800
+
+    feat: introduce comprehensive DQN training infrastructure including advanced configuration, visualization, and game setup.
+
+commit f70333bc8dceab23fed278b3a238001cb59c7147
+Author: MarkUnFound <mlquibot@gbox.adnu.edu.ph>
+Date:   Thu Jan 15 12:01:36 2026 +0800
+
+    [Experimental]feat: Add initial Python modules and new LaTeX chapters for literature review, technical background, introduction, and methodology, along with the bibliography.
+
+commit afbb5d0d304a3879c8f87a6e7533922939b95245
+Author: MarkUnFound <mlquibot@gbox.adnu.edu.ph>
+Date:   Thu Jan 15 10:41:37 2026 +0800
+
+    feat: Add theoretical frameworks chapter detailing the Stratego game domain and MARQ framework.
+
+commit 39768947ac6e865587805680ab1aeb7640b747e0
+Author: MarkUnFound <mlquibot@gbox.adnu.edu.ph>
+Date:   Thu Jan 15 07:53:50 2026 +0800
+
+    feat: Add initial LaTeX document structure including technical background and methodology chapters, implement Rainbow DQN, and update the framework architecture diagram.
+
+commit a410e0f912d7687f94e3f281aa486f25a1c9f6d2
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Wed Jan 7 00:32:50 2026 +0800
+
+    feat: Introduce new LaTeX chapter detailing the MARQ framework's theoretical background and policy definition, and add training configuration.
+
+commit 7683f3d765e8f1d0ac0deb8973058c852aad0b87
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Mon Jan 5 20:12:19 2026 +0800
+
+    feat: Add DRQN agent, prioritized memory, and training configuration, alongside new LaTeX chapters detailing methodology and technical background.
+
+commit a92b31ea6ac5c2ab0c53e29e5656e31fa4446210
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Mon Jan 5 03:06:17 2026 +0800
+
+    feat: Implement Rainbow DQN agent featuring C51 distributional RL, Noisy Nets, Dueling architecture, PBS integration, and Ataraxos techniques.
+
+commit 5ae968341f3f8e2405d481e01755081f786da080
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Sat Jan 3 06:28:28 2026 +0800
+
+    feat: Introduce Rainbow DQN training for Stratego, incorporating parallel environments, curriculum management, and distributional reward shaping.
+
+commit e6e7fa7d1d37ac915f6d41f81c163114f509e5b2
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Fri Jan 2 19:16:19 2026 +0800
+
+    feat: Implement Rainbow DQN agent with C51, Dueling, Noisy Nets, PER, N-step, and PBS integration for Modular Stratego.
+
+commit c71505975c57a7d2ed98be8c7774e4d75bf4c1ec
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Wed Dec 31 10:58:52 2025 +0800
+
+    feat: Introduce modular DQN training components including a centralized reward system, comprehensive configuration, and starting player randomization.
+
+commit 57e79d8e45709366a7738e981caecdbbc7a8ec98
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Tue Dec 30 08:42:43 2025 +0800
+
+    feat: Introduce a centralized `distributional_reward.py` module to unify Stratego DQN reward calculations, incorporating various components and intrinsic curiosity.
+
+commit d8a1e848c9c09304c8314532c35782085ce2fac0
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Tue Dec 30 00:11:15 2025 +0800
+
+    feat: Add modular DQN training system with comprehensive configuration, checkpointing, and league management.
+
+commit b6122ef3d48dc00b6a315a524c3995f61020a934
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Mon Dec 29 22:38:24 2025 +0800
+
+    feat: Implement modular Stratego training system with DQN environment, configuration, and curriculum, alongside updated Latex methodology.
+
+commit 50786a1c6079137c57a85faecf9a72f1dd6ae577
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Thu Dec 25 19:26:27 2025 +0800
+
+    feat: Add visual training script for Rainbow DQN, displaying real-time board, Q-values, and network attention, and introduce core training and configuration files.
+
+commit e81b21236ebc559ac8eeabbc6d152fe66f273151
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Thu Dec 25 04:24:49 2025 +0800
+
+    feat: Introduce Rainbow DQN with ResNet backbone, visual training, and action mapping verification, extracting the network for modularity.
+
+commit 3744790e16a800c13c3ca5c82d26029de60d7b98
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Sat Dec 20 15:42:14 2025 +0800
+
+    feat: Introduce methodology chapter, add DQN training scripts and configuration, and include related progress and metric visualizations.
+
+commit deed45c95a6babe4a8266fff46c859d57a61d5a0
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Fri Dec 19 22:45:30 2025 +0800
+
+    feat: implement Rainbow DQN network architecture, distributional reward shaping, and associated verification tests
+
+commit 939e6c0a84a0ad2951602013ca3f1ea897c64607
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Thu Dec 18 23:55:42 2025 +0800
+
+    feat: Implement Modular Stratego RL training system with DQN/DRQN agents, curriculum learning, visualization, and academic documentation.
+
+commit cae81062a88150136e6bc9bc172df525aa0648b0
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Mon Dec 15 02:49:20 2025 +0800
+
+    feat: Implement initial DRQN agent, Stratego environment, training pipeline, and visualization tools.
+
+commit a3ecab2bf429a6f8e481a27d3463caf21848607b
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Sun Dec 14 22:10:40 2025 +0800
+
+    feat: Implement Multilane priority switching
+
+commit 57da474e43a82ef6c08e3789e6b84ca79e69aeed
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Sun Dec 14 21:35:54 2025 +0800
+
+    feat: Implement distributional reward shaping, DRQN agent, and training infrastructure, alongside new methodology and figure content in LaTeX documentation.
+
+commit 291f6ca4fee7d810cf05d00e2584fa9f4244dfc7
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Sun Dec 14 03:57:41 2025 +0800
+
+    feat: Add initial Rainbow DQN agent with C51, Dueling, NoisyNets, and PBS integration, along with training configuration and distributional reward modules.
+
+commit 65a5c7c8a4959ffdf7055218671a88b8f905de4c
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Thu Dec 11 20:35:44 2025 +0800
+
+    feat: Introduce comprehensive DQN training system with DRQN, curriculum learning, league play, and distributional rewards, accompanied by updated academic documentation.
+
+commit 14b5571b5a853fd68fdc3abe33b585edc029b8bb
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Tue Dec 9 21:48:15 2025 +0800
+
+    feat: Introduce Rainbow DQN agent with C51, Dueling, Noisy Nets, and PBS integration, alongside new training and visualization utilities. remove setup agent
+
+commit 990911d63f97b5848961481d12a53cbe10cc787b
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Tue Dec 9 18:56:39 2025 +0800
+
+    feat: Introduce distributional reward shaping for Rainbow DQN, including configuration, tracking, training infrastructure, and methodology documentation.
+
+commit b4154722a3be53be6d794326fd1c524ac62a6f10
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Mon Dec 8 07:47:59 2025 +0800
+
+    feat: Implement DRQN agent with distributional reward shaping, supporting training infrastructure, and academic documentation.
+
+commit 7b0d4c7222a2a1fd928da94c78427af0114ca66f
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Sun Dec 7 20:53:09 2025 +0800
+
+    feat: Add initial LaTeX chapters for research paper and Python scripts for DQN training and visualization.
+
+commit af597581d20087206497077f21798e517a22daf9
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Sun Dec 7 17:50:08 2025 +0800
+
+    feat: Add core DRQN training components including pre-flight checks, GPU-optimized replay buffer, training profiler, agent implementations, and methodology documentation.
+
+commit 630e7cf8eb3ecfd19562a11e61b5b34cac05f07e
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Sun Dec 7 01:45:04 2025 +0800
+
+    quick cuda fix
+
+commit e1e0d919a20e3f0b6e96df47998421755f400e90
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Sun Dec 7 01:03:56 2025 +0800
+
+    feat: introduce modular DQN training with league play, curriculum learning, and visualization tools
+
+commit e05891a4b5d2d4357504754a9b908152b9371cb6
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Sat Dec 6 10:51:23 2025 +0800
+
+    feat: Add MARQ network architecture diagram and associated research visualizations.
+
+commit fe2f567747c485b3115fd18b1a476b218ff902c6
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Sat Dec 6 10:07:43 2025 +0800
+
+    feat: add MARQ architecture diagram.
+
+commit e872388bd8abca9c942fff098728ba4a49b1a798
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Sat Dec 6 09:57:35 2025 +0800
+
+    feat: Add methodology and technical background chapters and new bibliography entries.
+
+commit c33cef945cc4851c257f4c309928abab049a128a
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Sat Dec 6 08:28:00 2025 +0800
+
+    feat: Implement initial Modular Stratego research project with its corresponding LaTeX documentation.
+
+commit f1ed61deda7157d68807b54fb52d744edac5b559
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Fri Dec 5 20:45:44 2025 +0800
+
+    feat: Add Rainbow DQN training script for Stratego with parallel environments, self-play, and PBS updates.
+
+commit 6feb53c526f96ed234c66944033dfd02b47b6a1f
+Author: MarkUnFound <mlquibot@gbox.adnu.edu.ph>
+Date:   Fri Dec 5 20:23:19 2025 +0800
+
+    feat: Add initial LaTeX document structure, content, figures, and supporting files for research paper.
+
+commit ee44972a0e9cac3581a9d58213e02be30d67142a
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Fri Dec 5 15:18:02 2025 +0800
+
+    feat: Implement DRQN agent with AAREN for recurrent memory and a Probabilistic Belief State module. Bug fix in aaren crosstalk
+
+commit 4b5fe13bcf8ca42b31c3cb9c7c28732fa15725f7
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Thu Dec 4 22:45:18 2025 +0800
+
+    feat: add pre-flight checks for plotting functions and game simulation logic
+
+commit a607a1738aa4666d2c732f39718785526ad0abcb
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Thu Dec 4 11:51:02 2025 +0800
+
+    feat: Implement Rainbow DQN training infrastructure with a standard replay buffer, parallel environments, and utilities for saving/loading training history, explicitly leveraging CUDA.
+
+commit 11468c649f02a78e2260a0aeeb25a2acedd25afe
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Thu Dec 4 06:07:12 2025 +0800
+
+    feat: Introduce DRQN agent, training infrastructure, and comprehensive visualization/debugging tools, including CUDA-enabled components.
+
+commit bc8641046cdf91b54a84bcd72e7a1fe0fa479421
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Thu Dec 4 03:38:27 2025 +0800
+
+    feat: Introduce DRQN, DQN, ISMCTS agents, training infrastructure, and various profiling and visualization tools.
+
+commit f8c48b6bb86717414eaeda138a0cc7ade5268381
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Thu Dec 4 02:37:37 2025 +0800
+
+    feat: Implement initial DQN agent training script with configuration and preflight checks.
+
+commit bccc497894ee59be697565a6a3c662aa61250df4
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Thu Dec 4 02:23:03 2025 +0800
+
+    feat: Introduce initial DQN and ISMCTS agents, along with core game environment, state, and probabilistic belief state components.
+
+commit d4d5bf77302ae15b8f802f62f38cd3086657d825
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Wed Dec 3 12:36:04 2025 +0800
+
+    feat: introduce DQN training system for Stratego with parallel environments, setup agents, and probabilistic belief state.
+
+commit de12d9fae3b3a37fbac804f3d691fc432d4b3dfb
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Tue Dec 2 10:26:36 2025 +0800
+
+    feat: Implement DQN agent training pipeline for Stratego with parallel environments and belief state.
+
+commit 29e978dcf94daac8f7ba05e4d064f77e46e211c5
+Author: MarkUnFound <mlquibot@gbox.adnu.edu.ph>
+Date:   Mon Dec 1 15:59:06 2025 +0800
+
+    feat: Implement DQN training setup for league play, including detailed strategic evaluation functions for piece placement.
+
+commit b44614551e8e69882bdb3bb4fe27e7e712789c41
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Mon Dec 1 13:59:12 2025 +0800
+
+    feat: Implement DQN agent with convolutional network, probabilistic belief state, and training infrastructure.
+
+commit a5994814391a53b0e0243ecb98c1a51da6ec8f66
+Author: MarkUnFound <mlquibot@gbox.adnu.edu.ph>
+Date:   Mon Dec 1 12:46:06 2025 +0800
+
+    feat: Add initial implementations for DQN and ISMCTS agents.
+
+commit 066a2a7c2f2b5cd952766c701be401dc730dc7e8
+Author: MarkUnFound <mlquibot@gbox.adnu.edu.ph>
+Date:   Mon Dec 1 12:32:26 2025 +0800
+
+    feat: Implement initial DQN agent with probabilistic belief state for opponent modeling and an exploitability critic.
+
+commit 2da341a2a3dc29556a15c9cb90154942e4b7aa05
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Mon Dec 1 11:43:13 2025 +0800
+
+    feat: Implement DQN agent, training script, and probabilistic belief state for Stratego.
+
+commit d8673a119ab984fb160709067c54909158a3cda4
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Mon Dec 1 11:42:26 2025 +0800
+
+    Stop tracking pycache files in Modular Stratego
+
+commit 5c9a3d37fb44564268390513fa0984d0d42176cf
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Mon Dec 1 06:56:28 2025 +0800
+
+    feat: Implement DQN agent, parallel environments, and probabilistic belief state for Modular Stratego.
+
+commit c81b9d8247c7ec55da7d189de25924162552e268
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Fri Nov 28 15:01:16 2025 +0800
+
+    feat: introduce DQN agent with ConvDQN, Probabilistic Belief State, and Exploitability Critic for Stratego.
+
+commit 4ca93f641c6be4d0c1f3150e839a77046e62bf96
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Fri Nov 28 12:18:26 2025 +0800
+
+    feat: introduce Pygame-based live visualizer for Stratego DQN agent and state analysis.
+
+commit 7555eabd6d1bbc5c8531570bc47729786cdae56c
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Fri Nov 28 10:41:32 2025 +0800
+
+    feat: Add DQN training script with parallel environment support, replay prefetcher, and setup agent reward calculation, and remove debug_log.txt.
+
+commit f9a8913a85e86cb80adfd221bcdca00a297d2342
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Thu Nov 27 15:49:45 2025 +0800
+
+    Bug fix
+
+commit 271858646c167133b0799ab6607c1ed964cd33d5
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Thu Nov 27 11:36:23 2025 +0800
+
+    feat: Introduce DQN agent for Stratego with ConvDQN, prioritized replay, probabilistic belief state, and exploitability critic, supported by training and analysis scripts.
+
+commit 9dd2e0fd7a2009e25362b4b469ab8792771a02db
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Thu Nov 27 10:52:43 2025 +0800
+
+    Epsilon cycling / stagnation recovery, Reward shaping / draw penalty, Logging/metrics
+
+commit fbb86fedac4fddc7c5e0e8f0d4be5acac9dd4ee9
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Thu Nov 27 09:09:45 2025 +0800
+
+    feat: implement comprehensive DQN training script for Stratego with parallel environments, setup agent training, and PBS evaluation.
+
+commit 9e020ae02b2418122f93abb1f167614857d8048a
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Thu Nov 27 01:02:09 2025 +0800
+
+    feat: Implement a comprehensive DQN training system for Stratego, including parallel environments, replay prefetching, setup agents, and league management.
+
+commit 261b093c1f06204609965567f87e5d52bec2a2ea
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Wed Nov 26 22:27:45 2025 +0800
+
+    feat: Add `train_dqn.py` for Stratego agent training, incorporating parallel environments, replay prefetching, and setup agent reward calculation.
+
+commit fe22b5a21596321ccc9a0702c3545cc8318ce63c
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Wed Nov 26 20:24:28 2025 +0800
+
+    feat: Add training visualizer for DQN agents to plot rewards, wins, and policy loss.
+
+commit 9819c2f2145cbe9df51c563c60ff90888b734e84
+Author: MarkUnFound <mlquibot@gbox.adnu.edu.ph>
+Date:   Wed Nov 26 01:59:41 2025 +0800
+
+    feat: Add initial KLUSS algorithm implementation for Stratego, incorporating game-specific adaptations, visualization, and GUI.
+
+commit 2204facb1ba8d16c26cb18444ab0fa5aac0b1ff3
+Author: MarkUnFound <mlquibot@gbox.adnu.edu.ph>
+Date:   Wed Nov 26 00:55:13 2025 +0800
+
+    feat: Implement modular Stratego agent with hybrid KLUSS/DQN strategy and AAREN-based probabilistic belief state.
+
+commit 5a30f3cb01d6ee5a4369552da59757e2464ce821
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Mon Nov 24 04:27:55 2025 +0800
+
+    feat: Implement initial DQN agent, prioritized replay buffer, board representation, and random starting player logic.
+
+commit 1f9c552d35c81971761c2d2316c0e1e4386abd03
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Sun Nov 23 16:18:35 2025 +0800
+
+    feat: Implement DQN agent with prioritized experience replay and parallel environment support.
+
+commit 154a3ee1d8330596432eaaf9296df25c26237124
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Sun Nov 23 14:07:24 2025 +0800
+
+    feat: Implement parallel Stratego environments and a DQN agent with a convolutional network and prioritized replay buffer, and update gitignore.
+
+commit 298da375fcb1a04ba03e74d5b9584e69cfb7e847
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Sun Nov 23 14:04:44 2025 +0800
+
+    feat: Implement DQN agent with dueling architecture, probabilistic belief state, prioritized replay, and an exploitability critic.
+
+commit 513adf16aaeaed06977e3367698a0fdf2871dec7
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Sun Nov 23 08:39:59 2025 +0800
+
+    feat: Implement DQN agent with Q-Vector network, probabilistic belief state, and training script.
+
+commit 4dde00bf96e479f060ebad9c8c8b1bfafa789a6c
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Sun Nov 23 08:39:50 2025 +0800
+
+    feat: add DQN agent and training scripts for Modular Stratego, and update gitignore to exclude pycache
+
+commit c95d8611b949d3cceaf554f7990cdb9ef72685c5
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Sat Nov 22 22:21:13 2025 +0800
+
+    feat: Implement DQN agent with Q-vector network, probabilistic belief state, and exploitability critic.
+
+commit c770967c14f03d9355e0979aff530ed00ea361c3
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Fri Nov 21 23:34:24 2025 +0800
+
+    Refactor learning rate scheduling in DQNAgent by simplifying to exponential decay. Removed automatic adjustment based on loss trends and streamlined the update process for improved clarity and performance.
+
+commit f052e9237acd8f7827dbab6e2ffd7f8d592ea083
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Fri Nov 21 23:04:51 2025 +0800
+
+    Implement parallel environment support in DQN agent for enhanced training efficiency. Introduced a new `ParallelStrategoEnvironment` class to manage multiple game instances concurrently, allowing for shared model usage and improved resource management. Updated DQN agent to handle multiple environments, including adjustments to action buffers and PBS instances. Enhanced PBS evaluator integration for batch updates and Q-value feedback. Removed obsolete test files and added a new legality test script to validate game moves. Updated training visualizer to include additional metrics for better performance tracking.
+
+commit ea962bdff7852c51350e85baf9bf402105686a4c
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Fri Nov 21 08:52:58 2025 +0800
+
+    Refactor and reorganize Stratego module structure by removing the old setup agent and related cache files. Introduced new setup agent implementation and additional modules for game environment, board management, and DQN agent training. Enhanced overall code organization and prepared for future feature integrations.
+
+commit 5b89e5266753c4beac2524aeec6e395a535a1754
+Author: MarkUnFound <158255170+MarkUnFound@users.noreply.github.com>
+Date:   Mon Nov 17 13:27:16 2025 +0800
+
+    Removed the cringe
+
+commit 0e65345b88ca01fdc9db836e9b2ccc318aed3c50
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Mon Nov 17 07:44:51 2025 +0800
+
+    Merge branch 'main' into feature/setup-agent-gui-integration
+    
+    Resolve setup agent GUI integration merge conflicts and unify setup agent loading path logic.
+
+commit 6b313708c53f089c066b1caa4c154bcf0ee4ed0c
+Merge: 81cf2f8 241e6e3
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Mon Nov 17 07:44:32 2025 +0800
+
+    Merge branch 'main' of https://github.com/MarkUnFound/Research
+
+commit 81cf2f845e3ce3208e4855b0f1e1e38dd60cd09c
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Mon Nov 17 07:36:04 2025 +0800
+
+    Updated setup agent integration
+
+commit 76139b83a471a32355c236e01c86c90c71e26b06
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Mon Nov 17 07:31:29 2025 +0800
+
+    Refactor DQN agent and training scripts for improved model management and performance. Adjusted learning rate and loss handling for sensitivity, implemented experience replay enhancements, and introduced separate saving/loading mechanisms for DQN, AAREN, and PBS Evaluator models. Updated training logic to penalize draws and monitor loss explosions, ensuring more robust agent training and evaluation.
+
+commit 241e6e39001660885e4041264629aa932a33adc0
+Author: gabmabagos <138811641+gabmabagos@users.noreply.github.com>
+Date:   Sun Nov 16 18:01:21 2025 +0800
+
+    GUI update
+    
+    UI elements polishing.
+
+commit 39dd2a219f9d410b406c668f13ea238879a2bc0b
+Author: MarkUnFound <158255170+MarkUnFound@users.noreply.github.com>
+Date:   Sun Nov 16 13:28:30 2025 +0800
+
+    Update README with training episode details
+    
+    Added update on training episodes to README.
+
+commit b387606bf5099ca6724f4a84e4dcf4a770a220f5
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Sun Nov 16 13:10:57 2025 +0800
+
+    Implement PBS visualization enhancements and introduce live demo functionality. Added methods for visualizing PBS states as images and creating GIFs from episode data. Refactored existing visualization functions for improved clarity and usability. Introduced a new script for running live Stratego demos, showcasing agent interactions and board states. Updated training scripts to capture PBS visualizations at key episodes and moves, ensuring consistent tracking of agent performance.
+
+commit 3490e0be4299ac5e3cc3274c5a1deba54527913c
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Sun Nov 16 09:28:55 2025 +0800
+
+    Enhance PBS visualization module with new features for improved clarity and usability. Added top-3 predictions with visual hierarchy, uncertainty-based border widths using Shannon entropy, and color-coded probabilities. Refactored code for better structure and introduced fallback mechanisms for empty beliefs. Updated training scripts to capture PBS visualizations at key episodes and moves, ensuring consistent tracking of agent performance.
+
+commit c5e8e305c84cd5857cc7ae3802dd464522672b9e
+Merge: 6606092 7f568ce
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Sun Nov 16 02:23:20 2025 +0800
+
+    Merge branch 'main' of https://github.com/MarkUnFound/Research
+
+commit 66060923e90697d5f4a33ba662f6bb56738b8a77
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Sun Nov 16 02:23:04 2025 +0800
+
+    Enhance DQN agent and environment with uncertainty-driven exploration and performance monitoring. Introduced adaptive epsilon decay, learning rate scheduling, and uncertainty-aware Q-value calculations. Improved reward mechanisms in the environment to incentivize aggressive play and added bias tracking in the PBS evaluator for systematic error correction. Updated training history management for continuity across sessions and refined visualizations for training progress.
+
+commit 7f568cebd23c68be11f3fdcc3a6ef0f052cb6c6a
+Author: MarkUnFound <158255170+MarkUnFound@users.noreply.github.com>
+Date:   Sat Nov 15 09:54:05 2025 +0800
+
+    Delete Modular/New Modular/stratego_modular/lstm_timeline.py --not used
+
+commit 1415719ee71ce98c78c194a3f0d97a3b764c6413
+Author: MarkUnFound <158255170+MarkUnFound@users.noreply.github.com>
+Date:   Sat Nov 15 09:53:43 2025 +0800
+
+    Delete Modular/New Modular/stratego_modular/mcts.py --not used
+
+commit 575cf632399989bd820510274d69474c728923c6
+Merge: 14de488 b44a92d
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Sat Nov 15 09:50:08 2025 +0800
+
+    Merge branch 'main' of https://github.com/MarkUnFound/Research
+
+commit 14de4887fa5de7700500add87303c956a48932b0
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Sat Nov 15 09:50:00 2025 +0800
+
+    Remove outdated documentation files related to the AAREN vs PBS Evaluator explanation, PBS Evaluator and Setup Agent analysis, PBS Evaluator persistence, PBS improvements, reward improvements, and setup agent improvements. These files are no longer relevant to the current project structure and functionality.
+
+commit cca3a8c55e3663b759d3d5db8047b0fa72549ce5
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Sat Nov 15 09:49:17 2025 +0800
+
+    Refactor and optimize Stratego game components. Improved DQN agent initialization by enabling cuDNN benchmarking for faster convolutions. Enhanced environment logic with cached values for efficiency and added new visualizations for PBS evaluator progress. Updated game state management and training metrics for better performance tracking. Revamped the reward shaping to improve the agent behaviour
+
+commit b44a92d2f3e2f2cb8687761e729ae278662f23c8
+Author: MarkUnFound <158255170+MarkUnFound@users.noreply.github.com>
+Date:   Fri Nov 14 06:13:45 2025 +0800
+
+    Delete History directory
+
+commit 1426554a05f1bd202d52f48fbf6b31084ca0ff71
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Fri Nov 14 06:08:20 2025 +0800
+
+    Refactor DQN and environment components for enhanced training and evaluation. Updated optimizers to AdamW for better weight decay handling. Introduced PBS evaluator for improved prediction quality assessment and added setup agent for piece placement. Enhanced training visualizations and adjusted reward mechanisms for strategic gameplay. Updated environment reset logic to allow custom piece placements in the playable game.
+
+commit 0089e296a0563dbfb4780b3cc6ca32525acd2dcd
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Tue Nov 11 10:11:03 2025 +0800
+
+    Enhance game mechanics and visualization features. Updated battle resolution logic to prevent friendly fire and refined piece movement visibility for both players. Integrated Probabilistic Belief State (PBS) tracking in DQN agent actions and added visualizations for PBS states and training progress. Improved game state management and reward mechanisms for piece exchanges and losses.
+
+commit 4140fc942096438446b5882a59f87789f2b9f392
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Sat Nov 1 11:10:15 2025 +0800
+
+    Fixed the the history logs and added a victory screen.
+
+commit 3caaeb66c115d25b2b3ba8dc22f76f4a325a37c9
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Sat Nov 1 10:43:21 2025 +0800
+
+    Remove redundant
+
+commit eda7eb5801ae9d14cbc0e2269b9b3844247c80d4
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Sat Nov 1 01:28:08 2025 +0800
+
+    Update UI and New Game history
+
+commit 676b28a2bdf3e780fb2b1d873aca4bdc4fe6871a
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Sat Nov 1 01:25:16 2025 +0800
+
+    Game UI and History Game
+
+commit 5a029b5b8020ed5c1693fed7171e704ec2d6e6e0
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Sat Nov 1 00:13:47 2025 +0800
+
+    Update: Now Playable against bot
+
+commit e4c4020b5e01a45c026b136569c9bdeae28e2c2f
+Author: gabmabagos <138811641+gabmabagos@users.noreply.github.com>
+Date:   Tue Oct 21 21:56:10 2025 +0800
+
+    Create Stratego_Visual
+
+commit 03f5bd8007fec0f38e3fd427c2dc2ae9bf4d06f8
+Author: gabmabagos <138811641+gabmabagos@users.noreply.github.com>
+Date:   Tue Oct 21 21:54:47 2025 +0800
+
+    Create stratego.py
+
+commit 9da19aeeeabee3c3f7f7c165473a437fdc4a090e
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Tue Sep 9 16:45:37 2025 +0800
+
+    Update: Trained up to 1000 episodes
+
+commit ddadd3c96bd2d77b7ad4df651d533f37b64534a4
+Author: MarkUnFound <158255170+MarkUnFound@users.noreply.github.com>
+Date:   Tue Aug 19 06:10:27 2025 +0800
+
+    Create README.md
+    
+    just readme Uwu
+
+commit 00fea82bdfb5124a3c4a112a47a4a7c39c4b8fd1
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Tue Aug 19 06:07:50 2025 +0800
+
+    Implemented a graphing feature to save progress result.
+
+commit 866421df9e619085b96d88796ad07b77ee435853
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Tue Aug 19 00:26:01 2025 +0800
+
+    Removed Tests
+
+commit 4fbb71af6842b7c84a8dc66b9485fd7f6f9cb016
+Author: Ovar9000 <quibotmark@gmail.com>
+Date:   Mon Aug 18 23:47:18 2025 +0800
+
+    Initial update of the Environment, DQN agents, and Scripts
