@@ -51,6 +51,8 @@ auto_setup(board, 2)
 # Determine model paths
 model_dir = os.path.dirname(os.path.abspath(__file__))
 possible_paths = [
+    os.path.join(model_dir, 'agent1_league_episode_1000.pt'),
+    os.path.join(model_dir, '..', 'Modular Stratego', 'network', 'dqn_models', 'agent1_league_episode_1000.pt'),
     os.path.join(model_dir, 'dqn_agent_final.pth'),
     os.path.join(model_dir, 'user_input_files', 'dqn_agent_final.pth'),
     'dqn_models/dqn_agent_final.pth',

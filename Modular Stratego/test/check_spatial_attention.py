@@ -11,11 +11,18 @@ Tests:
   5. Semantic Responsiveness - Attention patterns change when board state changes
 """
 
+import os
 import sys
+
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.dirname(current_dir)
+for d in ['', 'network', 'environment', 'settings', 'visualizers', 'utils']:
+    p = os.path.join(project_root, d) if d else project_root
+    if p not in sys.path:
+        sys.path.insert(0, p)
+
 import torch
 import numpy as np
-
-sys.path.insert(0, '.')
 
 from networks.rainbow_dqn import SpatialAttention
 

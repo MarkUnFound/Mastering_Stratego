@@ -18,15 +18,26 @@ def test_utility():
     agent = MockAgent()
     search = ExpectamaxSearch(agent)
     
+    from piece import PieceType
+
     scenarios = [
-        ("Marshal (1) vs Flag (10)", 1, 10, 10.0),
-        ("Marshal (1) vs General (2)", 1, 2, 0.5 + (2/12.0)*0.5),
-        ("Scout (9) vs Marshal (1)", 9, 1, -0.5 - ((12-9)/12.0)*0.5),
-        ("Miner (8) vs Bomb (11)", 8, 11, 1.0),
-        ("Sergeant (7) vs Bomb (11)", 7, 11, -1.0),
-        ("Spy (12) vs Marshal (1)", 12, 1, 1.0),
-        ("General (2) vs Spy (12)", 2, 12, 0.8),
-        ("Major (4) vs Major (4)", 4, 4, -0.1),
+        # GUI Ranks (stratego.py: Marshal=10, General=9, Miner=3, Scout=2, Spy=1, Bomb=0, Flag=-1)
+        ("GUI: Marshal (10) vs Flag (-1)", 10, -1, 10.0),
+        ("GUI: Marshal (10) vs General (9)", 10, 9, 0.5 + (10/12.0)*0.5),
+        ("GUI: Scout (2) vs Marshal (10)", 2, 10, -0.5 - ((12-3)/12.0)*0.5),
+        ("GUI: Miner (3) vs Bomb (0)", 3, 0, 1.0),
+        ("GUI: Sergeant (4) vs Bomb (0)", 4, 0, -1.0),
+        ("GUI: Spy (1) vs Marshal (10)", 1, 10, 1.0),
+        ("GUI: General (9) vs Spy (1)", 9, 1, 0.8),
+        ("GUI: Major (7) vs Major (7)", 7, 7, -0.1),
+        
+        # PieceType Enums (piece.py)
+        ("Enum: Marshal vs Flag", PieceType.MARSHAL, PieceType.FLAG, 10.0),
+        ("Enum: Miner vs Bomb", PieceType.MINER, PieceType.BOMB, 1.0),
+        ("Enum: Sergeant vs Bomb", PieceType.SERGEANT, PieceType.BOMB, -1.0),
+        ("Enum: Spy vs Marshal", PieceType.SPY, PieceType.MARSHAL, 1.0),
+        ("Enum: Marshal vs General", PieceType.MARSHAL, PieceType.GENERAL, 0.5 + (10/12.0)*0.5),
+        ("Enum: Major vs Major", PieceType.MAJOR, PieceType.MAJOR, -0.1),
     ]
     
     print("--- Expectamax Utility Verification ---")
@@ -34,11 +45,11 @@ def test_utility():
     for desc, attacker, defender, expected in scenarios:
         actual = search._calculate_outcome_utility(attacker, defender)
         if abs(actual - expected) < 1e-6:
-            status = "✅ PASS"
+            status = "[PASS]"
         else:
-            status = f"❌ FAIL (Expected {expected}, got {actual})"
+            status = f"[FAIL] (Expected {expected:.3f}, got {actual:.3f})"
             all_passed = False
-        print(f"{desc:<30} | Utility: {actual:>6.3f} | {status}")
+        print(f"{desc:<35} | Utility: {actual:>6.3f} | {status}")
     
     return all_passed
 

@@ -22,6 +22,32 @@ from drqn_agent import RainbowAgent
 from history_aggregator import HistoryAggregator
 from piece import PieceType, NUM_PIECE_TYPES
 from board import LAKE_SQUARE
+from stratego import Board
+
+GUI_RANK_TO_PIECETYPE = {
+    10: PieceType.MARSHAL,
+    9: PieceType.GENERAL,
+    8: PieceType.COLONEL,
+    7: PieceType.MAJOR,
+    6: PieceType.CAPTAIN,
+    5: PieceType.LIEUTENANT,
+    4: PieceType.SERGEANT,
+    3: PieceType.MINER,
+    2: PieceType.SCOUT,
+    1: PieceType.SPY,
+    0: PieceType.BOMB,
+    -1: PieceType.FLAG,
+}
+
+def to_piece_type(val) -> PieceType:
+    if isinstance(val, PieceType):
+        return val
+    if val in GUI_RANK_TO_PIECETYPE:
+        return GUI_RANK_TO_PIECETYPE[val]
+    try:
+        return PieceType(val)
+    except (ValueError, KeyError):
+        return PieceType.SCOUT
 
 class TimeoutException(Exception):
     pass
@@ -109,6 +135,8 @@ class ExpectamaxSearch:
             
         # 2. Handle attacks (Chance Node)
         probabilities = self.agent.history.get_piece_predictions(dst)
+        if not probabilities and hasattr(self.agent.history, 'get_default_piece_prior'):
+            probabilities = self.agent.history.get_default_piece_prior()
         
         if not probabilities:
             sim_board = self._simulate_move_simple(board, move)
@@ -126,10 +154,9 @@ class ExpectamaxSearch:
         
         for p_type, prob in sorted_probs[:top_n]:
             norm_prob = prob / subset_prob_sum
-            rank = p_type.value
             
-            outcome, sim_board = self._simulate_combat(board, move, attacker_rank, rank)
-            combat_utility = self._calculate_outcome_utility(attacker_rank, rank)
+            outcome, sim_board = self._simulate_combat(board, move, attacker_rank, p_type)
+            combat_utility = self._calculate_outcome_utility(attacker_rank, p_type)
             
             branch_utility = self._min_node(sim_board, 3 - player, depth, start_time, prior_q, DQN_adapter)
             
@@ -209,45 +236,52 @@ class ExpectamaxSearch:
             expected_q = (probs * support).sum(dim=2).squeeze(0)
         return expected_q
 
+    def _clone_board(self, board):
+        new_board = Board()
+        new_board.grid = [row[:] for row in board.grid]
+        return new_board
+
     def _simulate_move_simple(self, board, move: Tuple):
-        sim_board = copy.deepcopy(board)
+        sim_board = self._clone_board(board)
         src, dst = move
         piece = sim_board.get(src)
         sim_board.set(dst, piece)
         sim_board.set(src, None)
         return sim_board
         
-    def _simulate_combat(self, board, move: Tuple, attacker_rank: int, defender_rank: int):
-        sim_board = copy.deepcopy(board)
+    def _simulate_combat(self, board, move: Tuple, attacker_rank, defender_rank):
+        sim_board = self._clone_board(board)
         src, dst = move
         attacker = sim_board.get(src)
         
-        outcome = "tie"
-        if attacker_rank == defender_rank:
+        att_pt = to_piece_type(attacker_rank)
+        def_pt = to_piece_type(defender_rank)
+        
+        if att_pt == def_pt:
             sim_board.set(src, None)
             sim_board.set(dst, None)
             outcome = "tie"
-        elif defender_rank == 11: # Bomb
-            if attacker_rank == 8: # Miner wins
+        elif def_pt == PieceType.FLAG:
+            sim_board.set(dst, attacker)
+            sim_board.set(src, None)
+            outcome = "attacker"
+        elif def_pt == PieceType.BOMB:
+            if att_pt == PieceType.MINER:
                 sim_board.set(dst, attacker)
                 sim_board.set(src, None)
                 outcome = "attacker"
             else:
                 sim_board.set(src, None)
                 outcome = "defender"
-        elif defender_rank == 12: # Spy
+        elif att_pt == PieceType.SPY and def_pt == PieceType.MARSHAL:
             sim_board.set(dst, attacker)
             sim_board.set(src, None)
             outcome = "attacker"
-        elif attacker_rank == 12 and defender_rank == 1: # Spy vs Marshal
+        elif def_pt == PieceType.SPY:
             sim_board.set(dst, attacker)
             sim_board.set(src, None)
             outcome = "attacker"
-        elif defender_rank == 10: # Flag
-            sim_board.set(dst, attacker)
-            sim_board.set(src, None)
-            outcome = "attacker"
-        elif attacker_rank < defender_rank:
+        elif att_pt.value > def_pt.value:
             sim_board.set(dst, attacker)
             sim_board.set(src, None)
             outcome = "attacker"
@@ -257,14 +291,24 @@ class ExpectamaxSearch:
             
         return outcome, sim_board
 
-    def _calculate_outcome_utility(self, attacker_rank: int, defender_rank: int) -> float:
-        if attacker_rank == defender_rank: return -0.1
-        if defender_rank == 11: return 1.0 if attacker_rank == 8 else -1.0
-        if defender_rank == 12: return 0.8
-        if attacker_rank == 12 and defender_rank == 1: return 1.0
-        if defender_rank == 10: return 10.0
-        if attacker_rank < defender_rank: return 0.5 + (defender_rank / 12.0) * 0.5
-        else: return -0.5 - ((12 - attacker_rank) / 12.0) * 0.5
+    def _calculate_outcome_utility(self, attacker_rank, defender_rank) -> float:
+        att_pt = to_piece_type(attacker_rank)
+        def_pt = to_piece_type(defender_rank)
+        
+        if att_pt == def_pt:
+            return -0.1
+        if def_pt == PieceType.FLAG:
+            return 10.0
+        if def_pt == PieceType.BOMB:
+            return 1.0 if att_pt == PieceType.MINER else -1.0
+        if att_pt == PieceType.SPY and def_pt == PieceType.MARSHAL:
+            return 1.0
+        if def_pt == PieceType.SPY:
+            return 0.8
+        if att_pt.value > def_pt.value:
+            return 0.5 + (def_pt.value / 12.0) * 0.5
+        else:
+            return -0.5 - ((12.0 - att_pt.value) / 12.0) * 0.5
 
 class DQNBotLogic:
     """

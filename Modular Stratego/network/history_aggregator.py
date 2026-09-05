@@ -152,7 +152,7 @@ class HistoryAggregator:
         is_scout_move = 1.0 if dist > 1 else 0.0
         
         # Movement pattern features
-        moves_toward_flag = 1.0 if (self.player_id == 1 and dr < 0) or (self.player_id == -1 and dr > 0) else 0.0
+        moves_toward_flag = 1.0 if (self.player_id == 1 and dr < 0) or (self.player_id in (-1, 2) and dr > 0) else 0.0
         lateral_move = 1.0 if dr == 0 else 0.0
         
         # Piece activity (how many times this position has moved)
@@ -387,6 +387,28 @@ class HistoryAggregator:
                 pt = PieceType(i + 1)
                 result[pt] = float(probs[i])
             return result
+
+    def get_default_piece_prior(self) -> Dict[PieceType, float]:
+        """
+        Return the standard Bayesian prior distribution over piece identities
+        for stationary / unrevealed enemy pieces based on the 40-piece setup.
+        """
+        counts = {
+            PieceType.FLAG: 1,
+            PieceType.SPY: 1,
+            PieceType.SCOUT: 8,
+            PieceType.MINER: 5,
+            PieceType.SERGEANT: 4,
+            PieceType.LIEUTENANT: 4,
+            PieceType.CAPTAIN: 4,
+            PieceType.MAJOR: 3,
+            PieceType.COLONEL: 2,
+            PieceType.GENERAL: 1,
+            PieceType.MARSHAL: 1,
+            PieceType.BOMB: 6
+        }
+        total = float(sum(counts.values()))
+        return {pt: cnt / total for pt, cnt in counts.items()}
 
     def train(self, epochs: int = 1) -> Optional[float]:
         """
