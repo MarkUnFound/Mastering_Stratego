@@ -668,7 +668,8 @@ class RainbowAgent:
                 self.memory.add(state_rot, action_idx_rot, reward_clipped, next_state_rot, done)
                 self.step_count += 1
 
-    def remember_batch(self, states, actions, rewards, next_states, dones, active_mask, game_states=None, next_game_states=None, infos=None):
+    def remember_batch(self, states, actions, rewards, next_states, dones, active_mask, game_states=None, next_game_states=None, infos=None,
+                       lane_ids=None, history_snapshots=None):
         """
         Store multiple experiences efficiently with batched state processing.
         Uses N-step returns if enabled.
@@ -686,31 +687,40 @@ class RainbowAgent:
             game_states: List of GameState objects (for PBS lookup)
             next_game_states: List of next GameState objects
             infos: List of info dicts from environment (contains revealed_in_step for battle detection)
+            lane_ids: Lane of each transition; selects that lane's n-step buffer, episode buffer and
+                AAREN history (default 0..n-1, i.e. one transition per lane in lane order)
+            history_snapshots: AAREN snapshot taken when each state was acted on (default: the
+                lane's current history)
         """
         if len(states) == 0:
             return
+        if lane_ids is None:
+            lane_ids = list(range(len(states)))
             
         # Fast vectorized feature extraction
         state_tensors = self.get_batch_board_only_representation(states)
         next_state_tensors = self.get_batch_board_only_representation(next_states)
         
+        given_snapshots = history_snapshots
         history_snapshots = []
         next_history_snapshots = []
-        
+
         for i in range(len(states)):
             # Only snapshot active envs (snapshots are now just tensor copies — fast)
-            if active_mask[i]:
-                if self.history_instances and i < len(self.history_instances):
-                    snap = self.history_instances[i].get_history_snapshot()
-                elif self.history:
-                    snap = self.history.get_history_snapshot()
-                else:
-                    snap = None
+            lane = lane_ids[i]
+            if not active_mask[i]:
+                snap = None
+            elif given_snapshots is not None:
+                snap = given_snapshots[i]
+            elif self.history_instances and lane < len(self.history_instances):
+                snap = self.history_instances[lane].get_history_snapshot()
+            elif self.history:
+                snap = self.history.get_history_snapshot()
             else:
                 snap = None
-            
+
             history_snapshots.append(snap)
-            next_history_snapshots.append(snap)  # Same snapshot (update happens after remember)
+            next_history_snapshots.append(snap)  # next-state AAREN channels are zero-padded at replay
         
         # Add to memory for active environments only
         for i in range(len(states)):
@@ -731,19 +741,21 @@ class RainbowAgent:
                 revealed = infos[i].get('revealed_in_step', [])
                 is_battle = len(revealed) > 0  # Any piece revealed = battle occurred
             
+            lane = lane_ids[i]
+
             # Episode buffer: shadow-store every raw transition
             if self.episode_replay_enabled and self.episode_memory is not None:
                 self.episode_memory.add(
-                    i, state_tensors[i], action, reward, next_state_tensors[i], dones[i],
+                    lane, state_tensors[i], action, reward, next_state_tensors[i], dones[i],
                     history_snapshot=history_snapshots[i],
                     next_history_snapshot=next_history_snapshots[i]
                 )
             
             # N-Step returns processing
-            if self.n_step_buffers is not None and i < len(self.n_step_buffers):
+            if self.n_step_buffers is not None and lane < len(self.n_step_buffers):
                 # Buffers expect the action as it was taken (tuple or index)
                 # If N-step gives us a result, it returns the FIRST action in the sequence
-                n_step_result = self.n_step_buffers[i].add(
+                n_step_result = self.n_step_buffers[lane].add(
                     state_tensors[i], action, reward, next_state_tensors[i], dones[i],
                     history_snapshot=history_snapshots[i],
                     next_history_snapshot=next_history_snapshots[i]
@@ -759,13 +771,13 @@ class RainbowAgent:
                 
                 # Flush remaining if episode done
                 if dones[i]:
-                    remaining = self.n_step_buffers[i].flush()
+                    remaining = self.n_step_buffers[lane].flush()
                     for result in remaining:
                         n_state, n_action, n_reward, n_next_state, n_done, n_hist, n_next_hist = result
                         self._add_experience(n_state, n_action, n_reward, n_next_state, n_done,
                                              is_battle=is_battle, history_snapshot=n_hist,
                                              next_history_snapshot=n_next_hist)
-                    self.n_step_buffers[i].reset()
+                    self.n_step_buffers[lane].reset()
             else:
                 # Standard 1-step: add directly using central helper
                 self._add_experience(state_tensors[i], action, reward, next_state_tensors[i], dones[i],
@@ -777,7 +789,7 @@ class RainbowAgent:
                 # Outcome: sign of terminal reward (+1 win, -1 loss, 0 draw)
                 outcome = 1.0 if reward > 0.5 else (-1.0 if reward < -0.5 else 0.0)
                 total_reward = reward  # terminal reward as proxy
-                self.episode_memory.end_episode(i, outcome, total_reward)
+                self.episode_memory.end_episode(lane, outcome, total_reward)
 
     def act(self, state, valid_moves: List[Tuple[Tuple[int, int], Tuple[int, int]]], game_state=None, temperature: float = 0.0):
         """
@@ -876,23 +888,27 @@ class RainbowAgent:
             
         return best_move
 
-    def get_batch_state_representation(self, states, game_states=None, full_observability=False):
+    def get_batch_state_representation(self, states, game_states=None, full_observability=False, env_indices=None):
         """
         Convert batch of states to tensor, integrating PBS beliefs if available.
-        
+
         Args:
             states: List of game board states
             game_states: List of GameState objects (for PBS lookup)
             full_observability: Controls board visibility (does NOT bypass AAREN)
+            env_indices: Lane id of each state (selects that lane's AAREN history); default 0..n-1
         """
+        if env_indices is None:
+            env_indices = list(range(len(states)))
         # Convert states to tensors
         state_tensors = []
         for i, state in enumerate(states):
             # Always use AAREN embeddings regardless of observability mode
             # AAREN is never bypassed — it co-evolves with the DQN from Phase 1
             pbs_instance = None
-            if self.pbs_instances and game_states and i < len(game_states) and game_states[i]:
-                pbs_instance = self.pbs_instances[i]
+            lane = env_indices[i]
+            if self.pbs_instances and game_states and i < len(game_states) and game_states[i] and lane < len(self.pbs_instances):
+                pbs_instance = self.pbs_instances[lane]
             elif self.pbs and game_states and i < len(game_states) and game_states[i]:
                 # Fallback to single PBS instance if pbs_instances list not used
                 pbs_instance = self.pbs
@@ -942,7 +958,8 @@ class RainbowAgent:
                          for _ in range(batch_size)]
         
         # 1. Get batch state representation and cache it for remember_batch
-        state_tensor = self.get_batch_state_representation(states, game_states, full_observability=full_observability)
+        state_tensor = self.get_batch_state_representation(states, game_states, full_observability=full_observability,
+                                                           env_indices=env_indices)
         self._cached_state_tensor = state_tensor  # Cache for reuse in remember_batch
         
         # 2. Uncertainty maps removed - HistoryAggregator uses AAREN embeddings directly
@@ -1091,24 +1108,28 @@ class RainbowAgent:
         
         return actions
 
-    def update_history_batch(self, actions: List[Optional[Tuple[Tuple[int, int], Tuple[int, int]]]], 
-                        game_states: List, acting_player: int):
+    def update_history_batch(self, actions: List[Optional[Tuple[Tuple[int, int], Tuple[int, int]]]],
+                        game_states: List, acting_player: int, lane_ids: Optional[List[int]] = None):
         """
         Update history aggregator for a batch of actions from the opponent.
         Uses HistoryAggregator's update() method to track action history per position.
+        lane_ids gives the lane of each action (selects that lane's history); default 0..n-1.
         """
         if not self.history:
             return
-        
+        if lane_ids is None:
+            lane_ids = list(range(len(actions)))
+
         # Process each action
         for i, action in enumerate(actions):
             if action is None:
                 continue
-            
+
             # Get history instance for this environment
             history_instance = None
-            if self.history_instances and i < len(self.history_instances):
-                history_instance = self.history_instances[i]
+            lane = lane_ids[i]
+            if self.history_instances and lane < len(self.history_instances):
+                history_instance = self.history_instances[lane]
             else:
                 history_instance = self.history
                 

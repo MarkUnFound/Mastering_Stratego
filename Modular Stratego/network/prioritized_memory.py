@@ -358,11 +358,11 @@ class NStepBuffer:
         self.buffer.append((state, action, reward, next_state, done,
                             history_snapshot, next_history_snapshot))
         
-        # Check if episode ended
+        # Episode ended: return the oldest n-step transition now; the shorter (truncated, terminal)
+        # ones starting at the later steps stay in the buffer for flush()
         if done:
-            # Flush all remaining transitions with truncated n-step returns
             result = self._compute_nstep()
-            self.buffer.clear()
+            self.buffer.popleft()
             return result
         
         # Only return when we have n steps

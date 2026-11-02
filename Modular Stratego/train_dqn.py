@@ -53,7 +53,7 @@ from network import (
     RainbowAgent, create_unified_reward_shaper, StrategoRewardConfig,
     RandomAgent, GreedyAgent, OpponentPool, RandomSetupAgent,
     get_random_exploiter, RusherAgent, TurtleAgent, FlankingAgent,
-    LaneManager, MetricsTracker, Checkpointer, get_random_starting_player
+    LaneManager, MetricsTracker, Checkpointer, get_random_starting_player, TurnTracker, outcome_reward
 )
 from settings import *
 from utils import save_training_history, load_training_history
@@ -255,11 +255,15 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
     # Track losses per episode for proper plotting
     episode_losses = []  # Accumulates losses between completed episodes
     
-    # P1 Pending Transitions (for training on opponent moves)
-    lane_pending_transitions = [None] * num_envs
-    
-    # P2 Pending Transitions (for training on opponent moves)
-    lane_pending_transitions_p2 = [None] * num_envs
+    # Open moves per lane and side: a side's transition ends at its own view after the opponent's reply
+    turn_tracker = TurnTracker(num_envs)
+
+    def history_snapshot(agent, lane):
+        """AAREN history of `agent` in `lane` right now (stored with the state it is about to act on)."""
+        instances = getattr(agent, 'history_instances', None)
+        if instances and lane < len(instances):
+            return instances[lane].get_history_snapshot()
+        return None
     
     # Unified reward shapers per lane
     lane_dist_rewards = [create_unified_reward_shaper(player_id=1, config=master_reward_config) for _ in range(num_envs)]
@@ -469,39 +473,26 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
         return opponent_type, opponent_uses_history, current_opponent
     
     # Initial reset for all lanes
-    # print(f"Initializing {num_envs} lanes...") # Duplicate print
     initial_placements_p1 = []
     initial_placements_p2 = []
+    initial_starting_players = []
     for i in range(num_envs):
         reset_data = reset_lane(i)
         initial_placements_p1.append(reset_data['p1_placement'])
         initial_placements_p2.append(reset_data['p2_placement'])
-        
-        # Select opponent for each lane (Now comes from reset_lane)
+        initial_starting_players.append(reset_data['starting_player'])
         lane_opponent_types[i] = reset_data['opp_type']
         lane_opponent_uses_history[i] = reset_data['opp_uses_history']
         lane_current_opponents[i] = reset_data['opp']
-    
-    # Reset all environments
-    game_states, _, _, _, valid_moves = parallel_env.reset(initial_placements_p1, initial_placements_p2)
-    # Track starting players for initial setup
-    initial_starting_players = []
-    for i in range(num_envs):
-        reset_data = reset_lane(i)
-        initial_starting_players.append(reset_data.get('starting_player', 1))
-        initial_placements_p1[i] = reset_data['p1_placement']
-        initial_placements_p2[i] = reset_data['p2_placement']
-        lane_opponent_types[i] = reset_data['opp_type']
-        lane_opponent_uses_history[i] = reset_data['opp_uses_history']
-        lane_current_opponents[i] = reset_data['opp']
-    
-    # Reset environments with placements
-    game_states, _, _, _, valid_moves = parallel_env.reset(initial_placements_p1, initial_placements_p2)
+
+    # Reset environments with placements and starting players
+    game_states, _, _, _, valid_moves = parallel_env.reset(initial_placements_p1, initial_placements_p2,
+                                                           starting_players=initial_starting_players)
     for i in range(num_envs):
         lane_game_states[i] = game_states[i]
         lane_valid_moves[i] = valid_moves[i]
-        lane_current_player[i] = initial_starting_players[i]  # Random starting player
-    
+        lane_current_player[i] = game_states[i].current_player  # the env decides whose turn it is
+
     # Loss tracking arrays
     lane_episode_loss_sum_p1 = np.zeros(num_envs)
     lane_episode_loss_count_p1 = np.zeros(num_envs, dtype=int)
@@ -614,121 +605,39 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
             # --- PROCESS RESULTS PER LANE ---
             reset_commands = {}
             
-            batch_states = []
-            batch_actions = []
-            batch_rewards = []
-            batch_next_states = []
-            batch_dones = []
-            batch_game_states = []
-            batch_next_game_states = []
-            batch_infos = []
-            batch_active_mask = []
-
-            batch_states_p2 = []
-            batch_actions_p2 = []
-            batch_rewards_p2 = []
-            batch_next_states_p2 = []
-            batch_dones_p2 = []
-            batch_active_mask_p2 = []
-            batch_game_states_p2 = []
-            batch_next_game_states_p2 = []
-            batch_infos_p2 = []
+            # Completed (transition, reward) pairs per side, stored after the lane loop
+            completed_transitions = {1: [], -1: []}
 
             for i in range(num_envs):
                 lane_step_counts[i] += 1
                 current_player = lane_current_player[i]
                 
                 tr = time.perf_counter()
-                if current_player == 1:
-                    done_bool = dones[i].item() if hasattr(dones[i], 'item') else dones[i]
-                    reward = lane_dist_rewards[i](
-                        previous_state=lane_game_states[i], action=actions[i],
-                        current_state=next_states[i], done=done_bool,
-                        winner=infos[i].get('winner'), info=infos[i]
-                    )
-                    lane_episode_rewards_p1[i] += reward
-                    
-                    if done_bool:
-                        batch_states.append(lane_game_states[i].board)
-                        batch_actions.append(actions[i])
-                        batch_rewards.append(reward)
-                        batch_next_states.append(next_states[i].board)
-                        batch_dones.append(True)
-                        batch_active_mask.append(True)
-                        batch_game_states.append(lane_game_states[i])
-                        batch_next_game_states.append(next_states[i])
-                        batch_infos.append(infos[i])
-                        lane_pending_transitions[i] = None
+                done_bool = bool(dones[i])
+                acting_agent = agent1 if current_player == 1 else lane_current_opponents[i]
+                for t in turn_tracker.record(i, current_player, lane_game_states[i], actions[i], next_states[i],
+                                             done_bool, infos[i], snapshot=history_snapshot(acting_agent, i)):
+                    if t['done']:
+                        reward = outcome_reward(t['winner'], t['player'])  # +1 / -1 / 0, draws included
                     else:
-                        lane_pending_transitions[i] = {
-                            'state': lane_game_states[i].board, 'action': actions[i],
-                            'reward': reward, 'game_state': lane_game_states[i]
-                        }
-                else:
-                    done_bool = dones[i].item() if hasattr(dones[i], 'item') else dones[i]
-                    p2_reward = lane_p2_shapers[i](
-                        previous_state=lane_game_states[i], action=actions[i],
-                        current_state=next_states[i], done=done_bool,
-                        winner=infos[i].get('winner'), info=infos[i]
-                    )
-                    lane_episode_rewards_p2[i] += p2_reward 
-                    
-                    if lane_pending_transitions[i]:
-                        pending = lane_pending_transitions[i]
-                        done_bool = dones[i].item() if hasattr(dones[i], 'item') else dones[i]
-                        batch_states.append(pending['state'])
-                        batch_actions.append(pending['action'])
-                        batch_rewards.append(pending['reward'])
-                        batch_next_states.append(next_states[i].board)
-                        batch_dones.append(done_bool)
-                        batch_active_mask.append(True)
-                        batch_game_states.append(pending['game_state'])
-                        batch_next_game_states.append(next_states[i])
-                        batch_infos.append(infos[i])
-                        lane_pending_transitions[i] = None
-                    
-                    if done_bool:
-                        if lane_current_opponents[i] is agent2:
-                            batch_states_p2.append(lane_game_states[i].board)
-                            batch_actions_p2.append(actions[i])
-                            batch_rewards_p2.append(p2_reward)
-                            batch_next_states_p2.append(next_states[i].board)
-                            batch_dones_p2.append(True)
-                            batch_active_mask_p2.append(True)
-                            batch_game_states_p2.append(lane_game_states[i])
-                            batch_next_game_states_p2.append(next_states[i])
-                            batch_infos_p2.append(infos[i])
-                        lane_pending_transitions_p2[i] = None
+                        shaper = lane_dist_rewards[i] if t['player'] == 1 else lane_p2_shapers[i]
+                        reward = shaper(previous_state=t['state'], action=t['action'], current_state=t['next_state'],
+                                        done=False, winner=None, info=t['info'])
+                    if t['player'] == 1:
+                        lane_episode_rewards_p1[i] += reward
+                        completed_transitions[1].append((t, reward))
                     else:
+                        lane_episode_rewards_p2[i] += reward
                         if lane_current_opponents[i] is agent2:
-                            lane_pending_transitions_p2[i] = {
-                                'state': lane_game_states[i].board, 'action': actions[i],
-                                'reward': p2_reward, 'game_state': lane_game_states[i]
-                            }
-                
-                if current_player == 1 and lane_pending_transitions_p2[i]:
-                    pending_p2 = lane_pending_transitions_p2[i]
-                    done_bool = dones[i].item() if hasattr(dones[i], 'item') else dones[i]
-                    if lane_current_opponents[i] is agent2:
-                        batch_states_p2.append(pending_p2['state'])
-                        batch_actions_p2.append(pending_p2['action'])
-                        batch_rewards_p2.append(pending_p2['reward'])
-                        batch_next_states_p2.append(next_states[i].board)
-                        batch_dones_p2.append(done_bool)
-                        batch_active_mask_p2.append(True)
-                        batch_game_states_p2.append(pending_p2['game_state'])
-                        batch_next_game_states_p2.append(next_states[i])
-                        batch_infos_p2.append(infos[i])
-                    lane_pending_transitions_p2[i] = None
+                            completed_transitions[-1].append((t, reward))
                 profiling["reward"] += time.perf_counter() - tr
                 
                 ta = time.perf_counter()
-                done_bool = dones[i].item() if hasattr(dones[i], 'item') else dones[i]
                 if not done_bool:
                     if current_player == 1 and lane_opponent_uses_history[i]:
-                        agent2.update_history_batch([actions[i]], [lane_game_states[i]], acting_player=1)
+                        agent2.update_history_batch([actions[i]], [lane_game_states[i]], acting_player=1, lane_ids=[i])
                     elif current_player == -1 and not use_full_obs:
-                        agent1.update_history_batch([actions[i]], [lane_game_states[i]], acting_player=-1)
+                        agent1.update_history_batch([actions[i]], [lane_game_states[i]], acting_player=-1, lane_ids=[i])
                 
                 if infos[i].get('revealed_in_step'):
                     from training_config import AAREN_USE_REVEAL_DATA
@@ -819,7 +728,8 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                     
                     to_reset = time.perf_counter()
                     reset_data = reset_lane(i)
-                    reset_commands[i] = {'p1_placement': reset_data['p1_placement'], 'p2_placement': reset_data['p2_placement']}
+                    reset_commands[i] = {'p1_placement': reset_data['p1_placement'], 'p2_placement': reset_data['p2_placement'],
+                                         'starting_player': reset_data['starting_player']}
                     lane_opponent_types[i] = reset_data['opp_type']
                     lane_opponent_uses_history[i] = reset_data['opp_uses_history']
                     lane_current_opponents[i] = reset_data['opp']
@@ -829,11 +739,12 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                     lane_episode_loss_sum_p1[i] = 0.0
                     lane_episode_loss_count_p1[i] = 0
                     lane_step_counts[i] = 0
-                    lane_current_player[i] = reset_data.get('starting_player', 1)
                     lane_dist_rewards[i].reset()
                     lane_p2_shapers[i].reset()
-                    lane_pending_transitions[i] = None
-                    lane_pending_transitions_p2[i] = None
+                    turn_tracker.reset(i)
+                    for agent in (agent1, agent2):  # nothing from this game may leak into the next one's n-step returns
+                        if getattr(agent, 'n_step_buffers', None) and i < len(agent.n_step_buffers):
+                            agent.n_step_buffers[i].reset()
                     
                     if agent1.history_instances and i < len(agent1.history_instances): agent1.history_instances[i].reset()
                     if lane_opponent_uses_history[i] and agent2.history_instances and i < len(agent2.history_instances): agent2.history_instances[i].reset()
@@ -841,12 +752,19 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                     if hasattr(agent1, 'episode_replay_enabled') and agent1.episode_replay_enabled and agent1.episode_memory is not None: agent1.episode_memory.start_episode(i)
                     if hasattr(agent2, 'episode_replay_enabled') and agent2.episode_replay_enabled and agent2.episode_memory is not None: agent2.episode_memory.start_episode(i)
                 else:
-                    lane_current_player[i] *= -1
+                    lane_current_player[i] = next_states[i].current_player
                     lane_game_states[i] = next_states[i]
                     lane_valid_moves[i] = next_valid_moves[i]
             
-            if batch_states: agent1.remember_batch(batch_states, batch_actions, batch_rewards, batch_next_states, batch_dones, batch_active_mask, batch_game_states, batch_next_game_states, infos=batch_infos)
-            if batch_states_p2: agent2.remember_batch(batch_states_p2, batch_actions_p2, batch_rewards_p2, batch_next_states_p2, batch_dones_p2, batch_active_mask_p2, batch_game_states_p2, batch_next_game_states_p2, infos=batch_infos_p2)
+            for side, learner in ((1, agent1), (-1, agent2)):
+                batch = completed_transitions[side]
+                if batch:
+                    learner.remember_batch(
+                        [t['state'].board for t, _ in batch], [t['action'] for t, _ in batch], [r for _, r in batch],
+                        [t['next_state'].board for t, _ in batch], [t['done'] for t, _ in batch], [True] * len(batch),
+                        [t['state'] for t, _ in batch], [t['next_state'] for t, _ in batch],
+                        infos=[t['info'] for t, _ in batch], lane_ids=[t['lane'] for t, _ in batch],
+                        history_snapshots=[t['snapshot'] for t, _ in batch])
             
             if reset_commands:
                 for lane_i, placements in reset_commands.items(): parallel_env.remotes[lane_i].send(('reset', placements))
@@ -855,7 +773,7 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                     new_state, _, _, _, new_valid_moves = result
                     lane_game_states[lane_i] = new_state
                     lane_valid_moves[lane_i] = new_valid_moves
-                    lane_current_player[lane_i] = 1
+                    lane_current_player[lane_i] = new_state.current_player
             
             t3 = time.perf_counter()
             if global_step - last_replay_step >= REPLAY_UPDATE_INTERVAL:

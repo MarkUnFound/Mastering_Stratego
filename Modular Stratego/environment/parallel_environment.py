@@ -25,7 +25,8 @@ def worker(remote, parent_remote, env_idx, device):
                     placements = data
                     p1_placement = placements.get('p1_placement')
                     p2_placement = placements.get('p2_placement')
-                    state = env.reset(p1_placement=p1_placement, p2_placement=p2_placement)
+                    state = env.reset(p1_placement=p1_placement, p2_placement=p2_placement,
+                                      starting_player=placements.get('starting_player', 1))
                     valid_moves = env.get_valid_moves()
                     # Return format matching step: (state, reward, done, info, valid_moves)
                     remote.send((state, 0.0, False, {}, valid_moves))
@@ -160,18 +161,22 @@ class ParallelStrategoEnvironment:
         
         return next_states, rewards_tensor, dones_tensor, infos, valid_moves
 
-    def reset(self, p1_placements=None, p2_placements=None):
+    def reset(self, p1_placements=None, p2_placements=None, starting_players=None):
         """
         Reset all environments.
         
         Args:
             p1_placements: List of placements for P1 (optional)
             p2_placements: List of placements for P2 (optional)
+            starting_players: List of 1/-1, who moves first in each env (default: P1)
         """
+        def command(i):
+            return {'p1_placement': p1_placements[i] if p1_placements else None,
+                    'p2_placement': p2_placements[i] if p2_placements else None,
+                    'starting_player': starting_players[i] if starting_players else 1}
+
         for i, remote in enumerate(self.remotes):
-            p1 = p1_placements[i] if p1_placements else None
-            p2 = p2_placements[i] if p2_placements else None
-            remote.send(('reset', {'p1_placement': p1, 'p2_placement': p2}))
+            remote.send(('reset', command(i)))
             
         results = []
         for i, remote in enumerate(self.remotes):
@@ -183,9 +188,7 @@ class ParallelStrategoEnvironment:
                 print(f"   Restarting worker...")
                 self._restart_worker(i)
                 # Send reset to new worker
-                p1 = p1_placements[i] if p1_placements else None
-                p2 = p2_placements[i] if p2_placements else None
-                self.remotes[i].send(('reset', {'p1_placement': p1, 'p2_placement': p2}))
+                self.remotes[i].send(('reset', command(i)))
                 result = self.remotes[i].recv()
                 results.append(result)
 

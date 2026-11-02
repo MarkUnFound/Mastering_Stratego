@@ -73,10 +73,12 @@ class StrategoEnvironment:
         self.reset()
 
     def reset(self, p1_placement: Optional[List[Tuple[PieceType, Tuple[int, int]]]] = None,
-              p2_placement: Optional[List[Tuple[PieceType, Tuple[int, int]]]] = None) -> GameState:
-
+              p2_placement: Optional[List[Tuple[PieceType, Tuple[int, int]]]] = None,
+              starting_player: int = 1) -> GameState:
+        """New game. starting_player (1 or -1) moves first."""
+        assert starting_player in (1, -1), starting_player
         self.board.reset()
-        self.current_player = 1
+        self.current_player = starting_player
         self.game_over = False
         self.winner = None
         self.win_type = None  # Reset win type tracking
