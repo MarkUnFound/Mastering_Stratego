@@ -16,7 +16,10 @@ import numpy as np
 import warnings
 warnings.filterwarnings('ignore')
 
-BASE = r"c:\Users\Mark Lawrence Quibot\repo\Research"
+# Folder holding the History/ runs. Defaults to the repository root; override with
+# --base or the MARQ_RESEARCH_BASE environment variable.
+BASE = os.environ.get("MARQ_RESEARCH_BASE",
+                      os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 def safe_load_json(path):
     """Load JSON, handling corrupt files."""
@@ -227,154 +230,162 @@ def analyze_curriculum(data, label):
     return r
 
 
-# Load all datasets
-print("=" * 60)
-print("Loading datasets...")
-print("=" * 60)
+def main(BASE=BASE):
+    # Load all datasets
+    print("=" * 60)
+    print("Loading datasets...")
+    print("=" * 60)
 
-# LSTM 15k
-lstm15k_hist = safe_load_json(os.path.join(BASE, "History", "LSTMDQN15k", "training_history.json"))
-lstm15k_cur = safe_load_json(os.path.join(BASE, "History", "LSTMDQN15k", "curriculum_state.json"))
+    # LSTM 15k
+    lstm15k_hist = safe_load_json(os.path.join(BASE, "History", "LSTMDQN15k", "training_history.json"))
+    lstm15k_cur = safe_load_json(os.path.join(BASE, "History", "LSTMDQN15k", "curriculum_state.json"))
 
-# LSTM 37k (corrupted)
-lstm37k_hist = safe_load_json(os.path.join(BASE, "History", "LSTMDQN37k(corruptedjson)", "training_history.json"))
-lstm37k_cur = safe_load_json(os.path.join(BASE, "History", "LSTMDQN37k(corruptedjson)", "curriculum_state.json"))
+    # LSTM 37k (corrupted)
+    lstm37k_hist = safe_load_json(os.path.join(BASE, "History", "LSTMDQN37k(corruptedjson)", "training_history.json"))
+    lstm37k_cur = safe_load_json(os.path.join(BASE, "History", "LSTMDQN37k(corruptedjson)", "curriculum_state.json"))
 
-# RDQN 9.5k
-rdqn9k_hist = safe_load_json(os.path.join(BASE, "History", "RDQNAAREN9.5k", "training_history.json"))
-rdqn9k_cur = safe_load_json(os.path.join(BASE, "History", "RDQNAAREN9.5k", "curriculum_state.json"))
+    # RDQN 9.5k
+    rdqn9k_hist = safe_load_json(os.path.join(BASE, "History", "RDQNAAREN9.5k", "training_history.json"))
+    rdqn9k_cur = safe_load_json(os.path.join(BASE, "History", "RDQNAAREN9.5k", "curriculum_state.json"))
 
-# RDQN 75k
-rdqn75k_hist = safe_load_json(os.path.join(BASE, "History", "RDQNAAREN75k", "training_history.json"))
-rdqn75k_cur = safe_load_json(os.path.join(BASE, "History", "RDQNAAREN75k", "curriculum_state.json"))
+    # RDQN 75k
+    rdqn75k_hist = safe_load_json(os.path.join(BASE, "History", "RDQNAAREN75k", "training_history.json"))
+    rdqn75k_cur = safe_load_json(os.path.join(BASE, "History", "RDQNAAREN75k", "curriculum_state.json"))
 
-# Analyze
-print("\nAnalyzing training histories...")
-lstm15k = analyze_training(lstm15k_hist, "DQN+LSTM (15k)")
-lstm37k = analyze_training(lstm37k_hist, "DQN+LSTM (37k)")
-rdqn9k = analyze_training(rdqn9k_hist, "Rainbow+AAREN (9.5k)")
-rdqn75k = analyze_training(rdqn75k_hist, "Rainbow+AAREN (75k)")
+    # Analyze
+    print("\nAnalyzing training histories...")
+    lstm15k = analyze_training(lstm15k_hist, "DQN+LSTM (15k)")
+    lstm37k = analyze_training(lstm37k_hist, "DQN+LSTM (37k)")
+    rdqn9k = analyze_training(rdqn9k_hist, "Rainbow+AAREN (9.5k)")
+    rdqn75k = analyze_training(rdqn75k_hist, "Rainbow+AAREN (75k)")
 
-print("Analyzing curricula...")
-lstm15k_c = analyze_curriculum(lstm15k_cur, "DQN+LSTM (15k)")
-lstm37k_c = analyze_curriculum(lstm37k_cur, "DQN+LSTM (37k)")
-rdqn9k_c = analyze_curriculum(rdqn9k_cur, "Rainbow+AAREN (9.5k)")
-rdqn75k_c = analyze_curriculum(rdqn75k_cur, "Rainbow+AAREN (75k)")
+    print("Analyzing curricula...")
+    lstm15k_c = analyze_curriculum(lstm15k_cur, "DQN+LSTM (15k)")
+    lstm37k_c = analyze_curriculum(lstm37k_cur, "DQN+LSTM (37k)")
+    rdqn9k_c = analyze_curriculum(rdqn9k_cur, "Rainbow+AAREN (9.5k)")
+    rdqn75k_c = analyze_curriculum(rdqn75k_cur, "Rainbow+AAREN (75k)")
 
-# Print all results
-def pp(d, indent=0):
-    for k, v in sorted(d.items()):
-        if isinstance(v, dict):
-            print(" " * indent + f"{k}:")
-            pp(v, indent + 2)
-        elif isinstance(v, list) and len(v) > 20:
-            print(" " * indent + f"{k}: [{v[0]}, ..., {v[-1]}] (len={len(v)})")
-        else:
-            print(" " * indent + f"{k}: {v}")
-
-print("\n" + "=" * 60)
-print("LSTM 15k TRAINING METRICS")
-print("=" * 60)
-pp(lstm15k)
-
-print("\n" + "=" * 60)
-print("LSTM 37k TRAINING METRICS (corrupted, chart-derived)")
-print("=" * 60)
-if 'error' in lstm37k:
-    print(f"  Error: {lstm37k.get('error', lstm37k)}")
-    print("  Known from charts:")
-    print("    Total Episodes: 37,213 (from chart header)")
-    print("    Total Steps: 22,353,317 (from chart header)")
-    print("    Avg Steps/Episode: ~600.9")
-    print("    Win Rate (Agent 1): ~22% plateau (from cumulative wins chart)")
-    print("    Win Rate (Agent 2): ~40% (from cumulative wins chart)")
-    print("    Policy Loss: ~0.005-0.015 range, rising trend in late stages")
-    print("    Phase: P4 League")
-else:
-    pp(lstm37k)
-
-print("\n" + "=" * 60)
-print("RDQN+AAREN 9.5k TRAINING METRICS")
-print("=" * 60)
-pp(rdqn9k)
-
-print("\n" + "=" * 60)
-print("RDQN+AAREN 75k TRAINING METRICS")
-print("=" * 60)
-pp(rdqn75k)
-
-print("\n" + "=" * 60)
-print("CURRICULUM SUMMARIES")
-print("=" * 60)
-
-for name, c in [("LSTM-15k", lstm15k_c), ("LSTM-37k", lstm37k_c), 
-                ("RDQN-9.5k", rdqn9k_c), ("RDQN-75k", rdqn75k_c)]:
-    print(f"\n--- {name} ---")
-    pp(c)
-
-# Comparative table
-print("\n" + "=" * 60)
-print("COMPARATIVE TABLE (for LaTeX)")
-print("=" * 60)
-
-datasets = [
-    ("DQN+LSTM 15k", lstm15k),
-    ("DQN+LSTM 37k (chart)", {
-        "total_episodes": 37213, "global_step": 22353317, 
-        "avg_steps_per_episode": 600.9, "win_rate": 22.0,
-        "draw_rate": "~50", "steps_per_win": "~2700",
-        "loss_wr_corr": 0.0507, "q_mean": "~0.35",
-        "len_mean": "~600", "aaren_acc_late": "N/A (LSTM)",
-    }),
-    ("Rainbow+AAREN 9.5k", rdqn9k),
-    ("Rainbow+AAREN 75k", rdqn75k),
-]
-
-metrics_to_compare = [
-    ("Total Episodes", "total_episodes"),
-    ("Global Steps", "global_step"),
-    ("Avg Steps/Episode", "avg_steps_per_episode"),
-    ("Win Rate (%)", "win_rate"),
-    ("Loss Rate (%)", "loss_rate"),
-    ("Draw Rate (%)", "draw_rate"),
-    ("Steps per Win", "steps_per_win"),
-    ("Episodes per Win", "episodes_per_win"),
-    ("Flag Capture %", "flag_capture_pct"),
-    ("Rolling WR (last 500)", "wr_late_500"),
-    ("WR Peak (500-window)", "wr_peak_500"),
-    ("Mean Reward", "reward_mean"),
-    ("Late Reward", "reward_late"),
-    ("Loss-WinRate Corr.", "loss_wr_corr"),
-    ("Q-Value Mean", "q_mean"),
-    ("Q-Value Late", "q_late"),
-    ("Episode Length Mean", "len_mean"),
-    ("Episode Length Late", "len_late"),
-    ("AAREN Accuracy Late %", "aaren_acc_late"),
-    ("Entropy Mean", "entropy_mean"),
-]
-
-# Print as table
-header = f"{'Metric':<30}"
-for name, _ in datasets:
-    header += f" {name:<22}"
-print(header)
-print("-" * (30 + 22 * len(datasets)))
-
-for metric_name, key in metrics_to_compare:
-    row = f"{metric_name:<30}"
-    for _, d in datasets:
-        val = d.get(key, "N/A")
-        if isinstance(val, float):
-            if abs(val) > 10000:
-                row += f" {val:>20,.0f}"
-            elif abs(val) > 100:
-                row += f" {val:>20,.1f}"
+    # Print all results
+    def pp(d, indent=0):
+        for k, v in sorted(d.items()):
+            if isinstance(v, dict):
+                print(" " * indent + f"{k}:")
+                pp(v, indent + 2)
+            elif isinstance(v, list) and len(v) > 20:
+                print(" " * indent + f"{k}: [{v[0]}, ..., {v[-1]}] (len={len(v)})")
             else:
-                row += f" {val:>20.4f}"
-        elif isinstance(val, int):
-            row += f" {val:>20,}"
-        else:
-            row += f" {str(val):>20}"
-    print(row)
+                print(" " * indent + f"{k}: {v}")
 
-print("\n\nDone! Use these metrics for LaTeX integration.")
+    print("\n" + "=" * 60)
+    print("LSTM 15k TRAINING METRICS")
+    print("=" * 60)
+    pp(lstm15k)
+
+    print("\n" + "=" * 60)
+    print("LSTM 37k TRAINING METRICS (corrupted, chart-derived)")
+    print("=" * 60)
+    if 'error' in lstm37k:
+        print(f"  Error: {lstm37k.get('error', lstm37k)}")
+        print("  Known from charts:")
+        print("    Total Episodes: 37,213 (from chart header)")
+        print("    Total Steps: 22,353,317 (from chart header)")
+        print("    Avg Steps/Episode: ~600.9")
+        print("    Win Rate (Agent 1): ~22% plateau (from cumulative wins chart)")
+        print("    Win Rate (Agent 2): ~40% (from cumulative wins chart)")
+        print("    Policy Loss: ~0.005-0.015 range, rising trend in late stages")
+        print("    Phase: P4 League")
+    else:
+        pp(lstm37k)
+
+    print("\n" + "=" * 60)
+    print("RDQN+AAREN 9.5k TRAINING METRICS")
+    print("=" * 60)
+    pp(rdqn9k)
+
+    print("\n" + "=" * 60)
+    print("RDQN+AAREN 75k TRAINING METRICS")
+    print("=" * 60)
+    pp(rdqn75k)
+
+    print("\n" + "=" * 60)
+    print("CURRICULUM SUMMARIES")
+    print("=" * 60)
+
+    for name, c in [("LSTM-15k", lstm15k_c), ("LSTM-37k", lstm37k_c), 
+                    ("RDQN-9.5k", rdqn9k_c), ("RDQN-75k", rdqn75k_c)]:
+        print(f"\n--- {name} ---")
+        pp(c)
+
+    # Comparative table
+    print("\n" + "=" * 60)
+    print("COMPARATIVE TABLE (for LaTeX)")
+    print("=" * 60)
+
+    datasets = [
+        ("DQN+LSTM 15k", lstm15k),
+        ("DQN+LSTM 37k (chart)", {
+            "total_episodes": 37213, "global_step": 22353317, 
+            "avg_steps_per_episode": 600.9, "win_rate": 22.0,
+            "draw_rate": "~50", "steps_per_win": "~2700",
+            "loss_wr_corr": 0.0507, "q_mean": "~0.35",
+            "len_mean": "~600", "aaren_acc_late": "N/A (LSTM)",
+        }),
+        ("Rainbow+AAREN 9.5k", rdqn9k),
+        ("Rainbow+AAREN 75k", rdqn75k),
+    ]
+
+    metrics_to_compare = [
+        ("Total Episodes", "total_episodes"),
+        ("Global Steps", "global_step"),
+        ("Avg Steps/Episode", "avg_steps_per_episode"),
+        ("Win Rate (%)", "win_rate"),
+        ("Loss Rate (%)", "loss_rate"),
+        ("Draw Rate (%)", "draw_rate"),
+        ("Steps per Win", "steps_per_win"),
+        ("Episodes per Win", "episodes_per_win"),
+        ("Flag Capture %", "flag_capture_pct"),
+        ("Rolling WR (last 500)", "wr_late_500"),
+        ("WR Peak (500-window)", "wr_peak_500"),
+        ("Mean Reward", "reward_mean"),
+        ("Late Reward", "reward_late"),
+        ("Loss-WinRate Corr.", "loss_wr_corr"),
+        ("Q-Value Mean", "q_mean"),
+        ("Q-Value Late", "q_late"),
+        ("Episode Length Mean", "len_mean"),
+        ("Episode Length Late", "len_late"),
+        ("AAREN Accuracy Late %", "aaren_acc_late"),
+        ("Entropy Mean", "entropy_mean"),
+    ]
+
+    # Print as table
+    header = f"{'Metric':<30}"
+    for name, _ in datasets:
+        header += f" {name:<22}"
+    print(header)
+    print("-" * (30 + 22 * len(datasets)))
+
+    for metric_name, key in metrics_to_compare:
+        row = f"{metric_name:<30}"
+        for _, d in datasets:
+            val = d.get(key, "N/A")
+            if isinstance(val, float):
+                if abs(val) > 10000:
+                    row += f" {val:>20,.0f}"
+                elif abs(val) > 100:
+                    row += f" {val:>20,.1f}"
+                else:
+                    row += f" {val:>20.4f}"
+            elif isinstance(val, int):
+                row += f" {val:>20,}"
+            else:
+                row += f" {str(val):>20}"
+        print(row)
+
+    print("\n\nDone! Use these metrics for LaTeX integration.")
+
+
+if __name__ == "__main__":
+    import argparse
+    _ap = argparse.ArgumentParser(description="Full comparison of the thesis training runs.")
+    _ap.add_argument("--base", default=BASE, help="folder containing History/")
+    main(_ap.parse_args().base)

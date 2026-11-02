@@ -11,6 +11,11 @@ BATCH_SIZE = 128         # Reduced to 256 (Safe for 6GB VRAM)
 GAMMA = 0.999           # Discount factor - EXTREMELY HIGH for 1500-step long-term flag capture planning in Phase 4
 MEMORY_SIZE = 75000      # 200k on GPU (~2.2GB) to leave room for model and batches
 LEARNING_RATE = 0.00003    # Reduced from 0.0001 for stable distributional RL
+
+# Network size (RainbowDQN backbone). Thesis runs used 64 channels, 6 residual blocks, 4 heads.
+NETWORK_CHANNELS = 64
+RESNET_BLOCKS = 6
+ATTENTION_HEADS = 4
 NUM_EPISODES = 1000000    # Effectively infinite - train until manually stopped
 SAVE_INTERVAL = 1000       # Save model/export agent every N episodes
 PLOT_INTERVAL = 500       # Save metrics plots every N episodes

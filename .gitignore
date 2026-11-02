@@ -39,3 +39,6 @@ Latex/sp.toc
 Latex/chapters/AppendixA.aux
 Latex/chapters/AppendixB.aux
 
+
+# Test caches
+.pytest_cache/

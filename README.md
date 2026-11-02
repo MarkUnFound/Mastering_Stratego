@@ -253,7 +253,7 @@ Mastering_Stratego/
 
 Install dependencies:
 ```bash
-pip install torch numpy pygame matplotlib tqdm scipy
+pip install -r requirements.txt
 ```
 
 ### 2. Play Against the Trained Agent (AI Coach GUI)
@@ -279,11 +279,17 @@ python verify_expectamax.py
 ```
 
 ### 4. Run System Diagnostics & Unit Tests
-Run preflight checks and the 5-point Spatial Self-Attention diagnostic:
+Run the pytest suite (about 2 minutes on CPU; `--runslow` adds the learning tests):
+
+```bash
+cd "Modular Stratego"
+python -m pytest -q
+```
+
+Tests marked `xfail` document known bugs that a later cleanup step fixes. The preflight checks still run on their own:
 
 ```bash
 python "Modular Stratego/test/preflight_checks.py"
-python "Modular Stratego/test/check_spatial_attention.py"
 ```
 
 ### 5. Train the MARQ Agent

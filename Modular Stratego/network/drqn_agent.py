@@ -16,6 +16,7 @@ import random
 import math
 from collections import deque, namedtuple
 from typing import List, Tuple, Optional, Dict
+from tqdm import tqdm
 from piece import PieceType
 from board import LAKE_SQUARE
 

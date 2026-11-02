@@ -29,6 +29,11 @@ import json
 from typing import List, Tuple, Optional
 from tqdm import tqdm
 
+# Windows consoles default to cp1252; never let a non-ASCII log line kill a training run
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, 'reconfigure'):
+        _stream.reconfigure(errors='replace')
+
 # Add the project root and subdirectories to sys.path to enable legacy imports
 project_root = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(project_root)
@@ -1045,6 +1050,7 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
     except Exception as e:
         print(f"\n[ERROR] Training crashed: {e}")
         traceback.print_exc()
+        raise  # a crashed run must not look like a finished one (exit code, tests)
     finally:
         # Crucial fix for multiprocessing connection crashes
         print("\n[INFO] Shutting down parallel environments...")

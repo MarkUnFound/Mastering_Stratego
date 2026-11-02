@@ -16,26 +16,20 @@ Validates the three-layer anti-stagnation reward architecture:
 
 import sys
 import os
+import pytest
 import torch
 
-# Add project directory to path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from distributional_reward import UnifiedRewardShaper, StrategoRewardConfig, OFFENSIVE_RANK_THRESHOLD
 from game_state import GameState
 
-PASS = "\033[92m[PASS]\033[0m"
-FAIL = "\033[91m[FAIL]\033[0m"
-INFO = "\033[94m[INFO]\033[0m"
-
-test_results = []
 
 def make_board(setup=None):
     """Create a 10x10 board tensor with optional setup dict {(r,c): val}"""
     board = torch.zeros(10, 10, dtype=torch.float32)
     # Set lakes
     for r, c in [(4,2),(4,3),(4,6),(4,7),(5,2),(5,3),(5,6),(5,7)]:
-        board[r, c] = 13  # LAKE
+        board[r, c] = -13  # LAKE (environment encoding)
     if setup:
         for (r, c), val in setup.items():
             board[r, c] = val
@@ -57,7 +51,6 @@ def make_game_state(board, turn_count=0):
 
 def test_terminal_rewards():
     """Test 1: Terminal rewards are within C51 range"""
-    print(f"\n{INFO} Test 1: Terminal reward scale")
     config = StrategoRewardConfig()
     shaper = UnifiedRewardShaper(player_id=1, config=config, device='cpu')
 
@@ -70,27 +63,23 @@ def test_terminal_rewards():
     r = shaper(prev_state, None, curr_state, done=True, winner=1, 
                info={'win_type': 'flag_capture', 'turn_count': 10, 'max_turns': 200})
     ok = -10 <= r <= 10
-    test_results.append(ok)
-    print(f"  {'PASS' if ok else 'FAIL'} Win (flag capture): {r:.4f} (range [-10,10])")
+    assert ok
 
     # Loss
     r = shaper(prev_state, None, curr_state, done=True, winner=-1, 
                info={'turn_count': 50, 'max_turns': 200})
     ok = -10 <= r <= 10
-    test_results.append(ok)
-    print(f"  {'PASS' if ok else 'FAIL'} Loss: {r:.4f} (expected ~-1.0)")
+    assert ok
 
     # Draw
     r = shaper(prev_state, None, curr_state, done=True, winner=0, 
                info={'turn_count': 100, 'max_turns': 200})
     ok = -10 <= r <= 10
-    test_results.append(ok)
-    print(f"  {'PASS' if ok else 'FAIL'} Draw: {r:.4f} (expected < -0.3)")
+    assert ok
 
 
 def test_terminal_game_length():
     """Test 2: Game-length modifier — quick wins > slow wins, long draws worse"""
-    print(f"\n{INFO} Test 2: Terminal game-length modifier")
     config = StrategoRewardConfig()
 
     # Quick win (turn 20 / 200)
@@ -107,8 +96,7 @@ def test_terminal_game_length():
                            info={'win_type': 'flag_capture', 'turn_count': 190, 'max_turns': 200})
 
     ok_wins = r_quick_win > r_slow_win
-    test_results.append(ok_wins)
-    print(f"  {'PASS' if ok_wins else 'FAIL'} Quick win ({r_quick_win:.4f}) > Slow win ({r_slow_win:.4f})")
+    assert ok_wins
 
     # Short draw (turn 50 / 200)
     shaper_c = UnifiedRewardShaper(player_id=1, config=config, device='cpu')
@@ -121,18 +109,15 @@ def test_terminal_game_length():
                             info={'turn_count': 200, 'max_turns': 200})
 
     ok_draws = r_short_draw > r_long_draw
-    test_results.append(ok_draws)
-    print(f"  {'PASS' if ok_draws else 'FAIL'} Short draw ({r_short_draw:.4f}) > Long draw ({r_long_draw:.4f})")
+    assert ok_draws
 
     # Slow win is still positive
     ok_positive = r_slow_win > 0
-    test_results.append(ok_positive)
-    print(f"  {'PASS' if ok_positive else 'FAIL'} Slow win ({r_slow_win:.4f}) still positive")
+    assert ok_positive
 
 
 def test_pbrs_zero_for_identical():
     """Test 3: PBRS gives near-zero SHAPING for non-progressing moves"""
-    print(f"\n{INFO} Test 3: PBRS near-zero for non-progressing states")
     config = StrategoRewardConfig()
     shaper = UnifiedRewardShaper(player_id=1, config=config, device='cpu')
     
@@ -152,14 +137,11 @@ def test_pbrs_zero_for_identical():
     # The PBRS component should be small (< 0.15 in absolute value).
     shaping_component = abs(r1)  # Remove oscillation/diversity to isolate PBRS
     ok = shaping_component < 0.15  # Small — not a farming-sized reward
-    test_results.append(ok)
-    print(f"  {'PASS' if ok else 'FAIL'} Sideways move reward: {r1:.6f} (expected small, < 0.15 abs)")
-    print(f"  {INFO}  gamma-discount effect: (0.995 - 1.0) * Phi(s) produces small negative")
+    assert ok
 
 
 def test_pbrs_positive_for_capture():
     """Test 4: PBRS gives positive reward when capturing high-value enemy piece"""
-    print(f"\n{INFO} Test 4: PBRS positive for piece capture")
     config = StrategoRewardConfig()
     shaper = UnifiedRewardShaper(player_id=1, config=config, device='cpu')
     
@@ -177,13 +159,11 @@ def test_pbrs_positive_for_capture():
                info={'revealed_in_step': [((2, 0), None)]})
     
     ok = r > 0
-    test_results.append(ok)
-    print(f"  {'PASS' if ok else 'FAIL'} Marshal capture reward: {r:.4f} (expected > 0)")
+    assert ok
 
 
 def test_pbrs_negative_for_loss():
     """Test 5: PBRS gives negative reward when losing own piece"""
-    print(f"\n{INFO} Test 5: PBRS negative for piece loss")
     config = StrategoRewardConfig()
     shaper = UnifiedRewardShaper(player_id=1, config=config, device='cpu')
     
@@ -202,13 +182,11 @@ def test_pbrs_negative_for_loss():
     # PBRS should produce negative shaping (Φ decreased — we lost material)
     # Plus the attack bonus (+0.02) might offset slightly, but net should be < 0
     ok = r < 0.05  # Allow small positive from attack bonus
-    test_results.append(ok)
-    print(f"  {'PASS' if ok else 'FAIL'} Loss reward: {r:.4f} (expected < 0 or near-zero)")
+    assert ok
 
 
 def test_oscillation_penalty():
     """Test 6: Oscillation penalty escalates for A→B→A patterns"""
-    print(f"\n{INFO} Test 6: Oscillation penalty escalation")
     config = StrategoRewardConfig()
     shaper = UnifiedRewardShaper(player_id=1, config=config, device='cpu')
     
@@ -228,26 +206,20 @@ def test_oscillation_penalty():
     
     # Later oscillations should be more punished than earlier ones
     ok = rewards[-1] < rewards[0]
-    test_results.append(ok)
-    print(f"  {'PASS' if ok else 'FAIL'} Last oscillation ({rewards[-1]:.4f}) < First move ({rewards[0]:.4f})")
-    for i, r in enumerate(rewards):
-        print(f"  {INFO}  Move {i+1}: reward = {r:.4f}")
+    assert ok
 
 
 def test_no_step_penalty():
     """Test 7: No per-step penalty exists (removed in v3)"""
-    print(f"\n{INFO} Test 7: No per-step penalty")
     config = StrategoRewardConfig()
     
     has_step_penalty = hasattr(config, 'step_penalty')
     ok = not has_step_penalty
-    test_results.append(ok)
-    print(f"  {'PASS' if ok else 'FAIL'} step_penalty field: {'EXISTS (bad!)' if has_step_penalty else 'removed'}")
+    assert ok
 
 
 def test_move_diversity():
     """Test 8: Move diversity penalty fires on repeated moves"""
-    print(f"\n{INFO} Test 8: Move diversity penalty")
     config = StrategoRewardConfig()
     shaper = UnifiedRewardShaper(player_id=1, config=config, device='cpu')
     
@@ -266,13 +238,11 @@ def test_move_diversity():
     
     # After 20 identical move pairs, diversity penalty should be active
     ok = last_reward < 0
-    test_results.append(ok)
-    print(f"  {'PASS' if ok else 'FAIL'} After 25 repetitive moves, reward = {last_reward:.4f} (expected < 0)")
+    assert ok
 
 
 def test_dead_code_removed():
     """Test 9: Legacy dead code removed"""
-    print(f"\n{INFO} Test 9: Legacy dead code removal")
     config = StrategoRewardConfig()
     shaper = UnifiedRewardShaper(player_id=1, config=config, device='cpu')
     
@@ -281,15 +251,11 @@ def test_dead_code_removed():
     has_novelty = hasattr(shaper, 'novelty_tracker')
     
     ok = not has_add_info and not has_info_weight and not has_novelty
-    test_results.append(ok)
-    print(f"  {'PASS' if not has_add_info else 'FAIL'} add_info_gain_reward: {'EXISTS (bad!)' if has_add_info else 'removed'}")
-    print(f"  {'PASS' if not has_info_weight else 'FAIL'} info_gain_weight: {'EXISTS (bad!)' if has_info_weight else 'removed'}")
-    print(f"  {'PASS' if not has_novelty else 'FAIL'} novelty_tracker: {'EXISTS (bad!)' if has_novelty else 'removed (PBRS replaces curiosity)'}")
+    assert ok
 
 
 def test_c51_support():
     """Test 10: C51 support range in agent"""
-    print(f"\n{INFO} Test 10: C51 support range [-10, +10]")
     from drqn_agent import V_MIN, V_MAX, NUM_ATOMS
     
     ok_min = V_MIN == -10.0
@@ -298,38 +264,14 @@ def test_c51_support():
     delta = (V_MAX - V_MIN) / (NUM_ATOMS - 1)
     ok_delta = abs(delta - 0.4) < 0.01
     
-    test_results.append(ok_min and ok_max)
-    print(f"  {'PASS' if ok_min else 'FAIL'} V_MIN = {V_MIN} (expected -10.0)")
-    print(f"  {'PASS' if ok_max else 'FAIL'} V_MAX = {V_MAX} (expected 10.0)")
-    print(f"  {'PASS' if ok_atoms else 'FAIL'} NUM_ATOMS = {NUM_ATOMS} (expected 51)")
-    print(f"  {'PASS' if ok_delta else 'FAIL'} delta_z = {delta:.4f} (expected 0.4)")
+    assert ok_min and ok_max
 
 
-if __name__ == "__main__":
-    print("=" * 60)
-    print("  REWARD SYSTEM v3 — PBRS ARCHITECTURE VERIFICATION")
-    print("=" * 60)
-    
-    test_terminal_rewards()
-    test_terminal_game_length()
-    test_pbrs_zero_for_identical()
-    test_pbrs_positive_for_capture()
-    test_pbrs_negative_for_loss()
-    test_oscillation_penalty()
-    test_no_step_penalty()
-    test_move_diversity()
-    test_dead_code_removed()
-    test_c51_support()
-    
-    print("\n" + "=" * 60)
-    passed = sum(test_results)
-    total = len(test_results)
-    print(f"  RESULTS: {passed}/{total} passed")
-    if passed == total:
-        print(f"  {PASS} All tests passed!")
-    else:
-        failed = [i+1 for i, r in enumerate(test_results) if not r]
-        print(f"  {FAIL} Failed tests: {failed}")
-    print("=" * 60)
-    
-    sys.exit(0 if passed == total else 1)
+@pytest.mark.xfail(strict=True, reason="Step 6: potential reads the true board, so hidden enemy ranks leak into PBRS")
+def test_potential_does_not_see_unrevealed_enemy_ranks():
+    """Phi must be a function of what the agent can see: swapping an unrevealed enemy Marshal for an
+    unrevealed enemy Scout changes nothing the agent knows, so it must not change the potential."""
+    from distributional_reward import compute_potential
+    marshal = make_board({(6, 0): 3, (2, 0): -11, (0, 5): -1})
+    scout = make_board({(6, 0): 3, (2, 0): -3, (0, 5): -1})
+    assert compute_potential(marshal, 1, set()) == compute_potential(scout, 1, set())

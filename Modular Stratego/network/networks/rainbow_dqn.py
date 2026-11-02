@@ -105,35 +105,43 @@ class RainbowDQN(nn.Module):
     - C51 Distributional Output
     """
     
-    def __init__(self, input_shape: Tuple[int, int, int] = (15, 10, 10), output_size: int = 400, num_atoms: int = 51):
+    def __init__(self, input_shape: Tuple[int, int, int] = (15, 10, 10), output_size: int = 400, num_atoms: int = 51,
+                 channels: int = None, res_blocks: int = None, attention_heads: int = None):
         super(RainbowDQN, self).__init__()
         self.input_shape = input_shape
         self.output_size = output_size
         self.num_atoms = num_atoms
         
-        # Initial Convolution
-        # Input: (15/27, 10, 10) -> Output: (64, 10, 10)
-        self.conv_in = nn.Conv2d(input_shape[0], 64, kernel_size=3, padding=1)
-        self.bn_in = nn.InstanceNorm2d(64)
+        # Backbone size comes from training_config (defaults: 64 channels, 6 blocks, 4 heads)
+        from training_config import NETWORK_CHANNELS, RESNET_BLOCKS, ATTENTION_HEADS
+        channels = channels or NETWORK_CHANNELS
+        res_blocks = RESNET_BLOCKS if res_blocks is None else res_blocks
+        attention_heads = attention_heads or ATTENTION_HEADS
+        self.channels = channels
         
-        # Residual Backbone (6 Blocks)
-        # Keeps shape (64, 10, 10) but increases depth/abstraction
-        self.res_blocks = nn.ModuleList([ResidualBlock(64) for _ in range(6)])
+        # Initial Convolution
+        # Input: (C_in, 10, 10) -> Output: (channels, 10, 10)
+        self.conv_in = nn.Conv2d(input_shape[0], channels, kernel_size=3, padding=1)
+        self.bn_in = nn.InstanceNorm2d(channels)
+        
+        # Residual Backbone
+        # Keeps shape (channels, 10, 10) but increases depth/abstraction
+        self.res_blocks = nn.ModuleList([ResidualBlock(channels) for _ in range(res_blocks)])
         
         # Spatial Self-Attention for global board reasoning
         # Applied AFTER ResBlocks to capture long-range piece relationships
-        self.spatial_attention = SpatialAttention(channels=64, num_heads=4, dropout=0.1)
+        self.spatial_attention = SpatialAttention(channels=channels, num_heads=attention_heads, dropout=0.1)
         
         # Value Head
-        # (64, 10, 10) -> (1, 10, 10) -> Flatten -> 100 -> NoisyLinear
-        self.value_conv = nn.Conv2d(64, 1, kernel_size=1)
+        # (channels, 10, 10) -> (1, 10, 10) -> Flatten -> 100 -> NoisyLinear
+        self.value_conv = nn.Conv2d(channels, 1, kernel_size=1)
         self.value_bn = nn.InstanceNorm2d(1)
         self.value_fc = NoisyLinear(10 * 10, 256)
         self.value_out = NoisyLinear(256, num_atoms)
         
         # Advantage Head
         # (64, 10, 10) -> (2, 10, 10) -> Flatten -> 200 -> NoisyLinear
-        self.advantage_conv = nn.Conv2d(64, 2, kernel_size=1)
+        self.advantage_conv = nn.Conv2d(channels, 2, kernel_size=1)
         self.advantage_bn = nn.InstanceNorm2d(2)
         self.advantage_fc = NoisyLinear(2 * 10 * 10, 512)
         self.advantage_out = NoisyLinear(512, output_size * num_atoms)

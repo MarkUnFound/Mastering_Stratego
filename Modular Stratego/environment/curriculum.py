@@ -507,7 +507,7 @@ class CurriculumManager:
         self.current_phase = TrainingPhase(self.current_phase.value + 1)
         self.phase_start_episode = self.total_episodes
         
-        print(f" CURRICULUM PHASE TRANSITION: {old_phase.name} → {self.current_phase.name}")
+        print(f" CURRICULUM PHASE TRANSITION: {old_phase.name} -> {self.current_phase.name}")
         print(f"   Total episodes: {self.total_episodes}")
         
         self.save_state()

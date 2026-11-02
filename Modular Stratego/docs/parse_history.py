@@ -1,13 +1,11 @@
+"""Show the structure of training_history.json files (standard or line-delimited JSON)."""
 import json
 import os
+import sys
 
-files = [
-    r"c:\Users\Mark Lawrence Quibot\repo\Research\History\dqn_models\training_history.json",
-    r"c:\Users\Mark Lawrence Quibot\repo\Research\Modular Stratego\dqn_models\training_history.json"
-]
 
-for f in files:
-    print(f"\n--- {os.path.dirname(f).split(os.sep)[-2]} ---")
+def describe(f):
+    print(f"\n--- {f} ---")
     try:
         with open(f, 'r', encoding='utf-8') as file:
             data = json.load(file)
@@ -26,3 +24,8 @@ for f in files:
                 print("Keys of first line:", list(lines[0].keys()))
         except Exception as e2:
             print("Error parsing line-by-line:", e2)
+
+
+if __name__ == "__main__":
+    for path in sys.argv[1:]:
+        describe(path)

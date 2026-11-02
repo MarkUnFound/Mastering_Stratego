@@ -52,23 +52,32 @@ def process_file(file_path):
     except Exception as e:
         return {"Error": str(e)}
 
-f1 = r"c:\Users\Mark Lawrence Quibot\repo\Research\History\LSTMDQN RUN\training_history.json"
-f2 = r"c:\Users\Mark Lawrence Quibot\repo\Research\Modular Stratego\dqn_models\training_history.json"
+def main(argv=None):
+    import argparse
+    ap = argparse.ArgumentParser(description="Markdown comparison table of two training_history.json files.")
+    ap.add_argument("lstm_history", help="LSTM DQN training_history.json")
+    ap.add_argument("rainbow_history", help="Rainbow DQN (AAREN) training_history.json")
+    ap.add_argument("-o", "--output", default="comparison.md")
+    args = ap.parse_args(argv)
 
-res1 = process_file(f1)
-res2 = process_file(f2)
+    res1 = process_file(args.lstm_history)
+    res2 = process_file(args.rainbow_history)
 
-output = "## Comparison: LSTM DQN vs Rainbow DQN (AAREN)\n\n"
-output += "| Metric | LSTM DQN | Rainbow DQN (AAREN) |\n"
-output += "|---|---|---|\n"
+    output = "## Comparison: LSTM DQN vs Rainbow DQN (AAREN)\n\n"
+    output += "| Metric | LSTM DQN | Rainbow DQN (AAREN) |\n"
+    output += "|---|---|---|\n"
 
-if 'Error' not in res1 and 'Error' not in res2:
-    for key in res1.keys():
-        output += f"| {key} | {res1[key]} | {res2[key]} |\n"
-else:
-    output += f"LSTM DQN Error: {res1}\n"
-    output += f"Rainbow DQN Error: {res2}\n"
+    if 'Error' not in res1 and 'Error' not in res2:
+        for key in res1.keys():
+            output += f"| {key} | {res1[key]} | {res2[key]} |\n"
+    else:
+        output += f"LSTM DQN Error: {res1}\n"
+        output += f"Rainbow DQN Error: {res2}\n"
 
-with open(r'c:\Users\Mark Lawrence Quibot\repo\Research\comparison.md', 'w') as f:
-    f.write(output)
-print("done")
+    with open(args.output, 'w') as f:
+        f.write(output)
+    print(f"wrote {args.output}")
+
+
+if __name__ == "__main__":
+    main()

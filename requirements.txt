@@ -1,0 +1,12 @@
+# Install PyTorch first with the CUDA build for your GPU (https://pytorch.org/get-started/locally/),
+# e.g. pip install torch --index-url https://download.pytorch.org/whl/cu118
+torch>=2.2
+numpy
+tqdm
+matplotlib
+scipy
+scikit-learn
+pygame
+pillow
+imageio
+pytest

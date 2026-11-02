@@ -23,30 +23,37 @@ warnings.filterwarnings('ignore')
 # ============================================================
 # Path Configuration
 # ============================================================
-BASE = r"c:\Users\Mark Lawrence Quibot\repo\Research"
+# Folder holding the History/ runs. Defaults to the repository root; override with
+# --base or the MARQ_RESEARCH_BASE environment variable.
+BASE = os.environ.get("MARQ_RESEARCH_BASE",
+                      os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-PATHS = {
-    "lstm_15k": {
-        "history": os.path.join(BASE, "History", "LSTMDQN15k", "training_history.json"),
-        "curriculum": os.path.join(BASE, "History", "LSTMDQN15k", "curriculum_state.json"),
-        "label": "Vanilla DQN + LSTM (15,302 episodes)",
-        "short": "LSTM-15k",
-    },
-    "lstm_37k": {
-        # training_history.json is corrupted — we use checkpoint file info
-        "history": os.path.join(BASE, "History", "LSTMDQN37k", "training_history.json"),
-        "curriculum": os.path.join(BASE, "History", "LSTMDQN37k", "curriculum_state.json"),
-        "model_dir": os.path.join(BASE, "History", "LSTMDQN37k"),
-        "label": "Vanilla DQN + LSTM (37,213 episodes — metadata only)",
-        "short": "LSTM-37k",
-    },
-    "rainbow": {
-        "history": os.path.join(BASE, "Modular Stratego", "dqn_models", "training_history.json"),
-        "curriculum": os.path.join(BASE, "Modular Stratego", "dqn_models", "curriculum_state.json"),
-        "label": "Rainbow DQN + AAREN (8,000 episodes — in-progress)",
-        "short": "Rainbow",
-    },
-}
+def build_paths(BASE):
+    return {
+        "lstm_15k": {
+            "history": os.path.join(BASE, "History", "LSTMDQN15k", "training_history.json"),
+            "curriculum": os.path.join(BASE, "History", "LSTMDQN15k", "curriculum_state.json"),
+            "label": "Vanilla DQN + LSTM (15,302 episodes)",
+            "short": "LSTM-15k",
+        },
+        "lstm_37k": {
+            # training_history.json is corrupted — we use checkpoint file info
+            "history": os.path.join(BASE, "History", "LSTMDQN37k", "training_history.json"),
+            "curriculum": os.path.join(BASE, "History", "LSTMDQN37k", "curriculum_state.json"),
+            "model_dir": os.path.join(BASE, "History", "LSTMDQN37k"),
+            "label": "Vanilla DQN + LSTM (37,213 episodes — metadata only)",
+            "short": "LSTM-37k",
+        },
+        "rainbow": {
+            "history": os.path.join(BASE, "Modular Stratego", "dqn_models", "training_history.json"),
+            "curriculum": os.path.join(BASE, "Modular Stratego", "dqn_models", "curriculum_state.json"),
+            "label": "Rainbow DQN + AAREN (8,000 episodes — in-progress)",
+            "short": "Rainbow",
+        },
+    }
+
+
+PATHS = build_paths(BASE)
 
 
 def safe_mean(arr, default=0.0):
@@ -860,6 +867,11 @@ def generate_report(lstm_15k_analysis, lstm_15k_curriculum,
 # MAIN
 # ============================================================
 if __name__ == "__main__":
+    import argparse
+    _ap = argparse.ArgumentParser(description="Compare LSTM-DQN and Rainbow+AAREN training histories.")
+    _ap.add_argument("--base", default=BASE, help="folder containing History/ and Modular Stratego/dqn_models")
+    BASE = _ap.parse_args().base
+    PATHS = build_paths(BASE)
     print("Parsing LSTM-15k training history...")
     lstm_15k_data = parse_training_history(PATHS['lstm_15k']['history'])
     

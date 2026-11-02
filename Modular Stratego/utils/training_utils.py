@@ -1,9 +1,6 @@
 """
 Utility functions and classes for training DQN agents.
 """
-import queue
-import threading
-import time
 import os
 import json
 import numpy as np
@@ -19,39 +16,6 @@ class NumpyEncoder(json.JSONEncoder):
         if isinstance(obj, np.ndarray):
             return obj.tolist()
         return super(NumpyEncoder, self).default(obj)
-
-class ReplayPrefetcher:
-    """Background prefetcher that samples replay batches asynchronously."""
-
-    def __init__(self, agent, max_queue_size: int = 4):
-        self.agent = agent
-        self.queue = queue.Queue(maxsize=max_queue_size)
-        self.stop_event = threading.Event()
-        self.thread = threading.Thread(target=self._worker, daemon=True)
-        self.thread.start()
-
-    def _worker(self):
-        while not self.stop_event.is_set():
-            batch = self.agent.sample_replay_batch()
-            if batch is None:
-                time.sleep(0.01)
-                continue
-            try:
-                self.queue.put(batch, timeout=0.1)
-            except queue.Full:
-                continue
-
-    def get_batch(self):
-        try:
-            return self.queue.get_nowait()
-        except queue.Empty:
-            return None
-
-    def stop(self):
-        self.stop_event.set()
-        if self.thread.is_alive():
-            self.thread.join(timeout=1.0)
-
 
 def save_counters(total_episodes_file, total_steps_file, total_episodes, total_steps):
     with open(total_episodes_file, 'w') as f:
