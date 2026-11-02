@@ -192,6 +192,8 @@ def test_self_play_stores_the_opponents_own_view(tmp_path, config_override, monk
                         next_game_states, infos, **kwargs)
 
     monkeypatch.setattr(RainbowAgent, 'remember_batch', recording)
+    from environment import CurriculumManager  # the class the trainer uses
+    monkeypatch.setattr(CurriculumManager, 'get_opponent_distribution', lambda self: {'self': 1.0})
     run_tiny_training(tmp_path, config_override, monkeypatch, episodes=4, CURRICULUM_START_PHASE=4)
     assert stored
     assert all(cur == -1 and (done or nxt == -1) for cur, nxt, done in stored)

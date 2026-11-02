@@ -834,7 +834,8 @@ class RainbowAgent:
             states: List of game board states
             game_states: List of GameState objects (for PBS lookup)
             full_observability: Controls board visibility (does NOT bypass AAREN)
-            env_indices: Lane id of each state (selects that lane's AAREN history); default 0..n-1
+            env_indices: Lane id of each state (selects that lane's AAREN history); default 0..n-1.
+                None: no history (zero AAREN planes), e.g. for evaluation games
         """
         if env_indices is None:
             env_indices = list(range(len(states)))
@@ -846,7 +847,9 @@ class RainbowAgent:
             items.append(game_state if game_state is not None else state)
             pbs_instance = None
             lane = env_indices[i]
-            if self.pbs_instances and game_state is not None and lane < len(self.pbs_instances):
+            if lane is None:
+                pass
+            elif self.pbs_instances and game_state is not None and lane < len(self.pbs_instances):
                 pbs_instance = self.pbs_instances[lane]
             elif self.pbs and game_state is not None:
                 pbs_instance = self.pbs
@@ -887,7 +890,10 @@ class RainbowAgent:
             IMITATION_RATIO = 0.0
             IMITATION_EPISODES = 0
         
-        imitation_active = IMITATION_ENABLED and self.current_episode < IMITATION_EPISODES
+        # Imitation is a training aid: only while exploring (noisy_acting), never when an agent plays
+        # greedily (evaluation, frozen snapshots, the GUI). The trainer sets current_episode; the
+        # thesis trainer never did, so imitation stayed on for the whole run and in every game.
+        imitation_active = IMITATION_ENABLED and self.noisy_acting and self.current_episode < IMITATION_EPISODES
         imitation_mask = [random.random() < IMITATION_RATIO if imitation_active else False 
                          for _ in range(batch_size)]
         

@@ -53,7 +53,8 @@ from network import (
     RainbowAgent, create_unified_reward_shaper, StrategoRewardConfig,
     RandomAgent, GreedyAgent, OpponentPool, RandomSetupAgent,
     get_random_exploiter, RusherAgent, TurtleAgent, FlankingAgent,
-    LaneManager, MetricsTracker, Checkpointer, get_random_starting_player, TurnTracker, outcome_reward
+    LaneManager, MetricsTracker, Checkpointer, get_random_starting_player, TurnTracker, outcome_reward,
+    play_evaluation_games
 )
 from settings import *
 from utils import save_training_history, load_training_history
@@ -123,10 +124,15 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
     # Initialize Agents
     print("Initializing Rainbow Agents...")
     agent1 = RainbowAgent(player_id=1, device=device, lr=LEARNING_RATE, batch_size=batch_size, num_envs=num_envs, buffer_size=memory_size)
-    # Agent2: Active learning MARL agent. Own buffer and optimizer.
-    # AAREN history will be enabled for Agent 2 when reaching Phase 4
-    agent2 = RainbowAgent(player_id=-1, device=device, lr=LEARNING_RATE, batch_size=batch_size, num_envs=num_envs, buffer_size=memory_size, use_pbs=False, inference_only=False)
-    print("[INFO] Agent 2 set to active learning (MARL). AAREN history disabled for early phases (will enable at Phase 4)")
+    # Agent2: the learning Player-2 agent ('self' opponent in Phase 4). Own buffer and optimizer,
+    # and AAREN history from the start like agent1 (the thesis trainer built it without history,
+    # so its network read zero AAREN planes until enable_history at Phase 4).
+    agent2 = RainbowAgent(player_id=-1, device=device, lr=LEARNING_RATE, batch_size=batch_size, num_envs=num_envs, buffer_size=memory_size, use_pbs=True, inference_only=False)
+    # Frozen past self ('league', 'self_500'): league checkpoints are loaded into this copy, never
+    # into agent2. (The thesis trainer loaded them into agent2, or copied agent1 over it, so the
+    # learning agent2 was overwritten while it trained.)
+    snapshot_agent = RainbowAgent(player_id=-1, device=device, batch_size=batch_size, num_envs=num_envs, use_pbs=True, inference_only=True)
+    print("[INFO] Agent 2 learns (MARL); frozen league snapshots play in a separate inference-only agent")
     
     # Initialize Setup Agents (using fast heuristic instead of neural network)
     # This saves ~2 seconds per episode while maintaining strategic setups
@@ -175,11 +181,6 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
         max_turns = PHASE_MAX_TURNS.get(curriculum.current_phase.value, DEFAULT_MAX_TURNS)
         parallel_env.set_max_turns(max_turns)
         print(f"   Max turns per game: {max_turns} (Phase {curriculum.current_phase.value})")
-
-        # Ensure Agent 2 has history enabled if starting in Phase 4+
-        if curriculum.current_phase.value >= 4 and not agent2.use_pbs:
-            agent2.enable_history(num_envs)
-            print("[INFO] Agent 2 AAREN history ENABLED immediately (starting in Phase 4+)")
     
     # MARL Optimization: Disable heuristic move filtering for Agent 2
     # During League Training, we want Agent 2 to learn pure RL policies quickly
@@ -233,6 +234,7 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
     # Load global_step from metrics if resuming, otherwise start at 0
     global_step = metrics.get('global_step', 0)
     completed_episodes = start_episode  # Count of completed individual games
+    agent1.current_episode = agent2.current_episode = completed_episodes
     if start_episode > 0 and global_step > 0:
         print(f"[INFO] Resuming from global step {global_step:,}, episode {completed_episodes}")
     
@@ -248,9 +250,9 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
     lane_episode_rewards_p1 = [0.0] * num_envs   # Cumulative reward per lane (P1)
     lane_episode_rewards_p2 = [0.0] * num_envs   # Cumulative reward per lane (P2 for visualization)
     lane_step_counts = [0] * num_envs         # Steps in current game per lane
-    lane_opponent_types = ["self"] * num_envs # Opponent type per lane
-    lane_opponent_uses_history = [True] * num_envs  # Whether opponent uses AAREN history per lane
-    lane_current_opponents = [agent2] * num_envs  # Current opponent per lane
+    lane_opponent_types = [None] * num_envs   # Opponent type per lane (set by reset_lane)
+    lane_opponent_uses_history = [False] * num_envs  # Whether the lane's opponent keeps AAREN history
+    lane_current_opponents = [None] * num_envs  # Current opponent per lane
     
     # Track losses per episode for proper plotting
     episode_losses = []  # Accumulates losses between completed episodes
@@ -334,147 +336,63 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
             'starting_player': starting_player
         }
     
-    # Cache to avoid redundant disk loads when league selects the same opponent
-    _last_league_path = [None]  # Mutable container for nonlocal access
-    
-    # Epoch-Based Opponent Cycling state
+    # Frozen snapshot: the league checkpoint it holds, and the episode it was (re)loaded at
     from training_config import OPPONENT_CYCLE_INTERVAL
-    _opponent_cycle_types = [None]  # Sorted list of opponent types for deterministic cycling
-    _opponent_cycle_epoch = [-1]    # Current epoch index (tracks when to log transitions)
-    
-    # Lagged self-play cache: stores path of last checkpoint used as "self" opponent.
-    # Updated at epoch boundaries to periodically refresh the lag target.
-    _self_lag_path = [None]         # Mutable container for nonlocal access
-    
-    def _get_epoch_opponent_type(episode_count):
-        """
-        Determine the opponent type for the current epoch block.
-        All lanes use the same type for OPPONENT_CYCLE_INTERVAL episodes.
-        """
-        if not (curriculum and CURRICULUM_ENABLED):
-            return None  # Fall back to legacy random selection
-        
-        opponent_dist = curriculum.get_opponent_distribution()
-        types = sorted(opponent_dist.keys())  # Deterministic order
-        
-        if not types:
-            return "self"
-        
-        # Cache the type list for logging
-        _opponent_cycle_types[0] = types
-        
-        # Determine epoch index and cycle through types
-        epoch_idx = episode_count // OPPONENT_CYCLE_INTERVAL
-        type_idx = epoch_idx % len(types)
-        selected_type = types[type_idx]
-        
-        # Log on epoch transitions
-        if epoch_idx != _opponent_cycle_epoch[0]:
-            _opponent_cycle_epoch[0] = epoch_idx
-            remaining = OPPONENT_CYCLE_INTERVAL - (episode_count % OPPONENT_CYCLE_INTERVAL)
-            print(f"[CYCLE] Opponent epoch {epoch_idx}: '{selected_type}' for next {remaining} episodes (types: {types})")
-            # Invalidate lagged self-play path so a fresh checkpoint is selected each epoch
-            _self_lag_path[0] = None
-        
-        return selected_type
+    _snapshot_path = [None]
+    _snapshot_loaded_at = [None]
+
+    def load_snapshot(path=None):
+        """Point the frozen snapshot at a league checkpoint (`path`, or a random one from the league),
+        reloaded at most every OPPONENT_CYCLE_INTERVAL episodes; while the league is empty it gets
+        agent1's current weights."""
+        if path is None and _snapshot_loaded_at[0] is not None \
+                and completed_episodes - _snapshot_loaded_at[0] < OPPONENT_CYCLE_INTERVAL:
+            return
+        if path is None:
+            path = league_manager.get_opponent()
+        if path:
+            if path != _snapshot_path[0]:
+                snapshot_agent.load_model(path)
+                print(f"[SNAPSHOT] Frozen opponent: {os.path.basename(path)}")
+        else:
+            snapshot_agent.q_network.load_state_dict(agent1.q_network.state_dict())
+            snapshot_agent.target_network.load_state_dict(agent1.target_network.state_dict())
+        _snapshot_path[0] = path
+        _snapshot_loaded_at[0] = completed_episodes
 
     def select_opponent_for_lane(lane_idx):
-        """Select opponent type for a lane based on curriculum or opponent pool."""
-        # nonlocal use_full_obs, agent2 # No longer needed as we return
-        # Logic remains the same, just returning selections
-
-        
-        opponent_type = "self"
-        opponent_uses_history = True
-        current_opponent = agent2
-        
+        """Opponent for a lane's next game: drawn from the curriculum's PFSP weights (or the legacy
+        opponent pool). 'self' is the learning agent2; 'league' / 'self_500' a frozen snapshot.
+        (The thesis trainer put every lane on one type per OPPONENT_CYCLE_INTERVAL block, cycling
+        through the types whatever the weights.)"""
         if curriculum and CURRICULUM_ENABLED:
-            # Epoch-based cycling: deterministic opponent type per block
-            opponent_type = _get_epoch_opponent_type(completed_episodes)
-            if opponent_type is None:
-                opponent_type = "self"  # Fallback
-            
-            # Configure opponent based on type
-            if opponent_type == "true_random":
-                current_opponent = true_random_agent
-                opponent_uses_history = False
-            elif opponent_type == "random":
-                current_opponent = random_agent
-                opponent_uses_history = False
-            elif opponent_type in ["heuristic", "frozen_heuristic"]:
-                current_opponent = heuristic_agent
-                opponent_uses_history = False
-            elif opponent_type == "smart_heuristic":
-                current_opponent = smart_heuristic_agent
-                opponent_uses_history = False
-            elif opponent_type == "greedy":
-                current_opponent = greedy_agent
-                opponent_uses_history = False
-            elif opponent_type == "league":
-                path = league_manager.get_opponent()
-                if path:
-                    # Only reload if a different checkpoint was selected
-                    if path != _last_league_path[0]:
-                        agent2.load_model(path)
-                        _last_league_path[0] = path
-                    current_opponent = agent2
-                    opponent_uses_history = True
-                else:
-                    opponent_type = "self"
-                    agent2.q_network.load_state_dict(agent1.q_network.state_dict())
-                    agent2.target_network.load_state_dict(agent1.target_network.state_dict())
-                    _last_league_path[0] = None  # Invalidate cache
-                    current_opponent = agent2
-                    opponent_uses_history = True
-            elif opponent_type == "exploiters":
-                current_opponent = get_random_exploiter(device, player_id=-1)
-                opponent_uses_history = False
-            else:  # self_500, self — use LAGGED league checkpoint to break Nash equilibrium
-                # FIX: Instead of copying live agent1 weights (which causes symmetric
-                # co-adaptation where both agents improve at the same rate and cancel
-                # each other out), load a randomly selected historical checkpoint.
-                # This gives agent1 an asymmetric, non-co-adapting target to exploit.
-                import os
-                lag_path = league_manager.get_opponent()  # Random historical checkpoint
-                if lag_path:
-                    # Only reload if epoch changed (avoid redundant disk I/O mid-epoch)
-                    if lag_path != _self_lag_path[0]:
-                        agent2.load_model(lag_path)
-                        _self_lag_path[0] = lag_path
-                        _last_league_path[0] = None  # Invalidate league cache (different file)
-                        print(f"[SELF-LAG] Loaded lagged opponent: {os.path.basename(lag_path)}")
-                else:
-                    # No league checkpoints yet — fall back to live copy (early training only)
-                    agent2.q_network.load_state_dict(agent1.q_network.state_dict())
-                    agent2.target_network.load_state_dict(agent1.target_network.state_dict())
-                    _self_lag_path[0] = None
-                    _last_league_path[0] = None  # Invalidate cache
-                current_opponent = agent2
-                opponent_uses_history = True
+            opponent_type = curriculum.sample_opponent()
         else:
-            # Legacy mode: use opponent pool
             opponent_type, opponent_data = opponent_pool.select_opponent()
             if opponent_type == "league":
-                if opponent_data != _last_league_path[0]:
-                    agent2.load_model(opponent_data)
-                    _last_league_path[0] = opponent_data
-                current_opponent = agent2
-                opponent_uses_history = True
-            elif opponent_type == "random":
-                current_opponent = random_agent
-                opponent_uses_history = False
-            elif opponent_type == "greedy":
-                current_opponent = greedy_agent
-                opponent_uses_history = False
-            else:
-                agent2.q_network.load_state_dict(agent1.q_network.state_dict())
-                agent2.target_network.load_state_dict(agent1.target_network.state_dict())
-                _last_league_path[0] = None  # Invalidate cache
-                current_opponent = agent2
-                opponent_uses_history = True
-        
+                load_snapshot(opponent_data)
+
+        if opponent_type == "true_random":
+            current_opponent = true_random_agent
+        elif opponent_type == "random":
+            current_opponent = random_agent
+        elif opponent_type in ["heuristic", "frozen_heuristic"]:
+            current_opponent = heuristic_agent
+        elif opponent_type == "smart_heuristic":
+            current_opponent = smart_heuristic_agent
+        elif opponent_type == "greedy":
+            current_opponent = greedy_agent
+        elif opponent_type == "exploiters":
+            current_opponent = get_random_exploiter(device, player_id=-1)
+        elif opponent_type == "self":
+            current_opponent = agent2
+        else:  # league, self_500: a frozen past self
+            if curriculum and CURRICULUM_ENABLED:
+                load_snapshot()
+            current_opponent = snapshot_agent
+        opponent_uses_history = bool(getattr(current_opponent, 'use_pbs', False))
         return opponent_type, opponent_uses_history, current_opponent
-    
+
     # Initial reset for all lanes
     initial_placements_p1 = []
     initial_placements_p2 = []
@@ -503,6 +421,7 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
     # Reset AAREN history for all lanes
     agent1.reset_history()
     agent2.reset_history()
+    snapshot_agent.reset_history()
     
     # Initialize episode tracking for episode replay buffer
     if hasattr(agent1, 'episode_replay_enabled') and agent1.episode_replay_enabled and agent1.episode_memory is not None:
@@ -514,6 +433,41 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
     
     # State tracking for intervals
     last_replay_step = 0
+    next_eval_episode = (completed_episodes // EVAL_INTERVAL + 1) * EVAL_INTERVAL
+
+    def make_eval_opponent(opponent_type):
+        """A fresh scripted opponent for evaluation games (its own state, not a training lane's)."""
+        if opponent_type == "random":
+            return RandomAgent()
+        if opponent_type == "true_random":
+            return TrueRandomOpponent(device=device, player_id=-1)
+        if opponent_type in ("heuristic", "frozen_heuristic"):
+            return HeuristicOpponent(device=device, player_id=-1)
+        if opponent_type == "greedy":
+            return GreedyAgent(device=device, player_id=-1, config=master_reward_config)
+        return SmartHeuristicOpponent(device=device, player_id=-1)
+
+    def run_evaluation():
+        """EVAL_GAMES greedy games against each gate opponent of the phase (smart_heuristic once no
+        gates are left, for the record); the results go to the curriculum and the metrics."""
+        from training_config import PHASE_MAX_TURNS, DEFAULT_MAX_TURNS
+        phase = curriculum.current_phase.value
+        gates = curriculum.evaluation_gates()
+        results = {}
+        t_eval = time.perf_counter()
+        for opp_type in (gates or {'smart_heuristic': None}):
+            results[opp_type] = play_evaluation_games(
+                agent1, make_eval_opponent(opp_type), EVAL_GAMES, device,
+                full_observability=curriculum.get_observability_rate(),
+                max_turns=PHASE_MAX_TURNS.get(phase, DEFAULT_MAX_TURNS))
+        curriculum.record_evaluation({k: r['win_rate'] for k, r in results.items()})
+        metrics.setdefault('eval_history', []).append(
+            {'episode': completed_episodes, 'phase': phase, 'global_step': global_step,
+             'results': results})
+        summary = ", ".join(f"{k} {r['wins']}W/{r['losses']}L/{r['draws']}D"
+                            + (f" (gate {gates[k]:.0%})" if gates else "") for k, r in results.items())
+        tqdm.write(f"[EVAL] episode {completed_episodes}, phase {phase}: {summary} "
+                   f"[{time.perf_counter() - t_eval:.0f}s]")
     
     # Progress bar - updates based on completed episodes
     pbar = tqdm(total=num_episodes, initial=completed_episodes, desc="Training Episodes", dynamic_ncols=True)
@@ -636,7 +590,7 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                 ta = time.perf_counter()
                 if not done_bool:
                     if current_player == 1 and lane_opponent_uses_history[i]:
-                        agent2.update_history_batch([actions[i]], [lane_game_states[i]], acting_player=1, lane_ids=[i])
+                        lane_current_opponents[i].update_history_batch([actions[i]], [lane_game_states[i]], acting_player=1, lane_ids=[i])
                     elif current_player == -1 and not use_full_obs:
                         agent1.update_history_batch([actions[i]], [lane_game_states[i]], acting_player=-1, lane_ids=[i])
                 
@@ -650,8 +604,9 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                     trackers = []
                     if agent1.history_instances and i < len(agent1.history_instances):
                         trackers.append(agent1.history_instances[i])
-                    if agent2.history_instances and i < len(agent2.history_instances) and lane_opponent_uses_history[i]:
-                        trackers.append(agent2.history_instances[i])
+                    opp_instances = getattr(lane_current_opponents[i], 'history_instances', None)
+                    if lane_opponent_uses_history[i] and opp_instances and i < len(opp_instances):
+                        trackers.append(opp_instances[i])
                     for tracker in trackers:
                         tracker.record_battle(actions[i], attacker_type, defender_type, acting_player=current_player,
                                               game_phase=game_phase, turn_count=lane_step_counts[i],
@@ -720,6 +675,7 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                     metrics.get('episode_end_steps', []).append(global_step)
                     
                     completed_episodes += 1
+                    agent1.current_episode = agent2.current_episode = completed_episodes  # imitation / epsilon schedules
                     pbar.update(1)
                     
                     if pbt_reporter is not None:
@@ -749,7 +705,8 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                             agent.n_step_buffers[i].reset()
                     
                     if agent1.history_instances and i < len(agent1.history_instances): agent1.history_instances[i].reset()
-                    if lane_opponent_uses_history[i] and agent2.history_instances and i < len(agent2.history_instances): agent2.history_instances[i].reset()
+                    opp_instances = getattr(lane_current_opponents[i], 'history_instances', None)  # the next game's opponent
+                    if lane_opponent_uses_history[i] and opp_instances and i < len(opp_instances): opp_instances[i].reset()
                     
                     if hasattr(agent1, 'episode_replay_enabled') and agent1.episode_replay_enabled and agent1.episode_memory is not None: agent1.episode_memory.start_episode(i)
                     if hasattr(agent2, 'episode_replay_enabled') and agent2.episode_replay_enabled and agent2.episode_memory is not None: agent2.episode_memory.start_episode(i)
@@ -818,16 +775,24 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
             # Target networks: each agent copies its online network into its target every
             # TARGET_UPDATE_INTERVAL gradient updates (RainbowAgent.replay)
 
-            # --- CHECK CURRICULUM PHASE TRANSITION ---
-            if curriculum and CURRICULUM_ENABLED and completed_episodes % 50 == 0:
+            # --- CURRICULUM: EVALUATION GATES AND PHASE CAPS ---
+            # (The thesis loop checked training win rates when completed_episodes % 50 == 0, which
+            # several lanes finishing in one step can skip past or repeat.)
+            if curriculum and CURRICULUM_ENABLED and completed_episodes >= next_eval_episode:
+                next_eval_episode = (completed_episodes // EVAL_INTERVAL + 1) * EVAL_INTERVAL
+                run_evaluation()
+                curriculum.save_state()
+            if curriculum and CURRICULUM_ENABLED and any(dones):
                 if curriculum.check_phase_transition():
                     old_phase = curriculum.current_phase
+                    reason = curriculum.last_transition_reason
                     if curriculum.advance_phase():
-                        tqdm.write(f"\n[PHASE] TRANSITION: {old_phase.name} -> {curriculum.current_phase.name}")
+                        tqdm.write(f"\n[PHASE] TRANSITION: {old_phase.name} -> {curriculum.current_phase.name} ({reason})")
+                        curriculum.save_state()
                         
-                        # Update observability
-                        use_full_obs = curriculum.should_use_full_observability()
-                        parallel_env.set_full_observability(use_full_obs)
+                        # Update observability (the rate, as at start-up; the agent keeps reading its
+                        # AAREN planes, so use_full_obs stays False)
+                        parallel_env.set_full_observability(curriculum.get_observability_rate())
                         
                         # Update max turns for new phase
                         from training_config import PHASE_MAX_TURNS, DEFAULT_MAX_TURNS
@@ -840,10 +805,11 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                             dr.set_phase(curriculum.current_phase.value)
                             p2r.set_phase(curriculum.current_phase.value)
                         
-                        # Enable Agent 2 AAREN history at Phase 4
-                        if curriculum.current_phase.value >= 4 and not agent2.use_pbs:
-                            agent2.enable_history(num_envs)
-                            tqdm.write("[INFO] Agent 2 AAREN history ENABLED for Phase 4+")
+                        # Agent2 starts self-play from agent1's weights (it has not trained before Phase 4)
+                        if curriculum.current_phase.value == 4 and old_phase.value < 4:
+                            agent2.q_network.load_state_dict(agent1.q_network.state_dict())
+                            agent2.target_network.load_state_dict(agent1.target_network.state_dict())
+                            tqdm.write("[INFO] Agent 2 initialised from Agent 1 for self-play")
             
             # --- LR SCHEDULER STEP (per fixed step interval) ---
             if agent1.scheduler and global_step % 1000 == 0:

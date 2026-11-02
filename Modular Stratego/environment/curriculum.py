@@ -11,15 +11,22 @@ Implements 5-phase curriculum with automatic phase transitions:
 
 import os
 import json
+import random
 from typing import Dict, Tuple, Optional, List, Any
 from dataclasses import dataclass, asdict
 from enum import IntEnum
 
+import training_config
 from training_config import (
     PHASE_MAX_TURNS, DEFAULT_MAX_TURNS,
     PHASE_1_WIN_THRESHOLD_RANDOM, PHASE_1_WIN_THRESHOLD_HEURISTIC,
-    PHASE_2_WIN_THRESHOLD
+    PHASE_2_WIN_THRESHOLD, PHASE_3_WIN_THRESHOLD
 )
+from battle import battle_from_values, is_enemy_value
+from piece import PieceType
+
+# Training games per opponent that PFSP looks back over
+PFSP_WINDOW = 100
 
 
 class TrainingPhase(IntEnum):
@@ -27,8 +34,26 @@ class TrainingPhase(IntEnum):
     PHYSICS_OF_WAR = 1      # Full observability, learn basics
     MEMORY_GAP = 2          # Fog of war, use memory (PBS)
     SELF_PLAY = 3           # Play against past self
-    LEAGUE_TRAINING = 4     # Diverse opponent pool
-    SCENARIO_DRILLS = 5     # Endgame specialization
+    LEAGUE_TRAINING = 4     # Diverse opponent pool (the last phase of the sequence)
+    SCENARIO_DRILLS = 5     # Endgame specialization (not part of the 1 -> 4 sequence)
+
+
+def phase_gates(phase) -> Dict[str, float]:
+    """Evaluation gates of a phase: opponent -> win rate (wins / games, draws count as non-wins)
+    the greedy agent must reach in evaluation games to advance. Empty: the phase does not end on
+    evaluation. Read from training_config when asked, so overrides take effect."""
+    tc = training_config
+    return {
+        TrainingPhase.PHYSICS_OF_WAR: {'random': tc.PHASE_1_WIN_THRESHOLD_RANDOM,
+                                       'heuristic': tc.PHASE_1_WIN_THRESHOLD_HEURISTIC},
+        TrainingPhase.MEMORY_GAP: {'smart_heuristic': tc.PHASE_2_WIN_THRESHOLD},
+        TrainingPhase.SELF_PLAY: {'smart_heuristic': tc.PHASE_3_WIN_THRESHOLD},
+    }.get(TrainingPhase(phase), {})
+
+
+def phase_episode_cap(phase) -> int:
+    """Training episodes after which a phase ends even if its gates are not met (0 = no cap)."""
+    return int(getattr(training_config, f'PHASE_{int(phase)}_MAX_EPISODES', 0) or 0)
 
 
 @dataclass
@@ -44,9 +69,10 @@ class PhaseConfig:
     max_turns: int = 0  # Max steps per episode (0 = use DEFAULT_MAX_TURNS)
 
 
-# DYNAMIC PHASE CONFIGURATIONS
-# All transitions are PERFORMANCE-BASED, not episode-count based.
-# min_episodes and max_episodes are kept for reference but NOT enforced.
+# PHASE CONFIGURATIONS
+# A phase ends when the greedy agent passes its evaluation gates (phase_gates) or after
+# PHASE_<n>_MAX_EPISODES training episodes (phase_episode_cap). min_episodes / max_episodes and
+# success_metrics below are for display only.
 PHASE_CONFIGS = {
     TrainingPhase.PHYSICS_OF_WAR: PhaseConfig(
         name="Physics of War",
@@ -55,10 +81,9 @@ PHASE_CONFIGS = {
         max_episodes=0,  # NOT ENFORCED - dynamic transition
         opponents=["random", "heuristic", "smart_heuristic"],
         reward_focus="material",
-        success_metrics={
-            # Dynamic criteria: 70% vs random, 50% vs heuristic
-            "win_rate_vs_random": 0.70,
-            "win_rate_vs_heuristic": 0.50
+        success_metrics={  # evaluation gates: see phase_gates()
+            "random": PHASE_1_WIN_THRESHOLD_RANDOM,
+            "heuristic": PHASE_1_WIN_THRESHOLD_HEURISTIC
         },
         max_turns=PHASE_MAX_TURNS.get(1, DEFAULT_MAX_TURNS),
     ),
@@ -69,10 +94,8 @@ PHASE_CONFIGS = {
         max_episodes=0,  # NOT ENFORCED
         opponents=["frozen_heuristic", "smart_heuristic"],
         reward_focus="epistemic",
-        success_metrics={
-            # Dynamic criteria: PBS accuracy + win rate
-            "pbs_accuracy": 0.70,
-            "win_rate": 0.55
+        success_metrics={  # evaluation gates: see phase_gates()
+            "smart_heuristic": PHASE_2_WIN_THRESHOLD
         },
         max_turns=PHASE_MAX_TURNS.get(2, DEFAULT_MAX_TURNS),
     ),
@@ -83,10 +106,8 @@ PHASE_CONFIGS = {
         max_episodes=0,  # NOT ENFORCED
         opponents=["self_500", "smart_heuristic"],
         reward_focus="material",
-        success_metrics={
-            # Dynamic criteria: consistently beats past self
-            "recent_win_rate_vs_self": 0.55,
-            "recent_games_required": 100
+        success_metrics={  # evaluation gates: see phase_gates()
+            "smart_heuristic": PHASE_3_WIN_THRESHOLD
         },
         max_turns=PHASE_MAX_TURNS.get(3, DEFAULT_MAX_TURNS),
     ),
@@ -135,14 +156,21 @@ class PhaseMetrics:
     games_vs_heuristic: int = 0
     recent_win_rates: List[float] = None
     # Per-opponent adaptive tracking (PFSP)
-    # Maps opponent_name -> {wins, losses, games}
-    opponent_stats: Dict[str, Dict[str, int]] = None
+    # Maps opponent_name -> {wins, losses, games, recent: last PFSP_WINDOW results (1 win, 0 not)}
+    opponent_stats: Dict[str, Dict[str, Any]] = None
+    # Latest evaluation in this phase: opponent -> win rate (wins / games)
+    last_eval: Dict[str, float] = None
+    eval_history: List[Dict[str, Any]] = None
 
     def __post_init__(self):
         if self.recent_win_rates is None:
             self.recent_win_rates = []
         if self.opponent_stats is None:
             self.opponent_stats = {}
+        if self.last_eval is None:
+            self.last_eval = {}
+        if self.eval_history is None:
+            self.eval_history = []
 
     # ------------------------------------------------------------------
     # Aggregate win-rate helpers
@@ -175,14 +203,19 @@ class PhaseMetrics:
             s['wins'] += 1
         elif winner == -1:
             s['losses'] += 1
+        recent = s.setdefault('recent', [])
+        recent.append(1 if winner == 1 else 0)
+        del recent[:-PFSP_WINDOW]
 
     def win_rate_vs(self, opponent_name: str, min_games: int = 30) -> Optional[float]:
-        """Decisive win rate vs a specific opponent; None if sample too small."""
+        """Win rate (draws count as non-wins) over the last PFSP_WINDOW games vs a specific
+        opponent; None if fewer than min_games. (The thesis rate was decisive games only, over
+        the whole phase, so an early losing streak weighed on PFSP for good.)"""
         s = self.opponent_stats.get(opponent_name)
-        if s is None or s['games'] < min_games:
+        recent = s.get('recent', []) if s else []
+        if len(recent) < min_games:
             return None
-        decisive = s['wins'] + s['losses']
-        return s['wins'] / max(1, decisive)
+        return sum(recent) / len(recent)
 
     def to_dict(self) -> Dict:
         return asdict(self)
@@ -364,9 +397,9 @@ class CurriculumManager:
 
         if self.current_phase == TrainingPhase.PHYSICS_OF_WAR:
             # --- PFSP adaptive scheduling ---
-            # Bootstrap: use aggregate win rates before per-opponent data is ready.
-            win_vs_random  = metrics.win_rate_vs_random  if metrics.games_vs_random  >= 50 else 0.0
-            win_vs_heur    = metrics.win_rate_vs_heuristic if metrics.games_vs_heuristic >= 20 else 0.0
+            # Recent training win rates (draws count as non-wins) decide the candidate pool
+            win_vs_random = metrics.win_rate_vs('random', min_games=50) or 0.0
+            win_vs_heur = metrics.win_rate_vs('heuristic', min_games=20) or 0.0
 
             # Decide the active candidate pool based on overall progress
             if win_vs_random < 0.70:
@@ -395,6 +428,28 @@ class CurriculumManager:
 
         # Default fallback (Pure MARL)
         return {"self": 1.0}
+
+    def sample_opponent(self, rng=None) -> str:
+        """Opponent type for one game, drawn with the PFSP weights. (The thesis trainer cycled
+        through the sorted types in fixed blocks, whatever the weights.)"""
+        weights = self.get_opponent_distribution()
+        types = sorted(weights)
+        return (rng or random).choices(types, weights=[weights[t] for t in types])[0]
+
+    # ------------------------------------------------------------------
+    # Evaluation-based advancement
+    # ------------------------------------------------------------------
+    def evaluation_gates(self) -> Dict[str, float]:
+        """Opponents (-> required win rate) the agent is evaluated against in this phase."""
+        return phase_gates(self.current_phase)
+
+    def record_evaluation(self, results: Dict[str, float]):
+        """Store an evaluation of the greedy agent in the current phase: opponent -> win rate."""
+        metrics = self.metrics[self.current_phase]
+        metrics.last_eval = dict(results)
+        metrics.eval_history.append({'episode': self.total_episodes,
+                                     'episodes_in_phase': metrics.episodes_in_phase,
+                                     'results': dict(results)})
     
     def update_metrics(self, episode_result: Dict):
         """
@@ -443,54 +498,28 @@ class CurriculumManager:
     
     def check_phase_transition(self) -> bool:
         """
-        Check if we should advance to the next phase.
-        
-        DYNAMIC PHASE TRANSITIONS: Based purely on performance metrics.
-        No hard min/max episode counts - agent advances when ready.
-        
-        Returns:
-            True if phase transition should occur
+        Whether to advance to the next phase: the latest evaluation in this phase passes every
+        gate of phase_gates(), or the phase has run phase_episode_cap() training episodes.
+        League Training (the last phase) does not end. The reason is in last_transition_reason.
+
+        (The thesis check used training games only, counted draws out of the win rate and
+        accumulated over the whole phase; Phase 4 was the configured start.)
         """
+        self.last_transition_reason = None
+        if self.current_phase >= TrainingPhase.LEAGUE_TRAINING:
+            return False
         metrics = self.metrics[self.current_phase]
-        
-        # Require minimum sample size for statistical reliability (not time-based)
-        MIN_GAMES_FOR_STATS = 100  # Need at least 100 games for reliable metrics
-        
-        if metrics.total_games < MIN_GAMES_FOR_STATS:
-            return False
-        
-        # Phase-specific success criteria (PURELY PERFORMANCE BASED)
-        if self.current_phase == TrainingPhase.PHYSICS_OF_WAR:
-            # Need to dominate random AND beat heuristic
-            return (metrics.win_rate_vs_random >= PHASE_1_WIN_THRESHOLD_RANDOM and 
-                    metrics.wins_vs_random >= 30 and
-                    metrics.win_rate_vs_heuristic >= PHASE_1_WIN_THRESHOLD_HEURISTIC and 
-                    metrics.wins_vs_heuristic >= 30)
-                    
-        elif self.current_phase == TrainingPhase.MEMORY_GAP:
-            # PBS accuracy is removed (PBS → AAREN migration). Transition purely
-            # on decisive win rate now that fog-of-war is active.
-            return (metrics.overall_win_rate >= PHASE_2_WIN_THRESHOLD and
-                    metrics.total_wins >= 60)
-                    
-        elif self.current_phase == TrainingPhase.SELF_PLAY:
-            # Check for consistent win rate against past self
-            if len(metrics.recent_win_rates) >= 100:
-                recent_wr = sum(metrics.recent_win_rates) / len(metrics.recent_win_rates)
-                return recent_wr >= 0.55  # Winning against past self
-            return False
-            
-        elif self.current_phase == TrainingPhase.LEAGUE_TRAINING:
-            # Main training phase - typically doesn't auto-transition
-            # Could add ELO-based criteria here
-            return False
-            
-        elif self.current_phase == TrainingPhase.SCENARIO_DRILLS:
-            # Scenario completion rate
-            return metrics.overall_win_rate >= 0.80
-        
+        gates = self.evaluation_gates()
+        if gates and all(metrics.last_eval.get(opp, -1.0) >= threshold for opp, threshold in gates.items()):
+            self.last_transition_reason = 'evaluation ' + ', '.join(
+                f'{opp} {metrics.last_eval[opp]:.0%} >= {threshold:.0%}' for opp, threshold in gates.items())
+            return True
+        cap = phase_episode_cap(self.current_phase)
+        if cap and metrics.episodes_in_phase >= cap:
+            self.last_transition_reason = f'episode cap {cap} reached'
+            return True
         return False
-    
+
     def advance_phase(self) -> bool:
         """
         Advance to the next curriculum phase.
@@ -626,20 +655,24 @@ class HeuristicOpponent:
             piece_val = board[r_from][c_from]
             target_val = board[r_to][c_to]
         
-        piece_rank = abs(piece_val)
-        target_rank = abs(target_val) if target_val != 0 else 0
-        
+        piece_rank = abs(piece_val)  # board values are PieceType values, which order the ranks
+
         # Forward movement
         if player_id == 1:
             score += (r_from - r_to) * 0.1
         else:
             score += (r_to - r_from) * 0.1
-        
-        # Attacking preference
-        if target_rank > 0:
-            if piece_rank > target_rank:
+
+        # Attacking preference, with the real battle rules (Spy takes Marshal, Miner takes Bomb,
+        # Bomb beats other attackers). The thesis code compared absolute values, so a hidden
+        # piece (HIDDEN = -20) always looked unbeatable and the special battles looked lost.
+        if is_enemy_value(target_val, player_id):
+            outcome = battle_from_values(piece_val, target_val)
+            if outcome is None:          # hidden defender: half the expected loss
+                score -= piece_rank * 0.05
+            elif outcome == 1:
                 score += 0.5
-            elif piece_rank == target_rank:
+            elif outcome == 0:
                 score += 0.1
             else:
                 score -= piece_rank * 0.1
@@ -675,20 +708,22 @@ class SmartHeuristicOpponent:
         self.player_id = player_id
         self.name = "SmartHeuristic"
         
-        # Piece value hierarchy (higher = more valuable)
+        # Piece value hierarchy (higher = more valuable), keyed by board value (PieceType value).
+        # (The thesis table was keyed by rank 0-11, so every piece got its neighbour's value:
+        # the Marshal 0, the General 100.)
         self.piece_values = {
-            10: 100,  # Marshal
-            9: 80,    # General
-            8: 50,    # Colonel
-            7: 45,    # Major
-            6: 40,    # Captain
-            5: 30,    # Lieutenant
-            4: 25,    # Sergeant
-            3: 20,    # Miner
-            2: 15,    # Scout
-            1: 200,   # Flag (must protect!)
-            11: 0,    # Bomb (no movement value)
-            0: -10,   # Spy (special tactics)
+            PieceType.MARSHAL.value: 100,
+            PieceType.GENERAL.value: 80,
+            PieceType.COLONEL.value: 50,
+            PieceType.MAJOR.value: 45,
+            PieceType.CAPTAIN.value: 40,
+            PieceType.LIEUTENANT.value: 30,
+            PieceType.SERGEANT.value: 25,
+            PieceType.MINER.value: 20,
+            PieceType.SCOUT.value: 15,
+            PieceType.FLAG.value: 200,   # Flag (must protect!)
+            PieceType.BOMB.value: 0,     # Bomb (no movement value)
+            PieceType.SPY.value: -10,    # Spy (special tactics)
         }
         
         # Track revealed enemy pieces (simple memory)
@@ -737,35 +772,41 @@ class SmartHeuristicOpponent:
             piece_val = board[r_from][c_from]
             target_val = board[r_to][c_to]
         
-        piece_rank = abs(piece_val)
-        target_rank = abs(target_val) if target_val != 0 else 0
+        piece_rank = abs(piece_val)  # board values are PieceType values
+        target_rank = abs(target_val)
         my_value = self.piece_values.get(piece_rank, 10)
-        
-        # ===== 1. COMBAT EVALUATION =====
-        if target_rank > 0:
-            target_value = self.piece_values.get(target_rank, 10)
-            
-            # Winning combat: big bonus
-            if piece_rank > target_rank:
-                score += 2.0 + (target_value / 20)  # Higher value targets worth more
-                
-            # Equal combat: slight penalty (mutual destruction)
-            elif piece_rank == target_rank:
-                score += 0.3 - (my_value / 100)  # Avoid equal trades with valuable pieces
-                
-            # Losing combat: big penalty unless we're expendable
+
+        # ===== 1. COMBAT EVALUATION (real battle rules) =====
+        if is_enemy_value(target_val, player_id):
+            outcome = battle_from_values(piece_val, target_val)
+
+            if outcome is None:
+                # Hidden defender: cheap pieces probe, valuable ones keep away
+                score += 0.5 - (my_value / 25)
             else:
-                score -= 1.5 + (my_value / 20)  # Don't sacrifice valuable pieces
-            
+                target_value = self.piece_values.get(target_rank, 10)
+
+                # Winning combat: big bonus
+                if outcome == 1:
+                    score += 2.0 + (target_value / 20)  # Higher value targets worth more
+
+                # Equal combat: slight penalty (mutual destruction)
+                elif outcome == 0:
+                    score += 0.3 - (my_value / 100)  # Avoid equal trades with valuable pieces
+
+                # Losing combat: big penalty unless we're expendable
+                else:
+                    score -= 1.5 + (my_value / 20)  # Don't sacrifice valuable pieces
+
             # Special: Spy vs Marshal
-            if piece_rank == 0 and target_rank == 10:  # Spy attacks Marshal
+            if piece_rank == PieceType.SPY.value and target_rank == PieceType.MARSHAL.value:
                 score += 5.0  # High priority kill
-            
-            # Special: Miner vs suspected Bomb location (back row enemy)
-            if piece_rank == 3:
-                if player_id == 1 and r_to >= 6:  # Enemy back row for P1
-                    score += 0.5  # Miners should probe back rows
-                elif player_id == -1 and r_to <= 3:
+
+            # Special: Miner probes the enemy's back rows (where the bombs are)
+            if piece_rank == PieceType.MINER.value:
+                if player_id == 1 and r_to <= 3:  # Enemy side for P1 (the thesis code had r_to >= 6, its own side)
+                    score += 0.5
+                elif player_id == -1 and r_to >= 6:
                     score += 0.5
         
         # ===== 2. POSITIONAL EVALUATION =====
@@ -792,7 +833,7 @@ class SmartHeuristicOpponent:
             score -= risk * (my_value / 40)
         
         # ===== 4. SCOUT TACTICS =====
-        if piece_rank == 2:  # Scout
+        if piece_rank == PieceType.SCOUT.value:
             move_distance = abs(r_to - r_from) + abs(c_to - c_from)
             if move_distance > 1:
                 # Scouts should use multi-square moves for reconnaissance
@@ -824,9 +865,8 @@ class SmartHeuristicOpponent:
         """Check how many enemy pieces are adjacent to position."""
         import torch
         
-        enemy_sign = 1 if player_id == -1 else -1
         adjacent = [(r-1, c), (r+1, c), (r, c-1), (r, c+1)]
-        
+
         count = 0
         for ar, ac in adjacent:
             if 0 <= ar < 10 and 0 <= ac < 10:
@@ -834,9 +874,9 @@ class SmartHeuristicOpponent:
                     val = board[ar, ac].item()
                 else:
                     val = board[ar][ac]
-                
-                # Check if it's an enemy piece
-                if (enemy_sign > 0 and val > 0) or (enemy_sign < 0 and val < 0):
+
+                # Enemy piece (hidden or not); the thesis sign test also counted lakes for P1
+                if is_enemy_value(val, player_id):
                     count += 1
         
         return count

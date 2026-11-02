@@ -171,6 +171,8 @@ Training is structured into a 5-phase progressive curriculum gated by strict win
 
 Under **Prioritized Fictitious Self-Play (PFSP)**, opponent matchmaking is dynamically weighted: opponents that defeat the agent are sampled more frequently, while mastered opponents maintain a 5% floor to guard against catastrophic forgetting.
 
+> **Current code (cleanup branch):** training starts in Phase 1 (the thesis config started in Phase 4, League Training). A phase ends when the greedy agent passes its evaluation gates — `EVAL_GAMES` games against each gate opponent every `EVAL_INTERVAL` episodes, draws counted as non-wins (`phase_gates` in `Modular Stratego/environment/curriculum.py`) — or after `PHASE_n_MAX_EPISODES` training episodes. Each game's opponent is drawn from the PFSP weights over the last 100 games per opponent (the thesis trainer cycled through the opponent types in fixed blocks). The scripted opponents use the real battle rules on the board's piece values. The learning Player-2 agent is no longer overwritten by league snapshots: frozen past selves play in a separate inference-only agent.
+
 ---
 
 ### 5. Test-Time Expectamax Search ("The Final Move on the Piece")

@@ -12,6 +12,7 @@ import random
 from typing import List, Tuple, Optional
 from piece import PieceType, PIECE_RANKS
 from distributional_reward import StrategoRewardConfig
+from battle import battle_from_values, is_enemy_value
 
 
 class RandomAgent:
@@ -65,9 +66,9 @@ class GreedyAgent:
             piece_val = board[r_from][c_from]
             target_val = board[r_to][c_to]
         
-        piece_rank = abs(piece_val)
-        target_rank = abs(target_val) if target_val != 0 else 0
-        
+        piece_rank = abs(piece_val)  # board values are PieceType values
+        target_rank = abs(target_val)
+
         # Reward forward movement using territory_advance
         if player_id == 1:
             if r_to < r_from:
@@ -77,18 +78,20 @@ class GreedyAgent:
                 score += self.config.territory_advance
         
         # Reward attacking using capture_scale
-        if target_rank > 0:
-            # Scale reward by piece rank similar to UnifiedRewardShaper
-            if piece_rank > target_rank or (piece_rank == 1 and target_rank == 10) or (piece_rank == 3 and target_rank == 11):
+        if is_enemy_value(target_val, player_id):
+            # Real battle rules; the thesis code tested values 1/10 and 3/11 for the special wins
+            # (Flag vs General, Scout vs Marshal). A hidden defender counts as a trade.
+            outcome = battle_from_values(piece_val, target_val)
+            if outcome == 1:
                 # We win this battle (or specialized win)
                 score += self.config.capture_scale * (target_rank / 10.0)
-                
+
                 # Bonus for tactical captures
-                if piece_rank == 1 and target_rank == 10:
+                if piece_rank == PieceType.SPY.value and target_rank == PieceType.MARSHAL.value:
                     score += self.config.spy_marsh_bonus
-                if piece_rank == 3 and target_rank == 11:
+                if piece_rank == PieceType.MINER.value and target_rank == PieceType.BOMB.value:
                     score += self.config.miner_bomb_bonus
-            elif piece_rank == target_rank:
+            elif outcome == 0 or outcome is None:
                 # Trade
                 score += self.config.loss_scale * 0.5 
             else:

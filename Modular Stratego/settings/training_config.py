@@ -24,7 +24,7 @@ AAREN_ENABLED = False
 NUM_EPISODES = 1000000    # Effectively infinite - train until manually stopped
 SAVE_INTERVAL = 1000       # Save model/export agent every N episodes
 PLOT_INTERVAL = 500       # Save metrics plots every N episodes
-EVAL_INTERVAL = 500       # Evaluate agent every N episodes
+EVAL_INTERVAL = 500       # Evaluation games (curriculum gates) every N episodes
 REPLAY_UPDATE_INTERVAL = 8    # Train every 8 steps (balances data diversity vs update frequency)
 # Gradient updates between hard copies of the online network into the target network (the
 # agent counts its own updates). The thesis code soft-updated with tau=0.001 every 2000/5000 env
@@ -150,25 +150,29 @@ OPPONENT_RANDOM_PROB = 0.85     # 85% random agent (easy to beat)
 OPPONENT_GREEDY_PROB = 0.15     # 15% heuristic agent (learning pressure)
 OPPONENT_SELF_PROB = 0.0        # 0% self-play (disabled for now)
 
-# Epoch-Based Opponent Cycling (Variance Reduction)
-# Instead of randomly sampling opponent type every episode, lock all lanes
-# to the same opponent type for OPPONENT_CYCLE_INTERVAL episodes, then rotate.
-# This reduces reward variance and gives stable learning signal per block.
-OPPONENT_CYCLE_INTERVAL = 50    # Episodes per opponent type block
+# Each lane draws its opponent type per game from the curriculum's PFSP weights. The frozen
+# snapshot opponent (lagged self / league) reloads a checkpoint at most every
+# OPPONENT_CYCLE_INTERVAL episodes. (The thesis trainer locked all lanes to one type per
+# OPPONENT_CYCLE_INTERVAL block and cycled through the types, ignoring the weights.)
+OPPONENT_CYCLE_INTERVAL = 50
 
 # =============================================================================
 # CURRICULUM LEARNING SETTINGS
 # =============================================================================
 CURRICULUM_ENABLED = True       # Enable 5-phase curriculum learning
-CURRICULUM_START_PHASE = 4      # Start directly at League Training for MARL
+CURRICULUM_START_PHASE = 1      # Phase 1 -> 4 (the thesis runs started at Phase 4)
 
-# Phase Transition Thresholds (LOWERED for faster progression)
-PHASE_1_WIN_THRESHOLD_RANDOM = 0.70     # 70% win rate vs random (was 90%)
-PHASE_1_WIN_THRESHOLD_HEURISTIC = 0.50  # 50% win rate vs heuristic (was 60%)
-PHASE_2_PBS_ACCURACY_THRESHOLD = 0.70   # 70% PBS prediction accuracy
-PHASE_2_WIN_THRESHOLD = 0.55            # 55% overall win rate
+# Phase gates: win rate (wins / games, draws count as non-wins) of the greedy agent in EVAL_GAMES
+# evaluation games per gate opponent, every EVAL_INTERVAL episodes (curriculum.phase_gates)
+PHASE_1_WIN_THRESHOLD_RANDOM = 0.70     # Phase 1 -> 2: vs random ...
+PHASE_1_WIN_THRESHOLD_HEURISTIC = 0.50  # ... and vs heuristic (full observability)
+PHASE_2_PBS_ACCURACY_THRESHOLD = 0.70   # unused (PBS was replaced by AAREN)
+PHASE_2_WIN_THRESHOLD = 0.55            # Phase 2 -> 3: vs smart_heuristic (fog of war)
+PHASE_3_WIN_THRESHOLD = 0.70            # Phase 3 -> 4: vs smart_heuristic (fog of war)
+EVAL_GAMES = 40                         # evaluation games per gate opponent
 
-# Phase Episode Limits (min, max)
+# Phase Episode Limits: a phase ends after MAX training episodes even if its gates are not met
+# (MIN is not enforced)
 PHASE_1_MIN_EPISODES = 2000
 PHASE_1_MAX_EPISODES = 5000
 PHASE_2_MIN_EPISODES = 3000
