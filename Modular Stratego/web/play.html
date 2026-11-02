@@ -1,0 +1,730 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MARQ Stratego</title>
+<meta name="description" content="Play Stratego against a MARQ Rainbow DQN agent exported to ONNX, in the browser.">
+<style>
+:root {
+  --bg: #f6f4ef;
+  --surface: #ffffff;
+  --surface-2: #efece4;
+  --text: #1f2328;
+  --muted: #5f6670;
+  --border: #d9d4c7;
+  --accent: #2f6fb3;
+  --board-light: #d9c79a;
+  --board-dark: #cdb984;
+  --lake: #6e9fc6;
+  --lake-edge: #5b8db5;
+  --me: #b8322a;
+  --me-text: #ffffff;
+  --bot: #2b5c96;
+  --bot-text: #ffffff;
+  --select: #f2c94c;
+  --target: rgba(47, 111, 179, 0.35);
+  --last: rgba(242, 201, 76, 0.55);
+  --win: #2e7d32;
+  --lose: #b8322a;
+  --shadow: 0 1px 2px rgba(0,0,0,.12), 0 2px 8px rgba(0,0,0,.06);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #15171a;
+    --surface: #1e2125;
+    --surface-2: #262a2f;
+    --text: #e8e6e1;
+    --muted: #a0a6ad;
+    --border: #353a40;
+    --accent: #6ea8e6;
+    --board-light: #8c7a52;
+    --board-dark: #81704a;
+    --lake: #3b6488;
+    --lake-edge: #33597a;
+    --me: #c9473e;
+    --bot: #3d74b3;
+    --select: #e0b83f;
+    --target: rgba(110, 168, 230, 0.4);
+    --last: rgba(224, 184, 63, 0.45);
+    --win: #66bb6a;
+    --lose: #ef6b62;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 2px 8px rgba(0,0,0,.3);
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #15171a;
+  --surface: #1e2125;
+  --surface-2: #262a2f;
+  --text: #e8e6e1;
+  --muted: #a0a6ad;
+  --border: #353a40;
+  --accent: #6ea8e6;
+  --board-light: #8c7a52;
+  --board-dark: #81704a;
+  --lake: #3b6488;
+  --lake-edge: #33597a;
+  --me: #c9473e;
+  --bot: #3d74b3;
+  --select: #e0b83f;
+  --target: rgba(110, 168, 230, 0.4);
+  --last: rgba(224, 184, 63, 0.45);
+  --win: #66bb6a;
+  --lose: #ef6b62;
+  --shadow: 0 1px 2px rgba(0,0,0,.4), 0 2px 8px rgba(0,0,0,.3);
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+.wrap { max-width: 1100px; margin: 0 auto; padding: 20px 16px 40px; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 16px; margin-bottom: 14px; }
+h1 { font-size: 22px; margin: 0; letter-spacing: .2px; }
+.sub { color: var(--muted); font-size: 14px; }
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 18px; align-items: start; }
+@media (max-width: 860px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+
+.board-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px; box-shadow: var(--shadow); }
+.status { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 10px; min-height: 28px; }
+.status .msg { font-weight: 600; }
+.status .msg.win { color: var(--win); }
+.status .msg.lose { color: var(--lose); }
+.status .counters { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.board {
+  display: grid; grid-template-columns: repeat(10, 1fr); gap: 2px;
+  width: 100%; max-width: 620px; aspect-ratio: 1; margin: 0 auto;
+  background: var(--border); border: 2px solid var(--border); border-radius: 6px; overflow: hidden;
+  user-select: none; touch-action: manipulation;
+}
+.sq { position: relative; border: 0; padding: 0; margin: 0; background: var(--board-light); cursor: default;
+      display: flex; align-items: center; justify-content: center; font: inherit; color: inherit; }
+.sq.alt { background: var(--board-dark); }
+.sq.lake { background: var(--lake); box-shadow: inset 0 0 0 1px var(--lake-edge); }
+.sq.last::after { content: ""; position: absolute; inset: 0; background: var(--last); pointer-events: none; }
+.sq.target { cursor: pointer; }
+.sq.target::before { content: ""; position: absolute; inset: 0; background: var(--target); pointer-events: none; z-index: 2; }
+.sq.selectable { cursor: pointer; }
+.piece {
+  position: relative; z-index: 1; width: 84%; height: 84%; border-radius: 6px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  font-weight: 700; font-size: clamp(11px, 2.6vw, 20px); line-height: 1; box-shadow: var(--shadow);
+}
+.piece small { font-size: clamp(7px, 1.3vw, 10px); font-weight: 600; opacity: .85; margin-top: 2px; letter-spacing: .2px; }
+.piece.me { background: var(--me); color: var(--me-text); }
+.piece.bot { background: var(--bot); color: var(--bot-text); }
+.piece.hidden { background: repeating-linear-gradient(45deg, var(--bot), var(--bot) 6px, color-mix(in srgb, var(--bot) 82%, #000) 6px, color-mix(in srgb, var(--bot) 82%, #000) 12px); }
+.piece.known-to-bot { outline: 2px dashed color-mix(in srgb, var(--me-text) 70%, transparent); outline-offset: -4px; }
+.piece.peek { opacity: .55; }
+.sq.selected .piece { outline: 3px solid var(--select); outline-offset: 1px; }
+
+.panel { display: flex; flex-direction: column; gap: 14px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; box-shadow: var(--shadow); }
+.card h2 { font-size: 14px; margin: 0 0 8px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+button.btn, label.btn {
+  font: inherit; font-size: 14px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text);
+  padding: 7px 12px; border-radius: 7px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
+}
+button.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.btn:disabled { opacity: .5; cursor: not-allowed; }
+label.btn input { display: none; }
+select { font: inherit; font-size: 14px; padding: 6px 8px; border-radius: 7px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; font-size: 13px; }
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; overflow-wrap: anywhere; }
+.hint { color: var(--muted); font-size: 13px; margin: 6px 0 0; }
+.toggle { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.q-list { list-style: none; margin: 0; padding: 0; font-size: 13px; font-variant-numeric: tabular-nums; }
+.q-list li { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 3px 0; border-bottom: 1px solid var(--border); }
+.q-list li:last-child { border-bottom: 0; }
+.q-list li.chosen { font-weight: 700; }
+.log { max-height: 220px; overflow: auto; font-size: 13px; margin: 0; padding: 0 0 0 18px; }
+.log li { margin: 2px 0; }
+.captured { display: flex; flex-wrap: wrap; gap: 4px; min-height: 26px; }
+.chip { font-size: 12px; font-weight: 700; padding: 3px 6px; border-radius: 5px; }
+.chip.me { background: var(--me); color: var(--me-text); }
+.chip.bot { background: var(--bot); color: var(--bot-text); }
+.legend { font-size: 12px; color: var(--muted); margin-top: 8px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>MARQ Stratego</h1>
+    <span class="sub">You are red (bottom). The bot plays blue with the network you load, under fog of war.</span>
+  </header>
+
+  <div class="layout">
+    <section class="board-card" aria-label="Game board">
+      <div class="status">
+        <span class="msg" id="msg">Arrange your pieces, then start.</span>
+        <span class="counters" id="counters"></span>
+      </div>
+      <div class="board" id="board" role="grid" aria-label="Stratego board"></div>
+      <p class="legend">F flag · B bomb · M marshal · 9 general … 2 scout · 1 spy. Dashed outline: the bot knows that piece. During setup, click two of your pieces to swap them.</p>
+    </section>
+
+    <aside class="panel">
+      <div class="card">
+        <h2>Game</h2>
+        <div class="row">
+          <button class="btn primary" id="startBtn">Start game</button>
+          <button class="btn" id="shuffleBtn">Shuffle my setup</button>
+          <button class="btn" id="newBtn">New game</button>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <label for="firstSel" class="toggle">First move</label>
+          <select id="firstSel">
+            <option value="random">Random</option>
+            <option value="me">Me</option>
+            <option value="bot">Bot</option>
+          </select>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <label class="toggle"><input type="checkbox" id="peek"> Show the bot's pieces</label>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Model</h2>
+        <div class="row">
+          <label class="btn">Load .onnx <input type="file" id="modelFile" accept=".onnx"></label>
+        </div>
+        <dl class="kv" style="margin-top:10px">
+          <dt>Bot</dt><dd id="botName">Heuristic (no model loaded)</dd>
+          <dt>Inputs</dt><dd id="botInputs">–</dd>
+        </dl>
+        <p class="hint">Export a checkpoint with <code>python tools/export_onnx.py &lt;checkpoint&gt; model.onnx</code>. On a website, put <code>model.onnx</code> next to this page (or pass <code>?model=url</code>) and it loads on its own.</p>
+      </div>
+
+      <div class="card">
+        <h2>Bot's last choice</h2>
+        <ul class="q-list" id="qList"><li><span>No move yet</span><span></span></li></ul>
+      </div>
+
+      <div class="card">
+        <h2>Captured</h2>
+        <div class="captured" id="capBot" aria-label="Bot pieces you took"></div>
+        <div class="captured" id="capMe" aria-label="Your pieces the bot took" style="margin-top:6px"></div>
+      </div>
+
+      <div class="card">
+        <h2>Log</h2>
+        <ol class="log" id="log"></ol>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.min.js"></script>
+
+<!-- Game engine: a port of environment/environment.py, board.py, battle.py, observation.py and
+     action_encoding.py. web/test_engine.js checks it against the Python environment. -->
+<script id="engine">
+(function (root) {
+  'use strict';
+  var N = 10, EMPTY = 0, LAKE = -13, HIDDEN = -20;
+  var P = { FLAG: 1, SPY: 2, SCOUT: 3, MINER: 4, SERGEANT: 5, LIEUTENANT: 6, CAPTAIN: 7,
+            MAJOR: 8, COLONEL: 9, GENERAL: 10, MARSHAL: 11, BOMB: 12 };
+  var NAMES = { 1: 'Flag', 2: 'Spy', 3: 'Scout', 4: 'Miner', 5: 'Sergeant', 6: 'Lieutenant',
+                7: 'Captain', 8: 'Major', 9: 'Colonel', 10: 'General', 11: 'Marshal', 12: 'Bomb' };
+  var LABELS = { 1: 'F', 2: '1', 3: '2', 4: '3', 5: '4', 6: '5', 7: '6', 8: '7', 9: '8', 10: '9', 11: 'M', 12: 'B' };
+  var LAKES = [[4, 2], [4, 3], [5, 2], [5, 3], [4, 6], [4, 7], [5, 6], [5, 7]];
+  var DIRS = [[0, 1], [0, -1], [1, 0], [-1, 0]];             // legal_moves order (environment.py)
+  var ACTION_DIRS = [[-1, 0], [1, 0], [0, -1], [0, 1]];      // up, down, left, right (action_encoding.py)
+  var NUM_ACTIONS = 3600, OBS_PLANES = 30;
+
+  function pieceSet() {
+    var s = [P.FLAG, P.SPY, P.MARSHAL, P.GENERAL], i;
+    for (i = 0; i < 6; i++) s.push(P.BOMB);
+    for (i = 0; i < 2; i++) s.push(P.COLONEL);
+    for (i = 0; i < 3; i++) s.push(P.MAJOR);
+    for (i = 0; i < 4; i++) { s.push(P.CAPTAIN); s.push(P.LIEUTENANT); s.push(P.SERGEANT); }
+    for (i = 0; i < 5; i++) s.push(P.MINER);
+    for (i = 0; i < 8; i++) s.push(P.SCOUT);
+    return s;
+  }
+
+  // Battle (battle.py): 1 attacker wins, -1 defender wins, 0 both removed
+  function battle(att, def) {
+    if (att === P.SPY && def === P.MARSHAL) return 1;
+    if (att === P.MINER && def === P.BOMB) return 1;
+    if (att !== P.MINER && def === P.BOMB) return -1;
+    if (att === P.BOMB && def !== P.MINER) return -1;
+    return att > def ? 1 : (def > att ? -1 : 0);
+  }
+
+  function choice(arr, rng) { return arr[Math.floor(rng() * arr.length)]; }
+
+  // Heuristic setup (heuristic_setup.py): flag in a back corner with bombs next to it, Marshal and
+  // General in the back rows away from the edges, Scouts and two Miners in front, the rest random.
+  function heuristicSetup(player, rng) {
+    rng = rng || Math.random;
+    var rows = player === 1 ? [6, 7, 8, 9] : [0, 1, 2, 3];
+    var back = player === 1 ? [8, 9] : [0, 1], front = player === 1 ? [6, 7] : [2, 3];
+    var corners = player === 1 ? [[9, 0], [9, 9], [8, 0], [8, 9]] : [[0, 0], [0, 9], [1, 0], [1, 9]];
+    var free = [], placement = [], left = pieceSet();
+    rows.forEach(function (r) { for (var c = 0; c < N; c++) free.push(r * N + c); });
+    function take(piece, sq) {
+      placement.push([piece, [Math.floor(sq / N), sq % N]]);
+      free.splice(free.indexOf(sq), 1);
+      left.splice(left.indexOf(piece), 1);
+    }
+    function inRows(rs, pred) { return free.filter(function (s) { return rs.indexOf(Math.floor(s / N)) >= 0 && (!pred || pred(s)); }); }
+    function put(piece, cands) { take(piece, choice(cands.length ? cands : free, rng)); }
+    var flagSq = choice(corners.map(function (p) { return p[0] * N + p[1]; }), rng);
+    take(P.FLAG, flagSq);
+    var fr = Math.floor(flagSq / N), fc = flagSq % N;
+    var adj = [[fr - 1, fc], [fr + 1, fc], [fr, fc - 1], [fr, fc + 1]]
+      .filter(function (p) { return p[0] >= 0 && p[0] < N && p[1] >= 0 && p[1] < N; })
+      .map(function (p) { return p[0] * N + p[1]; })
+      .filter(function (s) { return free.indexOf(s) >= 0; });
+    for (var b = 0; b < 6; b++) {
+      if (b < 3 && adj.length) { var s = choice(adj, rng); adj.splice(adj.indexOf(s), 1); take(P.BOMB, s); }
+      else put(P.BOMB, inRows(back));
+    }
+    [P.MARSHAL, P.GENERAL].forEach(function (p) { put(p, inRows(back, function (s) { return s % N !== 0 && s % N !== 9; })); });
+    put(P.SPY, inRows(back));
+    for (var k = 0; k < 8; k++) put(P.SCOUT, inRows(front));
+    for (var m = 0; m < 2; m++) put(P.MINER, inRows(front));
+    left.slice().forEach(function (p) { put(p, free); });
+    return placement;
+  }
+
+  function Game(opts) {
+    opts = opts || {};
+    this.maxTurns = opts.maxTurns || 1500;              // PHASE_4_MAX_TURNS
+    this.noBattleLimit = opts.noBattleLimit === undefined ? 200 : opts.noBattleLimit;  // EVAL_NO_BATTLE_DRAW_PLIES
+  }
+  Game.prototype.reset = function (p1Placement, p2Placement, startingPlayer) {
+    this.actual = new Int8Array(100);
+    this.vis = { 1: new Int8Array(100), '-1': new Int8Array(100) };
+    var self = this;
+    LAKES.forEach(function (p) { var i = p[0] * N + p[1]; self.actual[i] = LAKE; self.vis[1][i] = LAKE; self.vis[-1][i] = LAKE; });
+    this.flags = { 1: null, '-1': null };
+    [[1, p1Placement], [-1, p2Placement]].forEach(function (pp) {
+      pp[1].forEach(function (e) {
+        var i = e[1][0] * N + e[1][1], v = e[0] * pp[0];
+        self.actual[i] = v;
+        self.vis[pp[0]][i] = v;
+        self.vis[-pp[0]][i] = HIDDEN;
+        if (e[0] === P.FLAG) self.flags[pp[0]] = i;
+      });
+    });
+    this.current = startingPlayer || 1;
+    this.turn = 0;
+    this.plies = 0;
+    this.over = false;
+    this.winner = null;
+    this.winType = null;
+    this.lastMove = null;
+    return this;
+  };
+  // legal_moves (environment.py) on the actual board
+  Game.prototype.legalMoves = function (player) {
+    player = player || this.current;
+    var b = this.actual, moves = [];
+    for (var i = 0; i < 100; i++) {
+      var rank = b[i] * player;
+      if (rank < 1 || rank > 12 || rank === P.FLAG || rank === P.BOMB) continue;
+      var r = Math.floor(i / N), c = i % N, slides = rank === P.SCOUT;
+      for (var d = 0; d < 4; d++) {
+        var tr = r + DIRS[d][0], tc = c + DIRS[d][1];
+        while (tr >= 0 && tr < N && tc >= 0 && tc < N) {
+          var t = b[tr * N + tc];
+          if (t === LAKE || t * player > 0) break;
+          moves.push([[r, c], [tr, tc]]);
+          if (t !== EMPTY || !slides) break;
+          tr += DIRS[d][0]; tc += DIRS[d][1];
+        }
+      }
+    }
+    return moves;
+  };
+  // step (environment.py) for a legal move, or null when the side to move has none
+  Game.prototype.step = function (move) {
+    var info = { battle: null };
+    if (this.over) return info;
+    if (this.turn >= this.maxTurns || !move) {
+      this.over = true; this.winner = 0; this.winType = 'timeout';
+      return info;
+    }
+    var from = move[0][0] * N + move[0][1], to = move[1][0] * N + move[1][1];
+    var a = this.actual, p = this.current, mover = a[from], target = a[to];
+    var mv = this.vis[p], ov = this.vis[-p];
+    if (target !== EMPTY && target !== LAKE) {
+      this.plies = 0;
+      var att = Math.abs(mover), def = Math.abs(target), res = battle(att, def);
+      info.battle = { attacker: att, defender: def, result: res, player: p, from: move[0], to: move[1] };
+      if (res === 1) {
+        a[to] = mover; a[from] = EMPTY;
+        mv[to] = mover; mv[from] = EMPTY; ov[to] = mover; ov[from] = EMPTY;
+        if (def === P.FLAG) { this.over = true; this.winner = p; this.winType = 'flag_capture'; this.flags[-p] = null; }
+      } else if (res === -1) {
+        a[from] = EMPTY; mv[from] = EMPTY; ov[from] = EMPTY;
+        mv[to] = target; ov[to] = target;              // the defender is revealed
+      } else {
+        a[from] = EMPTY; a[to] = EMPTY;
+        mv[from] = EMPTY; mv[to] = EMPTY; ov[from] = EMPTY; ov[to] = EMPTY;
+      }
+    } else {
+      var revealed = ov[from] === mover;              // the opponent already knows this piece
+      a[to] = mover; a[from] = EMPTY;
+      mv[to] = mover; mv[from] = EMPTY;
+      ov[from] = EMPTY; ov[to] = revealed ? mover : HIDDEN;
+      this.plies += 1;
+    }
+    this.turn += 1;
+    this.current = -p;
+    this.lastMove = move;
+    this._checkEnd();
+    return info;
+  };
+  Game.prototype._checkEnd = function () {
+    if (this.over) return;
+    if (this.flags[1] === null) { this.over = true; this.winner = -1; this.winType = 'flag_capture'; return; }
+    if (this.flags[-1] === null) { this.over = true; this.winner = 1; this.winType = 'flag_capture'; return; }
+    if (!this.legalMoves(this.current).length) { this.over = true; this.winner = -this.current; this.winType = 'no_moves'; return; }
+    if (this.noBattleLimit && this.plies >= this.noBattleLimit) { this.over = true; this.winner = 0; this.winType = 'no_battle_draw'; return; }
+    if (this.turn >= this.maxTurns) { this.over = true; this.winner = 0; this.winType = 'timeout'; }
+  };
+  // Canonical frame (action_encoding.py): Player 2's board rotated 180 degrees
+  function canon(r, c, player) { return player === 1 ? [r, c] : [N - 1 - r, N - 1 - c]; }
+  function encodeMove(move, player) {
+    var a = canon(move[0][0], move[0][1], player), b = canon(move[1][0], move[1][1], player), dir, dist;
+    if (a[1] === b[1] && a[0] !== b[0]) { dir = b[0] < a[0] ? 0 : 1; dist = Math.abs(b[0] - a[0]); }
+    else if (a[0] === b[0] && a[1] !== b[1]) { dir = b[1] < a[1] ? 2 : 3; dist = Math.abs(b[1] - a[1]); }
+    else throw new Error('not a straight move');
+    return (a[0] * N + a[1]) * 36 + dir * 9 + dist - 1;
+  }
+  function decodeAction(index, player) {
+    var sq = Math.floor(index / 36), rest = index % 36, dir = Math.floor(rest / 9), dist = rest % 9 + 1;
+    var r1 = Math.floor(sq / N), c1 = sq % N, r2 = r1 + ACTION_DIRS[dir][0] * dist, c2 = c1 + ACTION_DIRS[dir][1] * dist;
+    if (r2 < 0 || r2 >= N || c2 < 0 || c2 >= N) return null;
+    return [canon(r1, c1, player), canon(r2, c2, player)];
+  }
+  // Observation planes (observation.py) of `player`'s view, normal fog of war (observability 0):
+  // a Float32Array of `planes` x 10 x 10 (planes beyond 30 are AAREN embeddings, left at zero).
+  Game.prototype.observation = function (player, planes) {
+    planes = planes || OBS_PLANES;
+    var obs = new Float32Array(planes * 100), view = this.vis[player], enemyView = this.vis[-player];
+    var noBattle = this.noBattleLimit > 0 ? Math.min(this.plies / this.noBattleLimit, 1) : 0;
+    var progress = this.maxTurns > 0 ? Math.min(this.turn / this.maxTurns, 1) : 0;
+    for (var i = 0; i < 100; i++) {
+      var r = Math.floor(i / N), c = i % N, cc = canon(r, c, player), j = cc[0] * N + cc[1];
+      var v = view[i];
+      if (v === LAKE) obs[25 * 100 + j] = 1;
+      else if (v === HIDDEN) obs[24 * 100 + j] = 1;
+      else if (v !== EMPTY) {
+        var s = v * player;
+        if (s > 0) {
+          obs[(s - 1) * 100 + j] = 1;
+          var own = this.actual[i] * player;
+          if (own >= 1 && own <= 12 && enemyView[i] === this.actual[i]) obs[26 * 100 + j] = 1;
+        } else {
+          obs[(12 + (-s) - 1) * 100 + j] = 1;
+        }
+      }
+      obs[28 * 100 + j] = noBattle;
+      obs[29 * 100 + j] = progress;
+    }
+    return obs;
+  };
+  Game.prototype.clone = function () {
+    var g = new Game({ maxTurns: this.maxTurns, noBattleLimit: this.noBattleLimit });
+    g.actual = this.actual.slice();
+    g.vis = { 1: this.vis[1].slice(), '-1': this.vis[-1].slice() };
+    g.flags = { 1: this.flags[1], '-1': this.flags[-1] };
+    ['current', 'turn', 'plies', 'over', 'winner', 'winType', 'lastMove'].forEach(function (k) { g[k] = this[k]; }, this);
+    return g;
+  };
+
+  // Fallback bot without a model: take what it knows it beats, keep away from what beats it,
+  // probe hidden pieces with cheap ones, otherwise advance.
+  function heuristicMove(game, player, rng) {
+    rng = rng || Math.random;
+    var moves = game.legalMoves(player), view = game.vis[player], best = null, bestScore = -1e9;
+    moves.forEach(function (m) {
+      var from = m[0][0] * N + m[0][1], to = m[1][0] * N + m[1][1];
+      var me = Math.abs(game.actual[from]), t = view[to], score = rng() * 0.3;
+      var fwd = player === 1 ? m[0][0] - m[1][0] : m[1][0] - m[0][0];
+      score += fwd * 0.15;
+      if (t === HIDDEN) score += me <= P.MINER ? 0.6 : 0.2 - me * 0.08;
+      else if (t !== EMPTY) {
+        var res = battle(me, Math.abs(t));
+        score += res === 1 ? 2 + Math.abs(t) * 0.2 + (Math.abs(t) === P.FLAG ? 100 : 0) : (res === 0 ? 0.2 : -2 - me * 0.1);
+      }
+      if (score > bestScore) { bestScore = score; best = m; }
+    });
+    return best;
+  }
+
+  root.StrategoEngine = { Game: Game, P: P, NAMES: NAMES, LABELS: LABELS, LAKE: LAKE, HIDDEN: HIDDEN, EMPTY: EMPTY,
+                          NUM_ACTIONS: NUM_ACTIONS, OBS_PLANES: OBS_PLANES, battle: battle, heuristicSetup: heuristicSetup,
+                          heuristicMove: heuristicMove, encodeMove: encodeMove, decodeAction: decodeAction, pieceSet: pieceSet };
+})(typeof window !== 'undefined' ? window : globalThis);
+</script>
+
+<script>
+(function () {
+  'use strict';
+  var E = window.StrategoEngine, N = 10, ME = 1, BOT = -1;
+  var game = null, phase = 'setup', mySetup = null, botSetup = null, selected = null, swapFirst = null;
+  var session = null, inputPlanes = E.OBS_PLANES, modelName = null, botBusy = false;
+  var captured = { 1: [], '-1': [] };
+  var $ = function (id) { return document.getElementById(id); };
+  var boardEl = $('board');
+
+  if (window.ort) {
+    ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/';
+    ort.env.wasm.numThreads = 1;
+  }
+
+  var squares = [];
+  for (var i = 0; i < 100; i++) {
+    var b = document.createElement('button');
+    b.className = 'sq' + (((Math.floor(i / N) + i % N) % 2) ? ' alt' : '');
+    b.type = 'button';
+    b.dataset.i = i;
+    b.setAttribute('role', 'gridcell');
+    b.addEventListener('click', onSquare);
+    boardEl.appendChild(b);
+    squares.push(b);
+  }
+
+  function setMsg(text, cls) { var m = $('msg'); m.textContent = text; m.className = 'msg' + (cls ? ' ' + cls : ''); }
+  function log(text) { var li = document.createElement('li'); li.textContent = text; var l = $('log'); l.appendChild(li); l.scrollTop = l.scrollHeight; }
+  function sqName(rc) { return 'abcdefghij'[rc[1]] + (N - rc[0]); }
+
+  function newSetup() {
+    mySetup = E.heuristicSetup(ME);
+    botSetup = E.heuristicSetup(BOT);
+    game = new E.Game().reset(mySetup, botSetup, 1);
+    phase = 'setup'; selected = null; swapFirst = null;
+    captured = { 1: [], '-1': [] };
+    $('log').innerHTML = '';
+    $('qList').innerHTML = '<li><span>No move yet</span><span></span></li>';
+    $('startBtn').disabled = false; $('shuffleBtn').disabled = false;
+    setMsg('Arrange your pieces (click two to swap), then start.');
+    render();
+  }
+
+  function startGame() {
+    var first = $('firstSel').value;
+    var starter = first === 'me' ? ME : first === 'bot' ? BOT : (Math.random() < 0.5 ? ME : BOT);
+    var mine = [];
+    for (var i = 0; i < 100; i++) { var v = game.actual[i]; if (v > 0) mine.push([v, [Math.floor(i / N), i % N]]); }
+    mySetup = mine;
+    game = new E.Game().reset(mySetup, botSetup, starter);
+    phase = 'play'; selected = null;
+    $('startBtn').disabled = true; $('shuffleBtn').disabled = true;
+    log((starter === ME ? 'You move' : 'The bot moves') + ' first.');
+    render();
+    afterMove();
+  }
+
+  function onSquare(ev) {
+    var i = +ev.currentTarget.dataset.i, r = Math.floor(i / N), c = i % N;
+    if (phase === 'setup') {
+      if (game.actual[i] <= 0) return;
+      if (swapFirst === null) { swapFirst = i; }
+      else {
+        var t = game.actual[swapFirst]; game.actual[swapFirst] = game.actual[i]; game.actual[i] = t;
+        game.vis[1][swapFirst] = game.actual[swapFirst]; game.vis[1][i] = game.actual[i];
+        swapFirst = null;
+      }
+      render();
+      return;
+    }
+    if (phase !== 'play' || game.over || game.current !== ME || botBusy) return;
+    if (selected !== null) {
+      var mv = game.legalMoves(ME).filter(function (m) { return m[0][0] * N + m[0][1] === selected && m[1][0] === r && m[1][1] === c; })[0];
+      if (mv) { play(mv); return; }
+    }
+    if (game.actual[i] > 0 && game.legalMoves(ME).some(function (m) { return m[0][0] * N + m[0][1] === i; })) selected = i;
+    else selected = null;
+    render();
+  }
+
+  function play(move) {
+    var who = game.current, info = game.step(move);
+    selected = null;
+    var text = (who === ME ? 'You: ' : 'Bot: ') + sqName(move[0]) + '→' + sqName(move[1]);
+    if (info.battle) {
+      var bt = info.battle, a = E.NAMES[bt.attacker], d = E.NAMES[bt.defender];
+      text += ' — ' + a + ' attacks ' + d + ': ' + (bt.result === 1 ? a + ' wins' : bt.result === -1 ? d + ' wins' : 'both removed');
+      if (bt.result >= 0) captured[-who].push(bt.defender);
+      if (bt.result <= 0) captured[who].push(bt.attacker);
+    }
+    log(text);
+    render();
+    afterMove();
+  }
+
+  function afterMove() {
+    if (game.over) {
+      var w = game.winner, how = { flag_capture: 'flag captured', no_moves: 'no moves left', no_battle_draw: 'no battle in ' + game.noBattleLimit + ' moves', timeout: 'turn limit' }[game.winType] || game.winType;
+      if (w === ME) setMsg('You win (' + how + ').', 'win');
+      else if (w === BOT) setMsg('The bot wins (' + how + ').', 'lose');
+      else setMsg('Draw (' + how + ').');
+      log('Game over: ' + $('msg').textContent);
+      render();
+      return;
+    }
+    if (game.current === BOT) {
+      setMsg('Bot is thinking…');
+      botBusy = true;
+      setTimeout(function () { botMove().then(function (m) { botBusy = false; play(m); }); }, 250);
+    } else {
+      setMsg('Your move.');
+    }
+  }
+
+  async function botMove() {
+    var moves = game.legalMoves(BOT);
+    if (!moves.length) return null;
+    if (!session) {
+      var m = E.heuristicMove(game, BOT);
+      showChoice([{ move: m, q: null }], m);
+      return m;
+    }
+    try {
+      var obs = game.observation(BOT, inputPlanes);
+      var out = await session.run({ obs: new ort.Tensor('float32', obs, [1, inputPlanes, N, N]) });
+      var q = out[session.outputNames[0]].data;
+      var scored = moves.map(function (m) { return { move: m, q: q[E.encodeMove(m, BOT)] }; });
+      scored.sort(function (a, b) { return b.q - a.q; });
+      showChoice(scored.slice(0, 6), scored[0].move);
+      return scored[0].move;
+    } catch (e) {
+      log('Model error, falling back to the heuristic: ' + e.message);
+      session = null; updateModelInfo();
+      return E.heuristicMove(game, BOT);
+    }
+  }
+
+  function showChoice(list, chosen) {
+    var ul = $('qList'); ul.innerHTML = '';
+    list.forEach(function (s) {
+      var li = document.createElement('li');
+      if (s.move === chosen) li.className = 'chosen';
+      var piece = Math.abs(game.actual[s.move[0][0] * N + s.move[0][1]]);
+      var tag = $('peek').checked ? E.NAMES[piece] + ' ' : '';
+      li.innerHTML = '<span></span><span></span>';
+      li.children[0].textContent = tag + sqName(s.move[0]) + '→' + sqName(s.move[1]);
+      li.children[1].textContent = s.q === null ? 'heuristic' : 'Q ' + s.q.toFixed(3);
+      ul.appendChild(li);
+    });
+  }
+
+  function render() {
+    var peek = $('peek').checked, targets = {}, movable = {};
+    if (phase === 'play' && !game.over && game.current === ME) {
+      game.legalMoves(ME).forEach(function (m) {
+        var f = m[0][0] * N + m[0][1];
+        movable[f] = true;
+        if (f === selected) targets[m[1][0] * N + m[1][1]] = true;
+      });
+    }
+    var last = {};
+    if (game.lastMove) { last[game.lastMove[0][0] * N + game.lastMove[0][1]] = true; last[game.lastMove[1][0] * N + game.lastMove[1][1]] = true; }
+    for (var i = 0; i < 100; i++) {
+      var el = squares[i], v = game.actual[i], seen = game.vis[ME][i];
+      var cls = 'sq' + (((Math.floor(i / N) + i % N) % 2) ? ' alt' : '');
+      if (v === E.LAKE) cls += ' lake';
+      if (last[i]) cls += ' last';
+      if (targets[i]) cls += ' target';
+      if (selected === i || swapFirst === i) cls += ' selected';
+      if (movable[i] || (phase === 'setup' && v > 0)) cls += ' selectable';
+      el.className = cls;
+      el.innerHTML = '';
+      var label = 'empty';
+      if (v !== E.EMPTY && v !== E.LAKE) {
+        var d = document.createElement('div'), rank = Math.abs(v);
+        if (v > 0) {
+          d.className = 'piece me' + (game.vis[BOT][i] === v && phase === 'play' ? ' known-to-bot' : '');
+          d.innerHTML = E.LABELS[rank] + '<small>' + E.NAMES[rank].slice(0, 4) + '</small>';
+          label = 'your ' + E.NAMES[rank];
+        } else if (seen !== E.HIDDEN || peek) {
+          d.className = 'piece bot' + (seen === E.HIDDEN ? ' peek' : '');
+          d.innerHTML = E.LABELS[rank] + '<small>' + E.NAMES[rank].slice(0, 4) + '</small>';
+          label = 'bot ' + E.NAMES[rank] + (seen === E.HIDDEN ? ' (hidden)' : '');
+        } else {
+          d.className = 'piece bot hidden';
+          d.textContent = '?';
+          label = 'hidden bot piece';
+        }
+        el.appendChild(d);
+      } else if (v === E.LAKE) label = 'lake';
+      el.setAttribute('aria-label', sqName([Math.floor(i / N), i % N]) + ': ' + label);
+    }
+    var mine = 0, theirs = 0;
+    for (var j = 0; j < 100; j++) { if (game.actual[j] > 0 && game.actual[j] !== E.LAKE) mine++; else if (game.actual[j] < 0 && game.actual[j] !== E.LAKE) theirs++; }
+    $('counters').textContent = phase === 'play' ? 'Move ' + game.turn + ' · no battle ' + game.plies + '/' + game.noBattleLimit + ' · pieces ' + mine + ' vs ' + theirs : '';
+    function chips(el, list, cls) {
+      el.innerHTML = '';
+      list.slice().sort(function (a, b) { return b - a; }).forEach(function (p) {
+        var s = document.createElement('span'); s.className = 'chip ' + cls; s.textContent = E.LABELS[p]; s.title = E.NAMES[p]; el.appendChild(s);
+      });
+    }
+    chips($('capBot'), captured[BOT], 'bot');
+    chips($('capMe'), captured[ME], 'me');
+  }
+
+  function updateModelInfo() {
+    $('botName').textContent = session ? 'Network: ' + modelName : 'Heuristic (no model loaded)';
+    $('botInputs').textContent = session ? inputPlanes + ' planes (' + E.OBS_PLANES + ' observation' + (inputPlanes > E.OBS_PLANES ? ' + ' + (inputPlanes - E.OBS_PLANES) + ' AAREN, zero' : '') + ') → 3600 Q-values' : '–';
+  }
+
+  async function loadModel(bytes, name) {
+    if (!window.ort) { log('onnxruntime-web did not load (offline?); the heuristic bot plays.'); return; }
+    try {
+      var s = await ort.InferenceSession.create(bytes, { executionProviders: ['wasm'] });
+      var planes = E.OBS_PLANES;
+      for (var attempt = 0; attempt < 2; attempt++) {
+        try {
+          await s.run({ obs: new ort.Tensor('float32', new Float32Array(planes * 100), [1, planes, N, N]) });
+          break;
+        } catch (e) {
+          var m = /Expected:\s*(\d+)/.exec(e.message || '');
+          if (!m || attempt === 1) throw e;
+          planes = +m[1];
+        }
+      }
+      session = s; inputPlanes = planes; modelName = name;
+      updateModelInfo();
+      log('Loaded model ' + name + '.');
+    } catch (e) {
+      log('Could not load ' + name + ': ' + e.message);
+    }
+  }
+
+  $('modelFile').addEventListener('change', function (ev) {
+    var f = ev.target.files[0];
+    if (!f) return;
+    f.arrayBuffer().then(function (buf) { loadModel(new Uint8Array(buf), f.name); });
+  });
+  $('startBtn').addEventListener('click', startGame);
+  $('shuffleBtn').addEventListener('click', function () {
+    game = new E.Game().reset(E.heuristicSetup(ME), botSetup, 1);
+    swapFirst = null; render();
+  });
+  $('newBtn').addEventListener('click', newSetup);
+  $('peek').addEventListener('change', render);
+
+  newSetup();
+  updateModelInfo();
+  var url = new URLSearchParams(location.search).get('model') || (location.protocol.indexOf('http') === 0 ? 'model.onnx' : null);
+  if (url) {
+    fetch(url).then(function (r) { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); })
+      .then(function (buf) { return loadModel(new Uint8Array(buf), url.split('/').pop()); })
+      .catch(function () { /* no model next to the page: the heuristic bot plays */ });
+  }
+})();
+</script>
+</body>
+</html>

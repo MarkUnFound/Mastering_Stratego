@@ -284,6 +284,14 @@ cd "Python Stratego Game"
 python "pygame test.py"
 ```
 
+**In the browser:** `Modular Stratego/web/play.html` is a standalone page (rules, observation and action encoding ported to JavaScript and checked against the Python environment by `test/test_web_engine.py`). Export a checkpoint to ONNX and either load it with the page's *Load .onnx* button or put it next to the page as `model.onnx` on a web server:
+```bash
+cd "Modular Stratego"
+pip install onnx onnxruntime
+python tools/export_onnx.py path/to/agent1_league_episode_N.pt web/model.onnx
+```
+Without a model the page plays a simple heuristic bot.
+
 ### 3. Verify Expectamax Tactical Logic
 Run the verification suite testing that combat outcomes (including Flag capture and Bomb defusal) evaluate to accurate positive/negative utilities across both GUI and canonical schemas:
 
