@@ -14,8 +14,9 @@ def test_nan_reward_batch_is_skipped_without_crashing(cpu, tiny_network, config_
     config_override(WARMUP_STEPS=0)
     from drqn_agent import RainbowAgent
     agent = RainbowAgent(player_id=1, device=cpu, buffer_size=200, num_envs=1)
+    c = agent.input_channels
     for i in range(agent.batch_size * 2):
-        agent.memory.add(torch.randn(15, 10, 10), i % 400, float('nan'), torch.randn(15, 10, 10), False)
+        agent.memory.add(torch.randn(c, 10, 10), i % agent.action_size, float('nan'), torch.randn(c, 10, 10), False)
     assert agent.replay() is None
 
 

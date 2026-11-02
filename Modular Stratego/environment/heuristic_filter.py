@@ -6,6 +6,7 @@ Uses strategic heuristics to prioritize attacks, advancement, and center control
 """
 
 import torch
+from action_encoding import NUM_ACTIONS, legal_action_indices
 from typing import List, Tuple, Optional
 from board import LAKE_SQUARE
 
@@ -164,7 +165,7 @@ class HeuristicMoveFilter:
     def get_action_mask(self, board: torch.Tensor,
                        legal_moves: List[Tuple[Tuple[int, int], Tuple[int, int]]],
                        player_id: int,
-                       action_size: int = 400,
+                       action_size: int = NUM_ACTIONS,
                        max_moves: int = 100,
                        device: str = 'cuda') -> Tuple[torch.Tensor, List[Tuple[Tuple[int, int], Tuple[int, int]]]]:
         """
@@ -174,7 +175,7 @@ class HeuristicMoveFilter:
             board: 10x10 board tensor
             legal_moves: List of valid moves
             player_id: 1 or -1
-            action_size: Size of action space (400)
+            action_size: Size of action space (3600, environment/action_encoding.py)
             max_moves: Maximum moves to allow (100)
             device: Torch device
             
@@ -189,45 +190,10 @@ class HeuristicMoveFilter:
         # Create mask initialized to -inf (all masked)
         mask = torch.full((action_size,), float('-inf'), device=device)
         
-        # Unmask the filtered moves
-        filtered_moves = []
-        for move, score in filtered:
-            (r_from, c_from), (r_to, c_to) = move
-            
-            # Calculate distance
-            distance = abs(r_to - r_from) + abs(c_to - c_from)
-            
-            # For Scout moves (dist > 1), map to 1-step direction action
-            if distance > 1:
-                if r_to != r_from:
-                    dr = 1 if r_to > r_from else -1
-                    dc = 0
-                else:
-                    dr = 0
-                    dc = 1 if c_to > c_from else -1
-            elif distance == 1:
-                dr = r_to - r_from
-                dc = c_to - c_from
-            else:
-                continue  # Invalid (distance 0)
-                
-            # Encode direction to index
-            if (dr, dc) == (0, 1):
-                dir_idx = 0  # Right
-            elif (dr, dc) == (0, -1):
-                dir_idx = 1  # Left
-            elif (dr, dc) == (1, 0):
-                dir_idx = 2  # Down
-            elif (dr, dc) == (-1, 0):
-                dir_idx = 3  # Up
-            else:
-                continue  # Invalid direction
-            
-            action_idx = (r_from * 10 + c_from) * 4 + dir_idx
-            
-            if 0 <= action_idx < action_size:
-                mask[action_idx] = 0.0  # Unmask this action
-                filtered_moves.append(move)
+        # Unmask the filtered moves (each move, long Scout moves included, has its own index)
+        filtered_moves = [move for move, score in filtered]
+        if filtered_moves:
+            mask[legal_action_indices(filtered_moves, player_id)] = 0.0
         
         return mask, filtered_moves
 

@@ -1,14 +1,15 @@
 """
 Input Channel Visualization Script
 
-Visualizes the 27-channel input tensor that the Rainbow DQN agent receives.
+Visualizes the 30 observation planes the Rainbow DQN agent receives (environment/observation.py).
 Helps diagnose whether the agent can "see" important features like the enemy flag.
 
-Channels 0-11:  Own piece types (FLAG, SPY, SCOUT, MINER, SERGEANT, LIEUTENANT, CAPTAIN, MAJOR, COLONEL, GENERAL, MARSHAL, BOMB)
-Channel 12:     All enemy pieces (binary mask)
-Channel 13:     Lake squares (obstacles)
-Channel 14:     Empty squares
-Channels 15-26: Enemy piece type beliefs (PBS or ground truth)
+Planes 0-11:  Own piece types (FLAG, SPY, SCOUT, MINER, SERGEANT, LIEUTENANT, CAPTAIN, MAJOR, COLONEL, GENERAL, MARSHAL, BOMB)
+Planes 12-23: Enemy pieces of known type, same order
+Plane 24:     Enemy pieces of unknown type
+Plane 25:     Lake squares (obstacles)
+Plane 26:     Own pieces the enemy knows
+Planes 27-29: Observability flag, no-battle counter, game progress
 """
 
 import torch
@@ -30,16 +31,17 @@ CHANNEL_NAMES = [
     # Own pieces (0-11)
     "Own FLAG", "Own SPY", "Own SCOUT", "Own MINER", "Own SERGEANT", "Own LIEUTENANT",
     "Own CAPTAIN", "Own MAJOR", "Own COLONEL", "Own GENERAL", "Own MARSHAL", "Own BOMB",
-    # Board features (12-14)
-    "Enemy Mask", "Lake", "Empty",
-    # Enemy piece beliefs (15-26)
+    # Enemy pieces of known type (12-23)
     "Enemy FLAG", "Enemy SPY", "Enemy SCOUT", "Enemy MINER", "Enemy SERGEANT", "Enemy LIEUTENANT",
-    "Enemy CAPTAIN", "Enemy MAJOR", "Enemy COLONEL", "Enemy GENERAL", "Enemy MARSHAL", "Enemy BOMB"
+    "Enemy CAPTAIN", "Enemy MAJOR", "Enemy COLONEL", "Enemy GENERAL", "Enemy MARSHAL", "Enemy BOMB",
+    # Other planes (24-29)
+    "Enemy unknown", "Lake", "Own known to enemy", "Observability", "No-battle counter", "Game progress",
 ]
+ENEMY_FLAG_PLANE = 12
 
 def visualize_input_channels(save_path: str = "dqn_models/input_visualization.png"):
     """
-    Create a visual representation of the 27-channel input tensor.
+    Create a visual representation of the 30 observation planes.
     """
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
@@ -53,23 +55,23 @@ def visualize_input_channels(save_path: str = "dqn_models/input_visualization.pn
     print("Creating agent...")
     agent = RainbowAgent(player_id=1, device=device, num_envs=1, use_pbs=False)
     
-    # Get the 27-channel input tensor (with full observability)
+    # Get the observation planes (with full observability)
     print("Generating input tensor...")
     input_tensor = agent.get_state_representation(game_state, full_observability=True)
     
-    print(f"Input tensor shape: {input_tensor.shape}")  # Should be (27, 10, 10)
+    print(f"Input tensor shape: {input_tensor.shape}")  # (30, 10, 10)
     
     # Convert to numpy for visualization
     input_np = input_tensor.cpu().numpy()
     
-    # Create figure with 27 subplots (6 rows x 5 cols, with 3 extra)
+    # One subplot per plane (6 rows x 5 cols)
     fig, axes = plt.subplots(6, 5, figsize=(20, 24))
-    fig.suptitle("Agent Input Channels (27 channels total)", fontsize=16, fontweight='bold')
+    fig.suptitle(f"Agent Input Planes ({len(CHANNEL_NAMES)} total)", fontsize=16, fontweight='bold')
     
     # Flatten axes for easier iteration
     axes_flat = axes.flatten()
     
-    for i in range(27):
+    for i in range(len(CHANNEL_NAMES)):
         ax = axes_flat[i]
         channel = input_np[i]
         
@@ -77,24 +79,21 @@ def visualize_input_channels(save_path: str = "dqn_models/input_visualization.pn
         if i == 0:  # Own FLAG
             cmap = 'Greens'
             title_color = 'green'
-        elif i == 15:  # Enemy FLAG (TARGET!)
+        elif i == ENEMY_FLAG_PLANE:  # Enemy FLAG (TARGET!)
             cmap = 'Reds'
             title_color = 'red'
-        elif i == 12:  # Enemy mask
+        elif i == 24:  # Enemy of unknown type
             cmap = 'Oranges'
             title_color = 'orange'
-        elif i == 13:  # Lake
+        elif i == 25:  # Lake
             cmap = 'Blues'
             title_color = 'blue'
-        elif i == 14:  # Empty
-            cmap = 'Greys'
-            title_color = 'gray'
         else:
             cmap = 'viridis'
             title_color = 'black'
         
         im = ax.imshow(channel, cmap=cmap, vmin=0, vmax=1)
-        ax.set_title(f"Ch {i}: {CHANNEL_NAMES[i]}", fontsize=9, color=title_color, fontweight='bold' if i in [0, 15] else 'normal')
+        ax.set_title(f"Ch {i}: {CHANNEL_NAMES[i]}", fontsize=9, color=title_color, fontweight='bold' if i in [0, ENEMY_FLAG_PLANE] else 'normal')
         ax.set_xticks([])
         ax.set_yticks([])
         
@@ -111,15 +110,15 @@ def visualize_input_channels(save_path: str = "dqn_models/input_visualization.pn
                            fontsize=6, color='white' if channel[r, c] > 0.5 else 'black')
     
     # Hide extra subplots
-    for i in range(27, 30):
+    for i in range(len(CHANNEL_NAMES), len(axes_flat)):
         axes_flat[i].axis('off')
     
     # Add legend
     legend_elements = [
         mpatches.Patch(color='green', label='Own FLAG (Ch 0)'),
-        mpatches.Patch(color='red', label='Enemy FLAG (Ch 15) - TARGET!'),
-        mpatches.Patch(color='orange', label='Enemy Mask (Ch 12)'),
-        mpatches.Patch(color='blue', label='Lake (Ch 13)'),
+        mpatches.Patch(color='red', label=f'Enemy FLAG (Ch {ENEMY_FLAG_PLANE}) - TARGET!'),
+        mpatches.Patch(color='orange', label='Enemy unknown (Ch 24)'),
+        mpatches.Patch(color='blue', label='Lake (Ch 25)'),
     ]
     fig.legend(handles=legend_elements, loc='lower right', fontsize=10)
     
@@ -136,12 +135,12 @@ def visualize_input_channels(save_path: str = "dqn_models/input_visualization.pn
     print("="*60)
     
     # Check if enemy flag is visible
-    enemy_flag_channel = input_np[15]
+    enemy_flag_channel = input_np[ENEMY_FLAG_PLANE]
     flag_positions = np.argwhere(enemy_flag_channel > 0)
     if len(flag_positions) > 0:
         print(f" Enemy FLAG visible at: {flag_positions.tolist()}")
     else:
-        print(" Enemy FLAG NOT visible in channel 15!")
+        print(f" Enemy FLAG NOT visible in channel {ENEMY_FLAG_PLANE}!")
     
     # Check own flag
     own_flag_channel = input_np[0]

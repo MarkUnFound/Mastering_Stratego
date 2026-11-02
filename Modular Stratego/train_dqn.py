@@ -289,9 +289,12 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
     use_full_obs = False  # Always use AAREN embeddings
     
     # Print AAREN status
-    from training_config import HISTORY_EMBEDDING_SIZE
-    print(f"[INFO] AAREN History Aggregator: ENABLED ({HISTORY_EMBEDDING_SIZE}-dim embeddings per position)")
-    print(f"   Input channels: 15 (board) + {HISTORY_EMBEDDING_SIZE} (AAREN) = {15 + HISTORY_EMBEDDING_SIZE}")
+    if agent1.history_embedding_size:
+        print(f"[INFO] AAREN History Aggregator: ENABLED ({agent1.history_embedding_size}-dim embeddings per position)")
+    else:
+        print("[INFO] AAREN History Aggregator: DISABLED (AAREN_ENABLED = False)")
+    print(f"   Input planes: {agent1.input_channels - agent1.history_embedding_size} (observation) + "
+          f"{agent1.history_embedding_size} (AAREN) = {agent1.input_channels}; actions: {agent1.action_size}")
     
     # AAREN optimization: track steps for interval-based updates
     from training_config import PBS_UPDATE_INTERVAL as HISTORY_UPDATE_INTERVAL
@@ -639,21 +642,22 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                     elif current_player == -1 and not use_full_obs:
                         agent1.update_history_batch([actions[i]], [lane_game_states[i]], acting_player=-1, lane_ids=[i])
                 
-                if infos[i].get('revealed_in_step'):
+                revealed = infos[i].get('revealed_in_step')
+                if revealed and len(revealed) == 2 and actions[i] is not None:
+                    # A battle: label each tracker's ENEMY piece with that piece's own type (the
+                    # thesis loop labelled an attacking enemy's history with its victim's type)
                     from training_config import AAREN_USE_REVEAL_DATA
-                    for pos, piece_type in infos[i]['revealed_in_step']:
-                        if agent1.history_instances and i < len(agent1.history_instances):
-                            game_phase = "early" if lane_step_counts[i] < 50 else ("mid" if lane_step_counts[i] < 200 else "end")
-                            agent1.history_instances[i].update_from_reveal(
-                                pos, piece_type, game_phase=game_phase, turn_count=lane_step_counts[i],
-                                collect_training_data=AAREN_USE_REVEAL_DATA
-                            )
-                        if agent2.history_instances and i < len(agent2.history_instances) and lane_opponent_uses_history[i]:
-                            game_phase = "early" if lane_step_counts[i] < 50 else ("mid" if lane_step_counts[i] < 200 else "end")
-                            agent2.history_instances[i].update_from_reveal(
-                                pos, piece_type, game_phase=game_phase, turn_count=lane_step_counts[i],
-                                collect_training_data=AAREN_USE_REVEAL_DATA
-                            )
+                    (_, attacker_type), (_, defender_type) = revealed
+                    game_phase = "early" if lane_step_counts[i] < 50 else ("mid" if lane_step_counts[i] < 200 else "end")
+                    trackers = []
+                    if agent1.history_instances and i < len(agent1.history_instances):
+                        trackers.append(agent1.history_instances[i])
+                    if agent2.history_instances and i < len(agent2.history_instances) and lane_opponent_uses_history[i]:
+                        trackers.append(agent2.history_instances[i])
+                    for tracker in trackers:
+                        tracker.record_battle(actions[i], attacker_type, defender_type, acting_player=current_player,
+                                              game_phase=game_phase, turn_count=lane_step_counts[i],
+                                              collect_training_data=AAREN_USE_REVEAL_DATA)
                 profiling["aaren"] += time.perf_counter() - ta
                 
                 if done_bool:

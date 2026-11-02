@@ -16,6 +16,11 @@ LEARNING_RATE = 0.00003    # Reduced from 0.0001 for stable distributional RL
 NETWORK_CHANNELS = 64
 RESNET_BLOCKS = 6
 ATTENTION_HEADS = 4
+ADVANTAGE_HIDDEN = 512    # Per-square advantage head width (shared by all 100 squares)
+
+# AAREN history embeddings as extra input planes (off in Phase A: the agent sees the 30
+# observation planes only). On: HISTORY_EMBEDDING_SIZE more planes for both agents.
+AAREN_ENABLED = False
 NUM_EPISODES = 1000000    # Effectively infinite - train until manually stopped
 SAVE_INTERVAL = 1000       # Save model/export agent every N episodes
 PLOT_INTERVAL = 500       # Save metrics plots every N episodes

@@ -67,64 +67,60 @@ class PieceActionAaren(nn.Module):
         self.fc2 = nn.Linear(hidden_size, output_size)
         self.dropout = nn.Dropout(0.2)
         
-    def forward_parallel(self, x: torch.Tensor):
+    def _last_step(self, h: torch.Tensor, lengths: Optional[torch.Tensor]) -> torch.Tensor:
+        """Hidden state at each sequence's last real step.
+
+        Sequences are padded at the end; the scan is causal, so padding after a sequence's last
+        step cannot change it. Without `lengths` every sequence is taken to be full length.
+        (The thesis code always took h[:, -1], i.e. the padding step of every shorter sequence.)
+        """
+        if lengths is None:
+            return h[:, -1, :]
+        lengths = torch.as_tensor(lengths, device=h.device, dtype=torch.long).clamp(min=1)
+        rows = torch.arange(h.size(0), device=h.device)
+        return h[rows, lengths - 1, :]
+
+    def encode(self, x: torch.Tensor, lengths: Optional[torch.Tensor] = None) -> torch.Tensor:
+        """(batch, seq_len, input_size) end-padded sequences -> (batch, hidden_size) embeddings."""
+        h = self.input_proj(x)  # (batch, seq_len, hidden_size)
+        for aaren_cell, layer_norm in zip(self.aaren_cells, self.layer_norms):
+            h = self._parallel_prefix_scan(h, aaren_cell, layer_norm)
+        return self._last_step(h, lengths)
+
+    def head(self, h: torch.Tensor) -> torch.Tensor:
+        """Piece-type logits from embeddings (dropout only in training mode)."""
+        x = F.relu(self.fc1(h))
+        x = self.dropout(x)
+        return self.fc2(x)
+
+    def forward_parallel(self, x: torch.Tensor, lengths: Optional[torch.Tensor] = None):
         """
         Forward pass for training (parallel processing of full sequences).
         
         Uses parallel prefix scan algorithm for efficient parallel computation.
         
         Args:
-            x: Input tensor of shape (batch, sequence_length, input_size)
+            x: Input tensor of shape (batch, sequence_length, input_size), padded at the end
+            lengths: Real length of each sequence (default: all full length)
             
         Returns:
-            Output tensor of shape (batch, sequence_length, output_size) with piece type logits
+            (batch, output_size) piece type logits at each sequence's last real step
         """
-        batch_size, seq_len, _ = x.size()
-        
-        # Project input to hidden size
-        h = self.input_proj(x)  # (batch, seq_len, hidden_size)
-        
-        # Process through each Aaren layer
-        for layer_idx, (aaren_cell, layer_norm) in enumerate(zip(self.aaren_cells, self.layer_norms)):
-            # Parallel prefix scan for this layer
-            h = self._parallel_prefix_scan(h, aaren_cell, layer_norm)
-        
-        # Use last timestep for prediction
-        last_hidden = h[:, -1, :]  # (batch, hidden_size)
-        
-        # Fully connected layers
-        x = F.relu(self.fc1(last_hidden))
-        x = self.dropout(x)
-        x = self.fc2(x)
-        
-        # Return logits (softmax applied in loss function)
-        return x
+        return self.head(self.encode(x, lengths))
     
-    def forward_embedding(self, x: torch.Tensor) -> torch.Tensor:
+    def forward_embedding(self, x: torch.Tensor, lengths: Optional[torch.Tensor] = None) -> torch.Tensor:
         """
-        Return hidden state embedding instead of classification logits.
-        
-        Used at replay time to produce differentiable AAREN embeddings from
-        stored action histories, enabling end-to-end gradient flow from
-        the DQN loss through AAREN.
+        Hidden state embedding (no classification head) at each sequence's last real step.
+        Equal to the embedding the HistoryAggregator builds move by move with step().
         
         Args:
-            x: Input tensor of shape (batch, sequence_length, input_size)
+            x: Input tensor of shape (batch, sequence_length, input_size), padded at the end
+            lengths: Real length of each sequence (default: all full length)
             
         Returns:
-            Tensor of shape (batch, hidden_size) — last timestep hidden state
+            Tensor of shape (batch, hidden_size)
         """
-        batch_size, seq_len, _ = x.size()
-        
-        # Project input to hidden size
-        h = self.input_proj(x)  # (batch, seq_len, hidden_size)
-        
-        # Process through each Aaren layer
-        for layer_idx, (aaren_cell, layer_norm) in enumerate(zip(self.aaren_cells, self.layer_norms)):
-            h = self._parallel_prefix_scan(h, aaren_cell, layer_norm)
-        
-        # Return last timestep hidden state as embedding (no classification head)
-        return h[:, -1, :]  # (batch, hidden_size)
+        return self.encode(x, lengths)
     
     def forward(self, x: torch.Tensor):
         """
@@ -139,41 +135,40 @@ class PieceActionAaren(nn.Module):
         logits = self.forward_parallel(x)
         return F.softmax(logits, dim=1)
     
+    def step(self, x_t: torch.Tensor, prev_states: Optional[List[Tuple]] = None):
+        """
+        Inference mode: O(1) recurrent update.
+
+        Args:
+            x_t: (batch, input_size) or (batch, 1, input_size) features of one new action
+            prev_states: per-layer recurrent states from the previous step (None at the start)
+
+        Returns:
+            h: (batch, hidden_size) embedding after this action (same as encode() on the
+               whole sequence)
+            new_states: per-layer recurrent states
+        """
+        if x_t.dim() == 3:
+            x_t = x_t.squeeze(1)
+        h = self.input_proj(x_t)
+        new_states = []
+        for layer_idx, (aaren_cell, layer_norm) in enumerate(zip(self.aaren_cells, self.layer_norms)):
+            prev_state = prev_states[layer_idx] if prev_states is not None else None
+            h, new_state = aaren_cell(h, prev_state)
+            h = layer_norm(h)  # AAREN output is an unnormalised ratio
+            new_states.append(new_state)
+        return h, new_states
+
     def forward_sequential(self, x_t: torch.Tensor, prev_states: Optional[List[Tuple]] = None):
         """
-        Inference Mode: O(1) step.
-        
-        Args:
-            x_t: Input tensor of shape (batch, 1, input_size) or (batch, input_size)
-            prev_states: Optional list of previous states for each layer
-            
+        Inference Mode: O(1) step that also applies the classification head.
+
         Returns:
             probs: Output probabilities of shape (batch, output_size)
             new_states: List of new states for each layer
         """
-        if x_t.dim() == 3:
-            x_t = x_t.squeeze(1)
-        
-        h = self.input_proj(x_t)
-        new_states = []
-        
-        for layer_idx, (aaren_cell, layer_norm) in enumerate(zip(self.aaren_cells, self.layer_norms)):
-            # Get state for this specific layer
-            prev_state = prev_states[layer_idx] if prev_states is not None else None
-            
-            # Recurrent Update
-            h, new_state = aaren_cell(h, prev_state)
-            
-            # Apply LayerNorm (Crucial: AAREN output is unnormalized sum ratio)
-            h = layer_norm(h)
-            new_states.append(new_state)
-        
-        # Heads
-        x = F.relu(self.fc1(h))
-        x = self.dropout(x)
-        logits = self.fc2(x)
-        probs = F.softmax(logits, dim=1)
-        
+        h, new_states = self.step(x_t, prev_states)
+        probs = F.softmax(self.head(h), dim=1)
         return probs, new_states
     
     def _parallel_prefix_scan(self, h: torch.Tensor, aaren_cell: AarenCell, layer_norm: nn.LayerNorm):

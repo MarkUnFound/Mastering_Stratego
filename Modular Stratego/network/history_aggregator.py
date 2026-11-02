@@ -17,6 +17,8 @@ from collections import defaultdict, deque
 
 from aaren.network import PieceActionAaren
 from piece import PieceType, NUM_PIECE_TYPES
+from battle import BattleResolver
+from action_encoding import canonical_coords
 from training_config import DEFAULT_MAX_TURNS
 
 # Default configuration
@@ -84,9 +86,13 @@ class HistoryAggregator:
         else:
             self.optimizer = None  # Use shared optimizer
         
-        # Per-position tracking
+        # Per-position tracking (board coordinates; the piece's history follows it when it moves)
         self.position_histories: Dict[Tuple[int, int], List[List[float]]] = defaultdict(list)
         self.position_hidden_states: Dict[Tuple[int, int], Optional[List[Tuple]]] = defaultdict(lambda: None)
+        # Embedding of each tracked piece: the AAREN output after its latest move (what
+        # encode() gives for its whole history, and what the classification head reads)
+        self.position_outputs: Dict[Tuple[int, int], torch.Tensor] = {}
+        self._battle_resolver = BattleResolver()
         
         # Training data collection
         self.training_buffer: List[Tuple[List[List[float]], int]] = []  # (sequence, true_type)
@@ -105,6 +111,7 @@ class HistoryAggregator:
         """Reset state for a new game."""
         self.position_histories.clear()
         self.position_hidden_states.clear()
+        self.position_outputs.clear()
         self._embedding_cache = None
         self._cache_valid = False
     
@@ -127,6 +134,15 @@ class HistoryAggregator:
         
         board = game_state.board if hasattr(game_state, 'board') else game_state
         
+        # Target square info (board coordinates)
+        target_val = board[r2, c2].item() if hasattr(board[r2, c2], 'item') else board[r2, c2]
+        is_attack = (target_val != 0 and target_val != -13)  # Not empty and not lake
+
+        # Geometry in this side's canonical frame (own pieces at the bottom, enemy at the top), so
+        # the features mean the same for an aggregator tracking either side's opponent
+        r1, c1 = canonical_coords(r1, c1, self.player_id)
+        r2, c2 = canonical_coords(r2, c2, self.player_id)
+        
         # Direction and distance
         dr = r2 - r1
         dc = c2 - c1
@@ -135,10 +151,6 @@ class HistoryAggregator:
         # Normalize direction
         dir_r = dr / max(abs(dr), 1) if dr != 0 else 0
         dir_c = dc / max(abs(dc), 1) if dc != 0 else 0
-        
-        # Target square info
-        target_val = board[r2, c2].item() if hasattr(board[r2, c2], 'item') else board[r2, c2]
-        is_attack = (target_val != 0 and target_val != -13)  # Not empty and not lake
         
         # Position features (normalized)
         pos_r = r1 / 9.0
@@ -151,8 +163,8 @@ class HistoryAggregator:
         # Scout indicator (distance > 1)
         is_scout_move = 1.0 if dist > 1 else 0.0
         
-        # Movement pattern features
-        moves_toward_flag = 1.0 if (self.player_id == 1 and dr < 0) or (self.player_id in (-1, 2) and dr > 0) else 0.0
+        # Movement pattern features: the enemy advancing toward our side (down in our frame)
+        moves_toward_flag = 1.0 if dr > 0 else 0.0
         lateral_move = 1.0 if dr == 0 else 0.0
         
         # Piece activity (how many times this position has moved)
@@ -209,14 +221,16 @@ class HistoryAggregator:
         
         with torch.no_grad():
             prev_state = self.position_hidden_states[pos]
-            _, new_state = self.aaren.forward_sequential(feature_tensor, prev_state)
+            h, new_state = self.aaren.step(feature_tensor, prev_state)
             self.position_hidden_states[pos] = new_state
+            self.position_outputs[pos] = h.squeeze(0)
         
         # Update position tracking (piece moved from pos to new_pos)
         new_pos = (r2, c2)
         if pos in self.position_histories:
             self.position_histories[new_pos] = self.position_histories.pop(pos)
             self.position_hidden_states[new_pos] = self.position_hidden_states.pop(pos)
+            self.position_outputs[new_pos] = self.position_outputs.pop(pos)
         
         # Invalidate cache
         self._cache_valid = False
@@ -225,7 +239,13 @@ class HistoryAggregator:
                            game_phase: str = 'middle', turn_count: int = 0,
                            collect_training_data: bool = True):
         """
-        Record revealed piece for training data collection.
+        Label the tracked enemy piece at `pos` (board coordinates, where its history is now)
+        with its true type `piece_type`.
+
+        The caller must pass the ENEMY piece's type. record_battle() works this out from a
+        battle; the thesis trainer called this for both pieces of every battle at their
+        pre-move squares, so an enemy attacker's history was labelled with the type of the
+        piece it attacked.
         
         Args:
             pos: Position of revealed piece
@@ -245,20 +265,52 @@ class HistoryAggregator:
             if collect_training_data:
                 self.training_buffer.append((history.copy(), true_type_idx))
                 
-                # Limit buffer size
+                # Limit buffer size (in place: lanes of one agent share this list)
                 if len(self.training_buffer) > self.max_buffer_size:
-                    self.training_buffer = self.training_buffer[-self.max_buffer_size:]
+                    del self.training_buffer[:-self.max_buffer_size]
             
             # Update metrics (always — even when not collecting training data)
-            if pos in self.position_hidden_states and self.position_hidden_states[pos] is not None:
-                # Get prediction from current state
+            output = self.position_outputs.get(pos)
+            if output is not None:
                 with torch.no_grad():
-                    feature = torch.zeros(1, self.input_size, device=self.device)
-                    probs, _ = self.aaren.forward_sequential(feature, self.position_hidden_states[pos])
-                    predicted = probs.argmax(dim=1).item()
-                    if predicted == true_type_idx:
-                        self.predictions_correct += 1
-                    self.predictions_total += 1
+                    predicted = self._head_eval(output.unsqueeze(0)).argmax(dim=1).item()
+                if predicted == true_type_idx:
+                    self.predictions_correct += 1
+                self.predictions_total += 1
+
+    def record_battle(self, move: Tuple[Tuple[int, int], Tuple[int, int]], attacker_type: PieceType,
+                      defender_type: PieceType, acting_player: int, game_phase: str = 'middle',
+                      turn_count: int = 0, collect_training_data: bool = True):
+        """
+        A battle happened: `acting_player` moved its `attacker_type` piece from move[0] onto the
+        `defender_type` piece at move[1]. Call after update() has been given the same move.
+
+        Labels the enemy piece's history with the enemy piece's own type and forgets the
+        history of an enemy piece that died, so it cannot be read later at that square.
+        """
+        to_pos = move[1]
+        enemy_attacked = acting_player != self.player_id
+        enemy_type = attacker_type if enemy_attacked else defender_type
+        # The enemy piece's history is at the target square either way: update() moved an
+        # attacking enemy's history there; a defending enemy was already there.
+        self.update_from_reveal(to_pos, enemy_type, game_phase=game_phase, turn_count=turn_count,
+                                collect_training_data=collect_training_data)
+        result = self._battle_resolver.resolve_battle(attacker_type, defender_type, 1, 2)
+        enemy_survived = (result == 1) if enemy_attacked else (result == -1)
+        if not enemy_survived:
+            self._forget(to_pos)
+        self._forget(move[0])  # nothing of the enemy's is left on the source square
+
+    def _forget(self, pos: Tuple[int, int]):
+        self.position_histories.pop(pos, None)
+        self.position_hidden_states.pop(pos, None)
+        self.position_outputs.pop(pos, None)
+        self._cache_valid = False
+
+    def _head_eval(self, h: torch.Tensor) -> torch.Tensor:
+        """Classification logits without dropout (inference)."""
+        x = torch.relu(self.aaren.fc1(h))
+        return self.aaren.fc2(x)
     
     def get_embedding_tensor(self) -> torch.Tensor:
         """
@@ -273,20 +325,11 @@ class HistoryAggregator:
         # Create embedding tensor
         embedding = torch.zeros((self.hidden_size, 10, 10), device=self.device)
         
-        for pos, hidden_state in self.position_hidden_states.items():
-            r, c = pos
-            if hidden_state is not None and 0 <= r < 10 and 0 <= c < 10:
-                # Extract last layer's hidden state
-                last_layer_state = hidden_state[-1]  # (h, c) tuple
-                if isinstance(last_layer_state, tuple):
-                    h = last_layer_state[0]  # Use h from (h, c)
-                else:
-                    h = last_layer_state
-                
-                # h shape: (1, hidden_size) -> (hidden_size,)
-                if h.dim() == 2:
-                    h = h.squeeze(0)
-                
+        # Each tracked piece's AAREN output after its latest move. (The thesis code wrote the
+        # last layer's raw attention numerator a_t here, not the layer-normalised output the
+        # classification head is trained on.)
+        for (r, c), h in self.position_outputs.items():
+            if 0 <= r < 10 and 0 <= c < 10:
                 embedding[:, r, c] = h
         
         self._embedding_cache = embedding
@@ -345,21 +388,11 @@ class HistoryAggregator:
                 # Move stored embedding to device and convert to float32
                 embeddings.append(snapshot.to(device=device, dtype=torch.float32))
         
-        # --- Gradient Bridge ---
-        # Create a differentiable path through AAREN so DQN loss can
-        # update AAREN weights, without the cost of full sequence reconstruction.
-        # We run a zero vector through input_proj, producing a small-valued output
-        # that creates gradient flow: loss -> embedding -> bridge -> AAREN params.
-        # Using 1e-6 scaling so the perturbation is negligible (~0.0001% of values).
-        if self.aaren.training:
-            zero_input = torch.zeros(1, 1, self.input_size, device=device)
-            bridge = self.aaren.input_proj(zero_input)  # (1, 1, hidden_size)
-            bridge_val = bridge.squeeze() * 1e-6  # Tiny perturbation, preserves grad
-            # Add bridge to all tensor embeddings (skip None and legacy lists)
-            for i, snapshot in enumerate(snapshots):
-                if snapshot is not None and not isinstance(snapshot, list):
-                    embeddings[i] = embeddings[i] + bridge_val.unsqueeze(-1).unsqueeze(-1)
-        
+        # Embeddings are inputs to the DQN, like the board planes. AAREN is trained by its own
+        # supervised loss on revealed pieces (train()), which reaches every one of its parameter
+        # tensors. (The thesis code added a 1e-6-scaled pass of a zero vector through input_proj
+        # here as a "gradient bridge": the DQN loss then reached 1 of AAREN's 21 parameter
+        # tensors, input_proj.bias, and nothing that depends on the move history.)
         return embeddings
     
     def get_piece_predictions(self, pos: Tuple[int, int]) -> Optional[Dict[PieceType, float]]:
@@ -372,13 +405,15 @@ class HistoryAggregator:
         Returns:
             Dictionary mapping PieceType to probability, or None if no history
         """
-        if pos not in self.position_hidden_states or self.position_hidden_states[pos] is None:
+        output = self.position_outputs.get(pos)
+        if output is None:
             return None
             
         with torch.no_grad():
-            # Use dummy zero feature for current timestep if just querying state
-            feature = torch.zeros(1, self.input_size, device=self.device)
-            probs, _ = self.aaren.forward_sequential(feature, self.position_hidden_states[pos])
+            # Head on the piece's current embedding (the thesis code fed an extra all-zero
+            # "action" through the network first, so every query was a prediction after a
+            # move that never happened)
+            probs = torch.softmax(self._head_eval(output.unsqueeze(0)), dim=1)
             probs = probs.squeeze(0).cpu().numpy()
             
             # Map to PieceType
@@ -388,7 +423,8 @@ class HistoryAggregator:
                 result[pt] = float(probs[i])
             return result
 
-    def get_default_piece_prior(self) -> Dict[PieceType, float]:
+    @staticmethod
+    def get_default_piece_prior() -> Dict[PieceType, float]:
         """
         Return the standard Bayesian prior distribution over piece identities
         for stationary / unrevealed enemy pieces based on the 40-piece setup.
@@ -456,10 +492,11 @@ class HistoryAggregator:
             # Create tensors
             input_tensor = torch.tensor(padded_seqs, device=self.device, dtype=torch.float32)
             target_tensor = torch.tensor(batch_targets, device=self.device, dtype=torch.long)
+            lengths = torch.tensor([len(seq) for seq in batch_seqs], device=self.device)
             
-            # Forward pass
+            # Forward pass (prediction at each sequence's last real action, not at its padding)
             self.optimizer.zero_grad()
-            logits = self.aaren.forward_parallel(input_tensor)
+            logits = self.aaren.forward_parallel(input_tensor, lengths)
             
             # Loss
             loss = nn.functional.cross_entropy(logits, target_tensor)
@@ -525,7 +562,7 @@ class HistoryAggregator:
             self.aaren.load_state_dict(state_dict['aaren_state_dict'])
         if state_dict.get('optimizer_state_dict') and self.optimizer:
             self.optimizer.load_state_dict(state_dict['optimizer_state_dict'])
-        self.training_buffer = state_dict.get('training_buffer', [])
+        self.training_buffer[:] = state_dict.get('training_buffer', [])  # in place: lanes share it
         self.training_losses = state_dict.get('training_losses', deque(maxlen=1000))
         self.predictions_correct = state_dict.get('predictions_correct', 0)
         self.predictions_total = state_dict.get('predictions_total', 0)

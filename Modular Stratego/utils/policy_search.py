@@ -8,7 +8,7 @@ at a much higher level by "thinking ahead" during gameplay.
 Key features:
 - Shallow depth search (1-2 moves ahead) for speed
 - Minimax-style evaluation with Q-value truncation
-- Uses agent's full 79-channel AAREN state representation
+- Uses the agent's state representation (30 observation planes, + AAREN planes if enabled)
 - GPU-accelerated batch evaluation
 - INFERENCE ONLY: never used during training to preserve iterations/sec
 
@@ -92,7 +92,7 @@ class PolicyRefinedSearch:
         Perform test-time search to find the best move.
         
         Args:
-            state_tensor: Current state representation (C, H, W) — must be 79-channel
+            state_tensor: Current state representation (C, H, W) — the agent's network input
             legal_moves: List of legal moves
             get_valid_moves_fn: Function to get valid moves from a game state
             step_fn: Function to simulate a step (returns new_state, reward, done, info)
@@ -155,8 +155,9 @@ class PolicyRefinedSearch:
     
     def _get_move_q_values(self, 
                            state_tensor: torch.Tensor,
-                           legal_moves: List[Tuple]) -> List[float]:
-        """Get Q-values for all legal moves using agent's network."""
+                           legal_moves: List[Tuple],
+                           player_id: Optional[int] = None) -> List[float]:
+        """Q-values of `player_id`'s legal moves (default: the agent's) from that side's state tensor."""
         if state_tensor.dim() == 3:
             state_tensor = state_tensor.unsqueeze(0)
             
@@ -165,12 +166,12 @@ class PolicyRefinedSearch:
             with torch.amp.autocast('cuda', enabled=self.agent.amp_enabled):
                 log_probs = self.q_network(state_tensor.to(self.device))
                 probs = log_probs.exp()
-                q_values = (probs * self.support).sum(dim=2).squeeze(0)  # (400,)
+                q_values = (probs * self.support).sum(dim=2).squeeze(0)  # (num_actions,)
         
         move_q_values = []
         for move in legal_moves:
-            action_idx = self._move_to_action_index(move)
-            if action_idx is not None and 0 <= action_idx < 400:
+            action_idx = self._move_to_action_index(move, player_id)
+            if action_idx is not None and 0 <= action_idx < self.agent.action_size:
                 move_q_values.append(q_values[action_idx].item())
             else:
                 move_q_values.append(-float('inf'))
@@ -235,7 +236,7 @@ class PolicyRefinedSearch:
                 if done2:
                     return reward - opp_reward * 0.5  # Penalize if opponent wins
                 
-                # Evaluate final position for us using full 79-channel representation
+                # Evaluate final position for us using the agent's representation
                 final_value = self._evaluate_position(final_state, player_id)
                 
                 return reward + self.config.discount * final_value
@@ -260,11 +261,11 @@ class PolicyRefinedSearch:
         """
         # Get state tensor from opponent's perspective using agent's representation
         state_tensor = self._get_state_for_player(game_state, -our_player_id)
-        return self._get_move_q_values(state_tensor, opponent_moves)
+        return self._get_move_q_values(state_tensor, opponent_moves, -our_player_id)
     
     def _evaluate_position(self, game_state, player_id: int) -> float:
         """
-        Evaluate a position using the Q-network with full 79-channel representation.
+        Evaluate a position using the Q-network and the agent's representation.
         
         For C51, this returns the expected value of the best action.
         """
@@ -277,69 +278,35 @@ class PolicyRefinedSearch:
             with torch.amp.autocast('cuda', enabled=self.agent.amp_enabled):
                 log_probs = self.q_network(state_tensor.to(self.device))
                 probs = log_probs.exp()
-                q_values = (probs * self.support).sum(dim=2).squeeze(0)  # (400,)
+                q_values = (probs * self.support).sum(dim=2).squeeze(0)  # (num_actions,)
                 
                 # Return max Q-value as position value
                 return q_values.max().item()
     
     def _get_state_for_player(self, game_state, player_id: int) -> torch.Tensor:
         """
-        Build the full 79-channel state tensor using the agent's representation.
-        
-        Uses agent.get_state_representation() which properly constructs:
-        - 15 board feature channels
-        - 64 AAREN history embedding channels
-        = 79 total channels at 10x10 spatial resolution
+        Build the network input using the agent's representation: the 30 observation planes
+        (+ AAREN embedding planes when AAREN_ENABLED), in player_id's canonical frame.
         
         Args:
             game_state: Game state (board tensor or GameState object)
             player_id: Which player's perspective to use
         """
-        # Use the agent's history aggregator for AAREN embeddings
-        history_instance = self.agent.history if self.agent.use_pbs else None
+        # The agent's history aggregator only describes the agent's own opponent
+        history_instance = self.agent.history if (self.agent.use_pbs and player_id == self.agent.player_id) else None
         
-        # Build full 79-channel tensor via agent's method
+        # Network input via the agent's method, in player_id's canonical frame
         state_tensor = self.agent.get_state_representation(
-            game_state, pbs_instance=history_instance
+            game_state, pbs_instance=history_instance, player=player_id
         )
         
         return state_tensor
     
     def _move_to_action_index(self, 
-                              move: Tuple[Tuple[int, int], Tuple[int, int]]) -> Optional[int]:
-        """Convert move to action index (same encoding as RainbowAgent)."""
-        (r_from, c_from), (r_to, c_to) = move
-        
-        # Calculate distance
-        dist = abs(r_to - r_from) + abs(c_to - c_from)
-        
-        # For Scout moves (dist > 1), map to 1-step direction
-        if dist > 1:
-            if r_to != r_from:
-                dr = 1 if r_to > r_from else -1
-                dc = 0
-            else:
-                dr = 0
-                dc = 1 if c_to > c_from else -1
-        elif dist == 1:
-            dr = r_to - r_from
-            dc = c_to - c_from
-        else:
-            return None
-        
-        # Direction to index
-        if (dr, dc) == (0, 1):
-            dir_idx = 0  # Right
-        elif (dr, dc) == (0, -1):
-            dir_idx = 1  # Left
-        elif (dr, dc) == (1, 0):
-            dir_idx = 2  # Down
-        elif (dr, dc) == (-1, 0):
-            dir_idx = 3  # Up
-        else:
-            return None
-        
-        return (r_from * 10 + c_from) * 4 + dir_idx
+                              move: Tuple[Tuple[int, int], Tuple[int, int]],
+                              player_id: Optional[int] = None) -> Optional[int]:
+        """Action index of `move` (the agent's lossless 3600-action encoding, `player_id`'s frame)."""
+        return self.agent._move_to_action_index(move, player_id)
     
     def _fallback_action(self, 
                          state_tensor: torch.Tensor,
@@ -438,7 +405,7 @@ class UpdateEquivalenceSearch:
         Perform Update-Equivalence search to find the best move.
         
         Args:
-            state_tensor: Current state representation (79, 10, 10)
+            state_tensor: Current state representation (agent.input_channels, 10, 10)
             legal_moves: List of legal moves
             
         Returns:
@@ -509,12 +476,12 @@ class UpdateEquivalenceSearch:
             with torch.amp.autocast('cuda', enabled=self.agent.amp_enabled):
                 log_probs = self.q_network(state_tensor.to(self.device))
                 probs = log_probs.exp()
-                all_q = (probs * self.support).sum(dim=2).squeeze(0)  # (400,)
+                all_q = (probs * self.support).sum(dim=2).squeeze(0)  # (num_actions,)
         
         q_values = torch.zeros(len(legal_moves), device=self.device)
         for i, move in enumerate(legal_moves):
             action_idx = self._move_to_action_index(move)
-            if action_idx is not None and 0 <= action_idx < 400:
+            if action_idx is not None and 0 <= action_idx < self.agent.action_size:
                 q_values[i] = all_q[action_idx]
             else:
                 q_values[i] = -float('inf')
@@ -592,7 +559,7 @@ class UpdateEquivalenceSearch:
                 probs = log_probs.exp()
                 q_values = (probs * self.support).sum(dim=2).squeeze(0)
                 
-                if 0 <= action_idx < 400:
+                if 0 <= action_idx < self.agent.action_size:
                     return q_values[action_idx].item()
         
         return 0.0
@@ -619,37 +586,10 @@ class UpdateEquivalenceSearch:
         return F.softmax(refined_logits, dim=-1)
     
     def _move_to_action_index(self, 
-                              move: Tuple[Tuple[int, int], Tuple[int, int]]) -> Optional[int]:
-        """Convert move to action index (same encoding as RainbowAgent)."""
-        (r_from, c_from), (r_to, c_to) = move
-        
-        dist = abs(r_to - r_from) + abs(c_to - c_from)
-        
-        if dist > 1:
-            if r_to != r_from:
-                dr = 1 if r_to > r_from else -1
-                dc = 0
-            else:
-                dr = 0
-                dc = 1 if c_to > c_from else -1
-        elif dist == 1:
-            dr = r_to - r_from
-            dc = c_to - c_from
-        else:
-            return None
-        
-        if (dr, dc) == (0, 1):
-            dir_idx = 0
-        elif (dr, dc) == (0, -1):
-            dir_idx = 1
-        elif (dr, dc) == (1, 0):
-            dir_idx = 2
-        elif (dr, dc) == (-1, 0):
-            dir_idx = 3
-        else:
-            return None
-        
-        return (r_from * 10 + c_from) * 4 + dir_idx
+                              move: Tuple[Tuple[int, int], Tuple[int, int]],
+                              player_id: Optional[int] = None) -> Optional[int]:
+        """Action index of `move` (the agent's lossless 3600-action encoding, `player_id`'s frame)."""
+        return self.agent._move_to_action_index(move, player_id)
     
     def _fallback_action(self, 
                          state_tensor: torch.Tensor,

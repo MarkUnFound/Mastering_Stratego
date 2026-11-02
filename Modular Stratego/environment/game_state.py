@@ -19,6 +19,11 @@ class GameState:
     revealed_pieces_p2: Dict[Tuple[int, int], int]
     # Plies since the last battle (the no-battle draw rule counts this)
     plies_since_battle: int = 0
+    # Observation metadata (environment/observation.py reads these)
+    no_battle_draw_plies: int = 0       # the env's no-battle draw limit (0 = rule off)
+    max_turns: int = 0                  # the env's turn limit
+    observability: float = 0.0          # share of hidden enemy ranks shown (1.0 = full observability)
+    own_revealed: Optional[torch.Tensor] = None  # (10, 10) bool: own pieces whose rank the enemy knows
 
     def get_player_view(self, player: int) -> torch.Tensor:
         """Returns the board as seen by the specified player."""
@@ -62,5 +67,9 @@ class GameState:
             uncertainty_mask=new_uncertainty,
             revealed_pieces_p1=new_revealed_p1,
             revealed_pieces_p2=new_revealed_p2,
-            plies_since_battle=self.plies_since_battle
+            plies_since_battle=self.plies_since_battle,
+            no_battle_draw_plies=self.no_battle_draw_plies,
+            max_turns=self.max_turns,
+            observability=self.observability,
+            own_revealed=self.own_revealed.clone() if self.own_revealed is not None else None
         )

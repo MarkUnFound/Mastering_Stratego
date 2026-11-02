@@ -11,7 +11,8 @@ from environment import StrategoEnvironment
 from training_config import HISTORY_EMBEDDING_SIZE
 
 
-def test_dashboard_tensors(cpu, tiny_network):
+def test_dashboard_tensors(cpu, tiny_network, config_override):
+    config_override(AAREN_ENABLED=True)  # the dashboard also shows the AAREN embedding
     agent = RainbowAgent(player_id=1, device=cpu, num_envs=1)
     agent.q_network.eval()
 
@@ -19,7 +20,7 @@ def test_dashboard_tensors(cpu, tiny_network):
     handle = agent.q_network.spatial_attention.attn.register_forward_hook(
         lambda module, inputs, output: captured.__setitem__('attn', output[1]))
     state = StrategoEnvironment(cpu).reset()
-    x = agent.get_state_representation(state.board, pbs_instance=agent.history)
+    x = agent.get_state_representation(state, pbs_instance=agent.history)
     if x.dim() == 3:
         x = x.unsqueeze(0)
     with torch.no_grad():

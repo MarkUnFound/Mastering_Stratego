@@ -9,8 +9,8 @@ from prioritized_memory import EpisodicReplayBuffer
 
 
 def make_transition(step_idx, reward=0.1):
-    state = torch.randn(15, 10, 10)  # 15-channel board only (AAREN reconstructed at replay)
-    next_state = torch.randn(15, 10, 10)
+    state = torch.randn(30, 10, 10)  # the 30 observation planes (AAREN added at replay)
+    next_state = torch.randn(30, 10, 10)
     action = ((step_idx % 10, step_idx % 10), ((step_idx + 1) % 10, step_idx % 10))
     return state, action, reward, next_state, False
 
@@ -35,7 +35,7 @@ def test_add_end_sample_cycle():
     result = buf.sample_segments(4)
     assert result is not None and len(result) == 7
     states, actions, rewards, next_states, dones, hist_snaps, next_hist_snaps = result
-    assert states.shape == (4, 15, 10, 10)
+    assert states.shape == (4, 30, 10, 10)
     assert actions.shape == (4,)
     assert rewards.shape == (4,)
     assert dones.shape == (4,)

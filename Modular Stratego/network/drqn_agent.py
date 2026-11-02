@@ -30,6 +30,10 @@ from prioritized_memory import StandardReplayBuffer, PrioritizedReplayBuffer, NS
 # Heuristic Action Filter for Top-100 move selection
 from heuristic_filter import HeuristicMoveFilter
 
+# Lossless 3600-action encoding and 30 observation planes, both in the mover's canonical frame
+from action_encoding import NUM_ACTIONS, encode_move, decode_action, mirror_action, rotate_action
+from observation import NUM_OBS_PLANES, encode_observations, to_canonical
+
 # C51 Hyperparameters - CRITICAL FOR DISTRIBUTIONAL RL
 # Support range [-10, +10] with 51 atoms → 0.4 units/atom resolution.
 # Terminal rewards are ±1.0, per-step shaping ~0.01–0.3;
@@ -54,8 +58,8 @@ import sys
 class RainbowAgent:
     """Rainbow DQN Agent for Stratego"""
     
-    def __init__(self, player_id: int, device, 
-                 state_size: int = 200, action_size: int = 400,
+    def __init__(self, player_id: int, device,
+                 state_size: int = 200, action_size: int = NUM_ACTIONS,
                  lr: float = 0.0001, gamma: float = 0.99, 
                  buffer_size: int = 10000, batch_size: int = 32,
                  use_pbs: bool = True, num_envs: int = 1,
@@ -99,18 +103,22 @@ class RainbowAgent:
         
         # Import AAREN optimization settings
         try:
-            from training_config import AAREN_HIDDEN_SIZE, AAREN_NUM_LAYERS, HISTORY_EMBEDDING_SIZE
+            from training_config import AAREN_HIDDEN_SIZE, AAREN_NUM_LAYERS, HISTORY_EMBEDDING_SIZE, AAREN_ENABLED
         except ImportError:
             AAREN_HIDDEN_SIZE = 64
             AAREN_NUM_LAYERS = 2
             HISTORY_EMBEDDING_SIZE = 64
-        
+            AAREN_ENABLED = False
+
         # History Aggregator (replaces PBS)
-        # Uses AAREN embeddings instead of belief distributions
+        # Uses AAREN embeddings instead of belief distributions. AAREN_ENABLED decides whether the
+        # network has embedding input planes at all; use_pbs whether this agent tracks history.
+        self.aaren_enabled = AAREN_ENABLED
+        self.use_pbs = use_pbs = bool(use_pbs and AAREN_ENABLED)
         self.history = None
         self.history_instances = []
-        self.history_embedding_size = HISTORY_EMBEDDING_SIZE
-        
+        self.history_embedding_size = HISTORY_EMBEDDING_SIZE if AAREN_ENABLED else 0
+
         if self.use_pbs:  # use_pbs now means use_history
             if num_envs > 1:
                 # Create shared AAREN for parallel environments
@@ -132,6 +140,8 @@ class RainbowAgent:
                         history_instance.optimizer = optim.AdamW(self.shared_aaren.parameters(), lr=0.001, weight_decay=0.01)
                     else:
                         history_instance.optimizer = None
+                        # One labelled-reveal buffer for all lanes: lane 0 trains the shared model
+                        history_instance.training_buffer = self.history_instances[0].training_buffer
                     self.history_instances.append(history_instance)
                 self.history = self.history_instances[0]
             else:
@@ -154,8 +164,8 @@ class RainbowAgent:
         self.tau = 0.001
         
         # Rainbow Networks
-        # 15 (Board) + HISTORY_EMBEDDING_SIZE (AAREN embeddings) = 79 Channels (with 64)
-        self.input_channels = 15 + self.history_embedding_size
+        # 30 observation planes (+ HISTORY_EMBEDDING_SIZE AAREN planes when AAREN_ENABLED)
+        self.input_channels = NUM_OBS_PLANES + self.history_embedding_size
         self.q_network = RainbowDQN(input_shape=(self.input_channels, 10, 10), output_size=action_size, num_atoms=self.num_atoms).to(device)
         self.target_network = RainbowDQN(input_shape=(self.input_channels, 10, 10), output_size=action_size, num_atoms=self.num_atoms).to(device)
         self.update_target_network()
@@ -247,19 +257,12 @@ class RainbowAgent:
         if device.type == 'cuda':
             torch.backends.cudnn.benchmark = True
         
-        # Combined Optimizer: DQN + AAREN (end-to-end training)
-        # AAREN learns jointly with Rainbow DQN via shared gradient flow
+        # DQN optimizer. AAREN is trained by its own optimizer on its supervised reveal loss
+        # (train_history); its embeddings are DQN inputs. (The thesis code also put the AAREN
+        # parameters in this optimizer, but the DQN loss only reached input_proj.bias.)
         self.optimizer = None
         if not self.inference_only:
-            all_parameters = list(self.q_network.parameters())
-            if self.use_pbs and hasattr(self, 'shared_aaren') and self.shared_aaren:
-                all_parameters.extend(self.shared_aaren.parameters())
-                print(f"[OK] AAREN params added to optimizer (end-to-end training)")
-            elif self.use_pbs and self.history and self.history.owns_aaren:
-                all_parameters.extend(self.history.aaren.parameters())
-                print(f"[OK] AAREN params added to optimizer (end-to-end training)")
-            
-            self.optimizer = optim.AdamW(all_parameters, lr=lr, weight_decay=0.01)
+            self.optimizer = optim.AdamW(self.q_network.parameters(), lr=lr, weight_decay=0.01)
         
         # Import PER and N-Step settings
         try:
@@ -390,7 +393,9 @@ class RainbowAgent:
         """
         if self.use_pbs:
             return  # Already enabled
-            
+        if not self.aaren_enabled:
+            return  # the network has no AAREN input planes (AAREN_ENABLED is off)
+
         if num_envs is None:
             num_envs = self.num_envs
             
@@ -422,6 +427,7 @@ class RainbowAgent:
                     history_instance.optimizer = optim.AdamW(self.shared_aaren.parameters(), lr=0.001, weight_decay=0.01)
                 else:
                     history_instance.optimizer = None
+                    history_instance.training_buffer = self.history_instances[0].training_buffer
                 self.history_instances.append(history_instance)
             self.history = self.history_instances[0]
         else:
@@ -442,154 +448,62 @@ class RainbowAgent:
         for target_param, local_param in zip(self.target_network.parameters(), self.q_network.parameters()):
             target_param.data.copy_(self.tau * local_param.data + (1.0 - self.tau) * target_param.data)
         
-    def get_state_representation(self, board, pbs_instance=None, full_observability=False):
+    def get_state_representation(self, board, pbs_instance=None, full_observability=False, player=None):
         """
-        Convert raw board to feature tensor.
-        Includes AAREN history embeddings for enemy piece prediction.
-        Total channels: 15 (Board) + HISTORY_EMBEDDING_SIZE (AAREN) = 79 (default)
-        
-        AAREN is never bypassed: the DQN always sees AAREN embeddings (or zeros
-        if AAREN is not yet active). This ensures co-evolution of the DQN backbone
-        and AAREN representations across all curriculum phases.
-        
+        Network input for one position, in the viewer's canonical frame (Player 2 rotated 180
+        degrees): the 30 observation planes of environment/observation.py, followed by the
+        AAREN history embedding planes when AAREN_ENABLED (zeros without a history instance).
+
         Args:
-            board: Game board tensor or GameState object
+            board: GameState (planes 26-29 come from it) or a bare 10x10 board
             pbs_instance: History aggregator instance (AAREN)
-            full_observability: Controls board visibility only (does NOT affect AAREN channels)
+            full_observability: unused; what the board shows is decided by the environment
+            player: viewing side (default: this agent's player_id)
         """
-        # Handle GameState object - extract the board tensor
-        from game_state import GameState
-        if isinstance(board, GameState):
-            board = board.board
-            
-        if isinstance(board, np.ndarray):
-            board = torch.from_numpy(board).to(self.device)
-            
-        # 1. Board Features (15 channels)
-        features = torch.zeros((15, 10, 10), device=self.device)
-        
-        if self.player_id == 1:
-            # Player 1: Own pieces are positive (1-12)
-            for i in range(1, 13):
-                features[i-1] = (board == i).float()
-            # Enemy pieces: Negative values (known pieces -1 to -12, hidden pieces -20)
-            from board import HIDDEN_PIECE
-            features[12] = (((board < 0) & (board > LAKE_SQUARE)) | (board == HIDDEN_PIECE)).float()
+        player = self.player_id if player is None else player
+        obs = encode_observations([board], player, device=self.device)[0]
+        return self._with_history_planes(obs.unsqueeze(0), [pbs_instance], player)[0]
+
+    def _with_history_planes(self, obs, histories, player=None):
+        """Append the AAREN embedding planes (canonical frame) to a (B, 30, 10, 10) batch."""
+        if not self.history_embedding_size:
+            return obs
+        player = self.player_id if player is None else player
+        planes = []
+        for h in histories:
+            if h is not None:
+                emb = h.get_embedding_tensor().to(self.device)
+            else:
+                emb = torch.zeros((self.history_embedding_size, 10, 10), device=self.device)
+            planes.append(to_canonical(emb, player))
+        return torch.cat([obs, torch.stack(planes)], dim=1)
+
+    def _snapshot_planes(self, snapshots):
+        """(B, HISTORY_EMBEDDING_SIZE, 10, 10) canonical-frame AAREN planes from stored snapshots."""
+        if self.history is not None:
+            embs = self.history.reconstruct_embeddings_batch(snapshots, device=self.device)
         else:
-            # Player 2: Own pieces are negative (-1 to -12)
-            for i in range(1, 13):
-                features[i-1] = (board == -i).float()
-            # Enemy pieces: Positive values (known pieces 1 to 12) AND hidden pieces (-20)
-            # Note: For P2, the visible board represents hidden enemies as HIDDEN_PIECE (-20) too.
-            from board import HIDDEN_PIECE
-            features[12] = ((board > 0) | (board == HIDDEN_PIECE)).float()
-            
-        # Obstacles (Channel 13)
-        features[13] = (board == LAKE_SQUARE).float()
-        
-        # Channel 14: Empty squares (0)
-        features[14] = (board == 0).float()
-        
-        state_tensor = features
-        
-        # --- AAREN EMBEDDING CHANNELS ---
-        # AAREN is never bypassed with ground-truth one-hot encoding.
-        # The DQN must learn to rely on AAREN as the memory and piece prediction
-        # module by classifying enemy actions, not by cheating with direct board info.
-        if pbs_instance is not None:
-            # Use AAREN embeddings from HistoryAggregator
-            embedding = pbs_instance.get_embedding_tensor()
-            
-            # Ensure correct device
-            if embedding.device != self.device:
-                embedding = embedding.to(self.device)
-                
-            # Concatenate: (15 + history_embedding_size, 10, 10)
-            full_state = torch.cat([state_tensor, embedding], dim=0)
-            return full_state
-        
-        # Fallback: pad with zeros
-        else:
-            padding = torch.zeros((self.history_embedding_size, 10, 10), device=self.device)
-            full_state = torch.cat([state_tensor, padding], dim=0)
-            return full_state
-    
+            embs = [torch.zeros(self.history_embedding_size, 10, 10, device=self.device) for _ in snapshots]
+        return to_canonical(torch.stack(embs), self.player_id)
+
     def get_board_only_representation(self, board):
         """
-        Extract 15-channel board features only (no AAREN channels).
-        
-        Used for replay buffer storage. AAREN embeddings are reconstructed
-        at replay time using stored history snapshots.
-        
+        The 30 observation planes only (no AAREN planes), canonical frame.
+
+        Used for replay buffer storage. AAREN embeddings are stored as history snapshots and
+        added at replay time.
+
         Args:
-            board: Game board tensor or GameState object
+            board: GameState or bare board
         Returns:
-            Tensor of shape (15, 10, 10)
+            Tensor of shape (30, 10, 10)
         """
-        from game_state import GameState
-        if isinstance(board, GameState):
-            board = board.board
-        if isinstance(board, np.ndarray):
-            board = torch.from_numpy(board).to(self.device)
-        
-        features = torch.zeros((15, 10, 10), device=self.device)
-        
-        if self.player_id == 1:
-            for i in range(1, 13):
-                features[i-1] = (board == i).float()
-            from board import HIDDEN_PIECE
-            features[12] = (((board < 0) & (board > LAKE_SQUARE)) | (board == HIDDEN_PIECE)).float()
-        else:
-            for i in range(1, 13):
-                features[i-1] = (board == -i).float()
-            from board import HIDDEN_PIECE
-            features[12] = ((board > 0) | (board == HIDDEN_PIECE)).float()
-        
-        features[13] = (board == LAKE_SQUARE).float()
-        features[14] = (board == 0).float()
-        
-        return features
+        return encode_observations([board], self.player_id, device=self.device)[0]
 
     def get_batch_board_only_representation(self, states):
-        """
-        Vectorized 15-channel board feature extraction for a batch of states.
-        Avoids the massive CPU overhead of looping 15 channels per state.
-        """
-        from game_state import GameState
-        boards = []
-        for s in states:
-            if isinstance(s, GameState):
-                boards.append(s.board)
-            else:
-                boards.append(s)
-                
-        if isinstance(boards[0], np.ndarray):
-            boards = torch.from_numpy(np.stack(boards)).to(self.device).float()
-        else:
-            if boards[0].dim() == 2:
-                boards = torch.stack(boards).to(self.device).float()
-            else:
-                boards = torch.cat([b.unsqueeze(0) if b.dim() == 2 else b for b in boards]).to(self.device).float()
-            
-        batch_size = boards.size(0)
-        features = torch.zeros((batch_size, 15, 10, 10), device=self.device)
-        
-        from board import LAKE_SQUARE, HIDDEN_PIECE
-        
-        if self.player_id == 1:
-            for i in range(1, 13):
-                features[:, i-1] = (boards == i).float()
-            features[:, 12] = (((boards < 0) & (boards > LAKE_SQUARE)) | (boards == HIDDEN_PIECE)).float()
-        else:
-            for i in range(1, 13):
-                features[:, i-1] = (boards == -i).float()
-            features[:, 12] = ((boards > 0) | (boards == HIDDEN_PIECE)).float()
-            
-        features[:, 13] = (boards == LAKE_SQUARE).float()
-        features[:, 14] = (boards == 0).float()
-        
-        return features
-        
+        """(B, 30, 10, 10) observation planes for a batch of GameStates or bare boards."""
+        return encode_observations(list(states), self.player_id, device=self.device)
+
     def remember(self, state, action, reward, next_state, done):
         """Store experience in replay buffer with automated augmentation"""
         # Process states
@@ -612,13 +526,9 @@ class RainbowAgent:
         """
         # 1. Convert action to index if it's a tuple
         action_idx = action
-        move_tuple = None
         if isinstance(action, (tuple, list)):
-            move_tuple = action
             action_idx = self._move_to_action_index(action)
-        else:
-            # If we already have an index, we need to decode it for augmentation
-            move_tuple = self._action_index_to_move(action_idx)
+        action_idx = int(action_idx)
             
         # 2. Add original experience
         # Clip reward to C51 support range to avoid instability
@@ -638,34 +548,21 @@ class RainbowAgent:
         self.step_count += 1
         
         # 3. Add Augmented Experiences (without history snapshots — augmented states
-        # don't have meaningful AAREN histories since positions are transformed)
-        if self.aug_enabled and move_tuple:
-            (r1, c1), (r2, c2) = move_tuple
-            
-            # --- Horizontal Flip (Mirror) ---
+        # don't have meaningful AAREN histories since positions are transformed). States and
+        # action indices are both in the canonical frame, so the action is transformed there.
+        if self.aug_enabled:
+            # --- Horizontal Flip (Mirror): columns c -> 9 - c ---
             if "flip" in self.aug_types:
-                # Flip columns of the tensor: (C, H, W) -> [:, :, ::-1]
                 state_flip = torch.flip(state, [2])
                 next_state_flip = torch.flip(next_state, [2])
-                
-                # Flip action coordinates: c -> (9-c)
-                move_flip = ((r1, 9-c1), (r2, 9-c2))
-                action_idx_flip = self._move_to_action_index(move_flip)
-                
-                self.memory.add(state_flip, action_idx_flip, reward_clipped, next_state_flip, done)
+                self.memory.add(state_flip, mirror_action(action_idx), reward_clipped, next_state_flip, done)
                 self.step_count += 1
-                
+
             # --- Rotation 180 ---
             if "rotate" in self.aug_types:
-                # Flip rows and columns: (C, H, W) -> [:, ::-1, ::-1]
                 state_rot = torch.flip(state, [1, 2])
                 next_state_rot = torch.flip(next_state, [1, 2])
-                
-                # Flip both coordinates: r -> (9-r), c -> (9-c)
-                move_rot = ((9-r1, 9-c1), (9-r2, 9-c2))
-                action_idx_rot = self._move_to_action_index(move_rot)
-                
-                self.memory.add(state_rot, action_idx_rot, reward_clipped, next_state_rot, done)
+                self.memory.add(state_rot, rotate_action(action_idx), reward_clipped, next_state_rot, done)
                 self.step_count += 1
 
     def remember_batch(self, states, actions, rewards, next_states, dones, active_mask, game_states=None, next_game_states=None, infos=None,
@@ -674,8 +571,7 @@ class RainbowAgent:
         Store multiple experiences efficiently with batched state processing.
         Uses N-step returns if enabled.
         
-        Stores 15-channel board-only tensors + AAREN history snapshots.
-        AAREN embeddings are reconstructed at replay() time using the current model.
+        Stores the 30 observation planes + AAREN history snapshots (when AAREN is on).
         
         Args:
             states: List of game states (boards)
@@ -697,9 +593,9 @@ class RainbowAgent:
         if lane_ids is None:
             lane_ids = list(range(len(states)))
             
-        # Fast vectorized feature extraction
-        state_tensors = self.get_batch_board_only_representation(states)
-        next_state_tensors = self.get_batch_board_only_representation(next_states)
+        # Fast vectorized feature extraction (GameStates carry the counters and flags)
+        state_tensors = self.get_batch_board_only_representation(game_states if game_states else states)
+        next_state_tensors = self.get_batch_board_only_representation(next_game_states if next_game_states else next_states)
         
         given_snapshots = history_snapshots
         history_snapshots = []
@@ -720,7 +616,19 @@ class RainbowAgent:
                 snap = None
 
             history_snapshots.append(snap)
-            next_history_snapshots.append(snap)  # next-state AAREN channels are zero-padded at replay
+            # The transition closes when this side is to move again, after the opponent's reply:
+            # the lane's history right now is the one the next state will be acted on with.
+            # (The thesis code stored the state's snapshot and replaced it by zero planes at
+            # replay, so the target network read zero padding as "no history".)
+            if not active_mask[i]:
+                next_snap = None
+            elif self.history_instances and lane < len(self.history_instances):
+                next_snap = self.history_instances[lane].get_history_snapshot()
+            elif self.history:
+                next_snap = self.history.get_history_snapshot()
+            else:
+                next_snap = None
+            next_history_snapshots.append(next_snap)
         
         # Add to memory for active environments only
         for i in range(len(states)):
@@ -834,34 +742,12 @@ class RainbowAgent:
         # Uncertainty is now implicitly handled via AAREN embeddings
         uncertainty_map = {}
             
-        # Filter valid moves - now includes Scout multi-step moves
+        # Q-value of every legal move (long Scout moves have their own action)
         valid_q_values = []
         valid_moves_filtered = []
         q_list = base_q_values.tolist()  # one transfer instead of one .item() per move
         for move in valid_moves:
-            (r1, c1), (r2, c2) = move
-            dist = abs(r2 - r1) + abs(c2 - c1)
-            
-            # For Scout moves (dist > 1), map to 1-step direction action
-            # This allows Scout to use its special ability
-            if dist > 1:
-                # Calculate direction unit vector
-                if r2 != r1:
-                    dr = 1 if r2 > r1 else -1
-                    dc = 0
-                else:
-                    dr = 0
-                    dc = 1 if c2 > c1 else -1
-                # Create a "virtual" 1-step move for action indexing
-                virtual_move = ((r1, c1), (r1 + dr, c1 + dc))
-                action_idx = self._move_to_action_index(virtual_move)
-            else:
-                action_idx = self._move_to_action_index(move)
-            
-            if action_idx is None:
-                continue
-                
-            q_val = q_list[action_idx]
+            q_val = q_list[self._move_to_action_index(move)]
             
             # Add uncertainty bonus
             uncertainty = self.get_move_uncertainty(move, uncertainty_map)
@@ -900,25 +786,21 @@ class RainbowAgent:
         """
         if env_indices is None:
             env_indices = list(range(len(states)))
-        # Convert states to tensors
-        state_tensors = []
+        items = []
+        histories = []
         for i, state in enumerate(states):
-            # Always use AAREN embeddings regardless of observability mode
-            # AAREN is never bypassed — it co-evolves with the DQN from Phase 1
+            # GameStates carry the counters and flags of planes 26-29
+            game_state = game_states[i] if game_states and i < len(game_states) and game_states[i] is not None else None
+            items.append(game_state if game_state is not None else state)
             pbs_instance = None
             lane = env_indices[i]
-            if self.pbs_instances and game_states and i < len(game_states) and game_states[i] and lane < len(self.pbs_instances):
+            if self.pbs_instances and game_state is not None and lane < len(self.pbs_instances):
                 pbs_instance = self.pbs_instances[lane]
-            elif self.pbs and game_states and i < len(game_states) and game_states[i]:
-                # Fallback to single PBS instance if pbs_instances list not used
+            elif self.pbs and game_state is not None:
                 pbs_instance = self.pbs
-                
-            # Use get_state_representation for each state
-            state_tensor = self.get_state_representation(state, pbs_instance=pbs_instance, full_observability=full_observability)
-            state_tensors.append(state_tensor)
-            
-        # Stack into batch
-        return torch.stack(state_tensors)
+            histories.append(pbs_instance)
+        obs = encode_observations(items, self.player_id, device=self.device)
+        return self._with_history_planes(obs, histories)
 
     def act_batch(self, states, valid_moves_list, game_states=None, env_indices=None, full_observability=False, temperature: float = 0.0) -> List[Optional[Tuple[Tuple[int, int], Tuple[int, int]]]]:
         """Batch action selection with epsilon-greedy exploration
@@ -1063,26 +945,7 @@ class RainbowAgent:
                 valid_moves_filtered = []
                 q_list = expected_q_values[i].tolist()  # one transfer instead of one .item() per move
                 for move in valid_moves:
-                    (r1, c1), (r2, c2) = move
-                    dist = abs(r2 - r1) + abs(c2 - c1)
-                    
-                    # For Scout moves (dist > 1), map to 1-step direction action
-                    if dist > 1:
-                        if r2 != r1:
-                            dr = 1 if r2 > r1 else -1
-                            dc = 0
-                        else:
-                            dr = 0
-                            dc = 1 if c2 > c1 else -1
-                        virtual_move = ((r1, c1), (r1 + dr, c1 + dc))
-                        action_idx = self._move_to_action_index(virtual_move)
-                    else:
-                        action_idx = self._move_to_action_index(move)
-                    
-                    if action_idx is None:
-                        continue
-                        
-                    q_val = q_list[action_idx]
+                    q_val = q_list[self._move_to_action_index(move)]
                     
                     uncertainty = self.get_move_uncertainty(move, uncertainty_maps[i])
                     exploration_bonus = uncertainty * self.uncertainty_exploration_multiplier
@@ -1249,31 +1112,14 @@ class RainbowAgent:
                 if indices is not None:
                     indices = indices + [-1] * ep_states.size(0)
         
-        # --- RECONSTRUCT AAREN EMBEDDINGS FROM STORED HISTORIES ---
-        # States from buffer are 15ch (board-only). Reconstruct AAREN embeddings
-        # using stored snapshots. To balance training speed vs accuracy, we use
-        # pre-computed embeddings but apply a "Gradient Bridge" to restore 
-        # end-to-end gradient flow from DQN through AAREN's input projection.
-        if self.history and states.size(1) == 15:  # 15ch = board-only format
-            # Reconstruct embeddings with gradients for end-to-end training (states only)
-            aaren_embeddings = self.history.reconstruct_embeddings_batch(
-                hist_snapshots, device=self.device
-            )
-            
-            # Stack and concatenate: 15ch board + 64ch AAREN = 79ch
-            aaren_tensor = torch.stack(aaren_embeddings)  # (batch, 64, 10, 10) — has gradients
-            states = torch.cat([states, aaren_tensor], dim=1)  # (batch, 79, 10, 10)
-            
-            # PERF: Zero-pad next_states instead of reconstructing AAREN embeddings.
-            # The target network already uses delayed weights, so precise AAREN
-            # embeddings for next_states add cost without proportional benefit.
-            # Gradients don't flow through next_states anyway (target is detached).
-            next_padding = torch.zeros(
-                next_states.size(0), self.history_embedding_size, 10, 10,
-                device=self.device
-            )
-            next_states = torch.cat([next_states, next_padding], dim=1)
-        
+        # --- AAREN EMBEDDING PLANES FROM STORED SNAPSHOTS ---
+        # Stored states are the 30 observation planes; with AAREN on, the network also reads
+        # the embedding planes the agent saw when it acted (state) and will act on (next state).
+        if self.history_embedding_size and states.size(1) == NUM_OBS_PLANES:
+            with torch.no_grad():
+                states = torch.cat([states, self._snapshot_planes(hist_snapshots)], dim=1)
+                next_states = torch.cat([next_states, self._snapshot_planes(next_hist_snapshots)], dim=1)
+
         # Use n-step gamma if available
         gamma_to_use = self.gamma_n if hasattr(self, 'gamma_n') and self.n_steps > 1 else self.gamma
         
@@ -1639,7 +1485,7 @@ class RainbowAgent:
             
             # PERF: Zero-pad instead of reconstructing AAREN — this is a diagnostic
             # metric, exact embeddings aren't needed for a Q-value estimate.
-            if states.size(1) == 15:
+            if self.history_embedding_size and states.size(1) == NUM_OBS_PLANES:
                 padding = torch.zeros(states.size(0), self.history_embedding_size, 10, 10, 
                                       device=self.device)
                 states = torch.cat([states, padding], dim=1)
@@ -1770,58 +1616,19 @@ class RainbowAgent:
             return stats
 
 
-    def _move_to_action_index(self, move):
+    def _move_to_action_index(self, move, player=None):
         """
-        Convert move ((r1, c1), (r2, c2)) to action index.
-        Total Actions: 400
-        Index = (StartPos[100]) * (Direction[4])
-        
-        Directions: 0=Right, 1=Left, 2=Down, 3=Up
+        Action index (0-3599) of move ((r1, c1), (r2, c2)) played by `player` (default: this
+        agent). Lossless: see environment/action_encoding.py. (The thesis encoding had 400
+        actions, from-square x direction, so a long Scout move shared the index of the
+        one-square step and could not be chosen.)
         """
-        (r1, c1), (r2, c2) = move
-        
-        dr = r2 - r1
-        dc = c2 - c1
-        
-        # Determine direction
-        if dr == 0 and dc > 0: 
-            dir_idx = 0 # Right (0, 1)
-        elif dr == 0 and dc < 0: 
-            dir_idx = 1 # Left (0, -1)
-        elif dr > 0 and dc == 0: 
-            dir_idx = 2 # Down (1, 0)
-        elif dr < 0 and dc == 0: 
-            dir_idx = 3 # Up (-1, 0)
-        else:
-            # Fallback
-            dir_idx = 0
-        
-        start_pos_idx = r1 * 10 + c1
-        idx = (start_pos_idx * 4) + dir_idx
-        return idx
+        return encode_move(move, self.player_id if player is None else player)
 
-    def _action_index_to_move(self, index):
-        """Decode action index (0-399) back to move coordinates (length 1)."""
-        if not (0 <= index < 400):
-            return None
-            
-        start_pos_idx = index // 4
-        dir_idx = index % 4
-        
-        r1 = start_pos_idx // 10
-        c1 = start_pos_idx % 10
-        
-        # Directions: 0=Right, 1=Left, 2=Down, 3=Up
-        # Matching environment.py: 0:(0,1), 1:(0,-1), 2:(1,0), 3:(-1,0) - wait, check filtering logic
-        # My filter logic above used: Right(0), Left(1), Down(2), Up(3)
-        dr_unit, dc_unit = [(0, 1), (0, -1), (1, 0), (-1, 0)][dir_idx]
-        
-        r2, c2 = r1 + dr_unit, c1 + dc_unit
-        
-        # Bounds check
-        if 0 <= r2 < 10 and 0 <= c2 < 10:
-            return (r1, c1), (r2, c2)
-        return None
+    def _action_index_to_move(self, index, player=None):
+        """Move for action index `index` played by `player` (default: this agent), or None if
+        the index leaves the board."""
+        return decode_action(index, self.player_id if player is None else player)
 
     def get_move_uncertainty(self, move, uncertainty_map):
         """Get uncertainty for a move based on target square"""

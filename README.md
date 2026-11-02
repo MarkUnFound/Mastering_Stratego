@@ -129,6 +129,8 @@ $$\text{Output}_t = \frac{a_t}{c_t + \epsilon}$$
 
 The resulting **64-dimensional latent embedding** is concatenated with the 15-channel raw board observation, providing the Rainbow DQN with a rich **79-channel state representation**.
 
+> **Current code (cleanup branch):** the thesis runs used the 15-channel board observation + 64 AAREN channels and 400 actions. The code now uses 30 observation planes (revealed enemy ranks, an observability flag and the no-battle counter included) and a lossless 3600-action encoding in each side's canonical frame (`Modular Stratego/environment/observation.py`, `action_encoding.py`). AAREN is optional and off by default (`AAREN_ENABLED` in `training_config.py`).
+
 ---
 
 ### 3. Potential-Based Reward Shaping (PBRS) & Anti-Stall
@@ -258,6 +260,8 @@ pip install -r requirements.txt
 
 ### 2. Play Against the Trained Agent (AI Coach GUI)
 Launch the interactive AI Coach interface featuring the trained Rainbow DQN agent integrated with Expectamax test-time search and real-time rank predictions:
+
+> The thesis checkpoint (79 input channels, 400 actions) does not load into the current network (30 planes, 3600 actions): until a new model is trained, the bot plays with untrained weights. To play the thesis agent, check out the `thesis-results` tag.
 
 ```bash
 cd "Python Stratego Game"

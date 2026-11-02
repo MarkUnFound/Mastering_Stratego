@@ -2,7 +2,7 @@ import torch
 import random
 import numpy as np
 from typing import List, Tuple, Optional, Dict
-from board import Board, BOARD_SIZE, EMPTY_SQUARE, LAKE_SQUARE
+from board import Board, BOARD_SIZE, EMPTY_SQUARE, LAKE_SQUARE, HIDDEN_PIECE
 from piece import PieceType
 from battle import BattleResolver
 from dqn_visualizer import DQNMoveVisualizer
@@ -53,6 +53,7 @@ class StrategoEnvironment:
         self.max_turns = max_turns  # Curriculum-based turn limit
         self.no_battle_draw_plies = no_battle_draw_plies  # Draw after this many plies without a battle (0 = off)
         self.plies_since_battle = 0
+        self._own_revealed_cache = (None, None)
         self._moves_cache_key = None
         self._moves_cache = []
         self.current_player = 1
@@ -480,45 +481,41 @@ class StrategoEnvironment:
         elif observability <= 0.0:
             board = self.board.get_visible_board(self.current_player).clone()
         else:
-            # Mixed Mode: Start with visible board
-            board = self.board.get_visible_board(self.current_player).clone() # Clone to avoid modifying cache
+            # Mixed Mode: the mover's visible board with a random share `observability` of the
+            # enemy pieces it cannot see shown with their rank. Unseen enemy pieces are
+            # HIDDEN_PIECE on the visible board (the thesis code looked for 0 there, so mixed
+            # mode revealed nothing and played as full fog of war).
+            board = self.board.get_visible_board(self.current_player).clone()  # don't modify the cache
             actual = self.board.actual_board
-            
-            # Identify hidden pieces (where board is 'unknown' but actual has a piece)
-            # Unknown is usually 0 (empty) or LAKE in visible board, but pieces are hidden.
-            # Actually, hidden pieces appear as 0 or simply don't appear?
-            # get_visible_board returns the board from perspective. Hidden pieces are 0 (empty) unless revealed.
-            # But empty squares are also 0.
-            # We want to reveal pieces that are NOT 0 in actual, but ARE 0 (or unknown) in visible.
-            
-            # Values in actual: +/- Rank (or Lake)
-            # Values in visible: +/- Rank (if known), or Lake, or 0 (if empty OR hidden)
-            
-            # Find pieces that are hidden
-            # (Actual != 0) AND (Actual != Lake) AND (Visible == 0)
-            hidden_mask = (actual != 0) & (actual != LAKE_SQUARE) & (board == 0)
-            
-            # Get indices of hidden pieces
-            hidden_indices = torch.nonzero(hidden_mask)
+            hidden_indices = torch.nonzero(board == HIDDEN_PIECE)
             num_hidden = len(hidden_indices)
-            
-            if num_hidden > 0:
-                # Randomly select subset to reveal based on observability rate
-                num_to_reveal = int(num_hidden * observability)
-                if num_to_reveal > 0:
-                    # Shuffle indices to pick random ones
-                    perm = torch.randperm(num_hidden, device=self.device)
-                    indices_to_reveal = hidden_indices[perm[:num_to_reveal]]
-                    
-                    # Reveal them in the observation (copy from actual)
-                    r_rev, c_rev = indices_to_reveal[:, 0], indices_to_reveal[:, 1]
-                    board[r_rev, c_rev] = actual[r_rev, c_rev]
+            num_to_reveal = int(round(num_hidden * observability))
+            if num_to_reveal > 0:
+                perm = torch.randperm(num_hidden, device=self.device)
+                indices_to_reveal = hidden_indices[perm[:num_to_reveal]]
+                r_rev, c_rev = indices_to_reveal[:, 0], indices_to_reveal[:, 1]
+                board[r_rev, c_rev] = actual[r_rev, c_rev]
+
+        # Own pieces whose rank the enemy knows (its visible board shows the real value).
+        # step() builds a state twice per position, so the mask is cached on the boards'
+        # identity and in-place version counters (any edit to either board recomputes it).
+        p = self.current_player
+        actual, enemy_view = self.board.actual_board, self.board.get_visible_board(-p)
+        key = (p, id(actual), actual._version, id(enemy_view), enemy_view._version)
+        if self._own_revealed_cache[0] != key:
+            own = (actual * p - 1).to(torch.uint8) < 12  # 1 <= value * p <= 12 (wraps below 1)
+            self._own_revealed_cache = (key, own & (enemy_view == actual))
+        own_revealed = self._own_revealed_cache[1]
 
         game_state = GameState(
             board=board,
             current_player=self.current_player,
             turn_count=self.turn_count,
             plies_since_battle=self.plies_since_battle,
+            no_battle_draw_plies=self.no_battle_draw_plies or 0,
+            max_turns=self.max_turns,
+            observability=float(min(max(observability, 0.0), 1.0)),
+            own_revealed=own_revealed,
             game_over=self.game_over,
             winner=self.winner,
             move_history=self.move_history.copy() if len(self.move_history) < 1000 else self.move_history[-100:],  # Only copy recent moves if history is long

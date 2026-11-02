@@ -85,11 +85,11 @@ class ExpectamaxSearch:
             
         # Sort initial moves by prior Q to prioritize promising branches
         move_scores = []
-        expected_q = self._get_expected_q(gui_board, DQN_adapter)
+        expected_q = self._get_expected_q(gui_board, DQN_adapter, current_player)
         
         for move in legal_moves:
-            action_idx = self.agent._move_to_action_index(move)
-            score = expected_q[action_idx].item() if action_idx is not None else -float('inf')
+            action_idx = self.agent._move_to_action_index(move, current_player)
+            score = expected_q[action_idx].item()
             move_scores.append((move, score))
             
         move_scores.sort(key=lambda x: x[1], reverse=True)
@@ -100,8 +100,8 @@ class ExpectamaxSearch:
         
         try:
             for move in sorted_moves:
-                action_idx = self.agent._move_to_action_index(move)
-                prior_q = expected_q[action_idx].item() if action_idx is not None else 0.0
+                action_idx = self.agent._move_to_action_index(move, current_player)
+                prior_q = expected_q[action_idx].item()
                 
                 score = self._expectamax_recursive(
                     gui_board, move, current_player, 
@@ -134,9 +134,9 @@ class ExpectamaxSearch:
             return self._min_node(sim_board, 3 - player, depth, start_time, prior_q, DQN_adapter)
             
         # 2. Handle attacks (Chance Node)
-        probabilities = self.agent.history.get_piece_predictions(dst)
-        if not probabilities and hasattr(self.agent.history, 'get_default_piece_prior'):
-            probabilities = self.agent.history.get_default_piece_prior()
+        probabilities = self.agent.history.get_piece_predictions(dst) if self.agent.history else None
+        if not probabilities:
+            probabilities = HistoryAggregator.get_default_piece_prior()
         
         if not probabilities:
             sim_board = self._simulate_move_simple(board, move)
@@ -178,11 +178,11 @@ class ExpectamaxSearch:
             return 10.0 # Huge win for bot
             
         # Opponent moves (limit branching factor to top 2 for speed)
-        expected_q = self._get_expected_q(board, DQN_adapter)
+        expected_q = self._get_expected_q(board, DQN_adapter, player)  # the mover's own view
         move_scores = []
         for move in legal_moves:
-            action_idx = self.agent._move_to_action_index(move)
-            score = expected_q[action_idx].item() if action_idx is not None else -float('inf')
+            action_idx = self.agent._move_to_action_index(move, player)
+            score = expected_q[action_idx].item()
             move_scores.append((move, score))
             
         move_scores.sort(key=lambda x: x[1], reverse=True)
@@ -208,11 +208,11 @@ class ExpectamaxSearch:
         if not legal_moves:
             return -10.0 # Loss
             
-        expected_q = self._get_expected_q(board, DQN_adapter)
+        expected_q = self._get_expected_q(board, DQN_adapter, player)  # the mover's own view
         move_scores = []
         for move in legal_moves:
-            action_idx = self.agent._move_to_action_index(move)
-            score = expected_q[action_idx].item() if action_idx is not None else -float('inf')
+            action_idx = self.agent._move_to_action_index(move, player)
+            score = expected_q[action_idx].item()
             move_scores.append((move, score))
             
         move_scores.sort(key=lambda x: x[1], reverse=True)
@@ -226,8 +226,9 @@ class ExpectamaxSearch:
                 
         return max_utility
 
-    def _get_expected_q(self, board, DQN_adapter):
-        state_tensor = DQN_adapter._get_state_representation(board)
+    def _get_expected_q(self, board, DQN_adapter, player=None):
+        """Expected Q of all 3600 actions for `player` (default: the bot), from `player`'s view."""
+        state_tensor = DQN_adapter._get_state_representation(board, player)
         self.agent.q_network.eval()
         with torch.no_grad():
             log_probs = self.agent.q_network(state_tensor.unsqueeze(0))
@@ -356,7 +357,7 @@ class DQNBotLogic:
             # Diagnostic logging for attacks
             if gui_board.get(best_move[1]):
                 print(f" [Expectamax] Attack selected! Score: {best_score:.3f}")
-                probs = self.agent.history.get_piece_predictions(best_move[1])
+                probs = self.agent.history.get_piece_predictions(best_move[1]) if self.agent.history else None
                 if probs:
                     top_rank = max(probs.items(), key=lambda x: x[1])
                     print(f"   Confidence in identity: {top_rank[0].name} ({top_rank[1]*100:.1f}%)")
@@ -370,7 +371,7 @@ class DQNBotLogic:
         """
         self.agent.q_network.eval()
         with torch.no_grad():
-            state = self._get_state_representation(gui_board).unsqueeze(0).to(self.device)
+            state = self._get_state_representation(gui_board, player_id).unsqueeze(0).to(self.device)
             # Use the new evaluate_state_value method
             v_probs = self.agent.q_network.evaluate_state_value(state)
             
@@ -391,7 +392,7 @@ class DQNBotLogic:
         try:
             self.agent.q_network.eval()
             with torch.no_grad():
-                state = self._get_state_representation(gui_board).unsqueeze(0).to(self.device)
+                state = self._get_state_representation(gui_board, player_id).unsqueeze(0).to(self.device)
                 log_probs = self.agent.q_network(state)
                 expected_q = torch.sum(torch.exp(log_probs) * self.agent.support, dim=2).squeeze(0)
             
@@ -399,10 +400,9 @@ class DQNBotLogic:
             move_scores = []
             
             for move in legal_moves:
-                action_idx = self.agent._move_to_action_index(move) # Use agent's internal method
-                if action_idx is not None:
-                    score = expected_q[action_idx].item()
-                    move_scores.append((move, score))
+                action_idx = self.agent._move_to_action_index(move, player_id)  # lossless, player_id's frame
+                score = expected_q[action_idx].item()
+                move_scores.append((move, score))
             
             # Sort by score descending
             move_scores.sort(key=lambda x: x[1], reverse=True)
@@ -460,9 +460,9 @@ class DQNBotLogic:
         """
         Expose AAREN's rank probabilities for a specific square.
         """
-        probs = self.agent.history.get_piece_predictions(pos)
+        probs = self.agent.history.get_piece_predictions(pos) if self.agent.history else None
         if probs:
-            # Convert PieceType keys to simple names/ints for GUI
+            # Convert PieceType keysto simple names/ints for GUI
             return {pt.name: float(p) for pt, p in probs.items() if p > 0.01}
         return None
     
@@ -474,9 +474,13 @@ class DQNBotLogic:
         move = (from_pos, to_pos)
         self.agent.update_history_batch([move], [marq_grid], acting_player=self.opponent_id)
 
-    def _get_state_representation(self, gui_board) -> torch.Tensor:
+    def _get_state_representation(self, gui_board, player_id: int = None) -> torch.Tensor:
+        """Network input for `player_id` (default: the bot) in that side's canonical frame.
+        The bot's AAREN history only describes the bot's opponent, so other views get none."""
+        player_id = self.player_id if player_id is None else player_id
         marq_grid = self._gui_board_to_marq_grid(gui_board)
-        return self.agent.get_state_representation(marq_grid, pbs_instance=self.agent.history)
+        history = self.agent.history if player_id == self.player_id else None
+        return self.agent.get_state_representation(marq_grid, pbs_instance=history, player=player_id)
 
     def _gui_board_to_marq_grid(self, gui_board) -> np.ndarray:
         grid = np.zeros((10, 10), dtype=np.int32)
