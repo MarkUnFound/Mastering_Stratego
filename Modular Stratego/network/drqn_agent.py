@@ -31,7 +31,7 @@ from prioritized_memory import StandardReplayBuffer, PrioritizedReplayBuffer, NS
 from heuristic_filter import HeuristicMoveFilter
 
 # Lossless 3600-action encoding and 30 observation planes, both in the mover's canonical frame
-from action_encoding import NUM_ACTIONS, encode_move, decode_action, mirror_action, rotate_action
+from action_encoding import NUM_ACTIONS, encode_move, decode_action, mirror_action, legal_action_mask
 from observation import NUM_OBS_PLANES, encode_observations, to_canonical
 
 # C51 Hyperparameters - CRITICAL FOR DISTRIBUTIONAL RL
@@ -49,6 +49,22 @@ NUM_ATOMS = 51
 
 # NoisyLinear and RainbowDQN are now imported from networks module
 
+# MIRROR_PERMUTATION[a] = mirror_action(a): the flip augmentation mirrors legal-action masks with it
+MIRROR_PERMUTATION = np.array([mirror_action(a) for a in range(NUM_ACTIONS)])
+
+
+def pack_legal_mask(mask: np.ndarray) -> np.ndarray:
+    """Replay-buffer form of a (NUM_ACTIONS,) bool legal-action mask: 450 bytes."""
+    return np.packbits(mask)
+
+
+def mirror_packed_mask(packed: np.ndarray) -> np.ndarray:
+    """The packed legal-action mask of the left-right mirrored position."""
+    mask = np.unpackbits(packed, count=NUM_ACTIONS).astype(bool)
+    mirrored = np.zeros_like(mask)
+    mirrored[MIRROR_PERMUTATION] = mask
+    return np.packbits(mirrored)
+
 import sys
 
 
@@ -60,7 +76,7 @@ class RainbowAgent:
     
     def __init__(self, player_id: int, device,
                  state_size: int = 200, action_size: int = NUM_ACTIONS,
-                 lr: float = 0.0001, gamma: float = 0.99, 
+                 lr: float = 0.0001, gamma: Optional[float] = None,  
                  buffer_size: int = 10000, batch_size: int = 32,
                  use_pbs: bool = True, num_envs: int = 1,
                  inference_only: bool = False):
@@ -69,6 +85,14 @@ class RainbowAgent:
         self.device = device
         self.action_size = action_size
         self.lr = lr
+        # One discount everywhere: the n-step sum, the bootstrap (gamma ** n_steps) and the shaping
+        # potential all use GAMMA. (The thesis agent summed n-step rewards with 0.99 and bootstrapped
+        # with 0.999 ** 5, while the shaping used 0.999.)
+        if gamma is None:
+            try:
+                from training_config import GAMMA as gamma
+            except ImportError:
+                gamma = 0.99
         self.gamma = gamma
         self.batch_size = batch_size
         self.name = f"Rainbow Agent {player_id}"
@@ -160,8 +184,17 @@ class RainbowAgent:
         self._cached_aaren_grad_norm = 0.0
         self._cached_dqn_grad_norm = 0.0
         
-        # Soft Update Param
-        self.tau = 0.001
+        # Target network: a hard copy of the online network, refreshed every target_update_interval
+        # gradient updates (counted in replay)
+        try:
+            from training_config import TARGET_UPDATE_INTERVAL
+        except ImportError:
+            TARGET_UPDATE_INTERVAL = 1000
+        self.target_update_interval = TARGET_UPDATE_INTERVAL
+        self.gradient_updates = 0
+
+        # Act with NoisyNet exploration (noise resampled every call). Off: greedy on the mean weights
+        self.noisy_acting = not inference_only
         
         # Rainbow Networks
         # 30 observation planes (+ HISTORY_EMBEDDING_SIZE AAREN planes when AAREN_ENABLED)
@@ -268,12 +301,11 @@ class RainbowAgent:
         try:
             from training_config import (
                 PER_ENABLED, PER_ALPHA, PER_BETA_START, PER_BETA_END, PER_BETA_ANNEAL_EPISODES,
-                N_STEPS, GAMMA_N, LR_SCHEDULER_ENABLED, LR_SCHEDULER_STEP_SIZE, LR_SCHEDULER_GAMMA
+                N_STEPS, LR_SCHEDULER_ENABLED, LR_SCHEDULER_STEP_SIZE, LR_SCHEDULER_GAMMA
             )
         except ImportError:
             PER_ENABLED = False
             N_STEPS = 1
-            GAMMA_N = gamma
             LR_SCHEDULER_ENABLED = False
         
         # Replay Buffer (Prioritized or Standard)
@@ -325,12 +357,17 @@ class RainbowAgent:
         except ImportError:
             self.aug_enabled = False
             self.aug_types = []
-        
+        # A 180-degree rotation of the canonical frame is not a symmetry (it puts your pieces on the
+        # opponent's side), so the thesis "rotate" augmentation is gone; the left-right flip is one.
+        unknown = set(self.aug_types) - {"flip"}
+        if self.aug_enabled and unknown:
+            raise ValueError(f"unsupported AUGMENTATION_TYPES {sorted(unknown)}: only 'flip' is a symmetry of the game")
+
         # N-Step Buffer for multi-step returns
         self.n_steps = N_STEPS
-        self.gamma_n = GAMMA_N
+        self.gamma_n = self.gamma ** N_STEPS
         if N_STEPS > 1 and not self.inference_only:
-            self.n_step_buffers = [NStepBuffer(n_steps=N_STEPS, gamma=gamma) for _ in range(max(num_envs, 1))]
+            self.n_step_buffers = [NStepBuffer(n_steps=N_STEPS, gamma=self.gamma) for _ in range(max(num_envs, 1))]
             print(f"[OK] [P{self.player_id}] N-Step returns enabled (n={N_STEPS})")
         else:
             self.n_step_buffers = None
@@ -353,7 +390,9 @@ class RainbowAgent:
         
         # Heuristic Action Filter for Top-100 move selection
         self.move_filter = HeuristicMoveFilter()
-        self.use_heuristic_filter = True  # Can be disabled for debugging
+        # Off: act by argmax over all legal moves, the same set the masked Double DQN target uses.
+        # On: only the heuristic Top-100 moves (the thesis setting).
+        self.use_heuristic_filter = False
         self.max_filtered_moves = 100
         
         # Cache for state tensors (to avoid redundant computation in remember_batch)
@@ -367,6 +406,7 @@ class RainbowAgent:
         self.optimizer = optim.AdamW(self.q_network.parameters(), lr=self.lr, weight_decay=0.01)
         self.memory.clear()
         self.step_count = 0
+        self.gradient_updates = 0
         self.update_target_network()
         
         self.reset_history()
@@ -444,9 +484,25 @@ class RainbowAgent:
     enable_pbs = enable_history
 
     def update_target_network(self):
-        """Soft update target network."""
-        for target_param, local_param in zip(self.target_network.parameters(), self.q_network.parameters()):
-            target_param.data.copy_(self.tau * local_param.data + (1.0 - self.tau) * target_param.data)
+        """Copy the online network into the target network. (The thesis code soft-updated with
+        tau=0.001 from a different random network, so the target stayed close to its random init.)"""
+        self.target_network.load_state_dict(self.q_network.state_dict())
+
+    def _q_forward_for_acting(self, state_tensor):
+        """Log-probabilities for acting: eval mode (BatchNorm running statistics, no dropout),
+        with freshly sampled NoisyNet noise when noisy_acting."""
+        net = self.q_network
+        net.eval()
+        if self.noisy_acting:
+            net.set_noise(True)
+            net.reset_noise()
+        try:
+            with torch.no_grad():
+                with torch.amp.autocast('cuda', enabled=self.amp_enabled):
+                    return net(state_tensor)
+        finally:
+            net.set_noise(False)
+            net.train()
         
     def get_state_representation(self, board, pbs_instance=None, full_observability=False, player=None):
         """
@@ -513,7 +569,7 @@ class RainbowAgent:
         self._add_experience(state_processed, action, reward, next_state_processed, done)
 
     def _add_experience(self, state, action, reward, next_state, done, is_battle=False,
-                         history_snapshot=None, next_history_snapshot=None):
+                         history_snapshot=None, next_history_snapshot=None, next_legal=None):
         """
         Internal helper to add experience to memory with potential augmentation.
         Always expects 'state' and 'next_state' to be processed tensors.
@@ -523,7 +579,11 @@ class RainbowAgent:
             is_battle: If True, indicates this transition involved a capture event
             history_snapshot: AAREN history snapshot for state (for replay-time reconstruction)
             next_history_snapshot: AAREN history snapshot for next_state
+            next_legal: packed legal-action mask of next_state (pack_legal_mask), None if unknown;
+                dropped for terminal transitions, which do not bootstrap
         """
+        if done:
+            next_legal = None
         # 1. Convert action to index if it's a tuple
         action_idx = action
         if isinstance(action, (tuple, list)):
@@ -540,11 +600,12 @@ class RainbowAgent:
         
         # Pass priority boost flags and history snapshots to PER
         if hasattr(self.memory, 'add') and 'is_winning_experience' in self.memory.add.__code__.co_varnames:
-            self.memory.add(state, action_idx, reward_clipped, next_state, done, 
+            self.memory.add(state, action_idx, reward_clipped, next_state, done,
                           is_winning_experience=is_winning_experience, is_battle=is_battle,
-                          history_snapshot=history_snapshot, next_history_snapshot=next_history_snapshot)
+                          history_snapshot=history_snapshot, next_history_snapshot=next_history_snapshot,
+                          next_legal=next_legal)
         else:
-            self.memory.add(state, action_idx, reward_clipped, next_state, done)
+            self.memory.add(state, action_idx, reward_clipped, next_state, done, next_legal=next_legal)
         self.step_count += 1
         
         # 3. Add Augmented Experiences (without history snapshots — augmented states
@@ -555,18 +616,13 @@ class RainbowAgent:
             if "flip" in self.aug_types:
                 state_flip = torch.flip(state, [2])
                 next_state_flip = torch.flip(next_state, [2])
-                self.memory.add(state_flip, mirror_action(action_idx), reward_clipped, next_state_flip, done)
-                self.step_count += 1
-
-            # --- Rotation 180 ---
-            if "rotate" in self.aug_types:
-                state_rot = torch.flip(state, [1, 2])
-                next_state_rot = torch.flip(next_state, [1, 2])
-                self.memory.add(state_rot, rotate_action(action_idx), reward_clipped, next_state_rot, done)
+                next_legal_flip = mirror_packed_mask(next_legal) if next_legal is not None else None
+                self.memory.add(state_flip, mirror_action(action_idx), reward_clipped, next_state_flip, done,
+                                next_legal=next_legal_flip)
                 self.step_count += 1
 
     def remember_batch(self, states, actions, rewards, next_states, dones, active_mask, game_states=None, next_game_states=None, infos=None,
-                       lane_ids=None, history_snapshots=None):
+                       lane_ids=None, history_snapshots=None, next_legal_moves=None):
         """
         Store multiple experiences efficiently with batched state processing.
         Uses N-step returns if enabled.
@@ -587,6 +643,8 @@ class RainbowAgent:
                 AAREN history (default 0..n-1, i.e. one transition per lane in lane order)
             history_snapshots: AAREN snapshot taken when each state was acted on (default: the
                 lane's current history)
+            next_legal_moves: this side's legal moves in each next state (the masked Double DQN
+                target picks its next action among them; None: any action)
         """
         if len(states) == 0:
             return
@@ -650,6 +708,9 @@ class RainbowAgent:
                 is_battle = len(revealed) > 0  # Any piece revealed = battle occurred
             
             lane = lane_ids[i]
+            next_legal = None
+            if next_legal_moves is not None and next_legal_moves[i] and not dones[i]:
+                next_legal = pack_legal_mask(legal_action_mask(next_legal_moves[i], self.player_id))
 
             # Episode buffer: shadow-store every raw transition
             if self.episode_replay_enabled and self.episode_memory is not None:
@@ -666,31 +727,32 @@ class RainbowAgent:
                 n_step_result = self.n_step_buffers[lane].add(
                     state_tensors[i], action, reward, next_state_tensors[i], dones[i],
                     history_snapshot=history_snapshots[i],
-                    next_history_snapshot=next_history_snapshots[i]
+                    next_history_snapshot=next_history_snapshots[i],
+                    next_legal=next_legal
                 )
-                
+
                 if n_step_result is not None:
                     # Got n-step experience - add to replay via central helper
                     # Note: For n-step, we boost priority if ANY step in the sequence had a battle
-                    n_state, n_action, n_reward, n_next_state, n_done, n_hist, n_next_hist = n_step_result
+                    n_state, n_action, n_reward, n_next_state, n_done, n_hist, n_next_hist, n_legal = n_step_result
                     self._add_experience(n_state, n_action, n_reward, n_next_state, n_done,
                                          is_battle=is_battle, history_snapshot=n_hist,
-                                         next_history_snapshot=n_next_hist)
+                                         next_history_snapshot=n_next_hist, next_legal=n_legal)
                 
                 # Flush remaining if episode done
                 if dones[i]:
                     remaining = self.n_step_buffers[lane].flush()
                     for result in remaining:
-                        n_state, n_action, n_reward, n_next_state, n_done, n_hist, n_next_hist = result
+                        n_state, n_action, n_reward, n_next_state, n_done, n_hist, n_next_hist, n_legal = result
                         self._add_experience(n_state, n_action, n_reward, n_next_state, n_done,
                                              is_battle=is_battle, history_snapshot=n_hist,
-                                             next_history_snapshot=n_next_hist)
+                                             next_history_snapshot=n_next_hist, next_legal=n_legal)
                     self.n_step_buffers[lane].reset()
             else:
                 # Standard 1-step: add directly using central helper
                 self._add_experience(state_tensors[i], action, reward, next_state_tensors[i], dones[i],
                                      is_battle=is_battle, history_snapshot=history_snapshots[i],
-                                     next_history_snapshot=next_history_snapshots[i])
+                                     next_history_snapshot=next_history_snapshots[i], next_legal=next_legal)
             
             # Episode buffer: finalize episode on done
             if dones[i] and self.episode_replay_enabled and self.episode_memory is not None:
@@ -709,12 +771,12 @@ class RainbowAgent:
             
         # Pre-filter moves using heuristic filter for faster decisions
         # This reduces action space from potentially 200+ to top 100 moves
-        if len(valid_moves) > 100:
+        if self.use_heuristic_filter and len(valid_moves) > self.max_filtered_moves:
             filtered_scored = self.move_filter.get_filtered_actions(
                 state.actual_board if hasattr(state, 'actual_board') else state.board,
                 valid_moves, 
                 self.player_id,
-                max_moves=100
+                max_moves=self.max_filtered_moves
             )
             valid_moves = [move for move, score in filtered_scored]
         
@@ -722,22 +784,12 @@ class RainbowAgent:
         if state_tensor.dim() == 3:
             state_tensor = state_tensor.unsqueeze(0)
             
-        self.q_network.eval()
+        # Get Log Probabilities: (batch, action_size, num_atoms)
+        log_probs = self._q_forward_for_acting(state_tensor)
         with torch.no_grad():
-            # Mixed-precision inference for ~15-30% speedup
-            with torch.amp.autocast('cuda', enabled=self.amp_enabled):
-                # Get Log Probabilities: (batch, action_size, num_atoms)
-                log_probs = self.q_network(state_tensor)
-                probs = log_probs.exp()
-                
-                # Calculate Expected Value: Sum(p_i * z_i)
-                # probs: (1, actions, atoms)
-                # support: (atoms)
-                expected_q_values = (probs * self.support).sum(dim=2) # (1, actions)
-                
+            # Calculate Expected Value: Sum(p_i * z_i)
+            expected_q_values = (log_probs.float().exp() * self.support).sum(dim=2) # (1, actions)
             base_q_values = expected_q_values.squeeze(0) # (actions)
-            
-        self.q_network.train()
         
         # Uncertainty is now implicitly handled via AAREN embeddings
         uncertainty_map = {}
@@ -849,18 +901,13 @@ class RainbowAgent:
         uncertainty_maps = [{}] * batch_size
             
         # 3. Network forward pass with mixed-precision inference
-        self.q_network.eval()
+        try:
+            log_probs = self._q_forward_for_acting(state_tensor)
+        except RuntimeError as e:
+            print(f"DEBUG: act_batch CRASH. state_tensor shape: {state_tensor.shape}")
+            raise e
         with torch.no_grad():
-            with torch.amp.autocast('cuda', enabled=self.amp_enabled):
-                try:
-                    log_probs = self.q_network(state_tensor)
-                except RuntimeError as e:
-                    print(f"DEBUG: act_batch CRASH. state_tensor shape: {state_tensor.shape}")
-                    raise e
-                probs = log_probs.exp()
-                expected_q_values = (probs * self.support).sum(dim=2) # (batch, actions)
-            
-        self.q_network.train()
+            expected_q_values = (log_probs.float().exp() * self.support).sum(dim=2) # (batch, actions)
         
         # 4. Process each env with HEURISTIC ACTION MASKING
         for i in range(batch_size):
@@ -1079,12 +1126,13 @@ class RainbowAgent:
             sample_result = self.memory.sample(sample_size)
             if sample_result is None:
                 return None
-            states, actions, rewards, next_states, dones, indices, weights, hist_snapshots, next_hist_snapshots = sample_result
+            (states, actions, rewards, next_states, dones, indices, weights, hist_snapshots, next_hist_snapshots,
+             next_legal) = sample_result
         else:
             sample_result = self.memory.sample(sample_size)
             if sample_result is None:
                 return None
-            states, actions, rewards, next_states, dones = sample_result
+            states, actions, rewards, next_states, dones, next_legal = sample_result
             hist_snapshots = [None] * states.size(0)
             next_hist_snapshots = [None] * states.size(0)
         
@@ -1101,6 +1149,9 @@ class RainbowAgent:
                 rewards = torch.cat([rewards, ep_rewards], dim=0)
                 next_states = torch.cat([next_states, ep_next_states], dim=0)
                 dones = torch.cat([dones, ep_dones], dim=0)
+                if next_legal is not None:  # episode segments carry no legal masks: any action
+                    next_legal = torch.cat([next_legal, torch.ones(ep_states.size(0), next_legal.size(1),
+                                                                   dtype=torch.bool, device=next_legal.device)])
                 # Extend history snapshot lists
                 hist_snapshots = list(hist_snapshots) + ep_hists
                 next_hist_snapshots = list(next_hist_snapshots) + ep_next_hists
@@ -1120,8 +1171,8 @@ class RainbowAgent:
                 states = torch.cat([states, self._snapshot_planes(hist_snapshots)], dim=1)
                 next_states = torch.cat([next_states, self._snapshot_planes(next_hist_snapshots)], dim=1)
 
-        # Use n-step gamma if available
-        gamma_to_use = self.gamma_n if hasattr(self, 'gamma_n') and self.n_steps > 1 else self.gamma
+        # Bootstrap discount: gamma ** n for n-step returns (non-terminal ones always span n steps)
+        gamma_to_use = self.gamma_n if self.n_steps > 1 else self.gamma
         
         # --- Check for NaNs in Inputs ---
         if torch.isnan(rewards).any():
@@ -1132,6 +1183,9 @@ class RainbowAgent:
         # Ensure we compute network passes ONLY ONCE for states and next_states.
         # This fixes a severe 2x GPU bottleneck where the advantage filter would
         # throw away computed tensors and re-run ResNet sequentially.
+        # Fresh NoisyNet noise for this update (online and target sample their own)
+        self.q_network.reset_noise()
+        self.target_network.reset_noise()
         with torch.amp.autocast('cuda', enabled=self.amp_enabled):
             current_log_probs = self.q_network(states)
             with torch.no_grad():
@@ -1163,7 +1217,9 @@ class RainbowAgent:
                 rewards = rewards[top_k_indices]
                 next_states = next_states[top_k_indices]
                 dones = dones[top_k_indices]
-                
+                if next_legal is not None:
+                    next_legal = next_legal[top_k_indices]
+
                 # Apply filter efficiently to pre-computed tensors!
                 current_log_probs = current_log_probs[top_k_indices]
                 next_log_probs_online = next_log_probs_online[top_k_indices]
@@ -1181,47 +1237,19 @@ class RainbowAgent:
 
         # --- Distributional RL Target Calculation ---
         with torch.no_grad():
-            # 1. Select best action in next state (Double DQN) using cached tensor
-            next_probs_online = next_log_probs_online.exp()
-            next_q_values_online = (next_probs_online * self.support).sum(dim=2)
-            next_actions = next_q_values_online.argmax(dim=1) # (batch)
+            # 1. Select best action in next state (Double DQN) using cached tensor, among the moves
+            # that are legal there (the thesis code took the argmax over all 3600 actions)
+            next_actions = self._double_dqn_next_actions(next_log_probs_online, next_legal) # (batch)
             
             # 2. Get distribution of best action from Target Network using cached tensor
-            next_probs_target = next_log_probs_target.exp()
+            next_probs_target = next_log_probs_target.float().exp()
             
             # Gather distribution for the selected actions
             # next_actions: (batch) -> (batch, 1, atoms)
             next_action_probs = next_probs_target.gather(1, next_actions.view(-1, 1, 1).expand(-1, -1, self.num_atoms)).squeeze(1)
             
             # 3. Project Distribution (Categorical Algorithm)
-            # T_z = r + gamma^n * z (if not done) - uses n-step gamma
-            T_z = rewards.unsqueeze(1) + (1 - dones.unsqueeze(1)) * gamma_to_use * self.support.unsqueeze(0)
-            T_z = T_z.clamp(min=self.v_min, max=self.v_max)
-            
-            # Compute L2 projection of T_z onto support
-            b = (T_z - self.v_min) / self.delta_z
-            
-            # Safe Clamp to prevent Index Out of Bounds (floating point errors)
-            b = b.clamp(min=0.0, max=float(self.num_atoms - 1))
-            
-            l = b.floor().long()
-            u = b.ceil().long()
-            
-            # Handle batch size from actual sample (may differ due to PER)
-            actual_batch_size = states.size(0)
-            
-            # Distribute probability mass
-            # m is the projected distribution
-            m = torch.zeros(actual_batch_size, self.num_atoms, device=self.device)
-            
-            # m_l = m_l + p(s', a') * (u - b)
-            # m_u = m_u + p(s', a') * (b - l)
-            
-            # We need to use scatter_add because multiple atoms might project to same index
-            offset = torch.linspace(0, (actual_batch_size - 1) * self.num_atoms, actual_batch_size, device=self.device).long().unsqueeze(1).expand(actual_batch_size, self.num_atoms)
-            
-            m.view(-1).scatter_add_(0, (l + offset).view(-1), (next_action_probs * (u.float() - b)).view(-1))
-            m.view(-1).scatter_add_(0, (u + offset).view(-1), (next_action_probs * (b - l.float())).view(-1))
+            m = self._project_distribution(next_action_probs, rewards, dones, gamma_to_use)
             
         # --- Calculate Loss ---
         # Current log probabilities are already computed and filtered in current_log_probs
@@ -1342,8 +1370,45 @@ class RainbowAgent:
             
             torch.nn.utils.clip_grad_norm_(self.q_network.parameters(), max_norm=10.0)
             self.optimizer.step()
-            
+
+        self.gradient_updates += 1
+        if self.gradient_updates % self.target_update_interval == 0:
+            self.update_target_network()
+
         return loss.item()
+
+    def _double_dqn_next_actions(self, next_log_probs_online, next_legal):
+        """Double DQN action for each next state: the online network's best action among the
+        legal ones (next_legal: (batch, actions) bool mask, or None to allow every action)."""
+        next_q_values_online = (next_log_probs_online.float().exp() * self.support).sum(dim=2)
+        if next_legal is not None:
+            next_q_values_online = next_q_values_online.masked_fill(~next_legal, float('-inf'))
+        return next_q_values_online.argmax(dim=1)
+
+    def _project_distribution(self, next_action_probs, rewards, dones, gamma):
+        """
+        C51 target: the distribution of r + gamma * Z(s', a') (just r when done), projected onto
+        the support. Rows of the result sum to 1.
+
+        When r + gamma * z lands exactly on an atom, floor(b) == ceil(b) and both interpolation
+        weights (u - b, b - l) are 0. The thesis code lost that mass, so every terminal draw
+        (r = 0, on the middle atom) got an all-zero target; here l or u is moved one atom so that
+        the full mass goes to the atom it lands on.
+        """
+        T_z = rewards.unsqueeze(1) + (1 - dones.unsqueeze(1)) * gamma * self.support.unsqueeze(0)
+        T_z = T_z.clamp(min=self.v_min, max=self.v_max)
+        b = ((T_z - self.v_min) / self.delta_z).clamp(min=0.0, max=float(self.num_atoms - 1))
+        l = b.floor().long()
+        u = b.ceil().long()
+        l[(u > 0) & (l == u)] -= 1
+        u[(l < (self.num_atoms - 1)) & (l == u)] += 1
+
+        batch = next_action_probs.size(0)
+        offset = (torch.arange(batch, device=next_action_probs.device) * self.num_atoms).unsqueeze(1)
+        m = torch.zeros(batch, self.num_atoms, device=next_action_probs.device)
+        m.view(-1).scatter_add_(0, (l + offset).view(-1), (next_action_probs * (u.float() - b)).view(-1))
+        m.view(-1).scatter_add_(0, (u + offset).view(-1), (next_action_probs * (b - l.float())).view(-1))
+        return m
 
     def save_model(self, filepath):
         """Save model checkpoint"""
@@ -1475,13 +1540,9 @@ class RainbowAgent:
             # Sample a small batch to estimate average Q
             sample_data = self.memory.sample(min(64, len(self.memory)))
             
-            # Handle all sample formats: 5 (standard), 7 (old PER), 9 (PER + history snapshots)
-            if len(sample_data) == 9:
-                states, actions, rewards, next_states, dones, _, _, _, _ = sample_data
-            elif len(sample_data) == 7:
-                states, actions, rewards, next_states, dones, _, _ = sample_data
-            else:
-                states, actions, rewards, next_states, dones = sample_data
+            if sample_data is None:
+                return 0.0
+            states = sample_data[0]  # every sample format starts with the states
             
             # PERF: Zero-pad instead of reconstructing AAREN — this is a diagnostic
             # metric, exact embeddings aren't needed for a Q-value estimate.

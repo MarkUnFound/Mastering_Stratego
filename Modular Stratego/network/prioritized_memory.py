@@ -4,10 +4,46 @@ import random
 import torch
 from collections import namedtuple, deque
 
+from action_encoding import NUM_ACTIONS
+
 # Define Experience namedtuple
 # history_snapshot / next_history_snapshot: compact AAREN action history for replay-time reconstruction
-Experience = namedtuple('Experience', ['state', 'action', 'reward', 'next_state', 'done', 'history_snapshot', 'next_history_snapshot'])
-Experience.__new__.__defaults__ = (None, None)  # Make snapshot fields optional for backward compat
+# next_legal: the legal actions in next_state for the side that moves there, np.packbits of the
+# (NUM_ACTIONS,) mask (None: unknown or terminal, every action allowed)
+Experience = namedtuple('Experience', ['state', 'action', 'reward', 'next_state', 'done', 'history_snapshot',
+                                       'next_history_snapshot', 'next_legal'])
+Experience.__new__.__defaults__ = (None, None, None)  # Make snapshot fields optional for backward compat
+
+
+def pack_state(state, device, float_dtype):
+    """Storage form of a state. Observation planes lie in [0, 1] (planes 0-26 are binary, 27-29
+    fractions), so they are kept as uint8 in 1/255 steps: binary planes exactly, fractions to
+    within 1/510. Anything outside [0, 1] is kept as floats."""
+    if not isinstance(state, torch.Tensor):
+        state = torch.tensor(state, dtype=torch.float32)
+    if state.dtype == torch.uint8:
+        return state.to(device)
+    if state.numel() and state.min() >= 0 and state.max() <= 1:
+        return (state.float() * 255).round_().to(device=device, dtype=torch.uint8)
+    return state.to(device=device, dtype=float_dtype)
+
+
+def unpack_states(stored, device):
+    """Float32 batch on `device` from a list of pack_state() results."""
+    if all(t.dtype == torch.uint8 for t in stored):
+        return torch.stack(stored).to(device, non_blocking=True).float().div_(255)
+    return torch.stack([t.float().div(255) if t.dtype == torch.uint8 else t.float() for t in stored]).to(device)
+
+
+def unpack_legal_masks(packed, num_actions, device):
+    """(batch, num_actions) bool mask from np.packbits masks; None rows allow every action."""
+    if all(p is None for p in packed):
+        return None
+    mask = np.ones((len(packed), num_actions), dtype=bool)
+    for i, p in enumerate(packed):
+        if p is not None:
+            mask[i] = np.unpackbits(p, count=num_actions).astype(bool)
+    return torch.from_numpy(mask).to(device)
 
 class StandardReplayBuffer:
     """
@@ -22,39 +58,29 @@ class StandardReplayBuffer:
         self.use_float16 = use_float16 and self.store_on_gpu  # Float16 only on GPU
         self.storage_dtype = torch.float16 if self.use_float16 else torch.float32
         
-    def add(self, state, action, reward, next_state, done):
-        """Add a transition to the buffer with Float16 storage."""
-        if self.store_on_gpu:
-            # Convert to storage dtype (float16 for memory efficiency)
-            state_t = state.to(self.device, dtype=self.storage_dtype) if isinstance(state, torch.Tensor) else torch.tensor(state, device=self.device, dtype=self.storage_dtype)
-            next_state_t = next_state.to(self.device, dtype=self.storage_dtype) if isinstance(next_state, torch.Tensor) else torch.tensor(next_state, device=self.device, dtype=self.storage_dtype)
-        else:
-            # CPU fallback (always float32)
-            state_t = state.cpu().float() if isinstance(state, torch.Tensor) else torch.tensor(state, dtype=torch.float32)
-            next_state_t = next_state.cpu().float() if isinstance(next_state, torch.Tensor) else torch.tensor(next_state, dtype=torch.float32)
+    def add(self, state, action, reward, next_state, done, next_legal=None, **_):
+        """Add a transition; states are stored as uint8 (see pack_state)."""
+        store_device = self.device if self.store_on_gpu else 'cpu'
+        state_t = pack_state(state, store_device, self.storage_dtype)
+        next_state_t = pack_state(next_state, store_device, self.storage_dtype)
         
         # Action/Reward/Done are usually scalars
         action_t = action.cpu() if isinstance(action, torch.Tensor) else action
         reward_t = reward.cpu() if isinstance(reward, torch.Tensor) else reward
         done_t = done.cpu() if isinstance(done, torch.Tensor) else done
         
-        exp = Experience(state_t, action_t, reward_t, next_state_t, done_t)
+        exp = Experience(state_t, action_t, reward_t, next_state_t, done_t, None, None, next_legal)
         self.buffer.append(exp)
     
     def sample(self, batch_size):
         """
         Sample a batch of transitions.
         Returns:
-            states, actions, rewards, next_states, dones (all Tensors on device, float32)
+            states, actions, rewards, next_states, dones (all Tensors on device, float32) and the
+            next-state legal masks ((batch, NUM_ACTIONS) bool, or None when none were stored)
         """
         batch = random.sample(self.buffer, batch_size)
-        
-        if self.store_on_gpu:
-            # Already on GPU, stack and convert to float32 for computation
-            states = torch.stack([e.state for e in batch]).float()
-        else:
-            # Move from CPU to GPU during sampling
-            states = torch.stack([e.state for e in batch]).to(self.device, non_blocking=True).float()
+        states = unpack_states([e.state for e in batch], self.device)
         
         # Handle actions (might be int or tensor)
         actions_list = [e.action for e in batch]
@@ -65,14 +91,11 @@ class StandardReplayBuffer:
              
         rewards = torch.tensor([e.reward for e in batch], dtype=torch.float32, device=self.device)
         
-        if self.store_on_gpu:
-            next_states = torch.stack([e.next_state for e in batch]).float()
-        else:
-            next_states = torch.stack([e.next_state for e in batch]).to(self.device, non_blocking=True).float()
-            
+        next_states = unpack_states([e.next_state for e in batch], self.device)
         dones = torch.tensor([e.done for e in batch], dtype=torch.float32, device=self.device)
-        
-        return states, actions, rewards, next_states, dones
+        next_legal = unpack_legal_masks([e.next_legal for e in batch], NUM_ACTIONS, self.device)
+
+        return states, actions, rewards, next_states, dones, next_legal
     
     def __len__(self):
         return len(self.buffer)
@@ -188,7 +211,7 @@ class PrioritizedReplayBuffer:
         self.beta_end = beta_end
         self.beta_anneal_episodes = beta_anneal_episodes
         self.epsilon = 1e-6  # Small constant to avoid zero priority
-        self.max_priority = 1.0
+        self.max_priority = 1.0  # largest priority given so far, already raised to alpha
         
         self.tree = SumTree(capacity)
         self.store_on_gpu = (device != 'cpu' and device != torch.device('cpu'))
@@ -196,8 +219,8 @@ class PrioritizedReplayBuffer:
         self.storage_dtype = torch.float16 if self.use_float16 else torch.float32
         
     def add(self, state, action, reward, next_state, done, priority=None, is_winning_experience=False, is_battle=False,
-            history_snapshot=None, next_history_snapshot=None):
-        """Add experience with Float16 storage and priority boost for important events.
+            history_snapshot=None, next_history_snapshot=None, next_legal=None):
+        """Add experience (uint8 states, see pack_state) with priority boost for important events.
         
         Args:
             state, action, reward, next_state, done: Standard experience tuple
@@ -206,14 +229,11 @@ class PrioritizedReplayBuffer:
             is_battle: If True, boost priority 2.5x for capture events (high-value learning)
             history_snapshot: AAREN history snapshot for this state (stored on CPU)
             next_history_snapshot: AAREN history snapshot for next_state (stored on CPU)
+            next_legal: np.packbits legal-action mask of next_state (None: every action allowed)
         """
-        if self.store_on_gpu:
-            # Convert to Float16 for memory efficiency
-            state_t = state.to(self.device, dtype=self.storage_dtype) if isinstance(state, torch.Tensor) else torch.tensor(state, device=self.device, dtype=self.storage_dtype)
-            next_state_t = next_state.to(self.device, dtype=self.storage_dtype) if isinstance(next_state, torch.Tensor) else torch.tensor(next_state, device=self.device, dtype=self.storage_dtype)
-        else:
-            state_t = state.cpu().float() if isinstance(state, torch.Tensor) else torch.tensor(state, dtype=torch.float32)
-            next_state_t = next_state.cpu().float() if isinstance(next_state, torch.Tensor) else torch.tensor(next_state, dtype=torch.float32)
+        store_device = self.device if self.store_on_gpu else 'cpu'
+        state_t = pack_state(state, store_device, self.storage_dtype)
+        next_state_t = pack_state(next_state, store_device, self.storage_dtype)
         
         action_t = action.cpu() if isinstance(action, torch.Tensor) else action
         reward_t = reward.cpu() if isinstance(reward, torch.Tensor) else reward
@@ -221,11 +241,12 @@ class PrioritizedReplayBuffer:
         
         # History snapshots stay on CPU (Python lists) to avoid GPU bloat
         exp = Experience(state_t, action_t, reward_t, next_state_t, done_t,
-                         history_snapshot, next_history_snapshot)
-        
-        # Use max priority for new experiences
+                         history_snapshot, next_history_snapshot, next_legal)
+
+        # New experiences get the largest priority so far. It is already raised to alpha (the
+        # thesis code raised it again here, so new samples got max_priority ** alpha ** 2).
         if priority is None:
-            priority = self.max_priority ** self.alpha
+            priority = self.max_priority
         
         # SELF-IMITATION LEARNING: Boost priority for winning experiences
         # This makes the agent learn more from its successes
@@ -242,7 +263,8 @@ class PrioritizedReplayBuffer:
     def sample(self, batch_size):
         """
         Sample batch with priorities.
-        Returns: states, actions, rewards, next_states, dones, indices, weights
+        Returns: states, actions, rewards, next_states, dones, indices, weights, history_snapshots,
+        next_history_snapshots, next_legal ((batch, NUM_ACTIONS) bool mask, or None)
         """
         batch = []
         indices = []
@@ -269,13 +291,8 @@ class PrioritizedReplayBuffer:
         weights = (self.tree.n_entries * sampling_probs) ** (-self.beta)
         weights = weights / weights.max()  # Normalize
         
-        # Stack tensors and convert to float32 for computation
-        if self.store_on_gpu:
-            states = torch.stack([e.state for e in batch]).float()
-            next_states = torch.stack([e.next_state for e in batch]).float()
-        else:
-            states = torch.stack([e.state for e in batch]).to(self.device, non_blocking=True).float()
-            next_states = torch.stack([e.next_state for e in batch]).to(self.device, non_blocking=True).float()
+        states = unpack_states([e.state for e in batch], self.device)
+        next_states = unpack_states([e.next_state for e in batch], self.device)
         
         actions_list = [e.action for e in batch]
         if isinstance(actions_list[0], torch.Tensor):
@@ -290,8 +307,10 @@ class PrioritizedReplayBuffer:
         # Extract history snapshots (may be None for legacy data)
         history_snapshots = [e.history_snapshot for e in batch]
         next_history_snapshots = [e.next_history_snapshot for e in batch]
-        
-        return states, actions, rewards, next_states, dones, indices, weights, history_snapshots, next_history_snapshots
+        next_legal = unpack_legal_masks([getattr(e, 'next_legal', None) for e in batch], NUM_ACTIONS, self.device)
+
+        return (states, actions, rewards, next_states, dones, indices, weights, history_snapshots,
+                next_history_snapshots, next_legal)
     
     def update_priorities(self, indices, td_errors):
         """Update priorities based on TD-errors."""
@@ -349,14 +368,14 @@ class NStepBuffer:
         self.gamma_powers = [gamma ** i for i in range(n_steps)]
     
     def add(self, state, action, reward, next_state, done,
-            history_snapshot=None, next_history_snapshot=None):
+            history_snapshot=None, next_history_snapshot=None, next_legal=None):
         """
         Add transition and return n-step transition if ready.
         Returns: (n_step_state, action, n_step_reward, n_step_next_state, done,
-                  history_snapshot, next_history_snapshot) or None
+                  history_snapshot, next_history_snapshot, next_legal) or None
         """
         self.buffer.append((state, action, reward, next_state, done,
-                            history_snapshot, next_history_snapshot))
+                            history_snapshot, next_history_snapshot, next_legal))
         
         # Episode ended: return the oldest n-step transition now; the shorter (truncated, terminal)
         # ones starting at the later steps stay in the buffer for flush()
@@ -377,17 +396,18 @@ class NStepBuffer:
             return None
         
         # Get first transition's state, action, and history snapshot
-        first_state, first_action, _, _, _, first_hist, _ = self.buffer[0]
-        
+        first_state, first_action, _, _, _, first_hist, _, _ = self.buffer[0]
+
         # Compute n-step reward: r_1 + γr_2 + γ²r_3 + ...
         n_step_reward = 0.0
-        for i, (_, _, reward, _, _, _, _) in enumerate(self.buffer):
-            n_step_reward += self.gamma_powers[i] * reward
-        
-        # Get last transition's next_state, done, and next_history_snapshot
-        _, _, _, last_next_state, last_done, _, last_next_hist = self.buffer[-1]
-        
-        return first_state, first_action, n_step_reward, last_next_state, last_done, first_hist, last_next_hist
+        for i, entry in enumerate(self.buffer):
+            n_step_reward += self.gamma_powers[i] * entry[2]
+
+        # Get last transition's next_state, done, next_history_snapshot and next-state legal mask
+        _, _, _, last_next_state, last_done, _, last_next_hist, last_next_legal = self.buffer[-1]
+
+        return (first_state, first_action, n_step_reward, last_next_state, last_done, first_hist, last_next_hist,
+                last_next_legal)
     
     def flush(self):
         """Flush remaining partial trajectories (call at episode end)."""

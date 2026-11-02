@@ -26,8 +26,10 @@ SAVE_INTERVAL = 1000       # Save model/export agent every N episodes
 PLOT_INTERVAL = 500       # Save metrics plots every N episodes
 EVAL_INTERVAL = 500       # Evaluate agent every N episodes
 REPLAY_UPDATE_INTERVAL = 8    # Train every 8 steps (balances data diversity vs update frequency)
-TARGET_UPDATE_INTERVAL = 2000   # Faster target updates for Phase 1 learning (was 5000)
-MARL_TARGET_UPDATE_INTERVAL = 5000   # Smoothing for Phase 4 MARL
+# Gradient updates between hard copies of the online network into the target network (the
+# agent counts its own updates). The thesis code soft-updated with tau=0.001 every 2000/5000 env
+# steps, from a target that started as a different random network.
+TARGET_UPDATE_INTERVAL = 1000
 REWARD_SCALE = 1.0        # Scaling factor for reward calculations
 MARL_REWARD_SCALE = 1.0   # Full terminal reward scale — dampening was killing signal contrast
 
@@ -41,7 +43,7 @@ EXPLORATION_EPSILON_END = 0.0     # Disabled
 EXPLORATION_EPSILON_DECAY = 1     # Not used
 
 # Entropy Regularization (Soft Q-Learning)
-ENTROPY_REG_ENABLED = True
+ENTROPY_REG_ENABLED = False
 ENTROPY_COEFF_START = 0.1
 ENTROPY_COEFF_END = 0.01
 ENTROPY_ANNEAL_EPISODES = 50000
@@ -83,7 +85,7 @@ IMITATION_REWARD_BOOST = 1.5  # Multiply reward for imitation actions (encourage
 
 # Multi-Step Returns (N-Step DQN)
 N_STEPS = 5               # 5-step returns for deeper credit assignment in long-horizon games (200-500 moves)
-GAMMA_N = GAMMA ** N_STEPS  # Pre-computed gamma^n
+GAMMA_N = GAMMA ** N_STEPS  # Bootstrap discount of an n-step return (the agent uses GAMMA for the whole return)
 
 # Episode-Level Replay Settings (Option B: Trajectory Segment Sampling)
 EPISODE_REPLAY_ENABLED = False        # Disable dual-buffer episode replay for speed
@@ -105,8 +107,8 @@ PER_BETA_END = 1.0              # Final importance sampling weight
 PER_BETA_ANNEAL_EPISODES = 10000  # Episodes to anneal beta
 
 # Data Augmentation (State/Action Symmetry)
-ENABLE_DATA_AUGMENTATION = True # Double/Triple transitions by flipping/rotating board
-AUGMENTATION_TYPES = ["flip"] # Reduced to flip only to minimize data pressure and noise
+ENABLE_DATA_AUGMENTATION = True # Also store each transition mirrored left-right
+AUGMENTATION_TYPES = ["flip"] # "flip" only: the left-right mirror is the one symmetry of the canonical frame
 
 # League Settings (Setup League)
 LEAGUE_INTERVAL = 500 # Run setup league every N episodes
@@ -192,7 +194,7 @@ SEARCH_MIN_MOVES = 10            # Skip search if fewer legal moves available
 # KL-REGULARIZATION SETTINGS (Anti-Cycling)
 # =============================================================================
 # Prevents strategy oscillation by anchoring to a reference policy
-KL_REG_ENABLED = True            # Enable KL divergence regularization
+KL_REG_ENABLED = False           # Off in Phase A: plain Rainbow loss (the thesis runs had it on)
 KL_REG_WEIGHT = 0.01             # Weight of KL term in total loss
 REF_POLICY_UPDATE_INTERVAL = 50000  # Update reference network every N steps
 
@@ -200,7 +202,7 @@ REF_POLICY_UPDATE_INTERVAL = 50000  # Update reference network every N steps
 # ENTROPY REGULARIZATION SETTINGS (Bluffing/Mixed Strategies)
 # =============================================================================
 # Encourages stochastic policies to avoid being exploited
-ENTROPY_REG_ENABLED = True       # Re-enabled for Phase 4 to prevent policy collapse
+ENTROPY_REG_ENABLED = False      # Off in Phase A (the thesis runs had it on)
 ENTROPY_COEFF_START = 0.01       # Small coefficient (keep exploration without chaos)
 ENTROPY_COEFF_END = 0.001        # Final entropy coefficient (decays over training)
 ENTROPY_ANNEAL_EPISODES = 50000  # Episodes to anneal entropy coefficient
@@ -217,7 +219,7 @@ ADVANTAGE_MIN_BATCH = 64          # Minimum batch size after filtering
 # ATARAXOS DYNAMIC DAMPING (Magnetic Regularization)
 # =============================================================================
 # Dual KL regularization with power-law annealing schedule
-DYNAMIC_DAMPING_ENABLED = True
+DYNAMIC_DAMPING_ENABLED = False   # Off in Phase A (the thesis runs had it on)
 TOTAL_TRAINING_EPISODES = 100000  # For schedule normalization
 
 # Magnet Policy (toward uniform): Starts high, decays to prevent overconfidence

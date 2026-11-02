@@ -95,6 +95,12 @@ class _FakeNetwork(torch.nn.Module):
     def forward(self, x):
         return self.fn(x)
 
+    def set_noise(self, enabled):  # the agent acts with NoisyNet noise; this network has none
+        pass
+
+    def reset_noise(self):
+        pass
+
 
 def _agent_preferring(agent, preferred_index, monkeypatch):
     """Make the agent's network value `preferred_index` highest and everything else equal."""

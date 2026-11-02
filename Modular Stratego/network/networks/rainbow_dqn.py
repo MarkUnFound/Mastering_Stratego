@@ -211,6 +211,12 @@ class RainbowDQN(nn.Module):
         # Softmax for probability distribution over atoms
         return F.softmax(val_out, dim=1)
 
+    def set_noise(self, enabled: bool):
+        """Keep the NoisyLinear noise on in eval mode too (see NoisyLinear.noisy)."""
+        for module in self.modules():
+            if isinstance(module, NoisyLinear):
+                module.noisy = enabled
+
     def reset_noise(self):
         """Reset noise in all NoisyLinear layers"""
         self.value_fc.reset_noise()

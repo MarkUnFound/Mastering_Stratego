@@ -514,7 +514,6 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
     
     # State tracking for intervals
     last_replay_step = 0
-    last_target_update_step = 0
     
     # Progress bar - updates based on completed episodes
     pbar = tqdm(total=num_episodes, initial=completed_episodes, desc="Training Episodes", dynamic_ncols=True)
@@ -523,9 +522,6 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
     # MAIN TRAINING LOOP
     # All lanes run in parallel, each at their own pace
     # ==========================================================================
-    
-    # Import MARL target update interval
-    from training_config import MARL_TARGET_UPDATE_INTERVAL
     
     try:
         while completed_episodes < num_episodes:
@@ -619,7 +615,8 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                 done_bool = bool(dones[i])
                 acting_agent = agent1 if current_player == 1 else lane_current_opponents[i]
                 for t in turn_tracker.record(i, current_player, lane_game_states[i], actions[i], next_states[i],
-                                             done_bool, infos[i], snapshot=history_snapshot(acting_agent, i)):
+                                             done_bool, infos[i], snapshot=history_snapshot(acting_agent, i),
+                                             next_moves=next_valid_moves[i]):
                     if t['done']:
                         reward = outcome_reward(t['winner'], t['player'])  # +1 / -1 / 0, draws included
                     else:
@@ -768,7 +765,8 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                         [t['next_state'].board for t, _ in batch], [t['done'] for t, _ in batch], [True] * len(batch),
                         [t['state'] for t, _ in batch], [t['next_state'] for t, _ in batch],
                         infos=[t['info'] for t, _ in batch], lane_ids=[t['lane'] for t, _ in batch],
-                        history_snapshots=[t['snapshot'] for t, _ in batch])
+                        history_snapshots=[t['snapshot'] for t, _ in batch],
+                        next_legal_moves=[t['next_moves'] for t, _ in batch])
             
             if reset_commands:
                 for lane_i, placements in reset_commands.items(): parallel_env.remotes[lane_i].send(('reset', placements))
@@ -816,22 +814,9 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                     f.write(f"DEBUG STEP {global_step}: P1={profiling['p1_act']:.4f} P2={profiling['p2_act']:.4f} Env={profiling['env_step']:.4f} Rwd={profiling['reward']:.4f} AAREN={profiling['aaren']:.4f} Rep={profiling['replay']:.4f} Ot={profiling['other']:.4f} Total={(time.perf_counter()-t_start):.4f}\n")
 
             
-            # --- TARGET NETWORK UPDATE ---
-            # Use threshold check to prevent double updates or skips
-            # Apply MARL target update smoothing in Phase 4 (League Training) 
-            current_target_interval = TARGET_UPDATE_INTERVAL
-            if curriculum and curriculum.current_phase.value >= 4:
-                current_target_interval = MARL_TARGET_UPDATE_INTERVAL
+            # Target networks: each agent copies its online network into its target every
+            # TARGET_UPDATE_INTERVAL gradient updates (RainbowAgent.replay)
 
-            if global_step - last_target_update_step >= current_target_interval:
-                agent1.update_target_network()
-                if curriculum and curriculum.current_phase.value >= 4:
-                    agent2.update_target_network()
-                    tqdm.write(f"[INFO] Target Networks (P1 & P2) Updated (Step {global_step} - {current_target_interval} interval)")
-                else:
-                    tqdm.write(f"[INFO] Target Network (P1 Only) Updated (Step {global_step})")
-                last_target_update_step = global_step
-            
             # --- CHECK CURRICULUM PHASE TRANSITION ---
             if curriculum and CURRICULUM_ENABLED and completed_episodes % 50 == 0:
                 if curriculum.check_phase_transition():

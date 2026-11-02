@@ -91,12 +91,11 @@ def mirror_action(index: int) -> int:
 
     The lakes are symmetric under this reflection, so it is a symmetry of the game; the replay
     buffer's "flip" augmentation uses it together with a flip of the observation's last axis.
+    Defined for every index (off-board ones too), so it is a permutation of the action space.
     """
-    (r1, c1), (r2, c2) = decode_action(index, 1)
-    return encode_move(((r1, MAX_DISTANCE - c1), (r2, MAX_DISTANCE - c2)), 1)
+    square, rest = divmod(int(index), ACTIONS_PER_SQUARE)
+    direction, step = divmod(rest, MAX_DISTANCE)
+    r, c = divmod(square, BOARD_SIZE)
+    direction = {2: 3, 3: 2}.get(direction, direction)  # left <-> right
+    return (r * BOARD_SIZE + MAX_DISTANCE - c) * ACTIONS_PER_SQUARE + direction * MAX_DISTANCE + step
 
-
-def rotate_action(index: int) -> int:
-    """Index of the same move rotated 180 degrees in the canonical frame (the "rotate" augmentation)."""
-    (r1, c1), (r2, c2) = decode_action(index, 1)
-    return encode_move(((MAX_DISTANCE - r1, MAX_DISTANCE - c1), (MAX_DISTANCE - r2, MAX_DISTANCE - c2)), 1)

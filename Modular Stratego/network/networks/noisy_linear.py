@@ -33,6 +33,10 @@ class NoisyLinear(nn.Module):
         self.reset_parameters()
         self.reset_noise()
 
+        # Noise is on in training mode. `noisy` keeps it on in eval mode as well: the agent acts
+        # in eval mode (BatchNorm running statistics, no dropout) with NoisyNet exploration.
+        self.noisy = False
+
     def reset_parameters(self):
         mu_range = 1 / math.sqrt(self.in_features)
         self.weight_mu.data.uniform_(-mu_range, mu_range)
@@ -54,7 +58,7 @@ class NoisyLinear(nn.Module):
         self.bias_epsilon.copy_(epsilon_out)
 
     def forward(self, input):
-        if self.training:
+        if self.training or self.noisy:
             return F.linear(input, self.weight_mu + self.weight_sigma * self.weight_epsilon,
                             self.bias_mu + self.bias_sigma * self.bias_epsilon)
         else:
