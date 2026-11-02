@@ -51,8 +51,11 @@ ENTROPY_ANNEAL_EPISODES = 50000
 # CURRICULUM TURN LIMITS (Per-phase game length)
 # =============================================================================
 # Longer episodes let the agent experience full-game dynamics at each phase
-PHASE_1_MAX_TURNS = 200   # (Accelerated) Enough turns to learn material + flag capture (100 per agent)
-PHASE_2_MAX_TURNS = 400   # (Accelerated) Partial obs — memory-intensive games with restricted length
+# Phases 1-2 were 200 / 400 turns in the thesis config. In 200 turns a scripted heuristic beats
+# the random opponent in only ~45% of games (the rest are draws), below the 70% Phase-1 gate;
+# in 1000 turns it wins ~65%. (No-battle draws still end stalled games early.)
+PHASE_1_MAX_TURNS = 1000  # Full observability: material and flag capture
+PHASE_2_MAX_TURNS = 1000  # Partial obs
 PHASE_3_MAX_TURNS = 1000  # Self-play — full strategic depth
 PHASE_4_MAX_TURNS = 1500  # League — unrestricted competitive games
 DEFAULT_MAX_TURNS = 1500  # Fallback (matches Phase 4)

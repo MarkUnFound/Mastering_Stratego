@@ -75,6 +75,14 @@ def test_a_phase_ends_at_its_episode_cap(tmp_path, config_override):
 
 # ---------------------------------------------------------------- PFSP
 
+def test_phase_one_trains_against_the_gate_opponents_from_the_start(tmp_path):
+    c = _curriculum(tmp_path)
+    assert set(c.get_opponent_distribution()) == {'random', 'heuristic'}
+    for _ in range(40):
+        c.update_metrics({'winner': 1, 'opponent_type': 'heuristic'})
+    assert 'smart_heuristic' in c.get_opponent_distribution()
+
+
 def test_opponents_are_sampled_by_their_pfsp_weights(tmp_path, monkeypatch):
     """The thesis trainer cycled through the sorted opponent types in fixed blocks."""
     from curriculum import CurriculumManager

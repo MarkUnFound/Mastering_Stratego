@@ -398,15 +398,13 @@ class CurriculumManager:
         if self.current_phase == TrainingPhase.PHYSICS_OF_WAR:
             # --- PFSP adaptive scheduling ---
             # Recent training win rates (draws count as non-wins) decide the candidate pool
-            win_vs_random = metrics.win_rate_vs('random', min_games=50) or 0.0
             win_vs_heur = metrics.win_rate_vs('heuristic', min_games=20) or 0.0
 
             # Decide the active candidate pool based on overall progress
-            if win_vs_random < 0.70:
-                # Early boot: still learning random, don't introduce heuristic yet
-                candidates = ["random"]
-            elif win_vs_heur < 0.30:
-                # Graduated to heuristic territory, but not smart_heuristic yet
+            # The heuristic is in the pool from the start: the Phase-1 gate needs wins against it,
+            # and the thesis pool held it back until 70% training wins against random, which the
+            # agent may never reach in its turn limit (the phase then only ended at its cap).
+            if win_vs_heur < 0.30:
                 candidates = ["random", "heuristic"]
             else:
                 # Agent is competent — full pool, PFSP distributes weight
