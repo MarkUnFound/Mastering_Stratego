@@ -59,6 +59,12 @@ PHASE_MAX_TURNS = {
     4: PHASE_4_MAX_TURNS,
 }
 
+# No-battle draw: the game is drawn after this many plies (single moves) without an attack.
+# Training uses a shorter limit so stalled self-play games end sooner; evaluation and human play
+# use the longer one. 0 turns the rule off (the thesis runs had no such rule).
+NO_BATTLE_DRAW_PLIES = 100
+EVAL_NO_BATTLE_DRAW_PLIES = 200
+
 # Warmup Period (must collect this many experiences before training starts)
 WARMUP_STEPS = 1000       # Reduced further for faster Phase 1 start
 

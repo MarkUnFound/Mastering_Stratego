@@ -44,6 +44,7 @@ PIECE_RANKS = {
 # Only pieces with rank <= this get the flag-distance incentive.
 # Marshal(10), General(9), Colonel(8) should NOT rush forward.
 OFFENSIVE_RANK_THRESHOLD = 6  # Captain and below
+_RANK_BY_VALUE = {pt.value: PIECE_RANKS.get(pt, 0) for pt in PieceType}
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -64,80 +65,38 @@ def compute_potential(board: torch.Tensor, player_id: int,
     All components are normalized to [0, 1] and combined with fixed weights.
     The potential is bounded ∈ [−1, +1] for C51 compatibility.
     """
-    # ── 1. Material advantage ────────────────────────────────────────
+    # One pass over the board as Python ints (per-cell tensor .item() calls were the cost here)
     my_material = 0.0
     enemy_material = 0.0
-
-    board_flat = board.flatten()
-    for val_t in board_flat:
-        val = val_t.item()
-        if val == 0 or val == 13:  # Empty or lake
-            continue
+    best_penetration = 0.0  # 2. deepest offensive piece (rank <= Captain) toward the enemy side
+    min_dist = 10.0         # 4. closest offensive piece to the enemy back rank
+    for i, val in enumerate(board.flatten().tolist()):
         abs_val = abs(int(val))
         if abs_val < 1 or abs_val > 12:
-            continue
-        rank = PIECE_RANKS.get(PieceType(abs_val), 0)
+            continue  # empty, lake or hidden marker
+        rank = _RANK_BY_VALUE[abs_val]
         is_mine = (player_id == 1 and val > 0) or (player_id == -1 and val < 0)
-        if is_mine:
-            my_material += rank
-        else:
+        if not is_mine:
             enemy_material += rank
+            continue
+        my_material += rank
+        if rank > OFFENSIVE_RANK_THRESHOLD:
+            continue
+        r = i // 10
+        # Player 1 starts at rows 6-9 and pushes toward row 0; Player -1 the other way
+        if player_id == 1:
+            depth, dist = (9 - r) / 9.0, r
+        else:
+            depth, dist = r / 9.0, 9 - r
+        best_penetration = max(best_penetration, depth)
+        min_dist = min(min_dist, dist)
 
-    # Normalize: max total material = 10+9+8+8+7+7+7+6+6+6+6+5+5+5+5+4+4+4+3+3+3+3+3+3+2*8+1 ≈ 148
+    # 1. Material advantage. Max total material = 10+9+8+8+7+7+7+6+6+6+6+5+5+5+5+4+4+4+3+3+3+3+3+3+2*8+1 ≈ 148
     max_material = 148.0
     material_score = (my_material - enemy_material) / max_material  # ∈ [-1, 1]
 
-    # ── 2. Territorial penetration ───────────────────────────────────
-    # How deep has any offensive piece (rank ≤ Captain) pushed?
-    best_penetration = 0.0
-    for r in range(10):
-        for c in range(10):
-            val = board[r, c].item()
-            if val == 0 or val == 13:
-                continue
-            abs_val = abs(int(val))
-            if abs_val < 1 or abs_val > 12:
-                continue
-            is_mine = (player_id == 1 and val > 0) or (player_id == -1 and val < 0)
-            if not is_mine:
-                continue
-            rank = PIECE_RANKS.get(PieceType(abs_val), 0)
-            if rank > OFFENSIVE_RANK_THRESHOLD:
-                continue  # Skip high-value pieces
-            # Penetration depth: Player 1 starts at rows 6-9 and pushes toward row 0
-            #                     Player -1 starts at rows 0-3 and pushes toward row 9
-            if player_id == 1:
-                depth = (9 - r) / 9.0  # row 0 = 1.0, row 9 = 0.0
-            else:
-                depth = r / 9.0         # row 9 = 1.0, row 0 = 0.0
-            best_penetration = max(best_penetration, depth)
-
-    # ── 3. Information gain ──────────────────────────────────────────
-    # What fraction of the 12 enemy piece types have been revealed?
+    # 3. Information gain: fraction of the 12 enemy piece types revealed
     revealed_score = len(revealed_types) / 12.0
-
-    # ── 4. Offensive proximity to enemy back rank ────────────────────
-    # Minimum distance of any offensive piece to enemy flag zone
-    min_dist = 10.0
-    for r in range(10):
-        for c in range(10):
-            val = board[r, c].item()
-            if val == 0 or val == 13:
-                continue
-            abs_val = abs(int(val))
-            if abs_val < 1 or abs_val > 12:
-                continue
-            is_mine = (player_id == 1 and val > 0) or (player_id == -1 and val < 0)
-            if not is_mine:
-                continue
-            rank = PIECE_RANKS.get(PieceType(abs_val), 0)
-            if rank > OFFENSIVE_RANK_THRESHOLD:
-                continue
-            if player_id == 1:
-                dist = r  # Distance to row 0 (enemy back rank)
-            else:
-                dist = 9 - r  # Distance to row 9 (enemy back rank)
-            min_dist = min(min_dist, dist)
 
     proximity_score = 1.0 - (min_dist / 10.0)  # ∈ [0, 1]
 

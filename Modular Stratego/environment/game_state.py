@@ -17,6 +17,8 @@ class GameState:
     # Track revealed pieces for each player
     revealed_pieces_p1: Dict[Tuple[int, int], int]
     revealed_pieces_p2: Dict[Tuple[int, int], int]
+    # Plies since the last battle (the no-battle draw rule counts this)
+    plies_since_battle: int = 0
 
     def get_player_view(self, player: int) -> torch.Tensor:
         """Returns the board as seen by the specified player."""
@@ -59,5 +61,6 @@ class GameState:
             move_history=new_move_history,
             uncertainty_mask=new_uncertainty,
             revealed_pieces_p1=new_revealed_p1,
-            revealed_pieces_p2=new_revealed_p2
+            revealed_pieces_p2=new_revealed_p2,
+            plies_since_battle=self.plies_since_battle
         )

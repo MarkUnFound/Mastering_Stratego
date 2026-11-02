@@ -602,6 +602,8 @@ class HeuristicOpponent:
         if game_state and hasattr(game_state, 'current_player'):
             player_id = game_state.current_player
         
+        if isinstance(board, torch.Tensor):
+            board = board.tolist()  # scored as nested lists: no per-square .item()
         scored_moves = []
         for move in valid_moves:
             score = self._score_move(move, board, player_id)
@@ -704,6 +706,8 @@ class SmartHeuristicOpponent:
         if game_state and hasattr(game_state, 'current_player'):
             player_id = game_state.current_player
         
+        if isinstance(board, torch.Tensor):
+            board = board.tolist()  # scored as nested lists: no per-square .item()
         scored_moves = []
         for move in valid_moves:
             score = self._score_move(move, board, valid_moves, player_id)

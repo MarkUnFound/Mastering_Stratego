@@ -7,19 +7,54 @@ from piece import PieceType
 from battle import BattleResolver
 from dqn_visualizer import DQNMoveVisualizer
 from game_state import GameState
-from training_config import REWARD_SCALE, DEFAULT_MAX_TURNS
+from training_config import REWARD_SCALE, DEFAULT_MAX_TURNS, NO_BATTLE_DRAW_PLIES
+
+_DIRECTIONS = ((0, 1), (0, -1), (1, 0), (-1, 0))
+_IMMOBILE = (PieceType.FLAG.value, PieceType.BOMB.value)
+_SCOUT = PieceType.SCOUT.value
+
+
+def legal_moves(flat_board: List[int], player: int) -> List[Tuple[Tuple[int, int], Tuple[int, int]]]:
+    """Legal moves for `player` on a row-major list of 100 board values (the actual board)."""
+    moves = []
+    for i, v in enumerate(flat_board):
+        rank = v * player
+        if not 1 <= rank <= 12 or rank in _IMMOBILE:
+            continue  # empty, lake, enemy, Flag or Bomb
+        r, c = divmod(i, BOARD_SIZE)
+        slides = rank == _SCOUT
+        for dr, dc in _DIRECTIONS:
+            tr, tc = r + dr, c + dc
+            while 0 <= tr < BOARD_SIZE and 0 <= tc < BOARD_SIZE:
+                target = flat_board[tr * BOARD_SIZE + tc]
+                if target == LAKE_SQUARE or target * player > 0:
+                    break  # lake or own piece
+                moves.append(((r, c), (tr, tc)))
+                if target != EMPTY_SQUARE or not slides:
+                    break  # attack ends the move; non-Scouts move one square
+                tr += dr
+                tc += dc
+    return moves
+
 
 class StrategoEnvironment:
-    def __init__(self, device, record_game=False, episode_num=None, full_observability=False, enable_anti_stall=False, max_turns=None):
+    def __init__(self, device, record_game=False, episode_num=None, full_observability=False, enable_anti_stall=False, max_turns=None,
+                 no_battle_draw_plies=None):
         # Use configured default if not specified
         if max_turns is None:
             max_turns = DEFAULT_MAX_TURNS
+        if no_battle_draw_plies is None:
+            no_battle_draw_plies = NO_BATTLE_DRAW_PLIES
         self.device = device
         self.record_game = record_game
         self.episode_num = episode_num
         self.full_observability = full_observability  # For Phase 1 curriculum (cheating mode)
         self.enable_anti_stall = enable_anti_stall  # Only enable for agent-vs-agent games
         self.max_turns = max_turns  # Curriculum-based turn limit
+        self.no_battle_draw_plies = no_battle_draw_plies  # Draw after this many plies without a battle (0 = off)
+        self.plies_since_battle = 0
+        self._moves_cache_key = None
+        self._moves_cache = []
         self.current_player = 1
         self.game_over = False
         self.winner = None
@@ -46,6 +81,7 @@ class StrategoEnvironment:
         self.winner = None
         self.win_type = None  # Reset win type tracking
         self.turn_count = 0
+        self.plies_since_battle = 0
         self.move_history = []
         self.revealed_pieces_p1 = {}
         self.revealed_pieces_p2 = {}
@@ -156,197 +192,16 @@ class StrategoEnvironment:
 
     def get_valid_moves(self) -> List[Tuple[Tuple[int, int], Tuple[int, int]]]:
         """
-        Get all valid moves for the current player using vectorized operations.
+        Get all valid moves for the current player (Scouts slide any distance).
+        Cached on the board contents and side to move, so repeated calls within a ply are free
+        and a board edited from outside the environment is never served stale moves.
         """
-        moves = []
-        actual_board = self.board.actual_board
-        
-        # 1. Identify current player's pieces
-        if self.current_player == 1:
-            # Player 1: positive pieces
-            player_pieces_mask = (actual_board > 0) & (actual_board != LAKE_SQUARE)
-        else:
-            # Player -1: negative pieces
-            player_pieces_mask = (actual_board < 0) & (actual_board != LAKE_SQUARE)
-            
-        # Get indices of all pieces
-        piece_indices = torch.nonzero(player_pieces_mask)
-        if len(piece_indices) == 0:
-            return []
-            
-        r_indices = piece_indices[:, 0]
-        c_indices = piece_indices[:, 1]
-        piece_values = actual_board[r_indices, c_indices]
-        piece_types = torch.abs(piece_values)
-        
-        # Filter out Flags and Bombs (cannot move)
-        movable_mask = (piece_types != PieceType.FLAG.value) & (piece_types != PieceType.BOMB.value)
-        
-        r_movable = r_indices[movable_mask]
-        c_movable = c_indices[movable_mask]
-        types_movable = piece_types[movable_mask]
-        
-        if len(r_movable) == 0:
-            return []
-            
-        # 2. Handle Non-Scout Pieces (Step 1 square)
-        non_scout_mask = (types_movable != PieceType.SCOUT.value)
-        r_non_scout = r_movable[non_scout_mask]
-        c_non_scout = c_movable[non_scout_mask]
-        
-        if len(r_non_scout) > 0:
-            # Directions: (0, 1), (0, -1), (1, 0), (-1, 0)
-            dr = torch.tensor([0, 0, 1, -1], device=self.device)
-            dc = torch.tensor([1, -1, 0, 0], device=self.device)
-            
-            # Broadcasting: (N, 1) + (1, 4) -> (N, 4)
-            r_targets = r_non_scout.unsqueeze(1) + dr.unsqueeze(0)
-            c_targets = c_non_scout.unsqueeze(1) + dc.unsqueeze(0)
-            
-            # Flatten to (N*4) for easier filtering
-            r_targets_flat = r_targets.view(-1)
-            c_targets_flat = c_targets.view(-1)
-            
-            # Repeat source coordinates
-            r_sources_flat = r_non_scout.unsqueeze(1).repeat(1, 4).view(-1)
-            c_sources_flat = c_non_scout.unsqueeze(1).repeat(1, 4).view(-1)
-            
-            # Check bounds
-            bounds_mask = (r_targets_flat >= 0) & (r_targets_flat < BOARD_SIZE) & \
-                          (c_targets_flat >= 0) & (c_targets_flat < BOARD_SIZE)
-            
-            # Filter out of bounds first to avoid index error
-            r_valid = r_targets_flat[bounds_mask]
-            c_valid = c_targets_flat[bounds_mask]
-            r_src_valid = r_sources_flat[bounds_mask]
-            c_src_valid = c_sources_flat[bounds_mask]
-            
-            if len(r_valid) > 0:
-                target_values = actual_board[r_valid, c_valid]
-                
-                # Check valid targets: Empty or Enemy
-                # Invalid: Lake or Friendly
-                
-                # Lake check
-                not_lake_mask = (target_values != LAKE_SQUARE)
-                
-                # Friendly fire check
-                if self.current_player == 1:
-                    # Invalid if target > 0 (friendly)
-                    not_friendly_mask = (target_values <= 0)
-                else:
-                    # Invalid if target < 0 (friendly)
-                    not_friendly_mask = (target_values >= 0)
-                    
-                valid_move_mask = not_lake_mask & not_friendly_mask
-                
-                # Extract final valid moves
-                r_final_src = r_src_valid[valid_move_mask]
-                c_final_src = c_src_valid[valid_move_mask]
-                r_final_dst = r_valid[valid_move_mask]
-                c_final_dst = c_valid[valid_move_mask]
-                
-                # Convert to list of tuples
-                for i in range(len(r_final_src)):
-                    moves.append(((int(r_final_src[i]), int(c_final_src[i])), 
-                                  (int(r_final_dst[i]), int(c_final_dst[i]))))
-
-        # 3. Handle Scout Pieces (Slide)
-        scout_mask = (types_movable == PieceType.SCOUT.value)
-        r_scout = r_movable[scout_mask]
-        c_scout = c_movable[scout_mask]
-        
-        if len(r_scout) > 0:
-            # For scouts, we iterate distances 1..9
-            # This is harder to fully vectorize without a large memory footprint
-            # But we can vectorize per direction
-            
-            directions = [(0, 1), (0, -1), (1, 0), (-1, 0)]
-            
-            for dr, dc in directions:
-                # Start with all scouts active for this direction
-                active_mask = torch.ones(len(r_scout), dtype=torch.bool, device=self.device)
-                
-                for dist in range(1, BOARD_SIZE):
-                    if not active_mask.any():
-                        break
-                        
-                    # Calculate targets at distance 'dist'
-                    r_target = r_scout + dr * dist
-                    c_target = c_scout + dc * dist
-                    
-                    # Check bounds
-                    bounds_mask = (r_target >= 0) & (r_target < BOARD_SIZE) & \
-                                  (c_target >= 0) & (c_target < BOARD_SIZE)
-                    
-                    # Update active mask (out of bounds stops the ray)
-                    active_mask = active_mask & bounds_mask
-                    
-                    if not active_mask.any():
-                        break
-                        
-                    # Check content for active rays
-                    # We only check content where active_mask is True to avoid index errors
-                    # But to keep tensors aligned, we get values for all, but use a safe index for inactive
-                    # Alternatively, just filter indices
-                    
-                    active_indices = torch.nonzero(active_mask).squeeze(1)
-                    r_active = r_target[active_indices]
-                    c_active = c_target[active_indices]
-                    
-                    target_values = actual_board[r_active, c_active]
-                    
-                    # Check blocking conditions
-                    is_lake = (target_values == LAKE_SQUARE)
-                    is_occupied = (target_values != EMPTY_SQUARE)
-                    
-                    # Friendly fire
-                    if self.current_player == 1:
-                        is_friendly = (target_values > 0)
-                    else:
-                        is_friendly = (target_values < 0)
-                        
-                    # Valid move conditions:
-                    # 1. Not Lake
-                    # 2. Not Friendly
-                    # 3. If Occupied (Enemy), it's valid but stops the ray (capture)
-                    # 4. If Empty, it's valid and ray continues
-                    
-                    # Identify valid moves at this distance
-                    valid_step_mask = (~is_lake) & (~is_friendly)
-                    
-                    # Add valid moves
-                    valid_indices = active_indices[valid_step_mask]
-                    if len(valid_indices) > 0:
-                        r_src_valid = r_scout[valid_indices]
-                        c_src_valid = c_scout[valid_indices]
-                        r_dst_valid = r_target[valid_indices]
-                        c_dst_valid = c_target[valid_indices]
-                        
-                        for i in range(len(valid_indices)):
-                            moves.append(((int(r_src_valid[i]), int(c_src_valid[i])), 
-                                          (int(r_dst_valid[i]), int(c_dst_valid[i]))))
-                    
-                    # Update active_mask for NEXT distance
-                    # Ray stops if: Lake OR Occupied (even if enemy capture)
-                    # So active if: Not Lake AND Not Occupied
-                    # We need to map back to the original active_mask size
-                    
-                    # Determine which of the currently active rays should continue
-                    continue_mask = (~is_lake) & (~is_occupied)
-                    
-                    # Update the main active_mask
-                    # We only update the bits that were already True
-                    # active_mask[active_indices] = continue_mask
-                    # But we need to be careful with indexing.
-                    
-                    # Create a full-size continue mask (default False)
-                    full_continue_mask = torch.zeros_like(active_mask)
-                    full_continue_mask[active_indices] = continue_mask
-                    
-                    active_mask = active_mask & full_continue_mask
-
-        return moves
+        flat = self.board.actual_board.flatten().tolist()
+        key = (self.current_player, tuple(flat))
+        if key != self._moves_cache_key:
+            self._moves_cache_key = key
+            self._moves_cache = legal_moves(flat, self.current_player)
+        return list(self._moves_cache)
 
     def step(self, action: Tuple[Tuple[int, int], Tuple[int, int]]) -> Tuple[GameState, float, bool, Dict]:
         """
@@ -393,6 +248,7 @@ class StrategoEnvironment:
         # Handle battle or simple move
         if target_piece_value != EMPTY_SQUARE and target_piece_value != LAKE_SQUARE:
             # Battle occurs
+            self.plies_since_battle = 0
             attacker_type = PieceType(abs(moving_piece_value))
             defender_type = PieceType(abs(target_piece_value))
             
@@ -473,6 +329,7 @@ class StrategoEnvironment:
         else:
             # Simple move (no battle)
             self.board.move_piece(self.current_player, (r_from, c_from), (r_to, c_to))
+            self.plies_since_battle += 1
 
         self.turn_count += 1
         self.move_history.append(action)
@@ -512,6 +369,7 @@ class StrategoEnvironment:
             "game_phase": game_phase, 
             "turn_count": self.turn_count,
             "max_turns": self.max_turns,
+            "plies_since_battle": self.plies_since_battle,
             "num_valid_moves": avail_moves
         }
         
@@ -524,37 +382,17 @@ class StrategoEnvironment:
         if self.game_over:
             return
 
-        # Fallback flag check
-        if hasattr(self, '_flag_positions'):
-            if self._flag_positions[1] is None:
-                self.game_over = True
-                self.winner = -1
-                self.win_type = 'flag_capture'
-                return
-            if self._flag_positions[-1] is None:
-                self.game_over = True
-                self.winner = 1
-                self.win_type = 'flag_capture'
-                return
-        else:
-            # Full scan fallback
-            has_p1_flag = False
-            has_p2_flag = False
-            for p in self.board.actual_board.flatten():
-                if p.item() == PieceType.FLAG.value:
-                    has_p1_flag = True
-                elif p.item() == -PieceType.FLAG.value:
-                    has_p2_flag = True
-            if not has_p1_flag:
-                self.game_over = True
-                self.winner = -1
-                self.win_type = 'flag_capture'
-                return
-            if not has_p2_flag:
-                self.game_over = True
-                self.winner = 1
-                self.win_type = 'flag_capture'
-                return
+        # Flag capture (flag positions are tracked in place_pieces/step)
+        if self._flag_positions[1] is None:
+            self.game_over = True
+            self.winner = -1
+            self.win_type = 'flag_capture'
+            return
+        if self._flag_positions[-1] is None:
+            self.game_over = True
+            self.winner = 1
+            self.win_type = 'flag_capture'
+            return
         
         # Check if current player has any valid moves
         if not self.get_valid_moves():
@@ -563,6 +401,13 @@ class StrategoEnvironment:
             # This follows standard Stratego rules and rewards material dominance
             self.winner = -self.current_player
             self.win_type = 'no_moves'  # Track immobilization win
+            return
+
+        # No-battle draw: too many plies without an attack
+        if self.no_battle_draw_plies and self.plies_since_battle >= self.no_battle_draw_plies:
+            self.game_over = True
+            self.winner = 0
+            self.win_type = 'no_battle_draw'
             return
         
         # Early draw detection - ONLY if anti_stall is enabled (agent-vs-agent)
@@ -671,6 +516,7 @@ class StrategoEnvironment:
             board=board,
             current_player=self.current_player,
             turn_count=self.turn_count,
+            plies_since_battle=self.plies_since_battle,
             game_over=self.game_over,
             winner=self.winner,
             move_history=self.move_history.copy() if len(self.move_history) < 1000 else self.move_history[-100:],  # Only copy recent moves if history is long

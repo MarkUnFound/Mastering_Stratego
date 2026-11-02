@@ -825,6 +825,7 @@ class RainbowAgent:
         # Filter valid moves - now includes Scout multi-step moves
         valid_q_values = []
         valid_moves_filtered = []
+        q_list = base_q_values.tolist()  # one transfer instead of one .item() per move
         for move in valid_moves:
             (r1, c1), (r2, c2) = move
             dist = abs(r2 - r1) + abs(c2 - c1)
@@ -848,7 +849,7 @@ class RainbowAgent:
             if action_idx is None:
                 continue
                 
-            q_val = base_q_values[action_idx].item()
+            q_val = q_list[action_idx]
             
             # Add uncertainty bonus
             uncertainty = self.get_move_uncertainty(move, uncertainty_map)
@@ -1043,6 +1044,7 @@ class RainbowAgent:
                 # LEGACY: Original filtering (now includes Scout moves)
                 valid_q_values = []
                 valid_moves_filtered = []
+                q_list = expected_q_values[i].tolist()  # one transfer instead of one .item() per move
                 for move in valid_moves:
                     (r1, c1), (r2, c2) = move
                     dist = abs(r2 - r1) + abs(c2 - c1)
@@ -1063,7 +1065,7 @@ class RainbowAgent:
                     if action_idx is None:
                         continue
                         
-                    q_val = expected_q_values[i, action_idx].item()
+                    q_val = q_list[action_idx]
                     
                     uncertainty = self.get_move_uncertainty(move, uncertainty_maps[i])
                     exploration_bonus = uncertainty * self.uncertainty_exploration_multiplier
