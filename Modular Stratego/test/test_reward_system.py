@@ -1,27 +1,28 @@
 """
-Verification Test — Reward System v3 (PBRS Architecture)
+Reward shaping: PBRS from each side's own view (network/distributional_reward.py).
 
-Validates the three-layer anti-stagnation reward architecture:
-1. Terminal rewards within C51 support [-10, +10]
-2. Terminal game-length modifier (speed bonus + slow draw penalty)
-3. PBRS zero for identical states (no Happy Wanderer farming)
-4. PBRS positive for piece capture (progress rewarded)
-5. PBRS negative for piece loss (regression penalized)
-6. Oscillation penalty escalation (A→B→A detection)
-7. No per-step penalty (removed in v3)
-8. Move diversity penalty fires on shuffling
-9. Legacy dead code removed
-10. C51 support range
+1. PBRS near zero for a non-progressing move, positive for a capture, negative for a loss
+2. Φ reads only the side's own view; hidden enemy pieces count with the mean army rank
+3. Terminal transitions get −Φ(s), so a game's shaping telescopes to −Φ(s_0)
+4. Non-potential terms are off by default; when switched on they fire on the right events
+5. C51 support range
+
+(The thesis terminal branch — speed bonus, draw penalty, MARL scaling — is gone: the trainer's
+terminal reward is outcome_reward, +1 / -1 / 0. Its tests went with it.)
 """
 
-import sys
-import os
+import random
+
 import pytest
 import torch
 
-
-from distributional_reward import UnifiedRewardShaper, StrategoRewardConfig, OFFENSIVE_RANK_THRESHOLD
+from distributional_reward import (UnifiedRewardShaper, StrategoRewardConfig, compute_potential,
+                                   ARMY_MATERIAL, UNKNOWN_PIECE_RANK)
 from game_state import GameState
+from piece import PieceType
+from training_config import GAMMA
+
+HIDDEN = -20
 
 
 def make_board(setup=None):
@@ -49,229 +50,184 @@ def make_game_state(board, turn_count=0):
         revealed_pieces_p2={}
     )
 
-def test_terminal_rewards():
-    """Test 1: Terminal rewards are within C51 range"""
-    config = StrategoRewardConfig()
-    shaper = UnifiedRewardShaper(player_id=1, config=config, device='cpu')
 
-    # Win by flag capture (quick win at turn 10/200)
-    # Board encoding: Flag=1, Scout=3, Captain=7, Marshal=11, Bomb=12
-    board = make_board({(0, 0): 3, (9, 9): -1})  # P1 Scout, P2 Flag
-    prev_state = make_game_state(board)
-    curr_state = make_game_state(board)
-    
-    r = shaper(prev_state, None, curr_state, done=True, winner=1, 
-               info={'win_type': 'flag_capture', 'turn_count': 10, 'max_turns': 200})
-    ok = -10 <= r <= 10
-    assert ok
-
-    # Loss
-    r = shaper(prev_state, None, curr_state, done=True, winner=-1, 
-               info={'turn_count': 50, 'max_turns': 200})
-    ok = -10 <= r <= 10
-    assert ok
-
-    # Draw
-    r = shaper(prev_state, None, curr_state, done=True, winner=0, 
-               info={'turn_count': 100, 'max_turns': 200})
-    ok = -10 <= r <= 10
-    assert ok
-
-
-def test_terminal_game_length():
-    """Test 2: Game-length modifier — quick wins > slow wins, long draws worse"""
-    config = StrategoRewardConfig()
-
-    # Quick win (turn 20 / 200)
-    shaper_a = UnifiedRewardShaper(player_id=1, config=config, device='cpu')
-    board = make_board({(0, 0): 1})
-    state = make_game_state(board)
-
-    r_quick_win = shaper_a(state, None, state, done=True, winner=1, 
-                            info={'win_type': 'flag_capture', 'turn_count': 20, 'max_turns': 200})
-
-    # Slow win (turn 190 / 200)
-    shaper_b = UnifiedRewardShaper(player_id=1, config=config, device='cpu')
-    r_slow_win = shaper_b(state, None, state, done=True, winner=1, 
-                           info={'win_type': 'flag_capture', 'turn_count': 190, 'max_turns': 200})
-
-    ok_wins = r_quick_win > r_slow_win
-    assert ok_wins
-
-    # Short draw (turn 50 / 200)
-    shaper_c = UnifiedRewardShaper(player_id=1, config=config, device='cpu')
-    r_short_draw = shaper_c(state, None, state, done=True, winner=0, 
-                             info={'turn_count': 50, 'max_turns': 200})
-
-    # Long draw (turn 200 / 200)
-    shaper_d = UnifiedRewardShaper(player_id=1, config=config, device='cpu')
-    r_long_draw = shaper_d(state, None, state, done=True, winner=0, 
-                            info={'turn_count': 200, 'max_turns': 200})
-
-    ok_draws = r_short_draw > r_long_draw
-    assert ok_draws
-
-    # Slow win is still positive
-    ok_positive = r_slow_win > 0
-    assert ok_positive
+SCOUT, CAPTAIN, GENERAL, MARSHAL = (PieceType.SCOUT.value, PieceType.CAPTAIN.value,
+                                    PieceType.GENERAL.value, PieceType.MARSHAL.value)
 
 
 def test_pbrs_zero_for_identical():
-    """Test 3: PBRS gives near-zero SHAPING for non-progressing moves"""
-    config = StrategoRewardConfig()
-    shaper = UnifiedRewardShaper(player_id=1, config=config, device='cpu')
-    
-    # Two board states with nearly identical game-progress potential
-    # A sideways move doesn't change material, penetration, or proximity
-    board_a = make_board({(6, 0): 3, (0, 5): -1})  # Scout(3) + enemy Flag(-1)
-    board_b = make_board({(6, 1): 3, (0, 5): -1})  # "Moved" sideways -- same potential
-    
-    state_a = make_game_state(board_a)
-    state_b = make_game_state(board_b)
-    
-    # First call: initializes potential then computes PBRS
-    r1 = shaper(state_a, ((6, 0), (6, 1)), state_b, done=False, winner=None, info={})
-    
-    # Key property: if Φ(A) ≈ Φ(B), then γΦ(B) - Φ(A) ≈ (γ-1)Φ(A) ≈ -0.005×Φ(A)
-    # This is a small negative due to γ < 1 — mathematically correct.
-    # The PBRS component should be small (< 0.15 in absolute value).
-    shaping_component = abs(r1)  # Remove oscillation/diversity to isolate PBRS
-    ok = shaping_component < 0.15  # Small — not a farming-sized reward
-    assert ok
+    """PBRS gives near-zero shaping for a non-progressing move"""
+    shaper = UnifiedRewardShaper(player_id=1, device='cpu')
+    state_a = make_game_state(make_board({(6, 0): SCOUT, (0, 5): -1}))
+    state_b = make_game_state(make_board({(6, 1): SCOUT, (0, 5): -1}))  # sideways: same potential
+    r = shaper(state_a, ((6, 0), (6, 1)), state_b, done=False, winner=None, info={})
+    assert r == pytest.approx((GAMMA - 1) * compute_potential(state_a.board, 1))
+    assert abs(r) < 0.01
 
 
 def test_pbrs_positive_for_capture():
-    """Test 4: PBRS gives positive reward when capturing high-value enemy piece"""
-    config = StrategoRewardConfig()
-    shaper = UnifiedRewardShaper(player_id=1, config=config, device='cpu')
-    
-    # Use a significant capture: P1 Captain (val=7) captures P2 Marshal (val=-11)
-    # Board encoding: Captain=7, Marshal=11, Flag=1
-    prev_board = make_board({(3, 0): 7, (2, 0): -11, (0, 5): -1})
-    # After capture: P1 Captain at (2,0), enemy Marshal removed -- large Phi increase
-    curr_board = make_board({(2, 0): 7, (0, 5): -1})
-    
-    prev_state = make_game_state(prev_board)
-    curr_state = make_game_state(curr_board)
-    action = ((3, 0), (2, 0))
-    
-    r = shaper(prev_state, action, curr_state, done=False, winner=None, 
-               info={'revealed_in_step': [((2, 0), None)]})
-    
-    ok = r > 0
-    assert ok
+    """P1 Captain captures a P2 Marshal"""
+    shaper = UnifiedRewardShaper(player_id=1, device='cpu')
+    prev_state = make_game_state(make_board({(3, 0): CAPTAIN, (2, 0): -MARSHAL, (0, 5): -1}))
+    curr_state = make_game_state(make_board({(2, 0): CAPTAIN, (0, 5): -1}))
+    assert shaper(prev_state, ((3, 0), (2, 0)), curr_state, done=False, winner=None, info={}) > 0
 
 
 def test_pbrs_negative_for_loss():
-    """Test 5: PBRS gives negative reward when losing own piece"""
+    """P1 Scout attacks a P2 General and dies"""
+    shaper = UnifiedRewardShaper(player_id=1, device='cpu')
+    prev_state = make_game_state(make_board({(3, 0): SCOUT, (2, 0): -GENERAL, (0, 5): -1}))
+    curr_state = make_game_state(make_board({(2, 0): -GENERAL, (0, 5): -1}))
+    assert shaper(prev_state, ((3, 0), (2, 0)), curr_state, done=False, winner=None, info={}) < 0
+
+
+# ---------------------------------------------------------------- potential from the own view
+
+def test_hidden_enemy_pieces_count_with_the_mean_army_rank():
+    """The thesis potential skipped HIDDEN squares, so a fogged enemy army had no material."""
+    with_piece = make_board({(6, 0): CAPTAIN, (2, 0): HIDDEN, (0, 5): HIDDEN})
+    captured = make_board({(6, 0): CAPTAIN, (0, 5): HIDDEN})
+    gain = compute_potential(captured, 1) - compute_potential(with_piece, 1)
+    assert UNKNOWN_PIECE_RANK == pytest.approx(3.7) and ARMY_MATERIAL == 148
+    assert gain == pytest.approx(0.4 * UNKNOWN_PIECE_RANK / ARMY_MATERIAL)
+
+
+def test_hidden_markers_are_enemy_pieces_for_player_two_as_well():
+    """Player 2's view also shows Player 1's unseen pieces as HIDDEN (a negative value)."""
+    view = make_board({(3, 0): -CAPTAIN, (7, 0): HIDDEN, (9, 9): HIDDEN})
+    without = make_board({(3, 0): -CAPTAIN, (9, 9): HIDDEN})
+    assert compute_potential(without, -1) - compute_potential(view, -1) == pytest.approx(
+        0.4 * UNKNOWN_PIECE_RANK / ARMY_MATERIAL)
+
+
+def test_potential_does_not_see_unrevealed_enemy_ranks(cpu):
+    """Φ reads the side's view only: changing the true ranks behind P2's hidden pieces (the
+    GameState also carries the true board) changes nothing."""
+    from environment import StrategoEnvironment
+    env = StrategoEnvironment(cpu, full_observability=False)
+    state = env.reset()
+    assert (state.board == HIDDEN).sum() == 40
+    other = make_game_state(state.board.clone())
+    other.actual_board = state.actual_board.clone()
+    other.actual_board[other.actual_board < 0] = -MARSHAL
+    move = env.get_valid_moves()[0]
+    shaper = UnifiedRewardShaper(player_id=1, device='cpu')
+    next_state, _, _, _ = env.step(move)
+    assert shaper(state, move, next_state, False) == shaper(other, move, next_state, False)
+
+
+# ---------------------------------------------------------------- terminal transitions
+
+def test_terminal_transition_gets_minus_phi_of_the_last_state():
+    shaper = UnifiedRewardShaper(player_id=1, device='cpu')
+    prev_state = make_game_state(make_board({(1, 5): CAPTAIN, (0, 5): -1}))
+    curr_state = make_game_state(make_board({(0, 5): CAPTAIN}))
+    r = shaper(prev_state, ((1, 5), (0, 5)), curr_state, done=True, winner=1, info={})
+    assert r == pytest.approx(-compute_potential(prev_state.board, 1))
+
+
+@pytest.mark.parametrize("full_observability", [True, False])
+def test_a_games_shaping_telescopes_to_minus_phi_of_the_first_state(cpu, full_observability):
+    """With Φ(terminal) = 0, sum_t gamma^t F_t = -Φ(s_0) for every game, so the shaping cannot
+    change which policy is optimal. (The thesis trainer gave the last transition the outcome
+    only, which added gamma^T Φ(s_T) to every game.)"""
+    from environment import StrategoEnvironment
+    from network import TurnTracker
+    random.seed(3)
+    env = StrategoEnvironment(cpu, full_observability=full_observability, max_turns=80)
+    state = env.reset()
+    shapers = {p: UnifiedRewardShaper(player_id=p, device='cpu') for p in (1, -1)}
+    tracker = TurnTracker(1)
+    totals, steps, first = {1: 0.0, -1: 0.0}, {1: 0, -1: 0}, {}
+    done = False
+    while not done:
+        player = state.current_player
+        move = random.choice(env.get_valid_moves())
+        next_state, _, done, info = env.step(move)
+        for t in tracker.record(0, player, state, move, next_state, done, info):
+            p = t['player']
+            first.setdefault(p, compute_potential(t['state'].board, p))
+            f = shapers[p](t['state'], t['action'], t['next_state'], t['done'], t['winner'], t['info'])
+            totals[p] += GAMMA ** steps[p] * f
+            steps[p] += 1
+        state = next_state
+    for p in (1, -1):
+        assert totals[p] == pytest.approx(-first[p], abs=1e-9)
+
+
+# ---------------------------------------------------------------- non-potential terms
+
+def test_non_potential_terms_are_off_by_default():
     config = StrategoRewardConfig()
+    assert config.attack_bonus == config.spy_marsh_bonus == config.miner_bomb_bonus == 0
+    assert config.oscillation_penalty == config.low_diversity_penalty == config.stalemate_penalty == 0
+    shaper = UnifiedRewardShaper(player_id=1, device='cpu')
+    prev_state = make_game_state(make_board({(3, 0): SCOUT, (2, 0): HIDDEN, (0, 5): HIDDEN}))
+    curr_state = make_game_state(make_board({(2, 0): SCOUT, (0, 5): HIDDEN}))
+    r = shaper(prev_state, ((3, 0), (2, 0)), curr_state, done=False, info={'num_valid_moves': 1})
+    assert r == pytest.approx(GAMMA * compute_potential(curr_state.board, 1) - compute_potential(prev_state.board, 1))
+
+
+def test_spy_marshal_and_miner_bomb_bonuses_fire_on_their_pieces():
+    """The thesis code tested values 1/10 (Flag vs General) and 3/11 (Scout vs Marshal)."""
+    config = StrategoRewardConfig(spy_marsh_bonus=0.3, miner_bomb_bonus=0.15)
     shaper = UnifiedRewardShaper(player_id=1, config=config, device='cpu')
-    
-    # Before: P1 Scout (val=3) attacks P2 General (val=-10)
-    prev_board = make_board({(3, 0): 3, (2, 0): -10, (0, 5): -1})
-    # After: Scout dies, General remains
-    curr_board = make_board({(2, 0): -10, (0, 5): -1})
-    
-    prev_state = make_game_state(prev_board)
-    curr_state = make_game_state(curr_board)
-    action = ((3, 0), (2, 0))
-    
-    r = shaper(prev_state, action, curr_state, done=False, winner=None, 
-               info={'revealed_in_step': [((2, 0), None)]})
-    
-    # PBRS should produce negative shaping (Φ decreased — we lost material)
-    # Plus the attack bonus (+0.02) might offset slightly, but net should be < 0
-    ok = r < 0.05  # Allow small positive from attack bonus
-    assert ok
+    shaper.config.pbrs_weight = 0.0
+
+    def bonus(attacker, defender):
+        prev_state = make_game_state(make_board({(6, 0): attacker, (5, 0): -defender}))
+        return shaper(prev_state, ((6, 0), (5, 0)), make_game_state(make_board({(5, 0): attacker})), False)
+
+    assert bonus(PieceType.SPY.value, MARSHAL) == pytest.approx(0.3)
+    assert bonus(PieceType.MINER.value, PieceType.BOMB.value) == pytest.approx(0.15)
+    assert bonus(SCOUT, MARSHAL) == 0 and bonus(PieceType.FLAG.value, GENERAL) == 0
 
 
 def test_oscillation_penalty():
-    """Test 6: Oscillation penalty escalates for A→B→A patterns"""
-    config = StrategoRewardConfig()
+    """When switched on, the oscillation penalty escalates for A→B→A patterns"""
+    config = StrategoRewardConfig(oscillation_penalty=-0.02)
     shaper = UnifiedRewardShaper(player_id=1, config=config, device='cpu')
-    
-    board_a = make_board({(6, 0): 3, (0, 5): -1})  # Scout(3) + enemy Flag(-1)
-    board_b = make_board({(6, 1): 3, (0, 5): -1})
-    state_a = make_game_state(board_a)
-    state_b = make_game_state(board_b)
-    
+    state_a = make_game_state(make_board({(6, 0): SCOUT, (0, 5): -1}))
+    state_b = make_game_state(make_board({(6, 1): SCOUT, (0, 5): -1}))
     rewards = []
-    # Simulate: A→B→A→B→A→B (6 oscillating moves)
     for i in range(6):
         if i % 2 == 0:
-            r = shaper(state_a, ((6, 0), (6, 1)), state_b, done=False, winner=None, info={})
+            rewards.append(shaper(state_a, ((6, 0), (6, 1)), state_b, done=False, winner=None, info={}))
         else:
-            r = shaper(state_b, ((6, 1), (6, 0)), state_a, done=False, winner=None, info={})
-        rewards.append(r)
-    
-    # Later oscillations should be more punished than earlier ones
-    ok = rewards[-1] < rewards[0]
-    assert ok
-
-
-def test_no_step_penalty():
-    """Test 7: No per-step penalty exists (removed in v3)"""
-    config = StrategoRewardConfig()
-    
-    has_step_penalty = hasattr(config, 'step_penalty')
-    ok = not has_step_penalty
-    assert ok
+            rewards.append(shaper(state_b, ((6, 1), (6, 0)), state_a, done=False, winner=None, info={}))
+    assert rewards[-1] < rewards[0]
 
 
 def test_move_diversity():
-    """Test 8: Move diversity penalty fires on repeated moves"""
-    config = StrategoRewardConfig()
+    """When switched on, the move diversity penalty fires on repeated moves"""
+    config = StrategoRewardConfig(low_diversity_penalty=-0.05)
     shaper = UnifiedRewardShaper(player_id=1, config=config, device='cpu')
-    
-    board_a = make_board({(6, 0): 3, (0, 5): -1})  # Scout(3) + enemy Flag(-1)
-    board_b = make_board({(6, 1): 3, (0, 5): -1})
-    state_a = make_game_state(board_a)
-    state_b = make_game_state(board_b)
-    
-    # Feed 20+ identical moves to fill the diversity window
-    last_reward = 0
+    state_a = make_game_state(make_board({(6, 0): SCOUT, (0, 5): -1}))
+    state_b = make_game_state(make_board({(6, 1): SCOUT, (0, 5): -1}))
     for i in range(25):
         if i % 2 == 0:
             last_reward = shaper(state_a, ((6, 0), (6, 1)), state_b, done=False, winner=None, info={})
         else:
             last_reward = shaper(state_b, ((6, 1), (6, 0)), state_a, done=False, winner=None, info={})
-    
-    # After 20 identical move pairs, diversity penalty should be active
-    ok = last_reward < 0
-    assert ok
+    assert last_reward < -0.04
+
+
+def test_no_step_penalty():
+    """No per-step penalty exists (removed in v3)"""
+    assert not hasattr(StrategoRewardConfig(), 'step_penalty')
 
 
 def test_dead_code_removed():
-    """Test 9: Legacy dead code removed"""
+    """Legacy dead code removed"""
     config = StrategoRewardConfig()
     shaper = UnifiedRewardShaper(player_id=1, config=config, device='cpu')
-    
-    has_add_info = hasattr(shaper, 'add_info_gain_reward')
-    has_info_weight = hasattr(config, 'info_gain_weight')
-    has_novelty = hasattr(shaper, 'novelty_tracker')
-    
-    ok = not has_add_info and not has_info_weight and not has_novelty
-    assert ok
+    assert not hasattr(shaper, 'add_info_gain_reward')
+    assert not hasattr(config, 'info_gain_weight')
+    assert not hasattr(shaper, 'novelty_tracker')
 
 
 def test_c51_support():
-    """Test 10: C51 support range in agent"""
+    """C51 support range in agent"""
     from drqn_agent import V_MIN, V_MAX, NUM_ATOMS
-    
-    ok_min = V_MIN == -10.0
-    ok_max = V_MAX == 10.0
-    ok_atoms = NUM_ATOMS == 51
-    delta = (V_MAX - V_MIN) / (NUM_ATOMS - 1)
-    ok_delta = abs(delta - 0.4) < 0.01
-    
-    assert ok_min and ok_max
-
-
-@pytest.mark.xfail(strict=True, reason="Step 6: potential reads the true board, so hidden enemy ranks leak into PBRS")
-def test_potential_does_not_see_unrevealed_enemy_ranks():
-    """Phi must be a function of what the agent can see: swapping an unrevealed enemy Marshal for an
-    unrevealed enemy Scout changes nothing the agent knows, so it must not change the potential."""
-    from distributional_reward import compute_potential
-    marshal = make_board({(6, 0): 3, (2, 0): -11, (0, 5): -1})
-    scout = make_board({(6, 0): 3, (2, 0): -3, (0, 5): -1})
-    assert compute_potential(marshal, 1, set()) == compute_potential(scout, 1, set())
+    assert V_MIN == -10.0 and V_MAX == 10.0 and NUM_ATOMS == 51
+    assert abs((V_MAX - V_MIN) / (NUM_ATOMS - 1) - 0.4) < 0.01

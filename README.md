@@ -148,6 +148,14 @@ Where the potential function $\Phi(s)$ balances:
 
 Strict anti-oscillation penalties punish repetitive moves, compelling the agent to seek decisive terminal victories.
 
+> **Current code (cleanup branch):** $\Phi$ (`compute_potential` in `Modular Stratego/network/distributional_reward.py`) reads only the side's own view and uses the weights above. The components are:
+> * **Material (0.4):** own minus enemy rank-weighted material, divided by a full army's 148. An enemy piece whose rank the view hides counts as the army mean, 3.7.
+> * **Proximity (0.35):** distance from the closest Captain-or-lower piece to the enemy back rank.
+> * **Penetration (0.15):** the deepest Captain-or-lower piece.
+> * **Information (0.1):** the share of enemy pieces on the board whose rank the view shows.
+>
+> $\Phi$ is 0 once the game is over, so a game's discounted shaping sums to $-\Phi(s_0)$. The terminal reward is +1, −1 or 0 (`outcome_reward`). The anti-oscillation, move-diversity, stalemate and combat-bonus terms are not potential-based and are off by default (weight 0 in `StrategoRewardConfig`). The thesis runs had them on, gave the last transition no $-\Phi$ term, counted hidden enemy pieces as zero material, and added a speed bonus and draw penalty to the terminal reward.
+
 ---
 
 ### 4. Graduated Curriculum & League Training (PFSP)

@@ -1,27 +1,29 @@
 """
 Centralized Reward System for Stratego DQN (C51-Compatible)
 
-This module is the SINGLE SOURCE OF TRUTH for all reward calculations.
+This module is the SINGLE SOURCE OF TRUTH for the shaping reward. The terminal reward (+1 win,
+-1 loss, 0 draw) is network/training/transitions.outcome_reward; the trainer adds it to the
+shaping of terminal transitions.
 
-DESIGN PRINCIPLES (v3 — 2026-02-22):
-  1. Potential-Based Reward Shaping (PBRS) replaces all additive shaping.
-     Shaping reward = γ·Φ(s') − Φ(s) guarantees optimal-policy invariance
-     and gives ZERO reward for stationary behavior (Ng et al., 1999;
-     extended by Potential-Based Intrinsic Motivation, AAMAS 2024).
-  2. Terminal rewards carry game-length modifiers (speed bonus / slow
-     penalty) instead of a per-step penalty, preventing Q-value distortion.
-  3. Piece oscillation (A→B→A patterns) receives escalating penalties.
-  4. Move diversity is tracked — repeat-shuffle patterns are penalized.
-  5. A small combat-initiation bonus remains outside PBRS to always
-     encourage engagement over passivity.
+DESIGN PRINCIPLES (v4, cleanup branch):
+  1. Potential-Based Reward Shaping (PBRS): shaping = γ·Φ(s') − Φ(s), with Φ(terminal) = 0, so
+     the shaping of a whole game telescopes to −Φ(s_0) and the optimal policy is unchanged
+     (Ng et al., 1999). The thesis code gave the terminal transition no −Φ(s) term.
+  2. Φ is a function of the side's own view: an enemy piece the view shows as hidden counts with
+     the mean rank of a full army, not as zero material (the thesis code ignored hidden pieces,
+     so revealing an enemy piece in a lost battle lowered the potential and capturing a hidden
+     piece gained no material).
+  3. The non-potential terms (combat bonus, Spy-Marshal / Miner-Bomb bonuses, oscillation,
+     move diversity, stalemate) can change the optimal policy and are off by default (weight 0).
 """
 
 import torch
 from collections import deque
-from typing import Tuple, Optional, Dict, Any, Set, List
+from typing import Tuple, Optional, Dict, Any, List
 from dataclasses import dataclass
 from piece import PieceType
 from game_state import GameState
+from board import HIDDEN_PIECE
 from training_config import GAMMA
 
 # Piece rank values for reward calculations (1-10 scale)
@@ -40,6 +42,16 @@ PIECE_RANKS = {
     PieceType.BOMB: 0,
 }
 
+# Standard army (40 pieces per side)
+ARMY = {
+    PieceType.FLAG: 1, PieceType.SPY: 1, PieceType.SCOUT: 8, PieceType.MINER: 5,
+    PieceType.SERGEANT: 4, PieceType.LIEUTENANT: 4, PieceType.CAPTAIN: 4, PieceType.MAJOR: 3,
+    PieceType.COLONEL: 2, PieceType.GENERAL: 1, PieceType.MARSHAL: 1, PieceType.BOMB: 6,
+}
+ARMY_MATERIAL = float(sum(PIECE_RANKS[t] * n for t, n in ARMY.items()))  # 148
+# Material of an enemy piece whose rank the view does not show: the mean over a full army
+UNKNOWN_PIECE_RANK = ARMY_MATERIAL / sum(ARMY.values())                 # 3.7
+
 # Maximum piece rank for gating forward-movement reward.
 # Only pieces with rank <= this get the flag-distance incentive.
 # Marshal(10), General(9), Colonel(8) should NOT rush forward.
@@ -51,32 +63,42 @@ _RANK_BY_VALUE = {pt.value: PIECE_RANKS.get(pt, 0) for pt in PieceType}
 # POTENTIAL FUNCTION — Φ(s): game-progress potential for PBRS
 # ═══════════════════════════════════════════════════════════════════════
 
-def compute_potential(board: torch.Tensor, player_id: int,
-                      revealed_types: Set[PieceType]) -> float:
+def compute_potential(board: torch.Tensor, player_id: int) -> float:
     """
-    Compute a scalar game-progress potential Φ(s).
+    Game-progress potential Φ(s) of `board` as `player_id` sees it (its own view: enemy pieces it
+    cannot see are HIDDEN_PIECE; a fully observable board shows every rank).
 
-    Higher Φ ⟹ closer to winning.  Components:
-      1. Material advantage (rank-weighted own − enemy pieces)
-      2. Territorial penetration (deepest offensive piece toward enemy flag)
-      3. Information gain (fraction of enemy piece types revealed)
-      4. Offensive proximity (closest offensive piece to enemy back rank)
+    Higher Φ ⟹ closer to winning.  Components (weights 0.4 / 0.15 / 0.1 / 0.35):
+      1. Material advantage: own − enemy rank-weighted material over a full army's material;
+         a hidden enemy piece counts as UNKNOWN_PIECE_RANK
+      2. Territorial penetration: deepest offensive piece (rank <= Captain) toward the enemy side
+      3. Information: share of the enemy pieces on the board whose rank the view shows
+      4. Offensive proximity: closest offensive piece to the enemy back rank
 
-    All components are normalized to [0, 1] and combined with fixed weights.
-    The potential is bounded ∈ [−1, +1] for C51 compatibility.
+    Φ ∈ [−0.4, 1].
     """
     # One pass over the board as Python ints (per-cell tensor .item() calls were the cost here)
     my_material = 0.0
     enemy_material = 0.0
+    enemy_known = 0
+    enemy_hidden = 0
     best_penetration = 0.0  # 2. deepest offensive piece (rank <= Captain) toward the enemy side
     min_dist = 10.0         # 4. closest offensive piece to the enemy back rank
     for i, val in enumerate(board.flatten().tolist()):
-        abs_val = abs(int(val))
+        val = int(val)
+        if val == HIDDEN_PIECE:
+            # Only enemy pieces are ever hidden from the viewer (the marker has the same value
+            # on both sides' views)
+            enemy_hidden += 1
+            enemy_material += UNKNOWN_PIECE_RANK
+            continue
+        abs_val = abs(val)
         if abs_val < 1 or abs_val > 12:
-            continue  # empty, lake or hidden marker
+            continue  # empty or lake
         rank = _RANK_BY_VALUE[abs_val]
         is_mine = (player_id == 1 and val > 0) or (player_id == -1 and val < 0)
         if not is_mine:
+            enemy_known += 1
             enemy_material += rank
             continue
         my_material += rank
@@ -91,19 +113,15 @@ def compute_potential(board: torch.Tensor, player_id: int,
         best_penetration = max(best_penetration, depth)
         min_dist = min(min_dist, dist)
 
-    # 1. Material advantage. Max total material = 10+9+8+8+7+7+7+6+6+6+6+5+5+5+5+4+4+4+3+3+3+3+3+3+2*8+1 ≈ 148
-    max_material = 148.0
-    material_score = (my_material - enemy_material) / max_material  # ∈ [-1, 1]
-
-    # 3. Information gain: fraction of the 12 enemy piece types revealed
-    revealed_score = len(revealed_types) / 12.0
-
+    material_score = (my_material - enemy_material) / ARMY_MATERIAL  # ∈ [-1, 1]
+    enemy_on_board = enemy_known + enemy_hidden
+    info_score = enemy_known / enemy_on_board if enemy_on_board else 1.0  # ∈ [0, 1]
     proximity_score = 1.0 - (min_dist / 10.0)  # ∈ [0, 1]
 
     # ── Combine ──────────────────────────────────────────────────────
     potential = (0.4 * material_score +
                  0.15 * best_penetration +
-                 0.1 * revealed_score +
+                 0.1 * info_score +
                  0.35 * proximity_score)
 
     return potential
@@ -123,43 +141,27 @@ class StrategoRewardConfig:
         except ImportError:
             return cls()
 
-    # ── Component Weights ───────────────────────────────────────────────
-    outcome_weight: float = 1.0     # Win/Loss/Draw
-
-    # ── Terminal Rewards ────────────────────────────────────────────────
-    # Scaled to fit C51 support [-10, +10] with room for accumulated shaping.
-    win_reward_flag: float = 1.0        # Flag capture = primary objective
-    win_reward_depletion: float = 0.5   # Opponent immobilized = secondary
-    win_reward: float = 0.75            # Fallback if win_type not specified
-    loss_penalty: float = -1.0          # Symmetric loss penalty
-    draw_penalty: float = -0.3          # Discourage passive draws
-
-    # Material-advantage draws: adjust draw reward based on piece count
-    draw_material_bonus: float = 0.15   # Max bonus for having more pieces at draw
-
-    # ── Terminal Game-Length Modifier (replaces per-step penalty) ───────
-    speed_bonus_max: float = 0.3        # Max bonus for winning quickly
-    slow_draw_penalty_max: float = -0.3 # Max additional penalty for long draws
-
     # ── PBRS Shaping Weight ─────────────────────────────────────────────
     pbrs_weight: float = 1.0            # Overall scale for potential-based shaping
 
-    # ── Combat Bonus (outside PBRS — always encourages engagement) ──────
-    attack_bonus: float = 0.02          # Small bonus for initiating combat
-    spy_marsh_bonus: float = 0.3        # Spy killing Marshal (outside PBRS — rare strategic event)
-    miner_bomb_bonus: float = 0.15      # Miner defusing Bomb (outside PBRS — rare strategic event)
+    # ── Non-potential terms (0 = off; any non-zero weight can change the optimal policy) ──
+    # Thesis values: attack 0.02, Spy-Marshal 0.3, Miner-Bomb 0.15, oscillation -0.02,
+    # low diversity -0.05, stalemate -0.1
+    attack_bonus: float = 0.0           # Bonus for initiating combat
+    spy_marsh_bonus: float = 0.0        # Spy attacking the Marshal
+    miner_bomb_bonus: float = 0.0       # Miner attacking a Bomb
 
     # ── Oscillation Penalty (anti-shuffle) ──────────────────────────────
-    oscillation_penalty: float = -0.02  # Per oscillation beyond threshold
+    oscillation_penalty: float = 0.0    # Per oscillation beyond threshold
     oscillation_threshold: int = 2      # Number of A→B→A before penalty kicks in
 
     # ── Move Diversity Penalty ──────────────────────────────────────────
     diversity_window: int = 20          # Lookback window for move diversity
     diversity_min_unique: int = 3       # Min unique moves required in window
-    low_diversity_penalty: float = -0.05
+    low_diversity_penalty: float = 0.0
 
     # ── Stalemate (near-immobility) ─────────────────────────────────────
-    stalemate_penalty: float = -0.1     # Severe penalty for near-immobility
+    stalemate_penalty: float = 0.0      # Penalty for near-immobility
     stalemate_mobility_threshold: int = 5  # Trigger when < this many valid moves
 
     # ── Legacy Fields (backward-compat for opponents.py GreedyAgent) ────
@@ -173,13 +175,11 @@ class StrategoRewardConfig:
 
 class UnifiedRewardShaper:
     """
-    Standardized reward calculator for all Stratego RL components.
+    Shaping reward of one side's transitions (each from its own view to its own view).
 
-    v3 architecture:
-      - Terminal: win/loss/draw with game-length modifier
-      - Shaping: PBRS via γΦ(s') − Φ(s)
-      - Anti-stagnation: oscillation + move diversity penalties
-      - Combat: small constant bonus for initiating battles (non-PBRS)
+      - PBRS: γΦ(s') − Φ(s), Φ(terminal) = 0; scaled by the curriculum phase
+      - Optional non-potential terms (off by default): combat bonuses, oscillation, move
+        diversity and stalemate penalties
     """
 
     def __init__(self, player_id: int, config: Optional[StrategoRewardConfig] = None, device: str = 'cuda'):
@@ -192,12 +192,6 @@ class UnifiedRewardShaper:
 
     def reset(self):
         """Reset per-episode tracking."""
-        self.revealed_types: Set[PieceType] = set()
-
-        # PBRS: track previous potential for Φ(s') - Φ(s)
-        self.previous_potential: float = 0.0
-        self.potential_initialized: bool = False
-
         # Oscillation detection: per-piece position history
         # Key: current position of a piece, Value: list of past positions
         self.piece_position_history: Dict[Tuple[int, int], List[Tuple[int, int]]] = {}
@@ -225,20 +219,6 @@ class UnifiedRewardShaper:
             return 0.2
         else:
             return 0.0
-            
-    def get_terminal_multiplier(self) -> float:
-        """
-        Calculates the multiplier for terminal rewards based on current phase.
-        This provides Reward Scale Dampening for MARL in Phase 4+.
-        """
-        try:
-            from training_config import MARL_REWARD_SCALE
-        except ImportError:
-            MARL_REWARD_SCALE = 0.5
-            
-        if self.current_phase >= 4:
-            return MARL_REWARD_SCALE
-        return 1.0
 
     def _count_oscillations(self, dest: Tuple[int, int], source: Tuple[int, int]) -> int:
         """
@@ -268,128 +248,74 @@ class UnifiedRewardShaper:
             history = history[-10:]
         self.piece_position_history[dest] = history
 
+    def potential(self, state: GameState) -> float:
+        """Φ of this side's view `state`."""
+        return compute_potential(state.board, self.player_id)
+
     def __call__(self, previous_state: GameState, action: Optional[Tuple],
                  current_state: GameState, done: bool,
-                 winner: Optional[int], info: Dict[str, Any]) -> float:
-        """Calculate the total normalized reward for this step."""
-
-        # ── 1. Terminal Outcomes (with game-length modifier) ─────────
-        if done:
-            turn_count = info.get('turn_count', current_state.turn_count)
-            max_turns = info.get('max_turns', 200)
-            game_fraction = min(turn_count / max(max_turns, 1), 1.0)
-            
-            terminal_mult = self.get_terminal_multiplier()
-
-            if winner == self.player_id:
-                win_type = info.get('win_type', 'unknown')
-                if win_type == 'flag_capture':
-                    base = self.config.win_reward_flag
-                elif win_type == 'no_moves':
-                    base = self.config.win_reward_depletion
-                else:
-                    base = self.config.win_reward
-
-                # Quick wins are worth more — speed bonus decays linearly
-                speed_bonus = self.config.speed_bonus_max * (1.0 - game_fraction)
-                return self.config.outcome_weight * (base + speed_bonus) * terminal_mult
-
-            elif winner == -self.player_id:
-                return self.config.outcome_weight * self.config.loss_penalty * terminal_mult
-
-            elif winner == 0:
-                # Material-advantage draws
-                board = current_state.board
-                my_pieces = ((board > 0) & (board < 13)).sum().item() if self.player_id == 1 else ((board < 0) & (board > -13)).sum().item()
-                enemy_pieces = ((board < 0) & (board > -13)).sum().item() if self.player_id == 1 else ((board > 0) & (board < 13)).sum().item()
-
-                piece_diff = my_pieces - enemy_pieces
-                material_bonus = min(max(piece_diff / 10.0, -1.0), 1.0) * self.config.draw_material_bonus
-
-                # Long draws are punished more severely
-                length_penalty = self.config.slow_draw_penalty_max * game_fraction
-
-                return self.config.outcome_weight * (self.config.draw_penalty + material_bonus + length_penalty) * terminal_mult
-            return 0.0
-
+                 winner: Optional[int] = None, info: Optional[Dict[str, Any]] = None) -> float:
+        """
+        Shaping reward of the transition previous_state -> current_state (both this side's own
+        view). A terminal transition gets −Φ(previous_state) (Φ of a finished game is 0); its
+        outcome reward is added by the trainer. `winner` is not used.
+        """
+        info = info or {}
         if action is None:
             return 0.0
+
+        reward_components: Dict[str, float] = {}
+
+        # ── 1. PBRS: γΦ(s') − Φ(s), Φ(terminal) = 0 ─────────────────
+        shaping_mult = self.get_shaping_multiplier()
+        if shaping_mult > 0 and self.config.pbrs_weight:
+            next_potential = 0.0 if done else self.potential(current_state)
+            pbrs_reward = self.gamma * next_potential - self.potential(previous_state)
+            reward_components['pbrs'] = pbrs_reward * self.config.pbrs_weight * shaping_mult
 
         (r_from, c_from), (r_to, c_to) = action
         source = (r_from, c_from)
         dest = (r_to, c_to)
 
-        reward_components: Dict[str, float] = {}
+        # ── 2. Combat bonuses (non-potential, off by default) ────────
+        cfg = self.config
+        if cfg.attack_bonus or cfg.spy_marsh_bonus or cfg.miner_bomb_bonus:
+            prev_board = previous_state.board
+            target_val = int(prev_board[r_to, c_to].item())
+            moving_val = int(prev_board[r_from, c_from].item())
+            was_battle = target_val == HIDDEN_PIECE or (
+                target_val != 0 and abs(target_val) <= 12 and (target_val > 0) != (self.player_id == 1))
+            if was_battle:
+                reward_components['attack'] = cfg.attack_bonus
+                # (the thesis code tested the values 1/10 and 3/11 here, i.e. Flag vs General and
+                # Scout vs Marshal, so the Spy and Miner bonuses were never paid for their events)
+                if abs(moving_val) == PieceType.SPY.value and abs(target_val) == PieceType.MARSHAL.value:
+                    reward_components['spy_marshal'] = cfg.spy_marsh_bonus * shaping_mult
+                if abs(moving_val) == PieceType.MINER.value and abs(target_val) == PieceType.BOMB.value:
+                    reward_components['miner_bomb'] = cfg.miner_bomb_bonus * shaping_mult
 
-        # ── 2. PBRS: γΦ(s') − Φ(s) ─────────────────────────────────
-        shaping_mult = self.get_shaping_multiplier()
-        if shaping_mult > 0:
-            # Track revealed types from combat info
-            if info.get('revealed_in_step'):
-                for (pos, piece_type) in info['revealed_in_step']:
-                    if isinstance(piece_type, PieceType):
-                        self.revealed_types.add(piece_type)
+        # ── 3. Oscillation Penalty (A→B→A detection) ─────────────────
+        if cfg.oscillation_penalty:
+            oscillation_count = self._count_oscillations(dest, source)
+            if oscillation_count >= cfg.oscillation_threshold:
+                reward_components['oscillation'] = cfg.oscillation_penalty * oscillation_count
+            # Update piece tracking AFTER computing oscillation penalty
+            self._update_piece_tracking(source, dest)
 
-            current_potential = compute_potential(
-                current_state.board, self.player_id, self.revealed_types
-            )
+        # ── 4. Move Diversity Penalty ────────────────────────────────
+        if cfg.low_diversity_penalty:
+            self.recent_moves.append((source, dest))
+            if len(self.recent_moves) >= cfg.diversity_window:
+                if len(set(self.recent_moves)) <= cfg.diversity_min_unique:
+                    reward_components['low_diversity'] = cfg.low_diversity_penalty
 
-            if not self.potential_initialized:
-                # First step: initialize previous potential from starting state
-                self.previous_potential = compute_potential(
-                    previous_state.board, self.player_id, self.revealed_types
-                )
-                self.potential_initialized = True
+        # ── 5. Stalemate (near-immobility) ───────────────────────────
+        if cfg.stalemate_penalty:
+            curr_mob = info.get('num_valid_moves', 100)  # Default high when not provided
+            if curr_mob < cfg.stalemate_mobility_threshold:
+                reward_components['stalemate'] = cfg.stalemate_penalty
 
-            pbrs_reward = self.gamma * current_potential - self.previous_potential
-            self.previous_potential = current_potential
-
-            reward_components['pbrs'] = pbrs_reward * self.config.pbrs_weight * shaping_mult
-
-        # ── 3. Combat Bonus (outside PBRS — always encourage fighting) ──
-        prev_board = previous_state.board
-        target_val = prev_board[r_to, c_to].item()
-        moving_val = prev_board[r_from, c_from].item()
-
-        was_battle = (target_val != 0 and target_val != 13) and \
-                     ((self.player_id == 1 and target_val < 0) or
-                      (self.player_id == -1 and target_val > 0))
-
-        if was_battle:
-            # Small constant combat-initiation bonus (not annealed)
-            reward_components['attack'] = self.config.attack_bonus
-
-            # Strategic bonuses for rare high-impact captures (not annealed)
-            if abs(int(moving_val)) == 1 and abs(int(target_val)) == 10:  # Spy vs Marshal
-                reward_components['spy_marshal'] = self.config.spy_marsh_bonus * shaping_mult
-            if abs(int(moving_val)) == 3 and abs(int(target_val)) == 11:  # Miner vs Bomb
-                reward_components['miner_bomb'] = self.config.miner_bomb_bonus * shaping_mult
-
-        # ── 4. Oscillation Penalty (A→B→A detection) ─────────────────
-        oscillation_count = self._count_oscillations(dest, source)
-        if oscillation_count >= self.config.oscillation_threshold:
-            reward_components['oscillation'] = (
-                self.config.oscillation_penalty * oscillation_count
-            )
-
-        # Update piece tracking AFTER computing oscillation penalty
-        self._update_piece_tracking(source, dest)
-
-        # ── 5. Move Diversity Penalty ────────────────────────────────
-        move_key = (source, dest)
-        self.recent_moves.append(move_key)
-        if len(self.recent_moves) >= self.config.diversity_window:
-            unique_moves = len(set(self.recent_moves))
-            if unique_moves <= self.config.diversity_min_unique:
-                reward_components['low_diversity'] = self.config.low_diversity_penalty
-
-        # ── 6. Stalemate (near-immobility) ───────────────────────────
-        curr_mob = info.get('num_valid_moves', 100)  # Default high when not provided
-        if curr_mob < self.config.stalemate_mobility_threshold:
-            reward_components['stalemate'] = self.config.stalemate_penalty
-
-        total_reward = sum(reward_components.values())
-        return total_reward
+        return sum(reward_components.values())
 
 
 def create_unified_reward_shaper(player_id: int = 1, config: Optional[StrategoRewardConfig] = None, device: str = 'cuda'):

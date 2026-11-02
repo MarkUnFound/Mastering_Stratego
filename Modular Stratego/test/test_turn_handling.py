@@ -69,7 +69,8 @@ def test_both_sides_start_games(tmp_path, config_override, monkeypatch):
 
 
 def test_stored_transitions_hold_the_agents_own_view_and_one_terminal_per_game(tmp_path, config_override, monkeypatch):
-    from network import RainbowAgent
+    from network import RainbowAgent, outcome_reward
+    from distributional_reward import compute_potential
     stored = []
     original = RainbowAgent.remember_batch
 
@@ -77,7 +78,8 @@ def test_stored_transitions_hold_the_agents_own_view_and_one_terminal_per_game(t
                   next_game_states=None, infos=None, **kwargs):
         if self.player_id == 1:
             for gs, ngs, r, d, lane in zip(game_states, next_game_states, rewards, dones, kwargs['lane_ids']):
-                stored.append((gs.current_player, ngs.current_player, ngs.game_over, r, d, lane))
+                stored.append((gs.current_player, ngs.current_player, ngs.game_over, r, d, lane,
+                               compute_potential(gs.board, 1), ngs.winner))
         return original(self, states, actions, rewards, next_states, dones, active_mask, game_states,
                         next_game_states, infos, **kwargs)
 
@@ -86,14 +88,15 @@ def test_stored_transitions_hold_the_agents_own_view_and_one_terminal_per_game(t
     run_tiny_training(tmp_path, config_override, monkeypatch, episodes=episodes)
     assert stored
     assert all(cur == 1 for cur, *_ in stored), "state is not P1's own view"
-    for cur, nxt, over, r, done, lane in stored:
+    for cur, nxt, over, r, done, lane, phi, winner in stored:
         assert done == over
         if not done:
             assert nxt == 1, "next state must be P1's view after the opponent's reply"
         else:
-            assert r in (-1.0, 0.0, 1.0)
+            # outcome +1 / -1 / 0 plus the PBRS terminal term -Phi(s) (Phase 1: full shaping)
+            assert r == pytest.approx(outcome_reward(winner, 1) - phi)
     # every finished game gives P1 exactly one terminal transition (the run may finish a few extra games)
-    assert sum(d for *_, d, _ in stored) >= episodes
+    assert sum(t[4] for t in stored) >= episodes
 
 
 # ---------------------------------------------------------------- TurnTracker

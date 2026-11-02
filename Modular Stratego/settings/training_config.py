@@ -31,7 +31,6 @@ REPLAY_UPDATE_INTERVAL = 8    # Train every 8 steps (balances data diversity vs 
 # steps, from a target that started as a different random network.
 TARGET_UPDATE_INTERVAL = 1000
 REWARD_SCALE = 1.0        # Scaling factor for reward calculations
-MARL_REWARD_SCALE = 1.0   # Full terminal reward scale — dampening was killing signal contrast
 
 # =============================================================================
 # EXPLORATION SETTINGS (Noisy Networks Only - True Rainbow DQN)

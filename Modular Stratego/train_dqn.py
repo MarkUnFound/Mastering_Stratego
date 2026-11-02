@@ -617,12 +617,13 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                 for t in turn_tracker.record(i, current_player, lane_game_states[i], actions[i], next_states[i],
                                              done_bool, infos[i], snapshot=history_snapshot(acting_agent, i),
                                              next_moves=next_valid_moves[i]):
+                    # Shaping gamma*Phi(s') - Phi(s) from the side's own views (Phi = 0 once the game is
+                    # over), plus the outcome +1 / -1 / 0 (draws included) on the terminal transition
+                    shaper = lane_dist_rewards[i] if t['player'] == 1 else lane_p2_shapers[i]
+                    reward = shaper(previous_state=t['state'], action=t['action'], current_state=t['next_state'],
+                                    done=t['done'], winner=t['winner'], info=t['info'])
                     if t['done']:
-                        reward = outcome_reward(t['winner'], t['player'])  # +1 / -1 / 0, draws included
-                    else:
-                        shaper = lane_dist_rewards[i] if t['player'] == 1 else lane_p2_shapers[i]
-                        reward = shaper(previous_state=t['state'], action=t['action'], current_state=t['next_state'],
-                                        done=False, winner=None, info=t['info'])
+                        reward += outcome_reward(t['winner'], t['player'])
                     if t['player'] == 1:
                         lane_episode_rewards_p1[i] += reward
                         completed_transitions[1].append((t, reward))
