@@ -177,11 +177,9 @@ Under **Prioritized Fictitious Self-Play (PFSP)**, opponent matchmaking is dynam
 
 ### 5. Test-Time Expectamax Search ("The Final Move on the Piece")
 
-> *"Not really sure how this worked, but it did. Probably just hallucinated half way of the tech."*
-
 In reinforcement learning under partial observability, deep neural networks often suffer from **tactical hallucination**—the network's single-pass inference may evaluate an aggressive forward attack as high-value, blind to the catastrophic risk that the concealed opponent square harbors a lethal Bomb or higher rank.
 
-At test time, MARQ resolves this through a **Formal Expectamax Search Engine** ([`dqn_bot_logic.py`](file:///c:/Users/Mark%20Lawrence%20Quibot/repo/Research/Python%20Stratego%20Game/dqn_bot_logic.py)) operating over a 4-ply depth bounded by a safety timeout:
+At test time, MARQ resolves this through a **Formal Expectamax Search Engine** ([`dqn_bot_logic.py`](Python%20Stratego%20Game/dqn_bot_logic.py)) operating over a 4-ply depth bounded by a safety timeout:
 
 1. **Max Nodes (Agent Turn)**: Evaluates candidate legal moves prioritizing branches with high prior Q-values from the Rainbow network.
 2. **Chance Nodes (Attacking Hidden Pieces)**: When a move initiates combat against a face-down enemy piece, standard minimax cannot resolve the outcome. Expectamax queries the **AAREN posterior rank distribution** $P(\text{rank}_j \mid \mathcal{H})$, falling back to the 40-piece setup prior if the piece has not moved yet:
@@ -200,16 +198,18 @@ This hybrid integration grounds deep neural value estimates in rigorous Bayesian
 
 Extensive data mining across historical training logs demonstrates the superiority of the Rainbow DQN + AAREN architecture over the baseline Vanilla DQN + LSTM:
 
-| Metric | Vanilla DQN + LSTM (15k Baseline) | Rainbow DQN + AAREN (9.5k Run) | Rainbow DQN + AAREN (75k Extended) |
-|---|---|---|---|
-| **Episodes Trained** | 15,302 | 9,778 | 75,047 |
-| **Win Rate** | 24.97% | **49.88%** | **Continuous Scaling** |
-| **Draw Rate (Stalemates)** | 50.04% | **6.15%** (8× reduction) | < 5% |
-| **Average Steps / Episode** | 673.5 | **523.0** | Task-directed |
-| **Steps Required Per Win** | 2,697 | **1,062** (2.5× faster) | Optimized |
-| **Piece Identity Accuracy** | 17.74% | **24.23%** | Superior inference |
-| **Loss vs. Win-Rate Correlation** | +0.051 (Decoupled) | **-0.787** (Strong coupling) | Stable convergence |
-| **Model Size** | ~39 MB | ~433 MB (259 MB checkpoint) | Rich representations |
+| Metric | Vanilla DQN + LSTM (15k Baseline) | Rainbow DQN + AAREN (9.5k Run) |
+|---|---|---|
+| **Episodes Trained** | 15,302 | 9,778 |
+| **Win Rate** | 24.97% | **49.88%** |
+| **Draw Rate (Stalemates)** | 50.04% | **6.15%** (8× reduction) |
+| **Average Steps / Episode** | 673.5 | **523.0** |
+| **Steps Required Per Win** | 2,697 | **1,062** (2.5× faster) |
+| **Piece Identity Accuracy** | 17.74% | **24.23%** |
+| **Loss vs. Win-Rate Correlation** | +0.051 (Decoupled) | **-0.787** (Strong coupling) |
+| **Model Size** | ~39 MB | ~433 MB (259 MB checkpoint) |
+
+These are the thesis runs, made with the code at the `thesis-results` tag.
 
 ---
 
@@ -219,23 +219,28 @@ Extensive data mining across historical training logs demonstrates the superiori
 Mastering_Stratego/
 ├── Modular Stratego/                   # Core RL & Training Framework
 │   ├── train_dqn.py                    # Multi-lane training loop with league & PFSP
-│   ├── analyze_results_for_paper.py    # Evaluation and metric calculation
-│   ├── analyze_training_data.py        # Historical trajectory data mining
 │   ├── network/                        # Neural architectures
 │   │   ├── aaren/                      # AAREN cell, associative kernel, and network
 │   │   │   ├── cell.py                 # O(1) recurrent update step
 │   │   │   ├── kernel.py               # Parallel associative scan operator
 │   │   │   └── network.py              # PieceActionAaren embedding module
-│   │   ├── dqn_models/                 # Checkpoints, metric plots, and evaluations
+│   │   ├── networks/                   # Rainbow network (ResNet, attention, dueling C51 head)
+│   │   ├── training/                   # Lanes, transitions, evaluation games, checkpoints
 │   │   ├── drqn_agent.py               # Rainbow DQN agent implementation
 │   │   ├── distributional_reward.py    # C51 distributional RL helpers
 │   │   ├── prioritized_memory.py       # Prioritized Experience Replay (PER) buffer
 │   │   └── opponents.py                # Opponent pool (Heuristic, Greedy, Exploiters)
 │   ├── environment/                    # Stratego game engine & vectorization
-│   │   ├── curriculum.py               # 5-Phase curriculum manager
-│   │   └── league_manager.py           # PFSP league matchmaking
-│   └── settings/                       # Hyperparameter configurations
-│       └── training_config.py          # Unified training hyperparameters
+│   │   ├── environment.py              # Game rules and the step function
+│   │   ├── observation.py              # Network input planes
+│   │   ├── action_encoding.py          # Move <-> action index (shared by agent, GUI and web page)
+│   │   ├── curriculum.py               # Curriculum phases, gates and scripted opponents
+│   │   └── league.py                   # PFSP league matchmaking
+│   ├── settings/                       # Hyperparameter configurations
+│   │   └── training_config.py          # Unified training hyperparameters
+│   ├── test/                           # pytest suite
+│   ├── tools/                          # ONNX export, piece-value scripts
+│   └── web/                            # Browser player (play.html)
 │
 ├── Python Stratego Game/               # Interactive Pygame GUI & Deployment Engine
 │   ├── play_guided.py                  # AI Coach GUI with eval bar, rank probabilities, & hints
@@ -246,7 +251,6 @@ Mastering_Stratego/
 │   ├── dqn_bot_logic.py                # Expectamax Search & Rainbow DQN bridge
 │   ├── bot_logic.py                    # Bot interface adapter for Pygame
 │   ├── verify_expectamax.py            # Automated test suite for Expectamax combat utilities
-│   ├── agent1_league_episode_1000.pt   # Pre-trained Rainbow DQN + AAREN checkpoint (Step 389,530)
 │   └── pieces/                         # Graphical board and piece assets
 │
 ├── Latex/                              # Complete Undergraduate Thesis Manuscript
@@ -303,7 +307,7 @@ python verify_expectamax.py
 ```
 
 ### 4. Run System Diagnostics & Unit Tests
-Run the pytest suite (about 2 minutes on CPU; `--runslow` adds the learning tests):
+Run the pytest suite (about 10 minutes on CPU; `--runslow` adds the learning tests):
 
 ```bash
 cd "Modular Stratego"
@@ -313,7 +317,7 @@ python -m pytest -q
 Tests marked `xfail` document known bugs that a later cleanup step fixes. The preflight checks still run on their own:
 
 ```bash
-python "Modular Stratego/network/training/preflight.py"
+python network/training/preflight.py
 ```
 
 ### 5. Train the MARQ Agent
