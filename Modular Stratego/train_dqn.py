@@ -1,11 +1,12 @@
 """
 Training Script for Rainbow DQN Agents in Stratego
 
-Features:
-- Single-agent focus (Agent1 trains, Agent2 for opponents)
-- League training: Auto-switches from Agent2 to historical opponents
-- Diverse opponents: League (50%), Random (20%), Greedy (20%), Self (10%)
-- AAREN inference for fair opponent play
+- Agent 1 trains; the other side is a scripted opponent, a league snapshot or a self-play copy
+- NUM_LANES games run in parallel; a transition is one move plus the opponent's reply
+  (network/training/transitions.py)
+- Curriculum phases advance on evaluation gates (environment/curriculum.py); each lane draws its
+  opponent for the next game from the phase's PFSP weights
+- AAREN history planes are off by default (AAREN_ENABLED in settings/training_config.py)
 """
 
 # Set matplotlib backend to non-interactive BEFORE any imports
