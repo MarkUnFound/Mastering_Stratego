@@ -245,7 +245,8 @@ class Checkpointer:
                 num_envs=num_envs,
                 phase_history=plot_data['phase_history'],
                 loss_steps=plot_data['loss_steps'],
-                episode_end_steps=plot_data['episode_end_steps']
+                episode_end_steps=plot_data['episode_end_steps'],
+                eval_history=metrics_tracker.metrics.get('eval_history')
             )
             
             # Additional metrics plot
@@ -256,10 +257,11 @@ class Checkpointer:
                 win_rate_history={'agent1': metrics_tracker.metrics.get('win_rate_100', [0.0] * num_eps)},
                 avg_q_history={'agent1': metrics_tracker.metrics.get('avg_q_values_p1', [0.0] * num_eps)},
                 entropy_history={'agent1': metrics_tracker.metrics.get('avg_entropy_p1', [0.0] * num_eps)},
-                save_path=os.path.join(self.save_dir, f"additional_metrics_episode_{episode}.png")
+                save_path=os.path.join(self.save_dir, f"additional_metrics_episode_{episode}.png"),
+                end_types=metrics_tracker.metrics.get('end_types')
             )
             
-            # AAREN End-to-End Training Visualization
+            # AAREN End-to-End Training Visualization (no figure when AAREN is off)
             try:
                 from training_visualizer import plot_aaren_progress
                 plot_aaren_progress(

@@ -18,6 +18,26 @@ import glob
 from piece import PieceType, PIECE_NAMES, PIECE_RANKS
 from board import BOARD_SIZE, EMPTY_SQUARE, LAKE_SQUARE, HIDDEN_PIECE
 
+WINDOW = 100  # episodes in the trailing averages of the progress plots
+
+
+def moving_average(values, window: int = WINDOW) -> np.ndarray:
+    """Trailing mean of the last `window` values at each index (fewer at the start)."""
+    values = np.asarray(values, dtype=float)
+    if values.size == 0:
+        return values
+    sums = np.cumsum(np.insert(values, 0, 0.0))
+    idx = np.arange(1, values.size + 1)
+    start = np.maximum(idx - window, 0)
+    return (sums[idx] - sums[start]) / (idx - start)
+
+
+def episode_outcomes(wins_p1_cumulative, wins_p2_cumulative) -> np.ndarray:
+    """Per-episode outcome for the agent (+1 win, -1 loss, 0 draw) from the cumulative win counts."""
+    w1 = np.diff(np.asarray(wins_p1_cumulative, dtype=int), prepend=0)
+    w2 = np.diff(np.asarray(wins_p2_cumulative, dtype=int), prepend=0)
+    return w1 - w2
+
 def plot_training_progress(
     episode_history: List[int],
     rewards_history: Dict[str, List[float]],
@@ -29,10 +49,14 @@ def plot_training_progress(
     num_envs: int = 1,
     phase_history: Optional[List[int]] = None,
     loss_steps: Optional[List[int]] = None,
-    episode_end_steps: Optional[List[int]] = None
+    episode_end_steps: Optional[List[int]] = None,
+    eval_history: Optional[List[Dict]] = None
 ):
     """
-    Plots and saves the training progress of DQN agents.
+    Plots and saves the training progress: shaped returns, the agent's win / loss / draw shares
+    over the last WINDOW training games, the evaluation results against the phase gates, and the
+    C51 loss.  "Agent 2" in the arguments is the opponent side (scripted, league or self-play).
+
 
     Args:
         episode_history: List of episode numbers.
@@ -46,6 +70,8 @@ def plot_training_progress(
         phase_history: List of curriculum phase values per episode.
         loss_steps: List of global_step values when each loss was recorded (for uniform x-axis).
         episode_end_steps: List of global_step values when each episode ended (for phase mapping).
+        eval_history: The trainer's evaluation records ({'episode', 'results': {opponent: {'wins',
+            'losses', 'draws', 'games', 'win_rate'}}, 'gates': {opponent: threshold}}).
     """
     # Validate input data
     if not episode_history or len(episode_history) == 0:
@@ -81,7 +107,7 @@ def plot_training_progress(
     if episode_end_steps:
         episode_end_steps = episode_end_steps[:min_len]
     
-    fig, axs = plt.subplots(3, 1, figsize=(12, 18))
+    fig, axs = plt.subplots(4, 1, figsize=(12, 24))
     
     # Create title with total episodes and steps if provided
     title = 'DQN Agent Training Progress'
@@ -95,70 +121,74 @@ def plot_training_progress(
     
     fig.suptitle(title, fontsize=16)
 
-    # Plot 1: Average Rewards (with discrete points and cumulative average line)
+    # Plot 1: shaped return of each episode, with its trailing average
     if len(episode_history) > 0:
-        # Plot discrete points for each episode
-        axs[0].scatter(episode_history, rewards_history['agent1'], label='Agent 1 Reward', 
-                      color='blue', marker='o', s=30, alpha=0.5, zorder=3)
-        axs[0].scatter(episode_history, rewards_history['agent2'], label='Agent 2 Reward', 
-                      color='red', marker='o', s=30, alpha=0.5, zorder=3)
-        
-        # Calculate and plot cumulative average from the start
-        if len(episode_history) >= 1:
-            # Cumulative average: average of all episodes from episode 1 to current
-            agent1_cumulative_avg = np.cumsum(rewards_history['agent1']) / np.arange(1, len(rewards_history['agent1']) + 1)
-            agent2_cumulative_avg = np.cumsum(rewards_history['agent2']) / np.arange(1, len(rewards_history['agent2']) + 1)
-            
-            axs[0].plot(episode_history, agent1_cumulative_avg, color='blue', linestyle='-', linewidth=2, 
-                       label='Agent 1 Cumulative Avg', alpha=0.8, zorder=2)
-            axs[0].plot(episode_history, agent2_cumulative_avg, color='red', linestyle='-', linewidth=2, 
-                       label='Agent 2 Cumulative Avg', alpha=0.8, zorder=2)
-    
+        axs[0].scatter(episode_history, rewards_history['agent1'], label='Agent (P1) return',
+                      color='blue', marker='o', s=12, alpha=0.3, zorder=3)
+        axs[0].scatter(episode_history, rewards_history['agent2'], label='Opponent (P2) return',
+                      color='red', marker='o', s=12, alpha=0.3, zorder=3)
+        axs[0].plot(episode_history, moving_average(rewards_history['agent1']), color='blue', linewidth=2,
+                    label=f'Agent, {WINDOW}-episode average', zorder=4)
+        axs[0].plot(episode_history, moving_average(rewards_history['agent2']), color='red', linewidth=2,
+                    label=f'Opponent, {WINDOW}-episode average', zorder=4)
+
     axs[0].set_xlabel('Episodes')
-    axs[0].set_ylabel('Reward')
-    axs[0].set_title('Rewards per Episode (with Cumulative Average)')
-    axs[0].legend()
+    axs[0].set_ylabel('Return (outcome + shaping)')
+    axs[0].set_title('Return per Training Episode')
+    axs[0].legend(loc='lower left')
     axs[0].grid(True, alpha=0.3)
 
-    # Plot 2: Win Counts (cumulative wins with win rate)
+    # Plot 2: the agent's outcome shares over the last WINDOW training games (a cumulative rate
+    # from episode 1 hides what the agent does now)
     if len(episode_history) > 0:
-        # Plot discrete points for cumulative wins
-        scatter1 = axs[1].scatter(episode_history, wins_history['agent1'], label='Agent 1 Wins', 
-                      color='blue', marker='o', s=30, alpha=0.5, zorder=3)
-        scatter2 = axs[1].scatter(episode_history, wins_history['agent2'], label='Agent 2 Wins', 
-                      color='red', marker='o', s=30, alpha=0.5, zorder=3)
-        
-        # Calculate and plot cumulative average win rate from the start (on secondary y-axis)
-        if len(episode_history) >= 1:
-            # Cumulative win rate: wins / (total episodes * num_envs)
-            episode_nums = np.arange(1, len(wins_history['agent1']) + 1)
-            # Normalize by number of environments per episode
-            normalization_factor = episode_nums # num_envs not needed as episode_nums counts individual games
-            agent1_win_rate = np.array(wins_history['agent1'], dtype=float) / normalization_factor
-            agent2_win_rate = np.array(wins_history['agent2'], dtype=float) / normalization_factor
-            
-            # Create secondary y-axis for win rate
-            axs1_twin = axs[1].twinx()
-            line1, = axs1_twin.plot(episode_history, agent1_win_rate, color='blue', linestyle='--', linewidth=2, 
-                       label='Agent 1 Win Rate', alpha=0.8, zorder=2)
-            line2, = axs1_twin.plot(episode_history, agent2_win_rate, color='red', linestyle='--', linewidth=2, 
-                       label='Agent 2 Win Rate', alpha=0.8, zorder=2)
-            axs1_twin.set_ylabel('Win Rate (0-1)', color='gray')
-            axs1_twin.tick_params(axis='y', labelcolor='gray')
-            axs1_twin.set_ylim(0, 1)
-            
-            # Create combined legend manually
-            legend_elements = [
-                scatter1, scatter2, line1, line2
-            ]
-            axs[1].legend(legend_elements, ['Agent 1 Wins', 'Agent 2 Wins', 'Agent 1 Win Rate', 'Agent 2 Win Rate'], 
-                         loc='upper left')
-    
+        outcomes = episode_outcomes(wins_history['agent1'], wins_history['agent2'])
+        for value, label, color in ((1, 'Agent wins', 'blue'), (-1, 'Opponent wins', 'red'),
+                                    (0, 'Draws', 'gray')):
+            axs[1].plot(episode_history, moving_average(outcomes == value), color=color, linewidth=2,
+                        label=label)
+        totals = (f"total: {int(np.sum(outcomes == 1))} W / {int(np.sum(outcomes == -1))} L / "
+                  f"{int(np.sum(outcomes == 0))} D")
+        axs[1].text(0.99, 0.97, totals, ha='right', va='top', transform=axs[1].transAxes, fontsize=10)
+
     axs[1].set_xlabel('Episodes')
-    axs[1].set_ylabel('Cumulative Win Count', color='black')
-    axs[1].tick_params(axis='y', labelcolor='black')
-    axs[1].set_title('Cumulative Wins (with Win Rate)')
+    axs[1].set_ylabel(f'Share of the last {WINDOW} games')
+    axs[1].set_ylim(0, 1)
+    axs[1].set_title('Training Games: Outcome Shares')
+    axs[1].legend(loc='upper left')
     axs[1].grid(True, alpha=0.3)
+
+    # Plot 4: evaluation (greedy agent, fixed number of games) against each gate opponent
+    if eval_history:
+        colors = {'random': 'green', 'heuristic': 'darkorange', 'smart_heuristic': 'purple'}
+        by_opponent = {}
+        for record in eval_history:
+            for opponent, result in record.get('results', {}).items():
+                by_opponent.setdefault(opponent, []).append((record['episode'], result,
+                                                             (record.get('gates') or {}).get(opponent)))
+        for opponent, points in by_opponent.items():
+            color = colors.get(opponent, None)
+            eps = [ep for ep, _, _ in points]
+            line, = axs[3].plot(eps, [r['win_rate'] for _, r, _ in points], 'o-', color=color, linewidth=2,
+                                label=f'vs {opponent}: wins')
+            axs[3].plot(eps, [r['draws'] / max(r['games'], 1) for _, r, _ in points], 'x:',
+                        color=line.get_color(), alpha=0.6, label=f'vs {opponent}: draws')
+            gates = [(ep, g) for ep, _, g in points if g is not None]
+            if gates:
+                axs[3].step([ep for ep, _ in gates], [g for _, g in gates], where='post', linestyle='--',
+                            color=line.get_color(), alpha=0.5, label=f'{opponent} gate')
+            last = points[-1][1]
+            axs[3].annotate(f"{last['wins']}W/{last['losses']}L/{last['draws']}D", (eps[-1], last['win_rate']),
+                            textcoords='offset points', xytext=(6, 4), fontsize=9, color=line.get_color())
+        axs[3].legend(loc='upper left')
+    else:
+        axs[3].text(0.5, 0.5, 'No evaluation yet', ha='center', va='center', transform=axs[3].transAxes,
+                    fontsize=12)
+    axs[3].set_xlim(axs[0].get_xlim())
+    axs[3].set_ylim(0, 1)
+    axs[3].set_xlabel('Episodes')
+    axs[3].set_ylabel('Share of evaluation games')
+    axs[3].set_title('Evaluation (greedy agent; dashed: the win rate the phase gate asks for)')
+    axs[3].grid(True, alpha=0.3)
 
     # Plot 3: Policy Loss - Agent 1 & Agent 2
     # Uses LINEAR SCALE with step-based x-axis for uniform spacing
@@ -241,8 +271,8 @@ def plot_training_progress(
         axs[2].set_xlabel('Training Steps')
         losses = []
     
-    axs[2].set_ylabel('Policy Loss')
-    axs[2].set_title('Agent Policy Loss (Agent 1 & 2)')
+    axs[2].set_ylabel('Loss')
+    axs[2].set_title('C51 Loss (cross-entropy to the projected target distribution)')
     axs[2].legend()
     axs[2].grid(True, alpha=0.3)
     
@@ -284,7 +314,7 @@ def plot_training_progress(
         # --- Apply shading to plots ---
         
         # 1. Episode-based Plots (Rewards, Wins)
-        for i in [0, 1]:  # axs[0] and axs[1] use Episode x-axis
+        for i in [0, 1, 3]:  # the episode x-axis plots
              for start_ep, end_ep, phase in regions_ep:
                 color = phase_colors.get(phase, 'gray')
                 axs[i].axvspan(start_ep, end_ep, alpha=0.1, color=color, zorder=0)
@@ -733,13 +763,15 @@ def plot_pbs_evaluator_progress(
     has_e2e_aaren = (aaren_grad_norms is not None and aaren_embedding_stds is not None and
                      len(aaren_grad_norms) > 0 and len(aaren_embedding_stds) > 0)
     has_aaren = has_legacy_aaren or has_e2e_aaren
-    
+    if not has_aaren:
+        return  # AAREN is off (AAREN_ENABLED = False): no figure of empty axes
+
     # Always create a 2x1 grid for AAREN metrics
     fig, axes = plt.subplots(2, 1, figsize=(12, 10))
     fig.patch.set_facecolor('white')
     
     # Title
-    title = 'AAREN End-to-End Training Metrics' if has_e2e_aaren else ('PBS Evaluator & AAREN Metrics' if has_aaren else 'PBS Evaluator Metrics')
+    title = 'AAREN End-to-End Training Metrics' if has_e2e_aaren else 'AAREN Metrics'
     if total_episodes is not None:
         title += f' | Total Episodes: {total_episodes:,}'
     fig.suptitle(title, fontsize=16, fontweight='bold')
@@ -960,18 +992,20 @@ def plot_additional_metrics(
     win_rate_history: Dict[str, List[float]],
     avg_q_history: Dict[str, List[float]],
     entropy_history: Dict[str, List[float]],
-    save_path: str
+    save_path: str,
+    end_types: Optional[List[str]] = None
 ):
     """
     Plots and saves additional training metrics.
-    
+
     Args:
         episode_history: List of episode numbers.
-        episode_lengths: Dict containing lists of episode lengths.
-        pbs_buffer_sizes: Dict containing lists of PBS buffer sizes.
-        avg_q_history: Dict containing lists of average Q-values.
-        entropy_history: Dict containing lists of action entropy values.
+        episode_lengths: Dict containing lists of episode lengths (plies).
+        win_rate_history: Dict of win rates; drawn only for runs that did not record end_types.
+        avg_q_history: Dict containing lists of average max Q-values on replay samples.
+        entropy_history: Dict containing lists of NoisyNet mean sigma values.
         save_path: Path to save the plot image.
+        end_types: How each training game ended, "<win|loss|draw>:<win_type>" for the agent.
     """
     # Validate input data
     if not episode_history or len(episode_history) == 0:
@@ -1009,41 +1043,55 @@ def plot_additional_metrics(
     fig, axs = plt.subplots(2, 2, figsize=(15, 12))
     fig.suptitle('Additional Training Metrics', fontsize=16)
     
-    # Plot 1: Episode Length
+    # Plot 1: Episode Length (the raw lengths and their trailing average)
     if episode_lengths and 'agent1' in episode_lengths:
-        # Use dot markers (o) and line (-)
-        axs[0, 0].plot(episode_history, episode_lengths['agent1'], 'o-', label='Agent 1', color='green', alpha=0.7, markersize=3)
+        lengths = [np.nan if v is None else v for v in episode_lengths['agent1']]
+        axs[0, 0].scatter(episode_history, lengths, color='green', alpha=0.25, s=6, label='Episode')
+        axs[0, 0].plot(episode_history, moving_average(lengths), color='darkgreen', linewidth=2,
+                       label=f'{WINDOW}-episode average')
     axs[0, 0].set_xlabel('Episodes')
-    axs[0, 0].set_ylabel('Steps')
-    axs[0, 0].set_title('Average Episode Length (Moving Avg)')
+    axs[0, 0].set_ylabel('Plies')
+    axs[0, 0].set_title('Episode Length')
     axs[0, 0].legend()
     axs[0, 0].grid(True, alpha=0.3)
-    
-    # Plot 2: Win Rate Moving Average (Replaces PBS Buffer)
-    if win_rate_history and 'agent1' in win_rate_history:
-        axs[0, 1].plot(episode_history, win_rate_history['agent1'], 'o-', label='Agent 1 (100-ep Avg)', color='purple', alpha=0.7, markersize=3)
+
+    # Plot 2: how the training games end, as shares of the last WINDOW games
+    if end_types:
+        n = min(len(end_types), len(episode_history))
+        kinds = sorted(set(end_types[:n]), key=lambda k: (k.split(':')[0] != 'win', k.split(':')[0] != 'loss', k))
+        for kind in kinds:
+            share = moving_average([t == kind for t in end_types[:n]])
+            style = '-' if kind.startswith('win') else ('--' if kind.startswith('loss') else ':')
+            axs[0, 1].plot(episode_history[:n], share, style, linewidth=2, label=kind.replace(':', ': '))
+        axs[0, 1].legend(fontsize=8, loc='upper left')
+        axs[0, 1].set_title('How Training Games End')
+    else:
+        # Runs from before end_types was recorded (win_rate_history has one value per plot, at
+        # episodes it does not record, so it is not drawn)
+        axs[0, 1].text(0.5, 0.5, 'Game endings were not recorded in this run\n'
+                       '(outcome shares: see the training progress plot)',
+                       ha='center', va='center', transform=axs[0, 1].transAxes, fontsize=11)
+        axs[0, 1].set_title('How Training Games End')
     axs[0, 1].set_xlabel('Episodes')
-    axs[0, 1].set_ylabel('Win Rate (0-1)')
-    axs[0, 1].set_title('Run Win Rate (Last 100 Episodes)')
+    axs[0, 1].set_ylabel(f'Share of the last {WINDOW} games')
     axs[0, 1].set_ylim(0, 1.0)
-    axs[0, 1].legend()
     axs[0, 1].grid(True, alpha=0.3)
-    
-    # Plot 3: Average Q-Value
+
+    # Plot 3: Average Q-Value (not a skill measure: it is the network's own estimate)
     if avg_q_history and 'agent1' in avg_q_history:
-        axs[1, 0].plot(episode_history, avg_q_history['agent1'], 'o-', label='Agent 1', color='blue', alpha=0.7, markersize=3)
+        axs[1, 0].plot(episode_history, avg_q_history['agent1'], '-', label='Agent', color='blue', alpha=0.7)
     axs[1, 0].set_xlabel('Episodes')
-    axs[1, 0].set_ylabel('Avg Q-Value')
-    axs[1, 0].set_title('Average Q-Value (Higher = Better Learning) ↑')
+    axs[1, 0].set_ylabel('Mean of max Q')
+    axs[1, 0].set_title('Average Max Q-Value on Replay Samples')
     axs[1, 0].legend()
     axs[1, 0].grid(True, alpha=0.3)
-    
-    # Plot 4: Action Entropy (Noisy Net Sigma)
+
+    # Plot 4: NoisyNet noise scale (exploration shrinks as it falls)
     if entropy_history and 'agent1' in entropy_history:
-        axs[1, 1].plot(episode_history, entropy_history['agent1'], 'o-', label='Agent 1', color='orange', alpha=0.7, markersize=3)
+        axs[1, 1].plot(episode_history, entropy_history['agent1'], '-', label='Agent', color='orange', alpha=0.9)
     axs[1, 1].set_xlabel('Episodes')
-    axs[1, 1].set_ylabel('Entropy (Sigma)')
-    axs[1, 1].set_title('Exploration Entropy (Noisy Net Sigma) ↑')
+    axs[1, 1].set_ylabel('Mean sigma')
+    axs[1, 1].set_title('Exploration Noise (NoisyNet mean sigma)')
     axs[1, 1].legend()
     axs[1, 1].grid(True, alpha=0.3)
     

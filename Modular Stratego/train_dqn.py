@@ -462,7 +462,7 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
         curriculum.record_evaluation({k: r['win_rate'] for k, r in results.items()})
         metrics.setdefault('eval_history', []).append(
             {'episode': completed_episodes, 'phase': phase, 'global_step': global_step,
-             'results': results})
+             'results': results, 'gates': gates})
         summary = ", ".join(f"{k} {r['wins']}W/{r['losses']}L/{r['draws']}D"
                             + (f" (gate {gates[k]:.0%})" if gates else "") for k, r in results.items())
         tqdm.write(f"[EVAL] episode {completed_episodes}, phase {phase}: {summary} "
@@ -619,20 +619,23 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                     else:
                         avg_loss = 0.0
                     metrics['avg_loss_p1_history'].append(avg_loss)
-                    
+
+                    win_type = infos[i].get('win_type') or 'unknown'
+                    outcome = 'win' if winner == 1 else ('loss' if winner == -1 else 'draw')
+                    metrics.setdefault('end_types', []).append(f"{outcome}:{win_type}")
+                    metrics.setdefault('opponents', []).append(lane_opponent_types[i])
                     if winner == 1:
                         metrics['wins_p1'] += 1
-                        win_type = infos[i].get('win_type', 'unknown')
                         if win_type == 'flag_capture': metrics['wins_by_flag'] = metrics.get('wins_by_flag', 0) + 1
                         elif win_type == 'no_moves': metrics['wins_by_depletion'] = metrics.get('wins_by_depletion', 0) + 1
                     elif winner == -1:
                         metrics['wins_p2'] += 1
-                        win_type = infos[i].get('win_type', 'unknown')
                         if win_type == 'flag_capture': metrics['losses_by_flag'] = metrics.get('losses_by_flag', 0) + 1
                         elif win_type == 'no_moves': metrics['losses_by_depletion'] = metrics.get('losses_by_depletion', 0) + 1
                     else:
                         metrics['draws'] += 1
-                        metrics['draws_by_timeout'] = metrics.get('draws_by_timeout', 0) + 1
+                        if win_type == 'timeout':  # (counted every draw before; most are no-battle draws)
+                            metrics['draws_by_timeout'] = metrics.get('draws_by_timeout', 0) + 1
                     
                     metrics['rewards_p1'].append(lane_episode_rewards_p1[i])
                     metrics['rewards_p2'].append(lane_episode_rewards_p2[i])
