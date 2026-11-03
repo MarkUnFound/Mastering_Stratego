@@ -58,8 +58,7 @@ from network import (
 )
 from settings import *
 from utils import save_training_history, load_training_history
-from test.preflight_checks import run_preflight_checks
-from test.scenario_drills import get_scenario_drill, get_random_scenario
+from network.training.preflight import run_preflight_checks
 from visualizers import plot_training_progress, create_training_gif, create_episode_gif, plot_additional_metrics
 
 

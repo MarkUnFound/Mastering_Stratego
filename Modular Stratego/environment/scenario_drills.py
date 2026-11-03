@@ -1,5 +1,5 @@
 """
-Scenario Drills Module for Phase 5 Curriculum
+Scenario Drills Module for Phase 5 Curriculum (not wired into the trainer)
 
 Provides specialized endgame training scenarios:
 - Miner vs Bombs: Practice bomb defusal

@@ -313,7 +313,7 @@ python -m pytest -q
 Tests marked `xfail` document known bugs that a later cleanup step fixes. The preflight checks still run on their own:
 
 ```bash
-python "Modular Stratego/test/preflight_checks.py"
+python "Modular Stratego/network/training/preflight.py"
 ```
 
 ### 5. Train the MARQ Agent

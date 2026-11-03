@@ -87,7 +87,7 @@ Replaced additive dense rewards with Potential-Based Reward Shaping (PBRS) to fi
 - `environment/`: Core game logic (`board.py`, `piece.py`, `game_state.py`), environment wrappers (`environment.py`, `parallel_environment.py`), and curriculum management.
 - `network/`: Rainbow DQN agent (`drqn_agent.py`), AAREN (`history_aggregator.py`), replay buffers, and training infrastructure (`training/`).
 - `settings/`: Project configurations (`training_config.py`).
-- `test/`: Verification scripts (`preflight_checks.py`), unit tests, and profiling tools.
+- `test/`: Unit tests and profiling tools. The preflight checks the trainer runs are `network/training/preflight.py`.
 - `visualizers/`: Training visualizers, dashboards, and live demos.
 - `docs/`: Project documentation and status reports.
 - `utils/`: Helper scripts and utility functions.

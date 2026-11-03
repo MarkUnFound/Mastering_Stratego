@@ -2,9 +2,8 @@ import os
 import sys
 
 # Bootstrap sys.path for standalone execution
-current_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.dirname(current_dir)
-for d in ['', 'visualizers', 'network', 'environment', 'settings', 'utils', 'test']:
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+for d in ['', 'visualizers', 'network', 'environment', 'settings', 'utils']:
     p = os.path.join(project_root, d) if d else project_root
     if p not in sys.path:
         sys.path.insert(0, p)
