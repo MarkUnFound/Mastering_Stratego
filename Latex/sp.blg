@@ -27,48 +27,46 @@ Reallocating 'name_of_file' (item size: 1) to 11 items.
 Reallocating 'name_of_file' (item size: 1) to 14 items.
 A level-1 auxiliary file: misc/vita.aux
 Database file #1: references.bib
-Warning--I didn't find a database entry for "ng1999policy"
-Warning--I didn't find a database entry for "Zaritsky2004"
 Warning--can't use both volume and number fields in li2024opponent
-You've used 67 entries,
+You've used 59 entries,
             2253 wiz_defined-function locations,
-            963 strings with 18687 characters,
-and the built_in function-call counts, 25863 in all, are:
-= -- 2425
-> -- 1478
+            898 strings with 16892 characters,
+and the built_in function-call counts, 22438 in all, are:
+= -- 2078
+> -- 1313
 < -- 0
-+ -- 608
-- -- 535
-* -- 2111
-:= -- 4186
-add.period$ -- 207
-call.type$ -- 67
-change.case$ -- 464
++ -- 543
+- -- 476
+* -- 1827
+:= -- 3649
+add.period$ -- 178
+call.type$ -- 59
+change.case$ -- 410
 chr.to.int$ -- 0
-cite$ -- 68
-duplicate$ -- 889
-empty$ -- 1911
-format.name$ -- 535
-if$ -- 5341
+cite$ -- 60
+duplicate$ -- 770
+empty$ -- 1654
+format.name$ -- 476
+if$ -- 4618
 int.to.chr$ -- 0
-int.to.str$ -- 67
-missing$ -- 60
-newline$ -- 341
-num.names$ -- 140
-pop$ -- 491
+int.to.str$ -- 59
+missing$ -- 54
+newline$ -- 297
+num.names$ -- 122
+pop$ -- 441
 preamble$ -- 1
-purify$ -- 396
+purify$ -- 351
 quote$ -- 0
-skip$ -- 613
+skip$ -- 525
 stack$ -- 0
-substring$ -- 1400
-swap$ -- 282
+substring$ -- 1168
+swap$ -- 236
 text.length$ -- 0
 text.prefix$ -- 0
 top$ -- 0
-type$ -- 266
+type$ -- 234
 warning$ -- 1
-while$ -- 220
-width$ -- 69
-write$ -- 691
-(There were 3 warnings)
+while$ -- 186
+width$ -- 61
+write$ -- 591
+(There was 1 warning)
