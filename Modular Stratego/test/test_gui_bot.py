@@ -102,6 +102,23 @@ def test_the_search_moves_the_humans_pieces_by_what_the_bot_knows():
     assert after.get((4, 0)).rank == 3
 
 
+def test_the_gui_setup_places_both_armies_with_the_training_heuristic():
+    """The GUIs called StrategicSetupAgent(load_path=...).setup_side(...), which raised inside a
+    bare except: every game had a random setup."""
+    import setup_agent_integration as I
+    b = S.Board()
+    assert I.place_army(b, 2, S.Piece) == 'heuristic'
+    assert I.place_army(b, 1, S.Piece, model_path='no_such_model.pth') == 'heuristic'
+    for owner, rows in ((1, range(6, 10)), (2, range(0, 4))):
+        squares = b.owner_positions(owner)
+        assert sorted(squares) == [(r, c) for r in rows for c in range(10)]
+        assert collections.Counter(b.get(p).rank for p in squares) == collections.Counter(S.PIECE_COUNTS)
+    # the call sites use it
+    for name in ('play_guided.py', 'play_standard.py', 'play_with_legend.py', 'stratego_gui.py'):
+        src = open(os.path.join(GUI, name), encoding='utf-8').read()
+        assert 'place_army(board, 1, Piece' in src and 'load_path=' not in src
+
+
 def test_the_bot_chooses_a_legal_move_without_reading_the_humans_army(cpu, tiny_network, monkeypatch):
     from network import RainbowAgent
     bot = adapter(2)

@@ -13,7 +13,7 @@ if MODULAR_STRATEGO_PATH not in sys.path:
     sys.path.append(MODULAR_STRATEGO_PATH)
 
 from dqn_bot_logic import DQNBotLogic
-from setup_agent_integration import StrategicSetupAgent
+from setup_agent_integration import place_army
 
 pygame.init()
 
@@ -500,11 +500,9 @@ while running:
         draw_text(screen, "GUIDED STRATEGO", cx, 180, 72, PLAYER1_PRIMARY, True)
         draw_text(screen, "POWERED BY MARQ FRAMEWORK", cx, 240, 24, PLAYER1_GLOW, True)
         if draw_button("BATTLE AI COACH", cx - 150, 360, 300, 50, action="play", primary=True) == "play":
-            board = Board(); auto_setup(board, 2)
-            try:
-                setup_agent = StrategicSetupAgent(load_path=setup_model_path)
-                board = setup_agent.setup_side(board, 1)
-            except: auto_setup(board, 1)
+            board = Board()
+            place_army(board, 2, Piece)  # the bot: the setup it trained with
+            print(f"Your setup: {place_army(board, 1, Piece, setup_model_path)}")
             vs_bot = True; human_side = 1; current_player = 1; game_state = "setup"
             
             # INITIALIZE TWO BOTS

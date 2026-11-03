@@ -3,11 +3,18 @@ Setup Agent Integration for Stratego Visual
 Uses trained setup agent to create strategic piece placements
 """
 
+import os
+import sys
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 from typing import List, Tuple
+
+_ENV = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "Modular Stratego", "environment"))
+if _ENV not in sys.path:
+    sys.path.append(_ENV)
 
 # Piece rank constants (matching stratego.py)
 PIECE_COUNTS = {
@@ -289,3 +296,36 @@ class StrategicSetupAgent:
             board.set(pos, piece)
         
         return len(placements)
+
+
+def place_army(board, owner: int, Piece, model_path: str = None) -> str:
+    """
+    Place `owner`'s 40 pieces (owner 1: rows 6-9, owner 2: rows 0-3) on an empty half of the GUI
+    board: with the learned setup network when `model_path` exists, else with the heuristic setup
+    the training environment uses for both sides (flag in a back corner behind bombs). Returns
+    "learned" or "heuristic".
+
+    (The GUIs called StrategicSetupAgent(load_path=...).setup_side(...), a keyword and a method
+    it does not have, inside a bare except, so every game fell back to a random setup.)
+    """
+    if model_path and os.path.exists(model_path):
+        StrategicSetupAgent(owner, model_path).apply_setup_to_board(board, Piece)
+        return "learned"
+    from heuristic_setup import smart_heuristic_setup
+    rows = range(6, 10) if owner == 1 else range(0, 4)
+    cells = [(r, c) for r in rows for c in range(10)]
+    pieces = [pt for pt, n in ARMY.items() for _ in range(n)]
+    for pt, pos in smart_heuristic_setup(pieces, cells, 1 if owner == 1 else -1):
+        board.set(pos, Piece(owner=owner, rank=GUI_RANK[pt]))
+    return "heuristic"
+
+
+def _army():
+    from piece import PieceType
+    # GUI ranks (Spy 1 ... Marshal 10, Bomb 0, Flag -1) of the environment's PieceTypes
+    rank = {PieceType.FLAG: -1, PieceType.BOMB: 0}
+    rank.update({pt: pt.value - 1 for pt in PieceType if pt not in rank})
+    return {pt: PIECE_COUNTS[rank[pt]] for pt in PieceType}, rank
+
+
+ARMY, GUI_RANK = _army()

@@ -5,7 +5,7 @@ import csv
 import os
 from stratego import Board, auto_setup, side_name, FILES, Piece
 from bot_logic import EnhancedBotLogic
-from setup_agent_integration import StrategicSetupAgent
+from setup_agent_integration import place_army
 
 pygame.init()
 
@@ -643,12 +643,8 @@ while running:
         if draw_button("Play vs Bot", center_x - button_width//2, start_y,
                       button_width, button_height, action="bot", primary=True) == "bot":
             board = Board()
-            auto_setup(board, 2)
-            try:
-                setup_agent = StrategicSetupAgent(load_path=setup_model_path)
-                board = setup_agent.setup_side(board, 1)
-            except:
-                auto_setup(board, 1)
+            place_army(board, 2, Piece)  # the bot: the setup it trained with
+            print(f"Your setup: {place_army(board, 1, Piece, setup_model_path)}")
             vs_bot = True
             human_side = 1
             current_player = 1

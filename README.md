@@ -238,9 +238,11 @@ Mastering_Stratego/
 │       └── training_config.py          # Unified training hyperparameters
 │
 ├── Python Stratego Game/               # Interactive Pygame GUI & Deployment Engine
-│   ├── guided_pygame_test.py           # AI Coach GUI with eval bar, rank probabilities, & hints
-│   ├── pygame test.py                  # Standard interactive GUI
-│   ├── test strategoo.py               # Interactive game with Legends & Rules side-panel
+│   ├── play_guided.py                  # AI Coach GUI with eval bar, rank probabilities, & hints
+│   ├── play_standard.py                # Standard interactive GUI
+│   ├── play_with_legend.py             # Interactive game with Legends & Rules side-panel
+│   ├── stratego_gui.py                 # Alternative visual interface
+│   ├── stratego.py                     # Board, rules and a terminal version of the game
 │   ├── dqn_bot_logic.py                # Expectamax Search & Rainbow DQN bridge
 │   ├── bot_logic.py                    # Bot interface adapter for Pygame
 │   ├── verify_expectamax.py            # Automated test suite for Expectamax combat utilities
@@ -275,13 +277,13 @@ Launch the interactive AI Coach interface featuring the trained Rainbow DQN agen
 
 ```bash
 cd "Python Stratego Game"
-python guided_pygame_test.py
+python play_guided.py
 ```
 
 Or launch the standard graphical game:
 ```bash
 cd "Python Stratego Game"
-python "pygame test.py"
+python play_standard.py
 ```
 
 **In the browser:** `Modular Stratego/web/play.html` is a standalone page (rules, observation and action encoding ported to JavaScript and checked against the Python environment by `test/test_web_engine.py`). Export a checkpoint to ONNX and either load it with the page's *Load .onnx* button or put it next to the page as `model.onnx` on a web server:
