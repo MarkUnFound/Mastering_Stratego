@@ -42,3 +42,6 @@ Latex/**/*.toc
 
 # Test caches
 .pytest_cache/
+
+# Stray copy of results.tex (not included by sp.tex); kept on disk only
+Latex/chapters/results copy.tex
