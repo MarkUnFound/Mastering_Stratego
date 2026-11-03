@@ -176,6 +176,26 @@ def test_a_hidden_piece_is_not_scored_as_a_certain_loss(name):
     assert hidden > certain_loss
 
 
+@pytest.mark.parametrize('name', ['heuristic', 'smart_heuristic'])
+def test_cheap_pieces_probe_hidden_pieces_and_the_spy_does_not(name):
+    """With the thesis weights a probe scored below a sideways move, so these opponents only
+    shuffled until the no-battle draw."""
+    make, score = SCORERS[name]
+    opponent = make()
+    def probe(attacker):
+        return score(opponent, ((3, 0), (4, 0)), _board({(3, 0): -attacker, (4, 0): HIDDEN}))
+    sideways = score(opponent, ((3, 0), (3, 1)), _board({(3, 0): -P.SCOUT.value}))
+    assert probe(P.SCOUT.value) > sideways
+    assert probe(P.SCOUT.value) > probe(P.MARSHAL.value)
+    assert probe(P.SPY.value) < probe(P.SCOUT.value)
+
+
+def test_later_phases_are_gated_on_the_stronger_scripted_opponent():
+    from curriculum import phase_gates, TrainingPhase
+    assert set(phase_gates(TrainingPhase.MEMORY_GAP)) == {'heuristic'}
+    assert set(phase_gates(TrainingPhase.SELF_PLAY)) == {'heuristic'}
+
+
 def test_smart_heuristic_values_its_own_pieces_by_type():
     from curriculum import SmartHeuristicOpponent
     values = SmartHeuristicOpponent('cpu', -1).piece_values

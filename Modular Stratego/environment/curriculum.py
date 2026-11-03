@@ -46,8 +46,11 @@ def phase_gates(phase) -> Dict[str, float]:
     return {
         TrainingPhase.PHYSICS_OF_WAR: {'random': tc.PHASE_1_WIN_THRESHOLD_RANDOM,
                                        'heuristic': tc.PHASE_1_WIN_THRESHOLD_HEURISTIC},
-        TrainingPhase.MEMORY_GAP: {'smart_heuristic': tc.PHASE_2_WIN_THRESHOLD},
-        TrainingPhase.SELF_PLAY: {'smart_heuristic': tc.PHASE_3_WIN_THRESHOLD},
+        # Phases 2 and 3 are gated on the heuristic, the stronger scripted opponent (40 games each
+        # way: heuristic 16W/5L as P1 and 19W/5L as P2 against smart_heuristic). The thesis gates
+        # were on smart_heuristic, which the formal_1 run could only draw against.
+        TrainingPhase.MEMORY_GAP: {'heuristic': tc.PHASE_2_WIN_THRESHOLD},
+        TrainingPhase.SELF_PLAY: {'heuristic': tc.PHASE_3_WIN_THRESHOLD},
     }.get(TrainingPhase(phase), {})
 
 
@@ -95,7 +98,7 @@ PHASE_CONFIGS = {
         opponents=["frozen_heuristic", "smart_heuristic"],
         reward_focus="epistemic",
         success_metrics={  # evaluation gates: see phase_gates()
-            "smart_heuristic": PHASE_2_WIN_THRESHOLD
+            "heuristic": PHASE_2_WIN_THRESHOLD
         },
         max_turns=PHASE_MAX_TURNS.get(2, DEFAULT_MAX_TURNS),
     ),
@@ -107,7 +110,7 @@ PHASE_CONFIGS = {
         opponents=["self_500", "smart_heuristic"],
         reward_focus="material",
         success_metrics={  # evaluation gates: see phase_gates()
-            "smart_heuristic": PHASE_3_WIN_THRESHOLD
+            "heuristic": PHASE_3_WIN_THRESHOLD
         },
         max_turns=PHASE_MAX_TURNS.get(3, DEFAULT_MAX_TURNS),
     ),
@@ -609,7 +612,7 @@ class TrueRandomOpponent:
 class HeuristicOpponent:
     """
     Frozen heuristic opponent for Phase 2.
-    Uses deterministic strategy without learning.
+    Fixed move scoring without learning (ties between the best moves broken at random).
     """
     
     def __init__(self, device, player_id: int = -1):
@@ -636,8 +639,10 @@ class HeuristicOpponent:
             score = self._score_move(move, board, player_id)
             scored_moves.append((move, score))
         
-        scored_moves.sort(key=lambda x: x[1], reverse=True)
-        return scored_moves[0][0]
+        # Ties go to a random one of the best moves: always taking the first one walked the same
+        # piece back and forth
+        best = max(s for _, s in scored_moves)
+        return random.choice([m for m, s in scored_moves if s >= best - 1e-9])
     
     def _score_move(self, move, board, player_id):
         """Deterministic move scoring."""
@@ -666,8 +671,11 @@ class HeuristicOpponent:
         # piece (HIDDEN = -20) always looked unbeatable and the special battles looked lost.
         if is_enemy_value(target_val, player_id):
             outcome = battle_from_values(piece_val, target_val)
-            if outcome is None:          # hidden defender: half the expected loss
-                score -= piece_rank * 0.05
+            if outcome is None:
+                # Hidden defender: cheap pieces probe, valuable ones keep away. (The thesis
+                # penalty, -rank * 0.05, made every probe but the Spy's worse than a sideways
+                # move, so this opponent shuffled until the no-battle draw.)
+                score += -0.3 if piece_rank == PieceType.SPY.value else 0.4 - piece_rank * 0.04
             elif outcome == 1:
                 score += 0.5
             elif outcome == 0:
@@ -779,8 +787,13 @@ class SmartHeuristicOpponent:
             outcome = battle_from_values(piece_val, target_val)
 
             if outcome is None:
-                # Hidden defender: cheap pieces probe, valuable ones keep away
-                score += 0.5 - (my_value / 25)
+                # Hidden defender: cheap pieces probe, valuable ones keep away. (With the thesis
+                # weights, 0.5 - value / 25, only the Spy, which loses every attack but one,
+                # probed: the Scout scored -0.1, so this opponent hardly ever attacked.)
+                if piece_rank == PieceType.SPY.value:
+                    score -= 1.0
+                else:
+                    score += 1.0 - (my_value / 40)
             else:
                 target_value = self.piece_values.get(target_rank, 10)
 
@@ -834,12 +847,14 @@ class SmartHeuristicOpponent:
         if piece_rank == PieceType.SCOUT.value:
             move_distance = abs(r_to - r_from) + abs(c_to - c_from)
             if move_distance > 1:
-                # Scouts should use multi-square moves for reconnaissance
-                score += 0.3 * move_distance
+                # Scouts should use multi-square moves for reconnaissance. (The thesis weights,
+                # 0.3 per square plus 0.5 in enemy territory, outscored every probe, so scouts
+                # roamed and the games timed out: 20 of 40 against random.)
+                score += 0.05 * move_distance
                 
                 # Prefer scouting enemy territory
                 if (player_id == 1 and r_to < 4) or (player_id == -1 and r_to > 5):
-                    score += 0.5
+                    score += 0.1
         
         # ===== 5. FLAG PROTECTION =====
         # Penalize moves that leave flag area exposed

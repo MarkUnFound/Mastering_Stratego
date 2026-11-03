@@ -154,7 +154,7 @@ Strict anti-oscillation penalties punish repetitive moves, compelling the agent 
 > * **Penetration (0.15):** the deepest Captain-or-lower piece.
 > * **Information (0.1):** the share of enemy pieces on the board whose rank the view shows.
 >
-> $\Phi$ is 0 once the game is over, so a game's discounted shaping sums to $-\Phi(s_0)$. The terminal reward is +1, −1 or 0 (`outcome_reward`). The anti-oscillation, move-diversity, stalemate and combat-bonus terms are not potential-based and are off by default (weight 0 in `StrategoRewardConfig`). The thesis runs had them on, gave the last transition no $-\Phi$ term, counted hidden enemy pieces as zero material, and added a speed bonus and draw penalty to the terminal reward.
+> $\Phi$ is 0 once the game is over, so a game's discounted shaping sums to $-\Phi(s_0)$. The terminal reward is +1 for a win, −1 for a loss, and `DRAW_REWARD` (−0.25) for a draw or `NO_BATTLE_DRAW_REWARD` (−0.5) for a no-battle draw (`outcome_reward`); with free draws the agent learned to stop attacking. The anti-oscillation, move-diversity, stalemate and combat-bonus terms are not potential-based and are off by default (weight 0 in `StrategoRewardConfig`). The thesis runs had them on, gave the last transition no $-\Phi$ term, counted hidden enemy pieces as zero material, and added a speed bonus and draw penalty to the terminal reward.
 
 ---
 
@@ -171,7 +171,7 @@ Training is structured into a 5-phase progressive curriculum gated by strict win
 
 Under **Prioritized Fictitious Self-Play (PFSP)**, opponent matchmaking is dynamically weighted: opponents that defeat the agent are sampled more frequently, while mastered opponents maintain a 5% floor to guard against catastrophic forgetting.
 
-> **Current code (cleanup branch):** training starts in Phase 1 (the thesis config started in Phase 4, League Training). A phase ends when the greedy agent passes its evaluation gates — `EVAL_GAMES` games against each gate opponent every `EVAL_INTERVAL` episodes, draws counted as non-wins (`phase_gates` in `Modular Stratego/environment/curriculum.py`) — or after `PHASE_n_MAX_EPISODES` training episodes. Each game's opponent is drawn from the PFSP weights over the last 100 games per opponent (the thesis trainer cycled through the opponent types in fixed blocks). The scripted opponents use the real battle rules on the board's piece values. The learning Player-2 agent is no longer overwritten by league snapshots: frozen past selves play in a separate inference-only agent.
+> **Current code (cleanup branch):** training starts in Phase 1 (the thesis config started in Phase 4, League Training). A phase ends when the greedy agent passes its evaluation gates — `EVAL_GAMES` games against each gate opponent every `EVAL_INTERVAL` episodes, draws counted as non-wins (`phase_gates` in `Modular Stratego/environment/curriculum.py`) — or after `PHASE_n_MAX_EPISODES` training episodes. Each game's opponent is drawn from the PFSP weights over the last 100 games per opponent (the thesis trainer cycled through the opponent types in fixed blocks). The scripted opponents use the real battle rules on the board's piece values, and probe hidden pieces with cheap ones (with the thesis weights they hardly attacked). Phases 2 and 3 are gated on the heuristic, which beats the smart heuristic (the thesis gates were on the smart heuristic). The learning Player-2 agent is no longer overwritten by league snapshots: frozen past selves play in a separate inference-only agent.
 
 ---
 

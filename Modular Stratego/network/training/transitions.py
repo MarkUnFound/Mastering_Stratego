@@ -8,14 +8,17 @@ both sides are closed as terminal, whichever side made the last move.
 
 from typing import Dict, List, Optional
 
+from training_config import DRAW_REWARD, NO_BATTLE_DRAW_REWARD
 
-def outcome_reward(winner: Optional[int], player: int) -> float:
-    """Terminal reward for `player`: +1 win, -1 loss, 0 draw."""
+
+def outcome_reward(winner: Optional[int], player: int, win_type: Optional[str] = None) -> float:
+    """Terminal reward for `player`: +1 win, -1 loss; a draw gives DRAW_REWARD, or
+    NO_BATTLE_DRAW_REWARD when it is a no-battle draw (the thesis gave every draw 0)."""
     if winner == player:
         return 1.0
     if winner == -player:
         return -1.0
-    return 0.0
+    return NO_BATTLE_DRAW_REWARD if win_type == 'no_battle_draw' else DRAW_REWARD
 
 
 class TurnTracker:
@@ -38,7 +41,8 @@ class TurnTracker:
         Returns the transitions this completes, each a dict with lane, player, state, action,
         next_state, next_moves (the transition's side's legal moves in next_state; None when
         done), done, winner, info (the mover's info, with the battles of both the move and the
-        reply in revealed_in_step) and snapshot (AAREN history when `state` was acted on).
+        reply in revealed_in_step, and the game's win_type when done) and snapshot (AAREN history
+        when `state` was acted on).
         """
         completed = []
         waiting = self.pending[lane][-player]
@@ -60,6 +64,8 @@ class TurnTracker:
     @staticmethod
     def _close(move: dict, next_state, done: bool, reply_info: dict, next_moves) -> dict:
         info = dict(move['info'])
+        if done:
+            info['win_type'] = reply_info.get('win_type')  # how the game ended, for the draw reward
         if reply_info is not move['info']:
             info['revealed_in_step'] = (list(move['info'].get('revealed_in_step') or []) +
                                         list(reply_info.get('revealed_in_step') or []))

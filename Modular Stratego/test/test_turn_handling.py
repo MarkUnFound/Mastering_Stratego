@@ -7,6 +7,7 @@ import torch
 
 from environment import StrategoEnvironment
 from test_trainer_smoke import run_tiny_training
+from training_config import DRAW_REWARD, NO_BATTLE_DRAW_REWARD
 
 
 # ---------------------------------------------------------------- environment
@@ -77,9 +78,9 @@ def test_stored_transitions_hold_the_agents_own_view_and_one_terminal_per_game(t
     def recording(self, states, actions, rewards, next_states, dones, active_mask, game_states=None,
                   next_game_states=None, infos=None, **kwargs):
         if self.player_id == 1:
-            for gs, ngs, r, d, lane in zip(game_states, next_game_states, rewards, dones, kwargs['lane_ids']):
+            for gs, ngs, r, d, lane, info in zip(game_states, next_game_states, rewards, dones, kwargs['lane_ids'], infos):
                 stored.append((gs.current_player, ngs.current_player, ngs.game_over, r, d, lane,
-                               compute_potential(gs.board, 1), ngs.winner))
+                               compute_potential(gs.board, 1), ngs.winner, info.get('win_type')))
         return original(self, states, actions, rewards, next_states, dones, active_mask, game_states,
                         next_game_states, infos, **kwargs)
 
@@ -88,13 +89,13 @@ def test_stored_transitions_hold_the_agents_own_view_and_one_terminal_per_game(t
     run_tiny_training(tmp_path, config_override, monkeypatch, episodes=episodes)
     assert stored
     assert all(cur == 1 for cur, *_ in stored), "state is not P1's own view"
-    for cur, nxt, over, r, done, lane, phi, winner in stored:
+    for cur, nxt, over, r, done, lane, phi, winner, win_type in stored:
         assert done == over
         if not done:
             assert nxt == 1, "next state must be P1's view after the opponent's reply"
         else:
-            # outcome +1 / -1 / 0 plus the PBRS terminal term -Phi(s) (Phase 1: full shaping)
-            assert r == pytest.approx(outcome_reward(winner, 1) - phi)
+            # outcome +1 / -1 / draw reward plus the PBRS terminal term -Phi(s) (Phase 1: full shaping)
+            assert r == pytest.approx(outcome_reward(winner, 1, win_type) - phi)
     # every finished game gives P1 exactly one terminal transition (the run may finish a few extra games)
     assert sum(t[4] for t in stored) >= episodes
 
@@ -126,7 +127,18 @@ def test_game_end_closes_both_sides_with_the_outcome():
     assert [(t['player'], t['done'], outcome_reward(t['winner'], t['player'])) for t in ts] == [(1, True, -1.0), (-1, True, 1.0)]
     draw = TurnTracker(1)
     draw.record(0, 1, S(1), 'a', S(-1), False, {})
-    assert [outcome_reward(t['winner'], t['player']) for t in draw.record(0, -1, S(-1), 'b', S(1), True, {'winner': 0})] == [0.0, 0.0]
+    assert [outcome_reward(t['winner'], t['player'], t['info']['win_type'])
+            for t in draw.record(0, -1, S(-1), 'b', S(1), True, {'winner': 0, 'win_type': 'timeout'})] == [DRAW_REWARD] * 2
+
+
+def test_a_draw_costs_both_sides_and_a_no_battle_draw_costs_more():
+    """A free draw taught the formal_1 agent to stop attacking: draws now score below zero."""
+    from network import TurnTracker, outcome_reward
+    assert -1.0 < NO_BATTLE_DRAW_REWARD < DRAW_REWARD < 0.0
+    tt = TurnTracker(1)
+    tt.record(0, -1, S(-1), 'a', S(1), False, {})
+    ts = tt.record(0, 1, S(1), 'b', S(-1), True, {'winner': 0, 'win_type': 'no_battle_draw'})
+    assert [(t['player'], outcome_reward(t['winner'], t['player'], t['info']['win_type'])) for t in ts] ==         [(-1, NO_BATTLE_DRAW_REWARD), (1, NO_BATTLE_DRAW_REWARD)]
 
 
 def test_lanes_do_not_mix():

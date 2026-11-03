@@ -74,6 +74,12 @@ PHASE_MAX_TURNS = {
 NO_BATTLE_DRAW_PLIES = 100
 EVAL_NO_BATTLE_DRAW_PLIES = 200
 
+# Terminal reward of a draw (a win is +1, a loss -1). With a free draw (0, as in the thesis) the
+# formal_1 run learned to stop attacking: by episode 7250 it made 0.1 attacks per game and every
+# Phase-2 game ended in a no-battle draw. A drawn game now costs both sides, a no-battle draw more.
+DRAW_REWARD = -0.25
+NO_BATTLE_DRAW_REWARD = -0.5
+
 # Warmup Period (must collect this many experiences before training starts)
 WARMUP_STEPS = 1000       # Reduced further for faster Phase 1 start
 
@@ -170,8 +176,8 @@ CURRICULUM_START_PHASE = 1      # Phase 1 -> 4 (the thesis runs started at Phase
 PHASE_1_WIN_THRESHOLD_RANDOM = 0.70     # Phase 1 -> 2: vs random ...
 PHASE_1_WIN_THRESHOLD_HEURISTIC = 0.50  # ... and vs heuristic (full observability)
 PHASE_2_PBS_ACCURACY_THRESHOLD = 0.70   # unused (PBS was replaced by AAREN)
-PHASE_2_WIN_THRESHOLD = 0.55            # Phase 2 -> 3: vs smart_heuristic (fog of war)
-PHASE_3_WIN_THRESHOLD = 0.70            # Phase 3 -> 4: vs smart_heuristic (fog of war)
+PHASE_2_WIN_THRESHOLD = 0.55            # Phase 2 -> 3: vs heuristic (fog of war)
+PHASE_3_WIN_THRESHOLD = 0.70            # Phase 3 -> 4: vs heuristic (fog of war)
 EVAL_GAMES = 40                         # evaluation games per gate opponent
 
 # Phase Episode Limits: a phase ends after MAX training episodes even if its gates are not met

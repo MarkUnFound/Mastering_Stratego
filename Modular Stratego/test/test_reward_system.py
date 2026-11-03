@@ -8,7 +8,8 @@ Reward shaping: PBRS from each side's own view (network/distributional_reward.py
 5. C51 support range
 
 (The thesis terminal branch — speed bonus, draw penalty, MARL scaling — is gone: the trainer's
-terminal reward is outcome_reward, +1 / -1 / 0. Its tests went with it.)
+terminal reward is outcome_reward: +1 / -1, and DRAW_REWARD / NO_BATTLE_DRAW_REWARD for a draw.
+Its tests went with it; the draw reward's are in test_turn_handling.)
 """
 
 import random

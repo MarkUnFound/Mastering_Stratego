@@ -2,7 +2,7 @@
 Centralized Reward System for Stratego DQN (C51-Compatible)
 
 This module is the SINGLE SOURCE OF TRUTH for the shaping reward. The terminal reward (+1 win,
--1 loss, 0 draw) is network/training/transitions.outcome_reward; the trainer adds it to the
+-1 loss, DRAW_REWARD / NO_BATTLE_DRAW_REWARD for a draw) is network/training/transitions.outcome_reward; the trainer adds it to the
 shaping of terminal transitions.
 
 DESIGN PRINCIPLES (v4, cleanup branch):

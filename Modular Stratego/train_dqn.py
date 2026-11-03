@@ -572,12 +572,12 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                                              done_bool, infos[i], snapshot=history_snapshot(acting_agent, i),
                                              next_moves=next_valid_moves[i]):
                     # Shaping gamma*Phi(s') - Phi(s) from the side's own views (Phi = 0 once the game is
-                    # over), plus the outcome +1 / -1 / 0 (draws included) on the terminal transition
+                    # over), plus the outcome +1 / -1 / draw reward on the terminal transition
                     shaper = lane_dist_rewards[i] if t['player'] == 1 else lane_p2_shapers[i]
                     reward = shaper(previous_state=t['state'], action=t['action'], current_state=t['next_state'],
                                     done=t['done'], winner=t['winner'], info=t['info'])
                     if t['done']:
-                        reward += outcome_reward(t['winner'], t['player'])
+                        reward += outcome_reward(t['winner'], t['player'], t['info'].get('win_type'))
                     if t['player'] == 1:
                         lane_episode_rewards_p1[i] += reward
                         completed_transitions[1].append((t, reward))
@@ -901,11 +901,11 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                     f"R1={recent_reward:5.2f} "
                     f"W1={metrics['wins_p1']:<4d} "
                     f"W2={metrics['wins_p2']:<4d} "
+                    f"D={metrics['draws']:<4d} "
                     f"P={phase_val:<1d} "
                     f"S={global_step/1000:<5.1f}k "
                     f"[P1:{profiling['p1_act']:.2f} P2:{profiling['p2_act']:.2f} Env:{profiling['env_step']:.2f} Rep:{profiling['replay']:.2f}]"
                 )
-                tqdm.write(f"DEBUG PROFILING: P1={profiling['p1_act']:.4f} P2={profiling['p2_act']:.4f} Env={profiling['env_step']:.4f} Rep={profiling['replay']:.4f}")
                 pbar.set_postfix_str(postfix_str, refresh=False)
             
     except KeyboardInterrupt:
