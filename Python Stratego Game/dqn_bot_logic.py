@@ -4,6 +4,7 @@ import time
 import copy
 import torch
 import numpy as np
+from dataclasses import dataclass
 from typing import Tuple, Optional, List, Dict
 
 # Access the MARQ framework from the sibling directory
@@ -22,6 +23,7 @@ from drqn_agent import RainbowAgent
 from history_aggregator import HistoryAggregator
 from piece import PieceType, NUM_PIECE_TYPES
 from board import LAKE_SQUARE, HIDDEN_PIECE
+from training_config import DEFAULT_MAX_TURNS, EVAL_NO_BATTLE_DRAW_PLIES
 from stratego import Board
 
 GUI_RANK_TO_PIECETYPE = {
@@ -42,6 +44,21 @@ GUI_RANK_TO_PIECETYPE = {
 # Types an unrevealed piece that moves can be
 MOVABLE_TYPES = [pt for pt in PieceType if pt not in (PieceType.BOMB, PieceType.FLAG)]
 ORTHOGONAL = ((-1, 0), (1, 0), (0, -1), (0, 1))
+
+
+@dataclass
+class GuiObservation:
+    """What environment/observation.py reads from a GameState, built from a GUI board: the
+    viewer's grid, the counters behind planes 28-29 normalised by the limits the agent is
+    evaluated with, and the viewer's pieces the other side has seen (plane 26). Observability
+    (plane 27) is 0: the GUI plays with fog of war."""
+    board: np.ndarray
+    own_revealed: np.ndarray
+    turn_count: int
+    plies_since_battle: int
+    max_turns: int = DEFAULT_MAX_TURNS
+    no_battle_draw_plies: int = EVAL_NO_BATTLE_DRAW_PLIES
+    observability: float = 0.0
 
 def to_piece_type(val) -> PieceType:
     if isinstance(val, PieceType):
@@ -282,10 +299,14 @@ class ExpectamaxSearch:
     def _clone_board(self, board):
         new_board = Board()
         new_board.grid = [row[:] for row in board.grid]
+        new_board.turn_count = board.turn_count
+        new_board.plies_since_battle = board.plies_since_battle
         return new_board
 
     def _simulate_move_simple(self, board, move: Tuple):
         sim_board = self._clone_board(board)
+        sim_board.turn_count += 1
+        sim_board.plies_since_battle += 1
         src, dst = move
         piece = sim_board.get(src)
         sim_board.set(dst, piece)
@@ -294,6 +315,8 @@ class ExpectamaxSearch:
         
     def _simulate_combat(self, board, move: Tuple, attacker_rank, defender_rank):
         sim_board = self._clone_board(board)
+        sim_board.turn_count += 1
+        sim_board.plies_since_battle = 0
         src, dst = move
         attacker = sim_board.get(src)
         
@@ -525,12 +548,26 @@ class DQNBotLogic:
         self.agent.update_history_batch([move], [marq_grid], acting_player=self.opponent_id)
 
     def _get_state_representation(self, gui_board, player_id: int = None) -> torch.Tensor:
-        """Network input for `player_id` (default: the bot) in that side's canonical frame.
-        The bot's AAREN history only describes the bot's opponent, so other views get none."""
+        """Network input for `player_id` (default: the bot) in that side's canonical frame, with
+        the same 30 planes the training environment gives (see GuiObservation). The bot's AAREN
+        history only describes the bot's opponent, so other views get none."""
         player_id = self.player_id if player_id is None else player_id
-        marq_grid = self._gui_board_to_marq_grid(gui_board, player_id)
+        observation = GuiObservation(
+            board=self._gui_board_to_marq_grid(gui_board, player_id),
+            own_revealed=self._own_revealed_mask(gui_board, player_id),
+            turn_count=gui_board.turn_count,
+            plies_since_battle=gui_board.plies_since_battle,
+        )
         history = self.agent.history if player_id == self.player_id else None
-        return self.agent.get_state_representation(marq_grid, pbs_instance=history, player=player_id)
+        return self.agent.get_state_representation(observation, pbs_instance=history, player=player_id)
+
+    @staticmethod
+    def _own_revealed_mask(gui_board, viewer: int) -> np.ndarray:
+        """(10, 10) bool: the viewer's pieces whose rank the other side has seen in battle."""
+        mask = np.zeros((10, 10), dtype=bool)
+        for r, c in gui_board.owner_positions(viewer):
+            mask[r, c] = gui_board.get((r, c)).revealed
+        return mask
 
     def _gui_board_to_marq_grid(self, gui_board, viewer: int = None) -> np.ndarray:
         """The GUI board in the training environment's values as `viewer` (default: the bot)

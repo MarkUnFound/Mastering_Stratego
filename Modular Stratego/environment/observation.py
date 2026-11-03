@@ -18,7 +18,8 @@ Empty squares are the squares with no plane set. The thesis encoding had 15 plan
 by rank, one plane for every enemy piece (ranks dropped, even revealed ones and even under full
 observability), lakes and empty squares, and no counters.
 
-Planes 26-29 come from the GameState; a bare board (GUI) leaves them at 0.
+Planes 26-29 come from the GameState (the GUI bot passes a GuiObservation with the same
+fields); a bare board leaves them at 0.
 """
 
 from typing import Optional, Sequence

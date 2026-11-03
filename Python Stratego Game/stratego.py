@@ -124,6 +124,10 @@ class Piece:
 @dataclass
 class Board:
     grid: List[List[Optional[Piece]]] = field(default_factory=lambda: [[None for _ in range(BOARD_SIZE)] for _ in range(BOARD_SIZE)])
+    # Plies played and plies since the last battle, counted as the training environment counts
+    # them (the bot's observation planes 28-29 read them)
+    turn_count: int = 0
+    plies_since_battle: int = 0
 
     def in_bounds(self, r: int, c: int) -> bool:
         return 0 <= r < BOARD_SIZE and 0 <= c < BOARD_SIZE
@@ -219,7 +223,9 @@ class Board:
         attacker = self.get(src)
         defender = self.get(dst)
         assert attacker is not None
-        
+        self.turn_count += 1
+        self.plies_since_battle = 0 if defender is not None else self.plies_since_battle + 1
+
         # Helper function to get piece name with visibility rules
         def get_piece_name(piece, is_attacker, is_defender):
             # Always show the human player's piece name if human_side is specified
