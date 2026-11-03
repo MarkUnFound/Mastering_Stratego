@@ -116,7 +116,7 @@ class RainbowAgent:
         self.num_atoms = NUM_ATOMS
         self.v_min = V_MIN
         self.v_max = V_MAX
-        # Create support vector: [-100, -96, ..., 96, 100]
+        # Support vector: NUM_ATOMS evenly spaced values from V_MIN to V_MAX
         self.support = torch.linspace(self.v_min, self.v_max, self.num_atoms, device=device)
         self.delta_z = (self.v_max - self.v_min) / (self.num_atoms - 1)
         

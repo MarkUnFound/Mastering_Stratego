@@ -7,9 +7,9 @@ Configuration settings for DQN training.
 # =============================================================================
 NUM_LANES = 8             # Reduced to 8 (Safe for 6GB VRAM)
 NUM_ENVS = NUM_LANES      # LEGACY alias - always equals NUM_LANES (kept for compatibility)
-BATCH_SIZE = 128         # Reduced to 256 (Safe for 6GB VRAM)
+BATCH_SIZE = 128         # Fits 6GB VRAM
 GAMMA = 0.999           # Discount factor - EXTREMELY HIGH for 1500-step long-term flag capture planning in Phase 4
-MEMORY_SIZE = 75000      # 200k on GPU (~2.2GB) to leave room for model and batches
+MEMORY_SIZE = 75000      # Replay capacity (transitions), sized for 6GB VRAM
 LEARNING_RATE = 0.00003    # Reduced from 0.0001 for stable distributional RL
 
 # Network size (RainbowDQN backbone). Thesis runs used 64 channels, 6 residual blocks, 4 heads.
@@ -40,12 +40,6 @@ REWARD_SCALE = 1.0        # Scaling factor for reward calculations
 EXPLORATION_EPSILON_START = 0.0   # Disabled - Noisy Networks handle exploration
 EXPLORATION_EPSILON_END = 0.0     # Disabled
 EXPLORATION_EPSILON_DECAY = 1     # Not used
-
-# Entropy Regularization (Soft Q-Learning)
-ENTROPY_REG_ENABLED = False
-ENTROPY_COEFF_START = 0.1
-ENTROPY_COEFF_END = 0.01
-ENTROPY_ANNEAL_EPISODES = 50000
 
 # =============================================================================
 # CURRICULUM TURN LIMITS (Per-phase game length)
@@ -126,10 +120,8 @@ LEAGUE_GENERATIONS = 3 # Number of generations to evolve per interval
 GENERATE_GIFS = False # Whether to generate GIFs of games
 GIF_INTERVAL = 100   # Generate GIF every N episodes (reduced frequency)
 
-# PBS Optimization Settings
-PBS_UPDATE_INTERVAL = 4  # Update PBS every 4 steps (faster inference for MARL)
-PBS_SKIP_SIMPLE_MOVES = True  # Skip AAREN for obvious 1-square non-attack moves
-PBS_CACHE_UNCERTAINTY = True  # Cache uncertainty maps until beliefs change
+# AAREN history (named PBS in the thesis code)
+PBS_UPDATE_INTERVAL = 4  # The trainer updates the AAREN histories every N steps
 
 # AAREN Performance Optimizations
 AAREN_USE_FP16 = True           # Use half-precision inference (~30% faster)
@@ -175,32 +167,17 @@ CURRICULUM_START_PHASE = 1      # Phase 1 -> 4 (the thesis runs started at Phase
 # evaluation games per gate opponent, every EVAL_INTERVAL episodes (curriculum.phase_gates)
 PHASE_1_WIN_THRESHOLD_RANDOM = 0.70     # Phase 1 -> 2: vs random ...
 PHASE_1_WIN_THRESHOLD_HEURISTIC = 0.50  # ... and vs heuristic (full observability)
-PHASE_2_PBS_ACCURACY_THRESHOLD = 0.70   # unused (PBS was replaced by AAREN)
 PHASE_2_WIN_THRESHOLD = 0.55            # Phase 2 -> 3: vs heuristic (fog of war)
 PHASE_3_WIN_THRESHOLD = 0.70            # Phase 3 -> 4: vs heuristic (fog of war)
 EVAL_GAMES = 40                         # evaluation games per gate opponent
 
 # Phase Episode Limits: a phase ends after MAX training episodes even if its gates are not met
-# (MIN is not enforced)
-PHASE_1_MIN_EPISODES = 2000
 PHASE_1_MAX_EPISODES = 5000
-PHASE_2_MIN_EPISODES = 3000
 PHASE_2_MAX_EPISODES = 7000
-PHASE_3_MIN_EPISODES = 5000
 PHASE_3_MAX_EPISODES = 15000
 
 # Scenario Drill Settings (Phase 5)
 SCENARIO_DRILL_INTERVAL = 1000  # Run scenario drills every N episodes during Phase 4
-
-# =============================================================================
-# TEST-TIME SEARCH SETTINGS (Policy Refinement)
-# =============================================================================
-# Search amplifies network quality during gameplay without extra training
-SEARCH_ENABLED = False           # Disabled during training, enable for evaluation
-SEARCH_DEPTH = 2                 # How many moves ahead to look (1-3 recommended)
-SEARCH_BUDGET = 50               # Max simulations per decision
-SEARCH_TOP_K = 5                 # Only expand top-K moves from Q-values
-SEARCH_MIN_MOVES = 10            # Skip search if fewer legal moves available
 
 # =============================================================================
 # KL-REGULARIZATION SETTINGS (Anti-Cycling)
@@ -243,15 +220,5 @@ MAGNET_POWER = 2.0                # Quadratic decay: α(t) = α_0 * (1-t)^p
 TARGET_KL_COEFF_START = 0.001     # β_0: Initial coefficient
 TARGET_KL_COEFF_END = 0.1         # β_T: Final coefficient
 TARGET_KL_POWER = 2.0             # Quadratic growth: β(t) = β_0 + (β_T-β_0) * t^p
-
-# =============================================================================
-# ATARAXOS UPDATE-EQUIVALENCE SEARCH (Test-Time)
-# =============================================================================
-# Vectorized search with Magnetic Mirror Descent
-UE_SEARCH_ENABLED = False         # Enable for evaluation only (slow)
-UE_NUM_WORLDS = 1000              # Number of opponent configs to sample
-UE_ROLLOUT_DEPTH = 5              # Ply depth (reduced from 40 for speed)
-UE_MMD_STEP_SIZE = 0.1            # η for Magnetic Mirror Descent
-UE_TEMPERATURE = 0.5              # Softmax temperature for prior
 
 # REWARDS ARE NOW CONSOLIDATED IN distributional_reward.py
