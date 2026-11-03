@@ -576,7 +576,7 @@ def train_dqn_agents(num_episodes: int = 1000, save_interval: int = 100,
                     reward = shaper(previous_state=t['state'], action=t['action'], current_state=t['next_state'],
                                     done=t['done'], winner=t['winner'], info=t['info'])
                     if t['done']:
-                        reward += outcome_reward(t['winner'], t['player'], t['info'].get('win_type'))
+                        reward += outcome_reward(t['winner'], t['player'])
                     if t['player'] == 1:
                         lane_episode_rewards_p1[i] += reward
                         completed_transitions[1].append((t, reward))

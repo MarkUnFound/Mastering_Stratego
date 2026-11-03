@@ -70,9 +70,10 @@ EVAL_NO_BATTLE_DRAW_PLIES = 200
 
 # Terminal reward of a draw (a win is +1, a loss -1). With a free draw (0, as in the thesis) the
 # formal_1 run learned to stop attacking: by episode 7250 it made 0.1 attacks per game and every
-# Phase-2 game ended in a no-battle draw. A drawn game now costs both sides, a no-battle draw more.
-DRAW_REWARD = -0.25
-NO_BATTLE_DRAW_REWARD = -0.5
+# Phase-2 game ended in a no-battle draw. A drawn game now costs both sides, however it ends: when
+# a no-battle draw cost more (-0.5) than a turn-limit draw (-0.25), one cheap attack every 99 plies
+# bought the difference (12 of 12 shuffling games went to the turn limit, ~10 pieces thrown away each).
+DRAW_REWARD = -0.5
 
 # Warmup Period (must collect this many experiences before training starts)
 WARMUP_STEPS = 1000       # Reduced further for faster Phase 1 start

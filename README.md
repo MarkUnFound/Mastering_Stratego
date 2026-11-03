@@ -154,7 +154,7 @@ Strict anti-oscillation penalties punish repetitive moves, compelling the agent 
 > * **Penetration (0.15):** the deepest Captain-or-lower piece.
 > * **Information (0.1):** the share of enemy pieces on the board whose rank the view shows.
 >
-> $\Phi$ is 0 once the game is over, so a game's discounted shaping sums to $-\Phi(s_0)$. The terminal reward is +1 for a win, −1 for a loss, and `DRAW_REWARD` (−0.25) for a draw or `NO_BATTLE_DRAW_REWARD` (−0.5) for a no-battle draw (`outcome_reward`); with free draws the agent learned to stop attacking. The anti-oscillation, move-diversity, stalemate and combat-bonus terms are not potential-based and are off by default (weight 0 in `StrategoRewardConfig`). The thesis runs had them on, gave the last transition no $-\Phi$ term, counted hidden enemy pieces as zero material, and added a speed bonus and draw penalty to the terminal reward.
+> $\Phi$ is 0 once the game is over, so a game's discounted shaping sums to $-\Phi(s_0)$. The terminal reward is +1 for a win, −1 for a loss, and `DRAW_REWARD` (−0.5) for any draw (`outcome_reward`); with free draws the agent learned to stop attacking, and with a no-battle draw dearer than a turn-limit draw a token attack every 99 plies paid. The anti-oscillation, move-diversity, stalemate and combat-bonus terms are not potential-based and are off by default (weight 0 in `StrategoRewardConfig`). The thesis runs had them on, gave the last transition no $-\Phi$ term, counted hidden enemy pieces as zero material, and added a speed bonus and draw penalty to the terminal reward.
 
 ---
 

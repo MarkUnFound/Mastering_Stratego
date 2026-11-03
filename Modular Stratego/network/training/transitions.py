@@ -8,17 +8,17 @@ both sides are closed as terminal, whichever side made the last move.
 
 from typing import Dict, List, Optional
 
-from training_config import DRAW_REWARD, NO_BATTLE_DRAW_REWARD
+from training_config import DRAW_REWARD
 
 
-def outcome_reward(winner: Optional[int], player: int, win_type: Optional[str] = None) -> float:
-    """Terminal reward for `player`: +1 win, -1 loss; a draw gives DRAW_REWARD, or
-    NO_BATTLE_DRAW_REWARD when it is a no-battle draw (the thesis gave every draw 0)."""
+def outcome_reward(winner: Optional[int], player: int) -> float:
+    """Terminal reward for `player`: +1 win, -1 loss, DRAW_REWARD for any draw (the thesis gave
+    every draw 0)."""
     if winner == player:
         return 1.0
     if winner == -player:
         return -1.0
-    return NO_BATTLE_DRAW_REWARD if win_type == 'no_battle_draw' else DRAW_REWARD
+    return DRAW_REWARD
 
 
 class TurnTracker:

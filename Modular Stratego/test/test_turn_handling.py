@@ -7,7 +7,7 @@ import torch
 
 from environment import StrategoEnvironment
 from test_trainer_smoke import run_tiny_training
-from training_config import DRAW_REWARD, NO_BATTLE_DRAW_REWARD
+from training_config import DRAW_REWARD
 
 
 # ---------------------------------------------------------------- environment
@@ -95,7 +95,7 @@ def test_stored_transitions_hold_the_agents_own_view_and_one_terminal_per_game(t
             assert nxt == 1, "next state must be P1's view after the opponent's reply"
         else:
             # outcome +1 / -1 / draw reward plus the PBRS terminal term -Phi(s) (Phase 1: full shaping)
-            assert r == pytest.approx(outcome_reward(winner, 1, win_type) - phi)
+            assert r == pytest.approx(outcome_reward(winner, 1) - phi)
     # every finished game gives P1 exactly one terminal transition (the run may finish a few extra games)
     assert sum(t[4] for t in stored) >= episodes
 
@@ -127,18 +127,22 @@ def test_game_end_closes_both_sides_with_the_outcome():
     assert [(t['player'], t['done'], outcome_reward(t['winner'], t['player'])) for t in ts] == [(1, True, -1.0), (-1, True, 1.0)]
     draw = TurnTracker(1)
     draw.record(0, 1, S(1), 'a', S(-1), False, {})
-    assert [outcome_reward(t['winner'], t['player'], t['info']['win_type'])
+    assert [outcome_reward(t['winner'], t['player'])
             for t in draw.record(0, -1, S(-1), 'b', S(1), True, {'winner': 0, 'win_type': 'timeout'})] == [DRAW_REWARD] * 2
 
 
-def test_a_draw_costs_both_sides_and_a_no_battle_draw_costs_more():
-    """A free draw taught the formal_1 agent to stop attacking: draws now score below zero."""
+def test_a_draw_costs_both_sides_the_same_however_it_ends():
+    """A free draw taught the formal_1 agent to stop attacking: draws now score below zero. They
+    all score the same: a no-battle draw that cost more than a turn-limit draw paid the agent to
+    throw a piece away every 99 plies."""
     from network import TurnTracker, outcome_reward
-    assert -1.0 < NO_BATTLE_DRAW_REWARD < DRAW_REWARD < 0.0
-    tt = TurnTracker(1)
-    tt.record(0, -1, S(-1), 'a', S(1), False, {})
-    ts = tt.record(0, 1, S(1), 'b', S(-1), True, {'winner': 0, 'win_type': 'no_battle_draw'})
-    assert [(t['player'], outcome_reward(t['winner'], t['player'], t['info']['win_type'])) for t in ts] ==         [(-1, NO_BATTLE_DRAW_REWARD), (1, NO_BATTLE_DRAW_REWARD)]
+    assert -1.0 < DRAW_REWARD < 0.0
+    for win_type in ('no_battle_draw', 'timeout'):
+        tt = TurnTracker(1)
+        tt.record(0, -1, S(-1), 'a', S(1), False, {})
+        ts = tt.record(0, 1, S(1), 'b', S(-1), True, {'winner': 0, 'win_type': win_type})
+        assert [(t['player'], outcome_reward(t['winner'], t['player'])) for t in ts] == \
+            [(-1, DRAW_REWARD), (1, DRAW_REWARD)]
 
 
 def test_lanes_do_not_mix():
