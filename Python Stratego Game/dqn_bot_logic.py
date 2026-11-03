@@ -301,6 +301,8 @@ class ExpectamaxSearch:
         new_board.grid = [row[:] for row in board.grid]
         new_board.turn_count = board.turn_count
         new_board.plies_since_battle = board.plies_since_battle
+        new_board.max_turns = board.max_turns
+        new_board.no_battle_draw_plies = board.no_battle_draw_plies
         return new_board
 
     def _simulate_move_simple(self, board, move: Tuple):
@@ -557,6 +559,8 @@ class DQNBotLogic:
             own_revealed=self._own_revealed_mask(gui_board, player_id),
             turn_count=gui_board.turn_count,
             plies_since_battle=gui_board.plies_since_battle,
+            max_turns=gui_board.max_turns,
+            no_battle_draw_plies=gui_board.no_battle_draw_plies,
         )
         history = self.agent.history if player_id == self.player_id else None
         return self.agent.get_state_representation(observation, pbs_instance=history, player=player_id)

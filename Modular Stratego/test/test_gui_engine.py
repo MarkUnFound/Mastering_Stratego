@@ -2,6 +2,7 @@
 rules: games played in the environment are replayed on the GUI board, which must offer the same
 legal moves and reach the same position after every move. The GUI bot's network input for a
 replayed position is the environment's own observation of it."""
+import collections
 import os
 import random
 import sys
@@ -51,7 +52,8 @@ def replayed_plies(seeds, **env_kwargs):
                                                                   env.get_valid_placement_positions(p))
                  for p in (1, -1)}
         state = env.reset(place[1], place[-1], starting_player=1 if seed % 2 == 0 else -1)
-        gui = S.Board()
+        gui = S.Board(max_turns=env.max_turns, no_battle_draw_plies=env.no_battle_draw_plies)
+        gui.last_winner = None
         for p in (1, -1):
             for pt, pos in place[p]:
                 gui.set(tuple(pos), S.Piece(owner=OWNER[p], rank=GUI_RANK[pt]))
@@ -67,14 +69,26 @@ def replayed_plies(seeds, **env_kwargs):
         yield env, state, gui, None
 
 
+ENV_WINNER = {1: 1, 2: -1, 0: 0}  # GUI winner (owner, 0 = draw) -> environment winner
+
+
+def check_the_game_ends_together(env, gui, move):
+    """The GUI ends the game on the same move as the environment, with the same result and rule."""
+    if move is not None:
+        assert gui.last_winner is None, (env.turn_count, gui.end_reason)
+        return None
+    assert gui.last_winner is not None, (env.turn_count, env.win_type)
+    assert (ENV_WINNER[gui.last_winner], gui.end_reason) == (env.winner, env.win_type)
+    return gui.end_reason
+
+
 def test_gui_engine_matches_the_environment():
     battles = flags = 0
     for env, state, gui, move in replayed_plies(range(6), full_observability=True, max_turns=400,
                                                 no_battle_draw_plies=0):
+        if check_the_game_ends_together(env, gui, move) == 'flag_capture':
+            flags += 1
         if move is None:
-            if gui.last_winner is not None:
-                flags += 1
-                assert env.game_over and env.winner == (1 if gui.last_winner == 1 else -1)
             continue
         if env.turn_count == 0:
             assert gui_values(gui) == env.board.actual_board.tolist()
@@ -88,6 +102,34 @@ def test_gui_engine_matches_the_environment():
         battles += gui.get(move[1]) is not None
         assert gui_values(gui) == env.board.actual_board.tolist(), (env.turn_count, move)
     assert battles > 50 and flags >= 1, (battles, flags)
+
+
+def test_the_gui_ends_games_by_the_environments_rules():
+    """No-battle draws, the turn limit and a side left without a legal move end a GUI game as they
+    end a training game (the GUI only knew captured flags: long games went on, planes 28-29 sat at
+    1, and a side with nothing left to move got stuck)."""
+    assert (S.NO_BATTLE_DRAW_PLIES, S.MAX_TURNS) == (EVAL_NO_BATTLE_DRAW_PLIES, DEFAULT_MAX_TURNS)
+    ends = collections.Counter()
+    for limits in ({'no_battle_draw_plies': 30, 'max_turns': 1000}, {'no_battle_draw_plies': 0, 'max_turns': 60}):
+        for env, state, gui, move in replayed_plies(range(4), full_observability=True, **limits):
+            reason = check_the_game_ends_together(env, gui, move)
+            if reason:
+                ends[reason] += 1
+    assert ends['no_battle_draw'] >= 1 and ends['timeout'] >= 1, ends
+
+
+def test_a_side_with_no_legal_move_loses():
+    b = S.Board()
+    b.set((9, 0), S.Piece(owner=1, rank=-1))   # Flag
+    b.set((9, 1), S.Piece(owner=1, rank=0))    # Bomb
+    b.set((8, 0), S.Piece(owner=1, rank=0))    # Bomb
+    b.set((6, 5), S.Piece(owner=1, rank=4))    # Sergeant: its last movable piece
+    b.set((5, 5), S.Piece(owner=2, rank=10))   # Marshal
+    b.set((0, 0), S.Piece(owner=2, rank=-1))
+    msg, winner = b.move_and_resolve((5, 5), (6, 5))
+    assert (winner, b.end_reason) == (2, 'no_moves')
+    assert S.result_message(winner, b.end_reason, human_side=1) == "Bot wins: the other side cannot move"
+    assert S.result_message(0, 'no_battle_draw') == "Draw: 200 moves without a battle"
 
 
 class EncodingAgent:

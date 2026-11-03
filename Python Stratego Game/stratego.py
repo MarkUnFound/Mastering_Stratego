@@ -17,6 +17,11 @@ from typing import Dict, List, Optional, Tuple
 # --- Board constants ---
 BOARD_SIZE = 10
 
+# Game limits: the ones the agent is evaluated with (Modular Stratego/settings/training_config.py:
+# EVAL_NO_BATTLE_DRAW_PLIES and DEFAULT_MAX_TURNS). Reaching either is a draw.
+NO_BATTLE_DRAW_PLIES = 200
+MAX_TURNS = 1500
+
 LAKES = {
     (4, 2), (4, 3), (5, 2), (5, 3),
     (4, 6), (4, 7), (5, 6), (5, 7)
@@ -128,6 +133,9 @@ class Board:
     # them (the bot's observation planes 28-29 read them)
     turn_count: int = 0
     plies_since_battle: int = 0
+    max_turns: int = MAX_TURNS
+    no_battle_draw_plies: int = NO_BATTLE_DRAW_PLIES  # 0: no no-battle draw
+    end_reason: Optional[str] = None  # set by move_and_resolve when a move ends the game
 
     def in_bounds(self, r: int, c: int) -> bool:
         return 0 <= r < BOARD_SIZE and 0 <= c < BOARD_SIZE
@@ -220,6 +228,24 @@ class Board:
         return moves
 
     def move_and_resolve(self, src: Tuple[int, int], dst: Tuple[int, int], human_side: int = None) -> Tuple[str, Optional[int]]:
+        """Play a move. Returns (message, winner): winner is the owner who won, 0 for a draw, None
+        while the game goes on. The game ends as the training environment ends it, checked in its
+        order: a captured Flag; the side to move has no legal move (it loses); no_battle_draw_plies
+        plies without a battle (draw); max_turns plies (draw). end_reason names the rule
+        ('flag_capture', 'no_moves', 'no_battle_draw', 'timeout')."""
+        mover = self.get(src).owner
+        msg, winner = self._play(src, dst, human_side)
+        if winner is not None:
+            self.end_reason = 'flag_capture'
+        elif not self.has_movable(3 - mover):
+            winner, self.end_reason = mover, 'no_moves'
+        elif self.no_battle_draw_plies and self.plies_since_battle >= self.no_battle_draw_plies:
+            winner, self.end_reason = 0, 'no_battle_draw'
+        elif self.turn_count >= self.max_turns:
+            winner, self.end_reason = 0, 'timeout'
+        return msg, winner
+
+    def _play(self, src: Tuple[int, int], dst: Tuple[int, int], human_side: int = None) -> Tuple[str, Optional[int]]:
         attacker = self.get(src)
         defender = self.get(dst)
         assert attacker is not None
@@ -300,6 +326,19 @@ def resolve_combat(attacker: Piece, defender: Piece) -> str:
 
 def side_name(owner: int) -> str:
     return "Player 1" if owner == 1 else "Player 2"
+
+
+def result_message(winner: int, end_reason: Optional[str], human_side: Optional[int] = None) -> str:
+    """How a finished game ended, for the player (vs the bot when human_side is given)."""
+    if winner == 0:
+        return {'no_battle_draw': f"Draw: {NO_BATTLE_DRAW_PLIES} moves without a battle",
+                'timeout': f"Draw: the {MAX_TURNS}-move limit"}.get(end_reason, "Draw")
+    if human_side is None:
+        who = f"{side_name(winner)} wins"
+    else:
+        who = "You win" if winner == human_side else "Bot wins"
+    how = {'flag_capture': "the Flag is captured", 'no_moves': "the other side cannot move"}.get(end_reason)
+    return f"{who}: {how}" if how else f"{who}!"
 
 def print_board(board: Board, viewer: int):
     print("   " + " ".join([f"{f:>2}" for f in FILES]))
@@ -542,7 +581,7 @@ def play_game():
             print(msg)
 
         if winner is not None:
-            print(f"{side_name(winner)} wins by capturing the Flag!")
+            print(result_message(winner, board.end_reason))
             break
 
         if not any_moves_for_owner(board, other):

@@ -12,7 +12,7 @@ import time
 import random
 import csv
 import os
-from stratego import Board, auto_setup, side_name, FILES, Piece
+from stratego import Board, auto_setup, side_name, FILES, Piece, result_message
 from dqn_bot_logic import DQNBotLogic
 from setup_agent_integration import place_army
 
@@ -629,13 +629,7 @@ def handle_click(pos):
                 
                 if winner is not None:
                     game_state = "game_over"
-                    if vs_bot:
-                        if winner == human_side:
-                            message = "You Win! "
-                        else:
-                            message = "Bot Wins!"
-                    else:
-                        message = f"Player {winner} Wins! "
+                    message = result_message(winner, board.end_reason, human_side if vs_bot else None)
                 else:
                     current_player = 2 if current_player == 1 else 1
                     if vs_bot:
@@ -710,7 +704,7 @@ def bot_turn():
     
     if winner is not None:
         game_state = "game_over"
-        message = "Bot Wins!"
+        message = result_message(winner, board.end_reason, human_side)
     else:
         current_player = human_side
         message = "Your turn!"

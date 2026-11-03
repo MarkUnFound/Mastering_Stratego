@@ -5,7 +5,7 @@ import csv
 import os
 import sys
 from typing import List, Dict, Tuple, Optional
-from stratego import Board, auto_setup, side_name, FILES, Piece
+from stratego import Board, auto_setup, side_name, FILES, Piece, result_message
 
 # Access the MARQ framework from the sibling directory
 MODULAR_STRATEGO_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "Modular Stratego"))
@@ -61,6 +61,7 @@ current_player = 1
 selected = None
 running = True
 game_state = "menu"
+result_text = ""  # how the last game ended
 message = "Welcome to Guided Stratego"
 human_side = 1
 vs_bot = False
@@ -408,7 +409,7 @@ def update_analysis():
         recommendations = coach_bot.get_multi_recommendations(board, human_side)
 
 def handle_click(pos):
-    global selected, current_player, game_state, show_hints, battle_popup
+    global selected, current_player, game_state, show_hints, battle_popup, result_text
     dims = get_board_dimensions()
     f = (pos[0] - dims['x']) // dims['tile']
     r = (pos[1] - dims['y']) // dims['tile']
@@ -445,7 +446,9 @@ def handle_click(pos):
                     else: res = 'defender_wins'
                     battle_popup = {'attacker_type': atk.short(), 'attacker_owner': atk.owner, 'defender_type': dfn.short(), 'defender_owner': dfn.owner, 'result': res, 'start_time': time.time()}
                 
-                if winner is not None: game_state = "game_over"
+                if winner is not None:
+                    game_state = "game_over"
+                    result_text = result_message(winner, board.end_reason, human_side)
                 else:
                     current_player = 3 - human_side
                     update_analysis()
@@ -456,7 +459,7 @@ def handle_click(pos):
                 else: selected = None
 
 def bot_step():
-    global current_player, game_state, battle_popup
+    global current_player, game_state, battle_popup, result_text
     time.sleep(0.6)
     move = opponent_bot.choose_move(board, current_player)
     if move:
@@ -473,7 +476,9 @@ def bot_step():
             elif not p_after and not board.get(src): res = 'tie'
             else: res = 'defender_wins'
             battle_popup = {'attacker_type': atk.short(), 'attacker_owner': atk.owner, 'defender_type': dfn.short(), 'defender_owner': dfn.owner, 'result': res, 'start_time': time.time()}
-        if winner is not None: game_state = "game_over"
+        if winner is not None:
+            game_state = "game_over"
+            result_text = result_message(winner, board.end_reason, human_side)
     current_player = human_side
     update_analysis()
 
@@ -532,6 +537,7 @@ while running:
         draw_board()
         draw_rounded_rect(screen, (0,0,0), pygame.Rect(0,0,screen.get_width(), screen.get_height()), 0, 150)
         draw_text(screen, "GAME OVER", screen.get_width()//2, screen.get_height()//2 - 50, 100, WHITE, True)
+        draw_text(screen, result_text, screen.get_width()//2, screen.get_height()//2 + 10, 32, WHITE, True)
         if draw_button("RETURN TO MENU", screen.get_width()//2 - 120, screen.get_height()//2 + 50, 240, 50, action="menu", primary=True) == "menu":
             game_state = "menu"
 
