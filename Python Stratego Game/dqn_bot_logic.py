@@ -21,7 +21,7 @@ if os.path.dirname(project_root) not in sys.path:
 from drqn_agent import RainbowAgent
 from history_aggregator import HistoryAggregator
 from piece import PieceType, NUM_PIECE_TYPES
-from board import LAKE_SQUARE
+from board import LAKE_SQUARE, HIDDEN_PIECE
 from stratego import Board
 
 GUI_RANK_TO_PIECETYPE = {
@@ -38,6 +38,10 @@ GUI_RANK_TO_PIECETYPE = {
     0: PieceType.BOMB,
     -1: PieceType.FLAG,
 }
+
+# Types an unrevealed piece that moves can be
+MOVABLE_TYPES = [pt for pt in PieceType if pt not in (PieceType.BOMB, PieceType.FLAG)]
+ORTHOGONAL = ((-1, 0), (1, 0), (0, -1), (0, 1))
 
 def to_piece_type(val) -> PieceType:
     if isinstance(val, PieceType):
@@ -78,7 +82,7 @@ class ExpectamaxSearch:
         Returns the best move and its expected utility.
         """
         start_time = time.time()
-        
+
         legal_moves = DQN_adapter._get_gui_legal_moves(gui_board, current_player)
         if not legal_moves:
             return None, -float('inf')
@@ -133,8 +137,11 @@ class ExpectamaxSearch:
             sim_board = self._simulate_move_simple(board, move)
             return self._min_node(sim_board, 3 - player, depth, start_time, prior_q, DQN_adapter)
             
-        # 2. Handle attacks (Chance Node)
-        probabilities = self.agent.history.get_piece_predictions(dst) if self.agent.history else None
+        # 2. Handle attacks (Chance Node); a revealed defender's type is known
+        if target_piece.revealed:
+            probabilities = {to_piece_type(target_piece.rank): 1.0}
+        else:
+            probabilities = self.agent.history.get_piece_predictions(dst) if self.agent.history else None
         if not probabilities:
             probabilities = HistoryAggregator.get_default_piece_prior()
         
@@ -173,25 +180,21 @@ class ExpectamaxSearch:
             # Enemy turn evaluated from BOT's perspective (hence 3-player for Bot if player is Enemy)
             return DQN_adapter.get_state_evaluation(board, 3 - player)
             
-        legal_moves = DQN_adapter._get_gui_legal_moves(board, player)
+        # The opponent's replies as the searching side knows them, ranked by the searching side's
+        # own evaluation of the position after each (the two worst for it are searched). The
+        # thesis code moved the opponent's true pieces, ranked them with the opponent's true army
+        # as network input, and let every attack simply overwrite the defender.
+        legal_moves = self._opponent_moves(board, player)
         if not legal_moves:
             return 10.0 # Huge win for bot
-            
-        # Opponent moves (limit branching factor to top 2 for speed)
-        expected_q = self._get_expected_q(board, DQN_adapter, player)  # the mover's own view
-        move_scores = []
-        for move in legal_moves:
-            action_idx = self.agent._move_to_action_index(move, player)
-            score = expected_q[action_idx].item()
-            move_scores.append((move, score))
-            
-        move_scores.sort(key=lambda x: x[1], reverse=True)
-        
+        sims = [self._simulate_opponent_move(board, move) for move in legal_moves]
+        values = DQN_adapter.get_state_evaluations(sims, 3 - player)
+        order = sorted(range(len(sims)), key=lambda i: values[i])
+
         min_utility = float('inf')
-        for move_tuple in move_scores[:2]: 
-            move, opp_prior_q = move_tuple
-            sim_board = self._simulate_move_simple(board, move)
-            
+        for i in order[:2]:
+            sim_board = sims[i]
+
             utility = self._max_node(sim_board, 3 - player, depth + 1, start_time, DQN_adapter)
             if utility < min_utility:
                 min_utility = utility
@@ -236,6 +239,45 @@ class ExpectamaxSearch:
             support = self.agent.support if hasattr(self.agent, 'support') else torch.linspace(-10, 10, 51).to(self.device)
             expected_q = (probs * support).sum(dim=2).squeeze(0)
         return expected_q
+
+    def _opponent_moves(self, board, player: int) -> List[Tuple]:
+        """Moves of `player` (the side not searching) that the searching side cannot rule out: a
+        revealed piece moves by its rules; an unrevealed one may be any movable piece, so it may
+        step to any open or enemy-held neighbour (a long Scout move is left out)."""
+        moves = []
+        for r in range(10):
+            for c in range(10):
+                piece = board.get((r, c))
+                if not piece or piece.owner != player:
+                    continue
+                if piece.revealed:
+                    moves.extend(((r, c), dst) for dst in board.legal_moves_from((r, c)))
+                    continue
+                for dr, dc in ORTHOGONAL:
+                    nr, nc = r + dr, c + dc
+                    if board.in_bounds(nr, nc) and not board.is_lake(nr, nc):
+                        other = board.get((nr, nc))
+                        if other is None or other.owner != player:
+                            moves.append(((r, c), (nr, nc)))
+        return moves
+
+    def _likely_type(self, pos) -> PieceType:
+        """Most likely type of the unrevealed piece that moves from `pos`: the history's
+        prediction, else the setup prior, over the movable types."""
+        probs = self.agent.history.get_piece_predictions(pos) if self.agent.history else None
+        probs = probs or HistoryAggregator.get_default_piece_prior()
+        return max(MOVABLE_TYPES, key=lambda pt: probs.get(pt, 0.0))
+
+    def _simulate_opponent_move(self, board, move: Tuple):
+        """The opponent's move, with a battle if it attacks: the attacker is its revealed type or
+        its most likely type; the defender is the searching side's own piece."""
+        src, dst = move
+        defender = board.get(dst)
+        if defender is None:
+            return self._simulate_move_simple(board, move)
+        attacker = board.get(src)
+        att_type = to_piece_type(attacker.rank) if attacker.revealed else self._likely_type(src)
+        return self._simulate_combat(board, move, att_type, defender.rank)[1]
 
     def _clone_board(self, board):
         new_board = Board()
@@ -380,6 +422,14 @@ class DQNBotLogic:
             
             return state_value
 
+    def get_state_evaluations(self, gui_boards, player_id: int) -> List[float]:
+        """get_state_evaluation of several boards in one network call."""
+        self.agent.q_network.eval()
+        with torch.no_grad():
+            states = torch.stack([self._get_state_representation(b, player_id) for b in gui_boards]).to(self.device)
+            v_probs = self.agent.q_network.evaluate_state_value(states)
+            return torch.sum(v_probs * self.agent.support, dim=1).tolist()
+
     def get_multi_recommendations(self, gui_board, player_id: int, top_n: int = 3) -> List[Dict]:
         """
         Returns multiple move suggestions with chess.com-style classifications.
@@ -478,19 +528,27 @@ class DQNBotLogic:
         """Network input for `player_id` (default: the bot) in that side's canonical frame.
         The bot's AAREN history only describes the bot's opponent, so other views get none."""
         player_id = self.player_id if player_id is None else player_id
-        marq_grid = self._gui_board_to_marq_grid(gui_board)
+        marq_grid = self._gui_board_to_marq_grid(gui_board, player_id)
         history = self.agent.history if player_id == self.player_id else None
         return self.agent.get_state_representation(marq_grid, pbs_instance=history, player=player_id)
 
-    def _gui_board_to_marq_grid(self, gui_board) -> np.ndarray:
+    def _gui_board_to_marq_grid(self, gui_board, viewer: int = None) -> np.ndarray:
+        """The GUI board in the training environment's values as `viewer` (default: the bot)
+        sees it: PieceType values (Flag 1, Spy 2 ... Marshal 11, Bomb 12), Player 1 positive and
+        Player 2 negative, and the other side's unrevealed pieces HIDDEN_PIECE. (The thesis code
+        copied the GUI ranks, Spy 1 ... Marshal 10, Bomb 0, Flag -1, so every piece read one rank
+        low, the bombs vanished and the flags changed sides; and it showed the human's army.)"""
+        viewer = self.player_id if viewer is None else viewer
         grid = np.zeros((10, 10), dtype=np.int32)
         for r in range(10):
             for c in range(10):
                 piece = gui_board.get((r, c))
                 if piece:
-                    val = piece.rank
-                    if piece.owner == 2: val = -val
-                    grid[r, c] = val
+                    if piece.owner != viewer and not piece.revealed:
+                        grid[r, c] = HIDDEN_PIECE
+                    else:
+                        val = GUI_RANK_TO_PIECETYPE[piece.rank].value
+                        grid[r, c] = val if piece.owner == 1 else -val
                 elif gui_board.is_lake(r, c):
                     grid[r, c] = LAKE_SQUARE
         return grid
